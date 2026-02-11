@@ -37,6 +37,7 @@
 #include <netinet/tcp.h>
 #include <pthread.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -200,6 +201,12 @@ void fetch_connections_stat(struct connections_stat *st) {
 
 void connection_event_incref(int fd, long long val);
 
+extern int32_t mtproxy_ffi_net_connection_is_active(int32_t flags);
+extern int32_t mtproxy_ffi_net_compute_conn_events(int32_t flags,
+                                                    int32_t use_epollet);
+extern int32_t mtproxy_ffi_net_add_nat_info(const char *rule_text);
+extern uint32_t mtproxy_ffi_net_translate_ip(uint32_t local_ip);
+
 void tcp_set_max_accept_rate(int rate) { max_accept_rate = rate; }
 
 int set_write_timer(connection_job_t C);
@@ -275,31 +282,22 @@ socket_connection_job_t alloc_new_socket_connection(connection_job_t C);
 #include "vv/vv-tree.c"
 
 static inline int connection_is_active(int flags) {
-  return (flags & C_CONNECTED) && !(flags & C_READY_PENDING);
+  int32_t active = mtproxy_ffi_net_connection_is_active(flags);
+  assert(active == 0 || active == 1);
+  return active;
 }
 
 /* {{{ compute_conn_events */
 #if USE_EPOLLET
 static inline int compute_conn_events(socket_connection_job_t c) {
-  unsigned flags = SOCKET_CONN_INFO(c)->flags;
-  if (flags & C_ERROR) {
-    return 0;
-  } else {
-    return EVT_READ | EVT_WRITE | EVT_SPEC;
-  }
+  int32_t events =
+      mtproxy_ffi_net_compute_conn_events(SOCKET_CONN_INFO(c)->flags, 1);
+  assert(events == 0 || events == (EVT_READ | EVT_WRITE | EVT_SPEC));
+  return events;
 }
 #else
 static inline int compute_conn_events(connection_job_t c) {
-  unsigned flags = CONN_INFO(c)->flags;
-  if (flags & (C_ERROR | C_FAILED | C_NET_FAILED)) {
-    return 0;
-  }
-  return (((flags & (C_WANTRD | C_STOPREAD)) == C_WANTRD) ? EVT_READ : 0) |
-         (flags & C_WANTWR ? EVT_WRITE : 0) | EVT_SPEC |
-         (((flags & (C_WANTRD | C_NORD)) == (C_WANTRD | C_NORD)) ||
-                  ((flags & (C_WANTWR | C_NOWR)) == (C_WANTWR | C_NOWR))
-              ? EVT_LEVEL
-              : 0);
+  return mtproxy_ffi_net_compute_conn_events(CONN_INFO(c)->flags, 0);
 }
 #endif
 /* }}} */
@@ -2248,45 +2246,10 @@ int get_cur_conn_generation(void) { return conn_generation; }
 
 // -----
 
-int nat_info_rules;
-unsigned nat_info[MAX_NAT_INFO_RULES][2];
-
 int net_add_nat_info(char *str) {
-  char *str2 = strrchr(str, ':');
-  if (!str2) {
-    fprintf(stderr, "expected <local-addr>:<global-addr> in --nat-info\n");
-    return -1;
-  }
-  *str2++ = 0;
-  struct in_addr l_addr, g_addr;
-  if (inet_pton(AF_INET, str, &l_addr) <= 0) {
-    fprintf(stderr, "cannot translate host '%s' in --nat-info\n", str);
-    return -1;
-  }
-  if (inet_pton(AF_INET, str2, &g_addr) <= 0) {
-    fprintf(stderr, "cannot translate host '%s' in --nat-info\n", str2);
-    return -1;
-  }
-  if (nat_info_rules >= MAX_NAT_INFO_RULES) {
-    fprintf(stderr, "too many rules in --nat-info\n");
-    return -1;
-  }
-  nat_info[nat_info_rules][0] = ntohl(l_addr.s_addr);
-  nat_info[nat_info_rules][1] = ntohl(g_addr.s_addr);
-  return nat_info_rules++;
+  return mtproxy_ffi_net_add_nat_info(str);
 }
 
 unsigned nat_translate_ip(unsigned local_ip) {
-  int i;
-  vkprintf(6, "nat_info: %d rules\n", nat_info_rules);
-  for (i = 0; i < nat_info_rules; i++) {
-    vkprintf(6, "nat_info rule #%d: %s to %s\n", i, show_ip(nat_info[i][0]),
-             show_ip(nat_info[i][1]));
-    if (nat_info[i][0] == local_ip) {
-      vkprintf(4, "translating ip by nat_info rules: %s to %s\n",
-               show_ip(local_ip), show_ip(nat_info[i][1]));
-      return nat_info[i][1];
-    }
-  }
-  return local_ip;
+  return mtproxy_ffi_net_translate_ip(local_ip);
 }

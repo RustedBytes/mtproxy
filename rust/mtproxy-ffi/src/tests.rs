@@ -22,8 +22,11 @@
         mtproxy_ffi_mtproto_conn_tag, mtproxy_ffi_mtproto_ext_conn_hash,
         mtproxy_ffi_mtproto_inspect_packet_header, mtproxy_ffi_mtproto_parse_client_packet,
         mtproxy_ffi_mtproto_parse_function, mtproxy_ffi_mtproto_parse_text_ipv4,
-        mtproxy_ffi_mtproto_parse_text_ipv6, mtproxy_ffi_net_epoll_conv_flags,
-        mtproxy_ffi_net_epoll_unconv_flags, mtproxy_ffi_net_timers_wait_msec,
+        mtproxy_ffi_mtproto_parse_text_ipv6, mtproxy_ffi_net_compute_conn_events,
+        mtproxy_ffi_net_connection_is_active, mtproxy_ffi_net_epoll_conv_flags,
+        mtproxy_ffi_net_epoll_unconv_flags, mtproxy_ffi_net_select_best_key_signature,
+        mtproxy_ffi_net_timers_wait_msec, mtproxy_ffi_net_add_nat_info,
+        mtproxy_ffi_net_translate_ip,
         mtproxy_ffi_parse_meminfo_summary, mtproxy_ffi_parse_proc_stat_line,
         mtproxy_ffi_parse_statm, mtproxy_ffi_pid_init_common, mtproxy_ffi_precise_now_rdtsc_value,
         mtproxy_ffi_precise_now_value, mtproxy_ffi_process_id_is_newer,
@@ -1415,6 +1418,129 @@
         assert_eq!(mtproxy_ffi_net_timers_wait_msec(10.125, 10.000), 126);
         assert_eq!(mtproxy_ffi_net_timers_wait_msec(10.000, 10.010), 0);
         assert_eq!(mtproxy_ffi_net_timers_wait_msec(10.000, 10.000), 0);
+    }
+
+    #[test]
+    fn net_select_best_key_signature_matches_c_semantics() {
+        let main_key_signature = i32::from_ne_bytes(0x12_34_56_78_u32.to_ne_bytes());
+        let extras = [7, main_key_signature, 19];
+
+        assert_eq!(
+            unsafe {
+                mtproxy_ffi_net_select_best_key_signature(
+                    3,
+                    main_key_signature,
+                    main_key_signature,
+                    0,
+                    core::ptr::null(),
+                )
+            },
+            0
+        );
+
+        assert_eq!(
+            unsafe {
+                mtproxy_ffi_net_select_best_key_signature(
+                    32,
+                    main_key_signature,
+                    main_key_signature,
+                    0,
+                    core::ptr::null(),
+                )
+            },
+            main_key_signature
+        );
+
+        assert_eq!(
+            unsafe {
+                mtproxy_ffi_net_select_best_key_signature(
+                    32,
+                    main_key_signature,
+                    11,
+                    i32::try_from(extras.len()).unwrap_or(i32::MAX),
+                    extras.as_ptr(),
+                )
+            },
+            main_key_signature
+        );
+
+        assert_eq!(
+            unsafe {
+                mtproxy_ffi_net_select_best_key_signature(
+                    32,
+                    main_key_signature,
+                    11,
+                    1,
+                    extras.as_ptr(),
+                )
+            },
+            0
+        );
+    }
+
+    #[test]
+    fn net_connection_helpers_match_c_semantics() {
+        const C_WANTRD: i32 = 1;
+        const C_WANTWR: i32 = 2;
+        const C_ERROR: i32 = 0x8;
+        const C_NORD: i32 = 0x10;
+        const C_NOWR: i32 = 0x20;
+        const C_FAILED: i32 = 0x80;
+        const C_NET_FAILED: i32 = 0x80_000;
+        const C_READY_PENDING: i32 = 0x1_00_0000;
+        const C_CONNECTED: i32 = 0x2_00_0000;
+
+        let evt_spec = i32::from_ne_bytes(EVT_SPEC.to_ne_bytes());
+        let evt_write = i32::from_ne_bytes(EVT_WRITE.to_ne_bytes());
+        let evt_read = i32::from_ne_bytes(EVT_READ.to_ne_bytes());
+        let evt_level = i32::from_ne_bytes(EVT_LEVEL.to_ne_bytes());
+
+        assert_eq!(mtproxy_ffi_net_connection_is_active(C_CONNECTED), 1);
+        assert_eq!(
+            mtproxy_ffi_net_connection_is_active(C_CONNECTED | C_READY_PENDING),
+            0
+        );
+        assert_eq!(mtproxy_ffi_net_connection_is_active(0), 0);
+
+        assert_eq!(mtproxy_ffi_net_compute_conn_events(C_ERROR, 1), 0);
+        assert_eq!(
+            mtproxy_ffi_net_compute_conn_events(0, 1),
+            evt_read | evt_write | evt_spec
+        );
+
+        assert_eq!(
+            mtproxy_ffi_net_compute_conn_events(C_WANTRD, 0),
+            evt_read | evt_spec
+        );
+        assert_eq!(
+            mtproxy_ffi_net_compute_conn_events(C_WANTRD | C_NORD, 0),
+            evt_read | evt_spec | evt_level
+        );
+        assert_eq!(
+            mtproxy_ffi_net_compute_conn_events(C_WANTWR | C_NOWR, 0),
+            evt_write | evt_spec | evt_level
+        );
+        assert_eq!(mtproxy_ffi_net_compute_conn_events(C_ERROR, 0), 0);
+        assert_eq!(mtproxy_ffi_net_compute_conn_events(C_FAILED, 0), 0);
+        assert_eq!(mtproxy_ffi_net_compute_conn_events(C_NET_FAILED, 0), 0);
+    }
+
+    #[test]
+    fn net_nat_helpers_match_c_semantics() {
+        let invalid = b"broken-rule\0";
+        assert_eq!(unsafe { mtproxy_ffi_net_add_nat_info(invalid.as_ptr().cast()) }, -1);
+
+        let rule_a = b"198.51.100.11:203.0.113.21\0";
+        let rule_b = b"198.51.100.12:203.0.113.22\0";
+        assert!(unsafe { mtproxy_ffi_net_add_nat_info(rule_a.as_ptr().cast()) } >= 0);
+        assert!(unsafe { mtproxy_ffi_net_add_nat_info(rule_b.as_ptr().cast()) } >= 0);
+
+        let local_a = u32::from(std::net::Ipv4Addr::new(198, 51, 100, 11));
+        let global_a = u32::from(std::net::Ipv4Addr::new(203, 0, 113, 21));
+        assert_eq!(mtproxy_ffi_net_translate_ip(local_a), global_a);
+
+        let passthrough = u32::from(std::net::Ipv4Addr::new(8, 8, 8, 8));
+        assert_eq!(mtproxy_ffi_net_translate_ip(passthrough), passthrough);
     }
 
     #[test]

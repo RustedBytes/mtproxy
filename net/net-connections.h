@@ -494,10 +494,6 @@ void tcp_set_max_connections(int maxconn);
 
 extern int max_special_connections, active_special_connections;
 
-#define MAX_NAT_INFO_RULES 16
-extern int nat_info_rules;
-extern unsigned nat_info[MAX_NAT_INFO_RULES][2];
-
 int net_add_nat_info(char *str);
 unsigned nat_translate_ip(unsigned local_ip);
 

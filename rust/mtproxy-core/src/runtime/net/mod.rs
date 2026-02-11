@@ -41,12 +41,12 @@ pub const NET_MODULE_PLAN: [NetModulePlanEntry; 15] = [
     NetModulePlanEntry {
         c_translation_unit: "net/net-config.c",
         rust_module: "runtime::net::config",
-        state: NetMigrationState::Planned,
+        state: NetMigrationState::HelperExtracted,
     },
     NetModulePlanEntry {
         c_translation_unit: "net/net-connections.c",
         rust_module: "runtime::net::connections",
-        state: NetMigrationState::Planned,
+        state: NetMigrationState::HelperExtracted,
     },
     NetModulePlanEntry {
         c_translation_unit: "net/net-events.c",

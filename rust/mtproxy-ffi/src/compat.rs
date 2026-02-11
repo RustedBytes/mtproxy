@@ -150,6 +150,61 @@ fn net_timers_wait_msec_impl(wakeup_time: f64, now: f64) -> i32 {
     mtproxy_core::runtime::net::timers::wait_msec(wakeup_time, now)
 }
 
+fn net_select_best_key_signature_impl(
+    main_secret_len: i32,
+    main_key_signature: i32,
+    key_signature: i32,
+    extra_key_signatures: &[i32],
+) -> i32 {
+    mtproxy_core::runtime::net::config::select_best_key_signature(
+        main_secret_len,
+        main_key_signature,
+        key_signature,
+        extra_key_signatures,
+    )
+}
+
+fn net_connection_is_active_impl(flags: i32) -> i32 {
+    if mtproxy_core::runtime::net::connections::connection_is_active(flags) {
+        1
+    } else {
+        0
+    }
+}
+
+fn net_compute_conn_events_impl(flags: i32, use_epollet: i32) -> i32 {
+    mtproxy_core::runtime::net::connections::compute_conn_events(flags, use_epollet != 0)
+}
+
+fn net_add_nat_info_impl(rule_text: &str) -> i32 {
+    let Some((local, global)) = rule_text.rsplit_once(':') else {
+        eprintln!("expected <local-addr>:<global-addr> in --nat-info");
+        return -1;
+    };
+    let Ok(local_ip) = local.parse::<std::net::Ipv4Addr>() else {
+        eprintln!("cannot translate host '{}' in --nat-info", local);
+        return -1;
+    };
+    let Ok(global_ip) = global.parse::<std::net::Ipv4Addr>() else {
+        eprintln!("cannot translate host '{}' in --nat-info", global);
+        return -1;
+    };
+    match mtproxy_core::runtime::net::connections::nat_add_rule(
+        u32::from(local_ip),
+        u32::from(global_ip),
+    ) {
+        Ok(idx) => idx,
+        Err(mtproxy_core::runtime::net::connections::NatAddRuleError::TooManyRules) => {
+            eprintln!("too many rules in --nat-info");
+            -1
+        }
+    }
+}
+
+fn net_translate_ip_impl(local_ip: u32) -> u32 {
+    mtproxy_core::runtime::net::connections::nat_translate_ip(local_ip)
+}
+
 fn msg_buffers_pick_size_index_impl(buffer_sizes: &[i32], size_hint: i32) -> i32 {
     mtproxy_core::runtime::net::msg_buffers::pick_size_index(buffer_sizes, size_hint)
 }
@@ -220,6 +275,73 @@ pub extern "C" fn mtproxy_ffi_net_epoll_unconv_flags(epoll_flags: i32) -> i32 {
 #[no_mangle]
 pub extern "C" fn mtproxy_ffi_net_timers_wait_msec(wakeup_time: f64, now: f64) -> i32 {
     net_timers_wait_msec_impl(wakeup_time, now)
+}
+
+/// Selects best key signature from main and extra key list.
+///
+/// # Safety
+/// `extra_key_signatures` must point to `extra_num` readable `i32` values
+/// when `extra_num > 0`.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_select_best_key_signature(
+    main_secret_len: i32,
+    main_key_signature: i32,
+    key_signature: i32,
+    extra_num: i32,
+    extra_key_signatures: *const i32,
+) -> i32 {
+    if !(0..=16).contains(&extra_num) {
+        return 0;
+    }
+
+    let extra = if extra_num == 0 {
+        &[]
+    } else {
+        if extra_key_signatures.is_null() {
+            return 0;
+        }
+        let Ok(count) = usize::try_from(extra_num) else {
+            return 0;
+        };
+        unsafe { core::slice::from_raw_parts(extra_key_signatures, count) }
+    };
+    net_select_best_key_signature_impl(main_secret_len, main_key_signature, key_signature, extra)
+}
+
+/// Returns whether a connection is active (`C_CONNECTED && !C_READY_PENDING`).
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_connection_is_active(flags: i32) -> i32 {
+    net_connection_is_active_impl(flags)
+}
+
+/// Computes `compute_conn_events` result from connection flags.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_compute_conn_events(flags: i32, use_epollet: i32) -> i32 {
+    net_compute_conn_events_impl(flags, use_epollet)
+}
+
+/// Adds one NAT rule from `--nat-info` payload (`<local-addr>:<global-addr>`).
+///
+/// # Safety
+/// `rule_text` must be a valid NUL-terminated C string.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_add_nat_info(rule_text: *const c_char) -> i32 {
+    if rule_text.is_null() {
+        eprintln!("expected <local-addr>:<global-addr> in --nat-info");
+        return -1;
+    }
+    let rule = unsafe { CStr::from_ptr(rule_text) };
+    let Ok(rule_text) = rule.to_str() else {
+        eprintln!("expected <local-addr>:<global-addr> in --nat-info");
+        return -1;
+    };
+    net_add_nat_info_impl(rule_text)
+}
+
+/// Applies NAT translation for IPv4 host-order address.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_translate_ip(local_ip: u32) -> u32 {
+    net_translate_ip_impl(local_ip)
 }
 
 /// Selects message-buffer size-class index matching C allocation policy.

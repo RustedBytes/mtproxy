@@ -24,6 +24,7 @@
 
 #include <assert.h>
 #include <fcntl.h>
+#include <stdint.h>
 #include <stdarg.h>
 #include <stddef.h>
 #include <unistd.h>
@@ -34,21 +35,17 @@ char pwd_config_buf[MAX_PWD_CONFIG_LEN + 128];
 int pwd_config_len;
 char pwd_config_md5[33] = {'n', 'o', 'n', 'e', 0};
 
+extern int32_t mtproxy_ffi_net_select_best_key_signature(
+    int32_t main_secret_len, int32_t main_key_signature, int32_t key_signature,
+    int32_t extra_num, const int32_t *extra_key_signatures);
+
 int select_best_key_signature(int key_signature, int extra_num,
                               const int *extra_key_signatures) {
   assert(extra_num >= 0 && extra_num <= 16);
-  if (main_secret.secret_len < 4) {
-    return 0;
+  if (extra_num > 0) {
+    assert(extra_key_signatures);
   }
-  int main_key_id = main_secret.key_signature;
-  if (main_key_id == key_signature) {
-    return main_key_id;
-  }
-  int i;
-  for (i = 0; i < extra_num; i++) {
-    if (main_key_id == extra_key_signatures[i]) {
-      return main_key_id;
-    }
-  }
-  return 0;
+  return mtproxy_ffi_net_select_best_key_signature(
+      main_secret.secret_len, main_secret.key_signature, key_signature,
+      extra_num, (const int32_t *)extra_key_signatures);
 }
