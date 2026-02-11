@@ -190,6 +190,22 @@ typedef struct mtproxy_ffi_crypto_boundary {
   uint32_t aesni_implemented_ops;
 } mtproxy_ffi_crypto_boundary_t;
 
+#define MTPROXY_FFI_APPLICATION_BOUNDARY_VERSION 1u
+
+#define MTPROXY_FFI_ENGINE_RPC_OP_RESULT_NEW_FLAGS    (1u << 0)
+#define MTPROXY_FFI_ENGINE_RPC_OP_RESULT_HEADER_LEN   (1u << 1)
+
+#define MTPROXY_FFI_MTPROTO_PROXY_OP_EXT_CONN_HASH    (1u << 0)
+#define MTPROXY_FFI_MTPROTO_PROXY_OP_CONN_TAG         (1u << 1)
+
+typedef struct mtproxy_ffi_application_boundary {
+  uint32_t boundary_version;
+  uint32_t engine_rpc_contract_ops;
+  uint32_t engine_rpc_implemented_ops;
+  uint32_t mtproto_proxy_contract_ops;
+  uint32_t mtproto_proxy_implemented_ops;
+} mtproxy_ffi_application_boundary_t;
+
 #define MTPROXY_FFI_TCP_RPC_PACKET_LEN_STATE_SKIP    0
 #define MTPROXY_FFI_TCP_RPC_PACKET_LEN_STATE_READY   1
 #define MTPROXY_FFI_TCP_RPC_PACKET_LEN_STATE_INVALID (-1)
@@ -213,6 +229,9 @@ int32_t mtproxy_ffi_get_rpc_boundary(mtproxy_ffi_rpc_boundary_t *out);
 
 // Reports extracted Step 12 boundary contract for crypto integration operations.
 int32_t mtproxy_ffi_get_crypto_boundary(mtproxy_ffi_crypto_boundary_t *out);
+
+// Reports extracted Step 13 boundary contract for engine/mtproto application operations.
+int32_t mtproxy_ffi_get_application_boundary(mtproxy_ffi_application_boundary_t *out);
 
 // net-events helpers for incremental event-loop migration.
 int32_t mtproxy_ffi_net_epoll_conv_flags(int32_t flags);
@@ -275,6 +294,14 @@ int32_t mtproxy_ffi_crypto_dh_is_good_rpc_dh_bin(
 
 // crypto/aesni helper: OpenSSL-backed EVP_CipherUpdate glue.
 int32_t mtproxy_ffi_aesni_crypt(void *evp_ctx, const uint8_t *in, uint8_t *out, int32_t size);
+
+// engine-rpc helpers for TL result header normalization.
+int32_t mtproxy_ffi_engine_rpc_result_new_flags(int32_t old_flags);
+int32_t mtproxy_ffi_engine_rpc_result_header_len(int32_t flags);
+
+// mtproto-proxy helpers for external-connection hashing/tagging.
+int32_t mtproxy_ffi_mtproto_ext_conn_hash(int32_t in_fd, int64_t in_conn_id, int32_t hash_shift);
+int32_t mtproxy_ffi_mtproto_conn_tag(int32_t generation);
 
 // CRC32 (IEEE, reflected polynomial 0xEDB88320) partial update.
 // Semantics match C `crc32_partial` function.

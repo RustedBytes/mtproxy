@@ -454,6 +454,40 @@
    - Migrate `engine/*` and `mtproto/*` stateful logic after lower layers are stable.
    - Use trace-based regression tests to validate state-machine equivalence.
    - Keep fallback path to C implementation until full parity is proven.
+   - Step 13 kickoff checklist (`engine-rpc` + `mtproto-proxy` helper extraction first):
+   - [x] Added explicit Step 13 FFI boundary contract for application-layer operations:
+   - `rust/mtproxy-ffi/include/mtproxy_ffi.h`: `mtproxy_ffi_application_boundary_t`, Step 13 op masks, helper declarations.
+   - `rust/mtproxy-ffi/src/lib.rs`: `mtproxy_ffi_get_application_boundary(...)` with contract/implemented masks.
+   - [x] Added mixed-startup boundary validation before config load:
+   - `common/rust-ffi-bridge.h`: `rust_ffi_check_application_boundary()`.
+   - `common/rust-ffi-bridge.c`: strict version/mask validation for Step 13 application boundary.
+   - `mtproto/mtproto-proxy.c`: mixed pre-init now validates Step 13 application boundary after Step 12 crypto boundary.
+   - [x] Routed first `engine/*` helper set through Rust FFI with C fallback:
+   - `engine/engine-rpc.c`: `tl_result_new_flags` and `tl_result_get_header_len` now delegate to `mtproxy_ffi_engine_rpc_result_*` when linked.
+   - [x] Routed first `mtproto/*` helper set through Rust FFI with C fallback:
+   - `mtproto/mtproto-proxy.c`: ext-connection hash bucket helper (`ext_conn_hash`) now delegates to `mtproxy_ffi_mtproto_ext_conn_hash`.
+   - `mtproto/mtproto-proxy.c`: connection tag helper (`get_conn_tag`) now delegates to `mtproxy_ffi_mtproto_conn_tag`.
+   - [x] Added mixed-mode differential coverage for Step 13 boundary/helper semantics:
+   - `tests/golden/rust_application_boundary_differential.c`
+   - `tests/golden/test_rust_application_boundary_differential.sh`
+   - `tests/run.sh` + `tests/README.md` updated to include the new optional mixed suite.
+   - Rust Step 13 API additions:
+   - `mtproxy_ffi_get_application_boundary(...)`
+   - `mtproxy_ffi_engine_rpc_result_new_flags(...)`
+   - `mtproxy_ffi_engine_rpc_result_header_len(...)`
+   - `mtproxy_ffi_mtproto_ext_conn_hash(...)`
+   - `mtproxy_ffi_mtproto_conn_tag(...)`
+   - Verification:
+   - `make rust-ci` (PASS, includes Step 13 boundary/helper unit coverage, 2026-02-11)
+   - `make mixed` (PASS, 2026-02-11)
+   - `tests/golden/test_rust_application_boundary_differential.sh` (PASS, 2026-02-11)
+   - `./objs/bin/mtproto-proxy-mixed -v /tmp/definitely-missing-mtproxy-config.conf` (PASS: startup handshake + Step 9/10/11/12 boundaries + Step 13 application boundary logs observed; expected config-check failure path; exit code 1, 2026-02-11)
+   - Operation log:
+   - [x] 2026-02-11: Added Step 13 application boundary contract probe and op-mask constants to FFI headers/Rust exports.
+   - [x] 2026-02-11: Added mixed startup validation hook for Step 13 application boundary compatibility in `rust-ffi-bridge`.
+   - [x] 2026-02-11: Delegated `engine/engine-rpc.c` TL result-flag/header-length helpers to Rust with C fallback.
+   - [x] 2026-02-11: Delegated `mtproto/mtproto-proxy.c` ext-connection hash and connection-tag helpers to Rust with C fallback.
+   - [x] 2026-02-11: Added mixed differential test coverage for Step 13 boundary/helper semantics and wired it into optional mixed harness.
    - Done when: end-to-end proxy behavior is equivalent under production-like load.
 
 14. Flip Default to Rust and Decommission C Gradually

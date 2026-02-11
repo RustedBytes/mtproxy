@@ -34,6 +34,7 @@ const CONCURRENCY_BOUNDARY_VERSION: u32 = 1;
 const NETWORK_BOUNDARY_VERSION: u32 = 1;
 const RPC_BOUNDARY_VERSION: u32 = 1;
 const CRYPTO_BOUNDARY_VERSION: u32 = 1;
+const APPLICATION_BOUNDARY_VERSION: u32 = 1;
 const MPQ_CONTRACT_OPS: u32 =
     (1u32 << 0) | (1u32 << 1) | (1u32 << 2) | (1u32 << 3) | (1u32 << 4) | (1u32 << 5);
 const JOBS_CONTRACT_OPS: u32 =
@@ -60,6 +61,10 @@ const AESNI_CONTRACT_OPS: u32 = 1u32 << 0;
 const NET_CRYPTO_AES_IMPLEMENTED_OPS: u32 = NET_CRYPTO_AES_CONTRACT_OPS;
 const NET_CRYPTO_DH_IMPLEMENTED_OPS: u32 = NET_CRYPTO_DH_CONTRACT_OPS;
 const AESNI_IMPLEMENTED_OPS: u32 = AESNI_CONTRACT_OPS;
+const ENGINE_RPC_CONTRACT_OPS: u32 = (1u32 << 0) | (1u32 << 1);
+const ENGINE_RPC_IMPLEMENTED_OPS: u32 = ENGINE_RPC_CONTRACT_OPS;
+const MTPROTO_PROXY_CONTRACT_OPS: u32 = (1u32 << 0) | (1u32 << 1);
+const MTPROTO_PROXY_IMPLEMENTED_OPS: u32 = MTPROTO_PROXY_CONTRACT_OPS;
 
 const TCP_RPC_PACKET_LEN_STATE_SKIP: i32 = 0;
 const TCP_RPC_PACKET_LEN_STATE_READY: i32 = 1;
@@ -88,6 +93,8 @@ const AES_ROLE_XOR_MASK: [u8; 6] = [
     b'N' ^ b'E',
     b'T' ^ b'R',
 ];
+const MTPROTO_EXT_CONN_HASH_MULT_A: u64 = 11_400_714_819_323_198_485;
+const MTPROTO_EXT_CONN_HASH_MULT_B: u64 = 13_043_817_825_332_782_213;
 
 #[repr(C)]
 struct OpenSslMd {
@@ -324,6 +331,16 @@ pub struct MtproxyCryptoBoundary {
     pub aesni_implemented_ops: u32,
 }
 
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct MtproxyApplicationBoundary {
+    pub boundary_version: u32,
+    pub engine_rpc_contract_ops: u32,
+    pub engine_rpc_implemented_ops: u32,
+    pub mtproto_proxy_contract_ops: u32,
+    pub mtproto_proxy_implemented_ops: u32,
+}
+
 impl Default for MtproxyTlHeaderParseResult {
     fn default() -> Self {
         Self {
@@ -499,6 +516,28 @@ pub unsafe extern "C" fn mtproxy_ffi_get_crypto_boundary(out: *mut MtproxyCrypto
     0
 }
 
+/// Returns extracted Step 13 boundary contract for engine/mtproto app migration.
+///
+/// # Safety
+/// `out` must be a valid writable pointer to `MtproxyApplicationBoundary`.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_get_application_boundary(
+    out: *mut MtproxyApplicationBoundary,
+) -> i32 {
+    if out.is_null() {
+        return -1;
+    }
+    let out_ref = unsafe { &mut *out };
+    *out_ref = MtproxyApplicationBoundary {
+        boundary_version: APPLICATION_BOUNDARY_VERSION,
+        engine_rpc_contract_ops: ENGINE_RPC_CONTRACT_OPS,
+        engine_rpc_implemented_ops: ENGINE_RPC_IMPLEMENTED_OPS,
+        mtproto_proxy_contract_ops: MTPROTO_PROXY_CONTRACT_OPS,
+        mtproto_proxy_implemented_ops: MTPROTO_PROXY_IMPLEMENTED_OPS,
+    };
+    0
+}
+
 fn net_epoll_conv_flags_impl(flags: i32) -> i32 {
     if flags == 0 {
         return 0;
@@ -619,6 +658,36 @@ fn rpc_target_normalize_pid_impl(pid: &mut MtproxyProcessId, default_ip: u32) {
     }
 }
 
+fn engine_rpc_result_new_flags_impl(old_flags: i32) -> i32 {
+    old_flags & 0xffff
+}
+
+fn engine_rpc_result_header_len_impl(flags: i32) -> i32 {
+    if flags == 0 {
+        0
+    } else {
+        8
+    }
+}
+
+fn mtproto_ext_conn_hash_impl(in_fd: i32, in_conn_id: i64, hash_shift: i32) -> i32 {
+    if !(1..=31).contains(&hash_shift) {
+        return -1;
+    }
+    let shift_u = u32::try_from(hash_shift).unwrap_or(0);
+    let in_fd_u = u64::from_ne_bytes(i64::from(in_fd).to_ne_bytes());
+    let in_conn_id_u = u64::from_ne_bytes(in_conn_id.to_ne_bytes());
+    let h = in_fd_u
+        .wrapping_mul(MTPROTO_EXT_CONN_HASH_MULT_A)
+        .wrapping_add(in_conn_id_u.wrapping_mul(MTPROTO_EXT_CONN_HASH_MULT_B));
+    let v = h >> (64 - shift_u);
+    i32::try_from(v).unwrap_or(-1)
+}
+
+fn mtproto_conn_tag_impl(generation: i32) -> i32 {
+    1 + (generation & 0x00ff_ffff)
+}
+
 /// Converts net event flags into Linux epoll flags.
 #[no_mangle]
 pub extern "C" fn mtproxy_ffi_net_epoll_conv_flags(flags: i32) -> i32 {
@@ -718,6 +787,34 @@ pub unsafe extern "C" fn mtproxy_ffi_rpc_target_normalize_pid(
     let pid_ref = unsafe { &mut *pid };
     rpc_target_normalize_pid_impl(pid_ref, default_ip);
     0
+}
+
+/// Computes `engine-rpc` result flags normalization (`old_flags & 0xffff`).
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_engine_rpc_result_new_flags(old_flags: i32) -> i32 {
+    engine_rpc_result_new_flags_impl(old_flags)
+}
+
+/// Computes `engine-rpc` result header length from flags.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_engine_rpc_result_header_len(flags: i32) -> i32 {
+    engine_rpc_result_header_len_impl(flags)
+}
+
+/// Computes mtproto external-connection hash bucket.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_mtproto_ext_conn_hash(
+    in_fd: i32,
+    in_conn_id: i64,
+    hash_shift: i32,
+) -> i32 {
+    mtproto_ext_conn_hash_impl(in_fd, in_conn_id, hash_shift)
+}
+
+/// Computes mtproto connection tag (`1 + (generation & 0xffffff)`).
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_mtproto_conn_tag(generation: i32) -> i32 {
+    mtproto_conn_tag_impl(generation)
 }
 
 fn md5_digest_impl(input: &[u8], out: &mut [u8; DIGEST_MD5_LEN]) -> bool {
@@ -2451,29 +2548,33 @@ mod tests {
         mtproxy_ffi_cfg_getint_signed_zero, mtproxy_ffi_cfg_getword_len, mtproxy_ffi_cfg_skipspc,
         mtproxy_ffi_cpuid_fill, mtproxy_ffi_crc32_partial, mtproxy_ffi_crc32c_partial,
         mtproxy_ffi_crypto_aes_create_keys, mtproxy_ffi_crypto_dh_is_good_rpc_dh_bin,
-        mtproxy_ffi_get_concurrency_boundary, mtproxy_ffi_get_crypto_boundary,
-        mtproxy_ffi_get_network_boundary, mtproxy_ffi_get_precise_time,
-        mtproxy_ffi_get_rpc_boundary, mtproxy_ffi_get_utime_monotonic, mtproxy_ffi_matches_pid,
-        mtproxy_ffi_md5, mtproxy_ffi_md5_hex, mtproxy_ffi_msg_buffers_pick_size_index,
-        mtproxy_ffi_net_epoll_conv_flags, mtproxy_ffi_net_epoll_unconv_flags,
-        mtproxy_ffi_net_timers_wait_msec, mtproxy_ffi_parse_meminfo_summary,
-        mtproxy_ffi_parse_proc_stat_line, mtproxy_ffi_parse_statm, mtproxy_ffi_pid_init_common,
-        mtproxy_ffi_precise_now_rdtsc_value, mtproxy_ffi_precise_now_value,
-        mtproxy_ffi_process_id_is_newer, mtproxy_ffi_read_proc_stat_file,
-        mtproxy_ffi_rpc_target_normalize_pid, mtproxy_ffi_sha1, mtproxy_ffi_sha1_two_chunks,
-        mtproxy_ffi_sha256, mtproxy_ffi_sha256_hmac, mtproxy_ffi_sha256_two_chunks,
-        mtproxy_ffi_startup_handshake, mtproxy_ffi_tcp_rpc_client_packet_len_state,
-        mtproxy_ffi_tcp_rpc_encode_compact_header,
+        mtproxy_ffi_engine_rpc_result_header_len, mtproxy_ffi_engine_rpc_result_new_flags,
+        mtproxy_ffi_get_application_boundary, mtproxy_ffi_get_concurrency_boundary,
+        mtproxy_ffi_get_crypto_boundary, mtproxy_ffi_get_network_boundary,
+        mtproxy_ffi_get_precise_time, mtproxy_ffi_get_rpc_boundary,
+        mtproxy_ffi_get_utime_monotonic, mtproxy_ffi_matches_pid, mtproxy_ffi_md5,
+        mtproxy_ffi_md5_hex, mtproxy_ffi_msg_buffers_pick_size_index, mtproxy_ffi_mtproto_conn_tag,
+        mtproxy_ffi_mtproto_ext_conn_hash, mtproxy_ffi_net_epoll_conv_flags,
+        mtproxy_ffi_net_epoll_unconv_flags, mtproxy_ffi_net_timers_wait_msec,
+        mtproxy_ffi_parse_meminfo_summary, mtproxy_ffi_parse_proc_stat_line,
+        mtproxy_ffi_parse_statm, mtproxy_ffi_pid_init_common, mtproxy_ffi_precise_now_rdtsc_value,
+        mtproxy_ffi_precise_now_value, mtproxy_ffi_process_id_is_newer,
+        mtproxy_ffi_read_proc_stat_file, mtproxy_ffi_rpc_target_normalize_pid, mtproxy_ffi_sha1,
+        mtproxy_ffi_sha1_two_chunks, mtproxy_ffi_sha256, mtproxy_ffi_sha256_hmac,
+        mtproxy_ffi_sha256_two_chunks, mtproxy_ffi_startup_handshake,
+        mtproxy_ffi_tcp_rpc_client_packet_len_state, mtproxy_ffi_tcp_rpc_encode_compact_header,
         mtproxy_ffi_tcp_rpc_server_packet_header_malformed,
         mtproxy_ffi_tcp_rpc_server_packet_len_state, mtproxy_ffi_tl_parse_answer_header,
-        mtproxy_ffi_tl_parse_query_header, MtproxyAesKeyData, MtproxyCfgIntResult,
-        MtproxyCfgScanResult, MtproxyConcurrencyBoundary, MtproxyCpuid, MtproxyCryptoBoundary,
-        MtproxyMeminfoSummary, MtproxyNetworkBoundary, MtproxyProcStats, MtproxyProcessId,
-        MtproxyRpcBoundary, MtproxyTlHeaderParseResult, AESNI_CONTRACT_OPS, AESNI_IMPLEMENTED_OPS,
-        CONCURRENCY_BOUNDARY_VERSION, CPUID_MAGIC, CRYPTO_BOUNDARY_VERSION, EPOLLERR, EPOLLET,
-        EPOLLIN, EPOLLOUT, EPOLLPRI, EPOLLRDHUP, EVT_FROM_EPOLL, EVT_LEVEL, EVT_READ, EVT_SPEC,
-        EVT_WRITE, FFI_API_VERSION, JOBS_CONTRACT_OPS, JOBS_IMPLEMENTED_OPS, MPQ_CONTRACT_OPS,
-        MPQ_IMPLEMENTED_OPS, NETWORK_BOUNDARY_VERSION, NET_CRYPTO_AES_CONTRACT_OPS,
+        mtproxy_ffi_tl_parse_query_header, MtproxyAesKeyData, MtproxyApplicationBoundary,
+        MtproxyCfgIntResult, MtproxyCfgScanResult, MtproxyConcurrencyBoundary, MtproxyCpuid,
+        MtproxyCryptoBoundary, MtproxyMeminfoSummary, MtproxyNetworkBoundary, MtproxyProcStats,
+        MtproxyProcessId, MtproxyRpcBoundary, MtproxyTlHeaderParseResult, AESNI_CONTRACT_OPS,
+        AESNI_IMPLEMENTED_OPS, APPLICATION_BOUNDARY_VERSION, CONCURRENCY_BOUNDARY_VERSION,
+        CPUID_MAGIC, CRYPTO_BOUNDARY_VERSION, ENGINE_RPC_CONTRACT_OPS, ENGINE_RPC_IMPLEMENTED_OPS,
+        EPOLLERR, EPOLLET, EPOLLIN, EPOLLOUT, EPOLLPRI, EPOLLRDHUP, EVT_FROM_EPOLL, EVT_LEVEL,
+        EVT_READ, EVT_SPEC, EVT_WRITE, FFI_API_VERSION, JOBS_CONTRACT_OPS, JOBS_IMPLEMENTED_OPS,
+        MPQ_CONTRACT_OPS, MPQ_IMPLEMENTED_OPS, MTPROTO_PROXY_CONTRACT_OPS,
+        MTPROTO_PROXY_IMPLEMENTED_OPS, NETWORK_BOUNDARY_VERSION, NET_CRYPTO_AES_CONTRACT_OPS,
         NET_CRYPTO_AES_IMPLEMENTED_OPS, NET_CRYPTO_DH_CONTRACT_OPS, NET_CRYPTO_DH_IMPLEMENTED_OPS,
         NET_EVENTS_CONTRACT_OPS, NET_EVENTS_IMPLEMENTED_OPS, NET_MSG_BUFFERS_CONTRACT_OPS,
         NET_MSG_BUFFERS_IMPLEMENTED_OPS, NET_TIMERS_CONTRACT_OPS, NET_TIMERS_IMPLEMENTED_OPS,
@@ -2575,6 +2676,71 @@ mod tests {
         );
         assert_eq!(out.aesni_contract_ops, AESNI_CONTRACT_OPS);
         assert_eq!(out.aesni_implemented_ops, AESNI_IMPLEMENTED_OPS);
+    }
+
+    #[test]
+    fn application_boundary_contract_is_reported() {
+        let mut out = MtproxyApplicationBoundary::default();
+        assert_eq!(
+            unsafe { mtproxy_ffi_get_application_boundary(&raw mut out) },
+            0
+        );
+        assert_eq!(out.boundary_version, APPLICATION_BOUNDARY_VERSION);
+        assert_eq!(out.engine_rpc_contract_ops, ENGINE_RPC_CONTRACT_OPS);
+        assert_eq!(out.engine_rpc_implemented_ops, ENGINE_RPC_IMPLEMENTED_OPS);
+        assert_eq!(out.mtproto_proxy_contract_ops, MTPROTO_PROXY_CONTRACT_OPS);
+        assert_eq!(
+            out.mtproto_proxy_implemented_ops,
+            MTPROTO_PROXY_IMPLEMENTED_OPS
+        );
+    }
+
+    #[test]
+    fn engine_rpc_result_helpers_match_current_rules() {
+        assert_eq!(mtproxy_ffi_engine_rpc_result_new_flags(0), 0);
+        assert_eq!(mtproxy_ffi_engine_rpc_result_new_flags(0x1234_5678), 0x5678);
+        assert_eq!(
+            mtproxy_ffi_engine_rpc_result_new_flags(i32::from_ne_bytes(
+                0xffff_ffff_u32.to_ne_bytes()
+            )),
+            0xffff
+        );
+        assert_eq!(mtproxy_ffi_engine_rpc_result_header_len(0), 0);
+        assert_eq!(mtproxy_ffi_engine_rpc_result_header_len(1), 8);
+        assert_eq!(
+            mtproxy_ffi_engine_rpc_result_header_len(i32::from_ne_bytes(
+                0x8000_0000_u32.to_ne_bytes()
+            )),
+            8
+        );
+    }
+
+    #[test]
+    fn mtproto_helpers_match_current_rules() {
+        assert_eq!(mtproxy_ffi_mtproto_conn_tag(0), 1);
+        assert_eq!(mtproxy_ffi_mtproto_conn_tag(0x1234_5678), 0x0034_5679);
+        assert_eq!(
+            mtproxy_ffi_mtproto_conn_tag(i32::from_ne_bytes(0xffff_ffff_u32.to_ne_bytes())),
+            0x0100_0000
+        );
+
+        let c_hash = |in_fd: i32, in_conn_id: i64, shift: i32| -> i32 {
+            let in_fd_u = u64::from_ne_bytes(i64::from(in_fd).to_ne_bytes());
+            let in_conn_id_u = u64::from_ne_bytes(in_conn_id.to_ne_bytes());
+            let h = in_fd_u
+                .wrapping_mul(11_400_714_819_323_198_485)
+                .wrapping_add(in_conn_id_u.wrapping_mul(13_043_817_825_332_782_213));
+            i32::try_from(h >> (64 - u32::try_from(shift).unwrap_or(0))).unwrap_or(-1)
+        };
+        assert_eq!(
+            mtproxy_ffi_mtproto_ext_conn_hash(42, 0x1234_5678_9abc_def0_i64, 20),
+            c_hash(42, 0x1234_5678_9abc_def0_i64, 20)
+        );
+        assert_eq!(
+            mtproxy_ffi_mtproto_ext_conn_hash(-1, -17, 20),
+            c_hash(-1, -17, 20)
+        );
+        assert_eq!(mtproxy_ffi_mtproto_ext_conn_hash(1, 2, 0), -1);
     }
 
     #[test]

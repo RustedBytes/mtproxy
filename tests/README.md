@@ -35,6 +35,8 @@ This harness provides migration safety checks before porting C modules to Rust.
   - Optional mixed-mode differential check for Step 11 rpc/tcp boundary extraction and helper semantics (`net-tcp-rpc-common` compact header encoding, client/server packet-length classification, `net-rpc-targets` PID normalization).
 - `golden/test_rust_crypto_boundary_differential.sh`
   - Optional mixed-mode differential check for Step 12 crypto boundary extraction and helper semantics (`net-crypto-aes` key derivation glue, `net-crypto-dh` peer-value check, `crypto/aesni` EVP update wrapper).
+- `golden/test_rust_application_boundary_differential.sh`
+  - Optional mixed-mode differential check for Step 13 application boundary extraction and helper semantics (`engine-rpc` TL result flags/header-len helpers, `mtproto-proxy` ext-connection hash + connection-tag helpers).
 
 ## Run
 

@@ -45,6 +45,13 @@ Current exported API:
 - `mtproxy_ffi_crypto_aes_create_keys(...)`
 - `mtproxy_ffi_crypto_dh_is_good_rpc_dh_bin(...)`
 - `mtproxy_ffi_aesni_crypt(...)`
+- Step 13 boundary contract probe:
+- `mtproxy_ffi_get_application_boundary(...)` (reports engine-rpc/mtproto-proxy operation contract vs implemented subsets)
+- Step 13 application helpers:
+- `mtproxy_ffi_engine_rpc_result_new_flags(...)`
+- `mtproxy_ffi_engine_rpc_result_header_len(...)`
+- `mtproxy_ffi_mtproto_ext_conn_hash(...)`
+- `mtproxy_ffi_mtproto_conn_tag(...)`
 
 ## Call flow
 
@@ -53,6 +60,7 @@ Current exported API:
 - C startup then calls `rust_ffi_check_network_boundary()` to validate extracted Step 10 net-core contract.
 - C startup then calls `rust_ffi_check_rpc_boundary()` to validate extracted Step 11 rpc/tcp contract.
 - C startup then calls `rust_ffi_check_crypto_boundary()` to validate extracted Step 12 crypto contract.
+- C startup then calls `rust_ffi_check_application_boundary()` to validate extracted Step 13 engine/mtproto contract.
 - C startup then calls `rust_ffi_enable_concurrency_bridges()` to install Step 9 adapter routing:
 - mp-queue: `push`/`pop`/`is_empty`
 - jobs lifecycle: `create_async_job`/`job_signal`/`job_incref`/`job_decref`
@@ -76,6 +84,8 @@ Current exported API:
 - `net/net-crypto-aes.c` can delegate key-derivation glue (`aes_create_keys`) to Rust when symbols are linked.
 - `net/net-crypto-dh.c` can delegate peer DH value prefix validation helper to Rust when symbols are linked.
 - `crypto/aesni256.c` can delegate `EVP_CipherUpdate` wrapper helper to Rust when symbols are linked.
+- `engine/engine-rpc.c` can delegate TL result header helpers (`tl_result_new_flags`, `tl_result_get_header_len`) to Rust when symbols are linked.
+- `mtproto/mtproto-proxy.c` can delegate ext-connection hash bucket and connection-tag helpers to Rust when symbols are linked.
 - If handshake fails, startup aborts before config load.
 
 ## Ownership and memory rules
@@ -93,10 +103,12 @@ Current exported API:
 - For network boundary probe, C passes writable POD `mtproxy_ffi_network_boundary_t` and Rust fills version/op masks.
 - For rpc boundary probe, C passes writable POD `mtproxy_ffi_rpc_boundary_t` and Rust fills version/op masks.
 - For crypto boundary probe, C passes writable POD `mtproxy_ffi_crypto_boundary_t` and Rust fills version/op masks.
+- For application boundary probe, C passes writable POD `mtproxy_ffi_application_boundary_t` and Rust fills version/op masks.
 - For net-core helpers, C passes plain integers and borrowed POD arrays (`buffer_sizes`) with no ownership transfer.
 - For rpc/tcp helpers, C passes plain integers and POD struct pointers (`process_id`) with no ownership transfer.
 - For crypto helpers, C passes borrowed byte buffers (`nonce`, `secret`, `temp_key`) plus POD key/EVP context pointers; no ownership transfer.
-- Boundary `*_implemented_ops` currently advertises routed Step 9, Step 10, Step 11, and Step 12 slices listed above.
+- For Step 13 application helpers, C passes plain scalar values (`flags`, `in_fd`, `in_conn_id`, `hash_shift`, `generation`) with no ownership transfer.
+- Boundary `*_implemented_ops` currently advertises routed Step 9, Step 10, Step 11, Step 12, and Step 13 slices listed above.
 - No heap ownership is transferred between C and Rust.
 - Return values are plain integer POD types.
 

@@ -141,6 +141,9 @@ int cur_http_origin_len, cur_http_referer_len, cur_http_user_agent_len;
 int check_conn_buffers (connection_job_t c);
 void lru_insert_conn (connection_job_t c);
 
+extern int mtproxy_ffi_mtproto_ext_conn_hash (int in_fd, long long in_conn_id, int hash_shift) __attribute__ ((weak));
+extern int mtproxy_ffi_mtproto_conn_tag (int generation) __attribute__ ((weak));
+
 /*
  *
  *	CONFIGURATION PARSER SETUP
@@ -201,9 +204,19 @@ static inline void check_engine_class (void) {
   check_thread_class (JC_ENGINE);
 }
 
-static inline int ext_conn_hash (int in_fd, long long in_conn_id) {
+static inline int ext_conn_hash_c_impl (int in_fd, long long in_conn_id) {
   unsigned long long h = (unsigned long long) in_fd * 11400714819323198485ULL + (unsigned long long) in_conn_id * 13043817825332782213ULL;
   return (h >> (64 - EXT_CONN_HASH_SHIFT));
+}
+
+static inline int ext_conn_hash (int in_fd, long long in_conn_id) {
+  if (mtproxy_ffi_mtproto_ext_conn_hash) {
+    int h = mtproxy_ffi_mtproto_ext_conn_hash (in_fd, in_conn_id, EXT_CONN_HASH_SHIFT);
+    if ((unsigned) h < EXT_CONN_HASH_SIZE) {
+      return h;
+    }
+  }
+  return ext_conn_hash_c_impl (in_fd, in_conn_id);
 }
 
 // makes sense only for !IS_PROXY_IN
@@ -966,8 +979,19 @@ int rpcc_execute (connection_job_t C, int op, struct raw_message *msg) {
   return 0;
 }
 
+static inline int get_conn_tag_c_impl (int generation) {
+  return 1 + (generation & 0xffffff);
+}
+
 static inline int get_conn_tag (connection_job_t C) {
-  return 1 + (CONN_INFO(C)->generation & 0xffffff);
+  int generation = CONN_INFO(C)->generation;
+  if (mtproxy_ffi_mtproto_conn_tag) {
+    int tag = mtproxy_ffi_mtproto_conn_tag (generation);
+    if ((unsigned) tag > 0 && (unsigned) tag <= 0x1000000u) {
+      return tag;
+    }
+  }
+  return get_conn_tag_c_impl (generation);
 }
 
 int mtfront_client_ready (connection_job_t C) {
@@ -2279,6 +2303,9 @@ void mtfront_pre_init (void) {
     exit (1);
   }
   if (rust_ffi_check_crypto_boundary () < 0) {
+    exit (1);
+  }
+  if (rust_ffi_check_application_boundary () < 0) {
     exit (1);
   }
   if (rust_ffi_enable_concurrency_bridges () < 0) {

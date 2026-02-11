@@ -426,6 +426,75 @@ int rust_ffi_check_crypto_boundary(void) {
   return 0;
 }
 
+int rust_ffi_check_application_boundary(void) {
+  mtproxy_ffi_application_boundary_t boundary = {0};
+  int32_t rc = mtproxy_ffi_get_application_boundary (&boundary);
+  if (rc < 0) {
+    kprintf ("fatal: rust ffi application boundary probe failed (code %d)\n", rc);
+    return -1;
+  }
+
+  if (boundary.boundary_version != MTPROXY_FFI_APPLICATION_BOUNDARY_VERSION) {
+    kprintf (
+      "fatal: rust ffi application boundary version mismatch: expected %u, got %u\n",
+      (unsigned) MTPROXY_FFI_APPLICATION_BOUNDARY_VERSION,
+      (unsigned) boundary.boundary_version
+    );
+    return -2;
+  }
+
+  const uint32_t expected_engine_rpc_contract_ops =
+    MTPROXY_FFI_ENGINE_RPC_OP_RESULT_NEW_FLAGS |
+    MTPROXY_FFI_ENGINE_RPC_OP_RESULT_HEADER_LEN;
+  if ((boundary.engine_rpc_contract_ops & expected_engine_rpc_contract_ops) != expected_engine_rpc_contract_ops) {
+    kprintf (
+      "fatal: rust ffi engine-rpc boundary contract incomplete: expected mask %08x, got %08x\n",
+      (unsigned) expected_engine_rpc_contract_ops,
+      (unsigned) boundary.engine_rpc_contract_ops
+    );
+    return -3;
+  }
+
+  const uint32_t expected_mtproto_proxy_contract_ops =
+    MTPROXY_FFI_MTPROTO_PROXY_OP_EXT_CONN_HASH |
+    MTPROXY_FFI_MTPROTO_PROXY_OP_CONN_TAG;
+  if ((boundary.mtproto_proxy_contract_ops & expected_mtproto_proxy_contract_ops) != expected_mtproto_proxy_contract_ops) {
+    kprintf (
+      "fatal: rust ffi mtproto-proxy boundary contract incomplete: expected mask %08x, got %08x\n",
+      (unsigned) expected_mtproto_proxy_contract_ops,
+      (unsigned) boundary.mtproto_proxy_contract_ops
+    );
+    return -4;
+  }
+
+  if ((boundary.engine_rpc_implemented_ops & ~boundary.engine_rpc_contract_ops) != 0) {
+    kprintf (
+      "fatal: rust ffi engine-rpc implementation mask %08x exceeds contract %08x\n",
+      (unsigned) boundary.engine_rpc_implemented_ops,
+      (unsigned) boundary.engine_rpc_contract_ops
+    );
+    return -5;
+  }
+  if ((boundary.mtproto_proxy_implemented_ops & ~boundary.mtproto_proxy_contract_ops) != 0) {
+    kprintf (
+      "fatal: rust ffi mtproto-proxy implementation mask %08x exceeds contract %08x\n",
+      (unsigned) boundary.mtproto_proxy_implemented_ops,
+      (unsigned) boundary.mtproto_proxy_contract_ops
+    );
+    return -6;
+  }
+
+  vkprintf (
+    1,
+    "rust ffi application boundary extracted: engine-rpc(contract=%08x implemented=%08x) mtproto-proxy(contract=%08x implemented=%08x)\n",
+    (unsigned) boundary.engine_rpc_contract_ops,
+    (unsigned) boundary.engine_rpc_implemented_ops,
+    (unsigned) boundary.mtproto_proxy_contract_ops,
+    (unsigned) boundary.mtproto_proxy_implemented_ops
+  );
+  return 0;
+}
+
 int rust_ffi_enable_concurrency_bridges(void) {
   mtproxy_ffi_concurrency_boundary_t boundary = {0};
   int32_t rc = mtproxy_ffi_get_concurrency_boundary (&boundary);
