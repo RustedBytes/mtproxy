@@ -52,8 +52,6 @@
 #include <pthread.h>
 
 #include "common/kprintf.h"
-#include "net/net-connections.h"
-#include "net/net-events.h"
 #include "net/net-msg-buffers.h"
 
 #include "server-functions.h"

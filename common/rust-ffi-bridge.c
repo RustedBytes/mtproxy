@@ -8,8 +8,6 @@
 #include "crypto/crc32.h"
 #include "crypto/crc32c.h"
 #include "common/kprintf.h"
-#include "common/mp-queue.h"
-#include "jobs/jobs.h"
 #include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 
 #define RUST_FFI_EXPECTED_API_VERSION 1u

@@ -25,11 +25,7 @@
 #define	_FILE_OFFSET_BITS	64
 
 #include <assert.h>
-#include <string.h>
-#include <stdio.h>
-#include <stdlib.h>
 #include <unistd.h>
-#include <time.h>
 #include <sys/types.h>
 
 #include "common/pid.h"

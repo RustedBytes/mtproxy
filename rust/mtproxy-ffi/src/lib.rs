@@ -1224,7 +1224,9 @@ fn mtproto_cfg_parse_full_pass_err_to_code(
 ) -> i32 {
     use mtproxy_core::runtime::mtproto::config::MtprotoDirectiveParseError;
     match err {
-        MtprotoDirectiveParseError::InvalidTimeout(_) => MTPROTO_CFG_PARSE_FULL_PASS_ERR_INVALID_TIMEOUT,
+        MtprotoDirectiveParseError::InvalidTimeout(_) => {
+            MTPROTO_CFG_PARSE_FULL_PASS_ERR_INVALID_TIMEOUT
+        }
         MtprotoDirectiveParseError::InvalidMaxConnections(_) => {
             MTPROTO_CFG_PARSE_FULL_PASS_ERR_INVALID_MAX_CONNECTIONS
         }
@@ -1249,9 +1251,7 @@ fn mtproto_cfg_parse_full_pass_err_to_code(
         MtprotoDirectiveParseError::PortNumberExpected => {
             MTPROTO_CFG_PARSE_FULL_PASS_ERR_PORT_EXPECTED
         }
-        MtprotoDirectiveParseError::PortOutOfRange(_) => {
-            MTPROTO_CFG_PARSE_FULL_PASS_ERR_PORT_RANGE
-        }
+        MtprotoDirectiveParseError::PortOutOfRange(_) => MTPROTO_CFG_PARSE_FULL_PASS_ERR_PORT_RANGE,
         MtprotoDirectiveParseError::ProxiesIntermixed(_) => {
             MTPROTO_CFG_PARSE_FULL_PASS_ERR_PROXIES_INTERMIXED
         }
@@ -1512,17 +1512,18 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_parse_directive_step(
         max_clusters_usize,
     ) {
         Ok(step) => {
-            let (cluster_decision_kind, cluster_index) = if let Some(decision) = step.cluster_apply_decision {
-                let Ok(cluster_index) = i32::try_from(decision.cluster_index) else {
-                    return MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_INTERNAL;
+            let (cluster_decision_kind, cluster_index) =
+                if let Some(decision) = step.cluster_apply_decision {
+                    let Ok(cluster_index) = i32::try_from(decision.cluster_index) else {
+                        return MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_INTERNAL;
+                    };
+                    (
+                        mtproto_cfg_cluster_apply_decision_kind_to_ffi(decision.kind),
+                        cluster_index,
+                    )
+                } else {
+                    (0, -1)
                 };
-                (
-                    mtproto_cfg_cluster_apply_decision_kind_to_ffi(decision.kind),
-                    cluster_index,
-                )
-            } else {
-                (0, -1)
-            };
             let out_ref = unsafe { &mut *out };
             *out_ref = MtproxyMtprotoCfgDirectiveStepResult {
                 kind: mtproto_directive_token_kind_to_ffi(step.kind),
@@ -1766,7 +1767,8 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_parse_full_pass(
                     else {
                         return MTPROTO_CFG_PARSE_FULL_PASS_ERR_INTERNAL;
                     };
-                    let Some(cluster_state_after) = mtproto_old_cluster_to_ffi(&step.cluster_state_after)
+                    let Some(cluster_state_after) =
+                        mtproto_old_cluster_to_ffi(&step.cluster_state_after)
                     else {
                         return MTPROTO_CFG_PARSE_FULL_PASS_ERR_INTERNAL;
                     };
@@ -1873,9 +1875,11 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_expect_semicolon(
             *out_ref = cursor;
             MTPROTO_CFG_EXPECT_SEMICOLON_OK
         }
-        Err(mtproxy_core::runtime::mtproto::config::MtprotoDirectiveParseError::ExpectedSemicolon(
-            _,
-        )) => MTPROTO_CFG_EXPECT_SEMICOLON_ERR_EXPECTED,
+        Err(
+            mtproxy_core::runtime::mtproto::config::MtprotoDirectiveParseError::ExpectedSemicolon(
+                _,
+            ),
+        ) => MTPROTO_CFG_EXPECT_SEMICOLON_ERR_EXPECTED,
         Err(_) => MTPROTO_CFG_EXPECT_SEMICOLON_ERR_INVALID_ARGS,
     }
 }
@@ -2642,12 +2646,19 @@ pub unsafe extern "C" fn mtproxy_ffi_aesni_ctx_free(evp_ctx: *mut c_void) -> i32
     0
 }
 
-fn crc32_partial_impl(data: &[u8], mut crc: u32) -> u32 {
+const CRC32_REFLECTED_POLY: u32 = 0xedb8_8320;
+const CRC32C_REFLECTED_POLY: u32 = 0x82f6_3b78;
+const CRC64_REFLECTED_POLY: u64 = 0xc96c_5795_d787_0f42;
+const GF32_CLMUL_POWERS_LEN: usize = 252;
+const GF32_GENERIC_POWERS_MAX_LEN: usize = 32 * 67;
+
+#[inline]
+fn crc32_partial_poly(data: &[u8], mut crc: u32, poly: u32) -> u32 {
     for &byte in data {
         crc ^= u32::from(byte);
         for _ in 0..8 {
             if (crc & 1) != 0 {
-                crc = (crc >> 1) ^ 0xedb8_8320;
+                crc = (crc >> 1) ^ poly;
             } else {
                 crc >>= 1;
             }
@@ -2656,18 +2667,448 @@ fn crc32_partial_impl(data: &[u8], mut crc: u32) -> u32 {
     crc
 }
 
-fn crc32c_partial_impl(data: &[u8], mut crc: u32) -> u32 {
-    for &byte in data {
-        crc ^= u32::from(byte);
-        for _ in 0..8 {
-            if (crc & 1) != 0 {
-                crc = (crc >> 1) ^ 0x82f6_3b78;
-            } else {
-                crc >>= 1;
-            }
+fn crc32_partial_impl(data: &[u8], crc: u32) -> u32 {
+    crc32_partial_poly(data, crc, CRC32_REFLECTED_POLY)
+}
+
+fn crc32c_partial_impl(data: &[u8], crc: u32) -> u32 {
+    crc32_partial_poly(data, crc, CRC32C_REFLECTED_POLY)
+}
+
+#[inline]
+fn crc64_feed_byte_impl(mut crc: u64, b: u8) -> u64 {
+    crc ^= u64::from(b);
+    for _ in 0..8 {
+        if (crc & 1) != 0 {
+            crc = (crc >> 1) ^ CRC64_REFLECTED_POLY;
+        } else {
+            crc >>= 1;
         }
     }
     crc
+}
+
+fn crc64_partial_impl(data: &[u8], mut crc: u64) -> u64 {
+    for &byte in data {
+        crc = crc64_feed_byte_impl(crc, byte);
+    }
+    crc
+}
+
+fn gf2_matrix_times_u32(matrix: &[u32; 32], mut vector: u32) -> u32 {
+    let mut sum = 0u32;
+    let mut n = 0usize;
+    while vector != 0 {
+        if (vector & 1) != 0 {
+            sum ^= matrix[n];
+        }
+        vector >>= 1;
+        n += 1;
+    }
+    sum
+}
+
+fn gf2_matrix_square_u32(square: &mut [u32; 32], matrix: &[u32; 32]) {
+    for n in 0..32 {
+        square[n] = gf2_matrix_times_u32(matrix, matrix[n]);
+    }
+}
+
+fn crc_combine_u32(mut crc1: u32, crc2: u32, len2: i64, poly: u32) -> u32 {
+    if len2 <= 0 {
+        return crc1;
+    }
+
+    let mut odd = [0u32; 32];
+    let mut even = [0u32; 32];
+
+    odd[0] = poly;
+    let mut row = 1u32;
+    for slot in odd.iter_mut().skip(1) {
+        *slot = row;
+        row <<= 1;
+    }
+
+    gf2_matrix_square_u32(&mut even, &odd);
+    gf2_matrix_square_u32(&mut odd, &even);
+
+    let mut n = len2 as u64;
+    loop {
+        gf2_matrix_square_u32(&mut even, &odd);
+        if (n & 1) != 0 {
+            crc1 = gf2_matrix_times_u32(&even, crc1);
+        }
+        n >>= 1;
+        if n == 0 {
+            break;
+        }
+
+        gf2_matrix_square_u32(&mut odd, &even);
+        if (n & 1) != 0 {
+            crc1 = gf2_matrix_times_u32(&odd, crc1);
+        }
+        n >>= 1;
+        if n == 0 {
+            break;
+        }
+    }
+
+    crc1 ^ crc2
+}
+
+fn gf2_matrix_times_u64(matrix: &[u64; 64], mut vector: u64) -> u64 {
+    let mut sum = 0u64;
+    let mut n = 0usize;
+    while vector != 0 {
+        if (vector & 1) != 0 {
+            sum ^= matrix[n];
+        }
+        vector >>= 1;
+        n += 1;
+    }
+    sum
+}
+
+fn gf2_matrix_square_u64(square: &mut [u64; 64], matrix: &[u64; 64]) {
+    for n in 0..64 {
+        square[n] = gf2_matrix_times_u64(matrix, matrix[n]);
+    }
+}
+
+fn crc_combine_u64(mut crc1: u64, crc2: u64, len2: i64, poly: u64) -> u64 {
+    if len2 <= 0 {
+        return crc1;
+    }
+
+    let mut odd = [0u64; 64];
+    let mut even = [0u64; 64];
+
+    odd[0] = poly;
+    let mut row = 1u64;
+    for slot in odd.iter_mut().skip(1) {
+        *slot = row;
+        row <<= 1;
+    }
+
+    gf2_matrix_square_u64(&mut even, &odd);
+    gf2_matrix_square_u64(&mut odd, &even);
+
+    let mut n = len2 as u64;
+    loop {
+        gf2_matrix_square_u64(&mut even, &odd);
+        if (n & 1) != 0 {
+            crc1 = gf2_matrix_times_u64(&even, crc1);
+        }
+        n >>= 1;
+        if n == 0 {
+            break;
+        }
+
+        gf2_matrix_square_u64(&mut odd, &even);
+        if (n & 1) != 0 {
+            crc1 = gf2_matrix_times_u64(&odd, crc1);
+        }
+        n >>= 1;
+        if n == 0 {
+            break;
+        }
+    }
+
+    crc1 ^ crc2
+}
+
+#[inline]
+fn gf32_mulx(a: u32, poly: u32) -> u32 {
+    let mut r = a >> 1;
+    if (a & 1) != 0 {
+        r ^= poly;
+    }
+    r
+}
+
+fn gf32_mul(a: u32, mut b: u32, poly: u32) -> u32 {
+    let mut x = 0u32;
+    for _ in 0..32 {
+        x = gf32_mulx(x, poly);
+        if (b & 1) != 0 {
+            x ^= a;
+        }
+        b >>= 1;
+    }
+    x
+}
+
+fn gf32_pow(a: u32, k: i32, poly: u32) -> u32 {
+    if k == 0 {
+        return 0x8000_0000;
+    }
+    let mut x = gf32_pow(gf32_mul(a, a, poly), k >> 1, poly);
+    if (k & 1) != 0 {
+        x = gf32_mul(x, a, poly);
+    }
+    x
+}
+
+fn gf32_matrix_times_slice(matrix: &[u32], mut vector: u32) -> u32 {
+    let mut sum = 0u32;
+    let mut n = 0usize;
+    while vector != 0 {
+        if (vector & 1) != 0 {
+            if n >= matrix.len() {
+                break;
+            }
+            sum ^= matrix[n];
+        }
+        vector >>= 1;
+        n += 1;
+    }
+    sum
+}
+
+fn gf32_compute_powers_generic_impl(powers: &mut [u32], size: usize, poly: u32) {
+    let usable = core::cmp::min(size, powers.len());
+    if usable < 32 {
+        return;
+    }
+
+    powers[0] = poly;
+    for n in 0..31 {
+        powers[n + 1] = 1u32 << n;
+    }
+
+    let mut n = 1usize;
+    while (n << 5) < usable {
+        let src_start = (n - 1) << 5;
+        let dst_start = n << 5;
+        if src_start + 32 > usable || dst_start + 32 > usable {
+            break;
+        }
+
+        let mut src = [0u32; 32];
+        let mut dst = [0u32; 32];
+        src.copy_from_slice(&powers[src_start..src_start + 32]);
+        gf2_matrix_square_u32(&mut dst, &src);
+        powers[dst_start..dst_start + 32].copy_from_slice(&dst);
+
+        n += 1;
+    }
+}
+
+fn gf32_compute_powers_clmul_impl(powers: &mut [u32], poly: u32) {
+    let groups = core::cmp::min(63, powers.len() / 4);
+    let mut a = 1u32 << (31 - 7);
+    let b = gf32_mul(poly, poly, poly);
+
+    for idx in 0..groups {
+        let base = idx * 4;
+        powers[base] = 0;
+        powers[base + 1] = gf32_mul(a, b, poly);
+        powers[base + 2] = 0;
+        powers[base + 3] = a;
+        a = gf32_mulx(gf32_mul(a, a, poly), poly);
+    }
+}
+
+fn gf32_combine_generic_impl(powers: &[u32], mut crc1: u32, mut len2: i64) -> u32 {
+    if len2 <= 0 {
+        return crc1;
+    }
+
+    let mut offset = 64usize;
+    loop {
+        offset = offset.saturating_add(32);
+        if (len2 & 1) != 0 {
+            if offset + 32 > powers.len() {
+                break;
+            }
+            crc1 = gf32_matrix_times_slice(&powers[offset..offset + 32], crc1);
+        }
+        len2 >>= 1;
+        if len2 == 0 {
+            break;
+        }
+    }
+    crc1
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "pclmulqdq,sse2")]
+unsafe fn gf32_combine_clmul_hw_x86_64(powers: *const u32, crc1: u32, len2: u64) -> u64 {
+    use core::arch::x86_64::{
+        __m128i, _mm_clmulepi64_si128, _mm_cvtsi32_si128, _mm_loadu_si128, _mm_slli_si128,
+        _mm_unpackhi_epi64, _mm_xor_si128,
+    };
+
+    let mut d = _mm_cvtsi32_si128(crc1 as i32);
+    d = _mm_slli_si128(d, 12);
+
+    let tz = len2.trailing_zeros() as usize;
+    let mut p = powers.add(4 * tz).cast::<__m128i>();
+    let mut rem = len2 >> (tz + 1);
+
+    d = _mm_clmulepi64_si128(_mm_loadu_si128(p), d, 0x11);
+
+    while rem != 0 {
+        p = p.add(1);
+        if (rem & 1) != 0 {
+            let e = _mm_loadu_si128(p);
+            d = _mm_xor_si128(
+                _mm_clmulepi64_si128(e, d, 0x11),
+                _mm_clmulepi64_si128(e, d, 0x00),
+            );
+        }
+        rem >>= 1;
+    }
+
+    let base = powers.add(12).cast::<__m128i>();
+    d = _mm_xor_si128(d, _mm_clmulepi64_si128(_mm_loadu_si128(base), d, 0x01));
+    d = _mm_unpackhi_epi64(d, d);
+
+    // SAFETY: __m128i and [u64; 2] are both 128-bit POD layouts.
+    let lanes: [u64; 2] = unsafe { core::mem::transmute(d) };
+    lanes[0]
+}
+
+fn gf32_combine_clmul_impl(powers: &[u32], crc1: u32, len2: i64) -> u64 {
+    if len2 <= 0 {
+        return u64::from(crc1);
+    }
+
+    #[cfg(target_arch = "x86_64")]
+    {
+        if std::arch::is_x86_feature_detected!("pclmulqdq") {
+            // SAFETY: CPU feature is checked at runtime and table shape matches C contract.
+            return unsafe { gf32_combine_clmul_hw_x86_64(powers.as_ptr(), crc1, len2 as u64) };
+        }
+    }
+
+    u64::from(gf32_combine_generic_impl(powers, crc1, len2))
+}
+
+fn crc32_find_corrupted_bit_impl(size: i32, d: u32) -> i32 {
+    let size = size.saturating_add(4);
+    let n = size.saturating_mul(8);
+    if n <= 0 {
+        return -1;
+    }
+
+    let r = ((f64::from(n)).sqrt() + 0.5) as i32;
+    if r <= 0 {
+        return -1;
+    }
+
+    #[derive(Clone, Copy)]
+    struct FcbTableEntry {
+        p: u32,
+        i: i32,
+    }
+
+    let mut table = vec![FcbTableEntry { p: 0, i: 0 }; usize::try_from(r).unwrap_or(0)];
+    if table.is_empty() {
+        return -1;
+    }
+    table[0] = FcbTableEntry {
+        p: 0x8000_0000,
+        i: 0,
+    };
+    for i in 1..r {
+        let prev = table[usize::try_from(i - 1).unwrap_or(0)].p;
+        table[usize::try_from(i).unwrap_or(0)] = FcbTableEntry {
+            p: gf32_mulx(prev, CRC32_REFLECTED_POLY),
+            i,
+        };
+    }
+    table.sort_by(|x, y| x.p.cmp(&y.p).then(x.i.cmp(&y.i)));
+
+    let q = gf32_pow(0xdb71_0641, r, CRC32_REFLECTED_POLY);
+    let mut a = [0u32; 32];
+    a[31] = q;
+    for i in (0..31).rev() {
+        a[i] = gf32_mulx(a[i + 1], CRC32_REFLECTED_POLY);
+    }
+
+    let max_j = n / r;
+    let mut x = d;
+    let mut res = -1;
+
+    for j in 0..=max_j {
+        let mut lo = -1;
+        let mut hi = r;
+        while hi - lo > 1 {
+            let c = (lo + hi) >> 1;
+            if table[usize::try_from(c).unwrap_or(0)].p <= x {
+                lo = c;
+            } else {
+                hi = c;
+            }
+        }
+
+        if lo >= 0 && table[usize::try_from(lo).unwrap_or(0)].p == x {
+            res = table[usize::try_from(lo).unwrap_or(0)].i + r * j;
+            break;
+        }
+
+        x = gf2_matrix_times_u32(&a, x);
+    }
+
+    res
+}
+
+fn crc32_repair_bit_impl(input: &mut [u8], k: i32) -> i32 {
+    if k < 0 {
+        return -1;
+    }
+
+    let l = i32::try_from(input.len()).unwrap_or(i32::MAX);
+    let idx = k >> 5;
+    let mut bit = k & 31;
+    let mut i = (l - 1) - (idx - 1) * 4;
+    while bit >= 8 {
+        i -= 1;
+        bit -= 8;
+    }
+
+    if i < 0 {
+        return -2;
+    }
+    if i >= l {
+        return -3;
+    }
+
+    let j = 7 - bit;
+    if let Ok(pos) = usize::try_from(i) {
+        input[pos] ^= 1u8 << j;
+        return 0;
+    }
+    -3
+}
+
+fn compute_crc32_for_block(data: &[u8]) -> u32 {
+    crc32_partial_impl(data, u32::MAX) ^ u32::MAX
+}
+
+fn crc32_check_and_repair_impl(input: &mut [u8], input_crc32: &mut u32) -> i32 {
+    let computed_crc32 = compute_crc32_for_block(input);
+    let crc32_diff = computed_crc32 ^ *input_crc32;
+    if crc32_diff == 0 {
+        return 0;
+    }
+
+    let bit =
+        crc32_find_corrupted_bit_impl(i32::try_from(input.len()).unwrap_or(i32::MAX), crc32_diff);
+    let repaired = crc32_repair_bit_impl(input, bit);
+    if repaired == 0 {
+        debug_assert_eq!(compute_crc32_for_block(input), *input_crc32);
+        return 1;
+    }
+
+    if (crc32_diff & crc32_diff.wrapping_sub(1)) == 0 {
+        *input_crc32 = computed_crc32;
+        return 2;
+    }
+
+    *input_crc32 = computed_crc32;
+    -1
 }
 
 /// Computes CRC32 partial update compatible with C `crc32_partial`.
@@ -2696,6 +3137,146 @@ pub unsafe extern "C" fn mtproxy_ffi_crc32c_partial(data: *const u8, len: usize,
 
     let bytes = unsafe { core::slice::from_raw_parts(data, len) };
     crc32c_partial_impl(bytes, crc)
+}
+
+/// Computes CRC32 combine result for concatenated blocks.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_crc32_combine(crc1: u32, crc2: u32, len2: i64) -> u32 {
+    crc_combine_u32(crc1, crc2, len2, CRC32_REFLECTED_POLY)
+}
+
+/// Computes CRC32C combine result for concatenated blocks.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_crc32c_combine(crc1: u32, crc2: u32, len2: i64) -> u32 {
+    crc_combine_u32(crc1, crc2, len2, CRC32C_REFLECTED_POLY)
+}
+
+/// Computes CRC64 partial update.
+///
+/// # Safety
+/// `data` must point to at least `len` readable bytes when `len > 0`.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_crc64_partial(data: *const u8, len: usize, crc: u64) -> u64 {
+    if data.is_null() || len == 0 {
+        return crc;
+    }
+
+    let bytes = unsafe { core::slice::from_raw_parts(data, len) };
+    crc64_partial_impl(bytes, crc)
+}
+
+/// Computes CRC64 combine result for concatenated blocks.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_crc64_combine(crc1: u64, crc2: u64, len2: i64) -> u64 {
+    crc_combine_u64(crc1, crc2, len2, CRC64_REFLECTED_POLY)
+}
+
+/// Feeds a single byte into reflected CRC64 state.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_crc64_feed_byte(crc: u64, b: u8) -> u64 {
+    crc64_feed_byte_impl(crc, b)
+}
+
+/// Computes GF32 powers table used by combine helpers.
+///
+/// # Safety
+/// `powers` must point to at least `size` writable `u32` entries.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_gf32_compute_powers_generic(
+    powers: *mut u32,
+    size: usize,
+    poly: u32,
+) {
+    if powers.is_null() || size == 0 {
+        return;
+    }
+    let table = unsafe { core::slice::from_raw_parts_mut(powers, size) };
+    gf32_compute_powers_generic_impl(table, size, poly);
+}
+
+/// Computes GF32 CLMUL-style powers table.
+///
+/// # Safety
+/// `powers` must point to at least 252 writable `u32` entries.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_gf32_compute_powers_clmul(powers: *mut u32, poly: u32) {
+    if powers.is_null() {
+        return;
+    }
+    let table = unsafe { core::slice::from_raw_parts_mut(powers, GF32_CLMUL_POWERS_LEN) };
+    gf32_compute_powers_clmul_impl(table, poly);
+}
+
+/// Applies GF32 combine using a precomputed powers table.
+///
+/// # Safety
+/// `powers` must point to at least 2144 readable `u32` entries.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_gf32_combine_generic(
+    powers: *const u32,
+    crc1: u32,
+    len2: i64,
+) -> u32 {
+    if powers.is_null() || len2 <= 0 {
+        return crc1;
+    }
+    let table = unsafe { core::slice::from_raw_parts(powers, GF32_GENERIC_POWERS_MAX_LEN) };
+    gf32_combine_generic_impl(table, crc1, len2)
+}
+
+/// Applies GF32 combine using a CLMUL powers table.
+///
+/// # Safety
+/// `powers` must point to at least 252 readable `u32` entries.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_gf32_combine_clmul(
+    powers: *const u32,
+    crc1: u32,
+    len2: i64,
+) -> u64 {
+    if powers.is_null() || len2 <= 0 {
+        return u64::from(crc1);
+    }
+    let table = unsafe { core::slice::from_raw_parts(powers, GF32_CLMUL_POWERS_LEN) };
+    gf32_combine_clmul_impl(table, crc1, len2)
+}
+
+/// Finds a candidate corrupted bit index by CRC32 syndrome.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_crc32_find_corrupted_bit(size: i32, d: u32) -> i32 {
+    crc32_find_corrupted_bit_impl(size, d)
+}
+
+/// Repairs one bit in place for the provided block.
+///
+/// # Safety
+/// `input` must point to at least `len` writable bytes when `len > 0`.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_crc32_repair_bit(input: *mut u8, len: usize, k: i32) -> i32 {
+    if input.is_null() {
+        return -3;
+    }
+    let bytes = unsafe { core::slice::from_raw_parts_mut(input, len) };
+    crc32_repair_bit_impl(bytes, k)
+}
+
+/// Performs CRC32 check and single-bit repair attempt.
+///
+/// # Safety
+/// `input` must point to at least `len` writable bytes when `len > 0`.
+/// `input_crc32` must be a valid writable pointer.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_crc32_check_and_repair(
+    input: *mut u8,
+    len: usize,
+    input_crc32: *mut u32,
+) -> i32 {
+    if input.is_null() || input_crc32.is_null() {
+        return -1;
+    }
+    let bytes = unsafe { core::slice::from_raw_parts_mut(input, len) };
+    let crc_ref = unsafe { &mut *input_crc32 };
+    crc32_check_and_repair_impl(bytes, crc_ref)
 }
 
 /// Initializes process id fields equivalent to `init_common_PID`.
@@ -4067,8 +4648,9 @@ mod tests {
         ffi_api_version, mtproxy_ffi_aesni_crypt, mtproxy_ffi_aesni_ctx_free,
         mtproxy_ffi_aesni_ctx_init, mtproxy_ffi_api_version, mtproxy_ffi_cfg_getint_signed_zero,
         mtproxy_ffi_cfg_getword_len, mtproxy_ffi_cfg_skipspc, mtproxy_ffi_cpuid_fill,
-        mtproxy_ffi_crc32_partial, mtproxy_ffi_crc32c_partial, mtproxy_ffi_crypto_aes_create_keys,
-        mtproxy_ffi_crypto_dh_first_round, mtproxy_ffi_crypto_dh_get_params_select,
+        mtproxy_ffi_crc32_check_and_repair, mtproxy_ffi_crc32_partial, mtproxy_ffi_crc32c_partial,
+        mtproxy_ffi_crypto_aes_create_keys, mtproxy_ffi_crypto_dh_first_round,
+        mtproxy_ffi_crypto_dh_get_params_select,
         mtproxy_ffi_crypto_dh_is_good_rpc_dh_bin, mtproxy_ffi_crypto_dh_second_round,
         mtproxy_ffi_crypto_dh_third_round, mtproxy_ffi_crypto_rand_bytes,
         mtproxy_ffi_crypto_tls_generate_public_key, mtproxy_ffi_engine_rpc_result_header_len,
@@ -4076,74 +4658,66 @@ mod tests {
         mtproxy_ffi_get_concurrency_boundary, mtproxy_ffi_get_crypto_boundary,
         mtproxy_ffi_get_network_boundary, mtproxy_ffi_get_precise_time,
         mtproxy_ffi_get_rpc_boundary, mtproxy_ffi_get_utime_monotonic, mtproxy_ffi_matches_pid,
-        mtproxy_ffi_md5, mtproxy_ffi_md5_hex, mtproxy_ffi_msg_buffers_pick_size_index,
-        mtproxy_ffi_mtproto_cfg_decide_cluster_apply, mtproxy_ffi_mtproto_cfg_finalize,
-        mtproxy_ffi_mtproto_cfg_expect_semicolon, mtproxy_ffi_mtproto_cfg_parse_directive_step,
-        mtproxy_ffi_mtproto_cfg_getlex_ext, mtproxy_ffi_mtproto_cfg_lookup_cluster_index, mtproxy_ffi_mtproto_cfg_parse_full_pass,
-        mtproxy_ffi_mtproto_cfg_parse_proxy_target_step, mtproxy_ffi_mtproto_cfg_preinit,
-        mtproxy_ffi_mtproto_cfg_scan_directive_token,
-        mtproxy_ffi_mtproto_conn_tag,
-        mtproxy_ffi_mtproto_ext_conn_hash, mtproxy_ffi_net_epoll_conv_flags,
-        mtproxy_ffi_net_epoll_unconv_flags, mtproxy_ffi_net_timers_wait_msec,
-        mtproxy_ffi_parse_meminfo_summary, mtproxy_ffi_parse_proc_stat_line,
-        mtproxy_ffi_parse_statm, mtproxy_ffi_pid_init_common, mtproxy_ffi_precise_now_rdtsc_value,
-        mtproxy_ffi_precise_now_value, mtproxy_ffi_process_id_is_newer,
-        mtproxy_ffi_read_proc_stat_file, mtproxy_ffi_rpc_target_normalize_pid, mtproxy_ffi_sha1,
-        mtproxy_ffi_sha1_two_chunks, mtproxy_ffi_sha256, mtproxy_ffi_sha256_hmac,
-        mtproxy_ffi_sha256_two_chunks, mtproxy_ffi_startup_handshake,
-        mtproxy_ffi_tcp_rpc_client_packet_len_state, mtproxy_ffi_tcp_rpc_encode_compact_header,
+        mtproxy_ffi_gf32_combine_clmul, mtproxy_ffi_gf32_compute_powers_clmul, mtproxy_ffi_md5,
+        mtproxy_ffi_md5_hex, mtproxy_ffi_msg_buffers_pick_size_index,
+        mtproxy_ffi_mtproto_cfg_decide_cluster_apply, mtproxy_ffi_mtproto_cfg_expect_semicolon,
+        mtproxy_ffi_mtproto_cfg_finalize, mtproxy_ffi_mtproto_cfg_getlex_ext,
+        mtproxy_ffi_mtproto_cfg_lookup_cluster_index, mtproxy_ffi_mtproto_cfg_parse_directive_step,
+        mtproxy_ffi_mtproto_cfg_parse_full_pass, mtproxy_ffi_mtproto_cfg_parse_proxy_target_step,
+        mtproxy_ffi_mtproto_cfg_preinit, mtproxy_ffi_mtproto_cfg_scan_directive_token,
+        mtproxy_ffi_mtproto_conn_tag, mtproxy_ffi_mtproto_ext_conn_hash,
+        mtproxy_ffi_net_epoll_conv_flags, mtproxy_ffi_net_epoll_unconv_flags,
+        mtproxy_ffi_net_timers_wait_msec, mtproxy_ffi_parse_meminfo_summary,
+        mtproxy_ffi_parse_proc_stat_line, mtproxy_ffi_parse_statm, mtproxy_ffi_pid_init_common,
+        mtproxy_ffi_precise_now_rdtsc_value, mtproxy_ffi_precise_now_value,
+        mtproxy_ffi_process_id_is_newer, mtproxy_ffi_read_proc_stat_file,
+        mtproxy_ffi_rpc_target_normalize_pid, mtproxy_ffi_sha1, mtproxy_ffi_sha1_two_chunks,
+        mtproxy_ffi_sha256, mtproxy_ffi_sha256_hmac, mtproxy_ffi_sha256_two_chunks,
+        mtproxy_ffi_startup_handshake, mtproxy_ffi_tcp_rpc_client_packet_len_state,
+        mtproxy_ffi_tcp_rpc_encode_compact_header,
         mtproxy_ffi_tcp_rpc_server_packet_header_malformed,
         mtproxy_ffi_tcp_rpc_server_packet_len_state, mtproxy_ffi_tl_parse_answer_header,
         mtproxy_ffi_tl_parse_query_header, MtproxyAesKeyData, MtproxyApplicationBoundary,
         MtproxyCfgIntResult, MtproxyCfgScanResult, MtproxyConcurrencyBoundary, MtproxyCpuid,
-        MtproxyCryptoBoundary, MtproxyMeminfoSummary,
-        MtproxyMtprotoCfgClusterApplyDecisionResult, MtproxyMtprotoCfgDirectiveStepResult,
-        MtproxyMtprotoCfgDirectiveTokenResult, MtproxyMtprotoCfgFinalizeResult,
-        MtproxyMtprotoCfgGetlexExtResult,
-        MtproxyMtprotoCfgParseFullResult,
-        MtproxyMtprotoCfgProxyAction,
-        MtproxyMtprotoCfgParseProxyTargetStepResult,
-        MtproxyMtprotoCfgPreinitResult,
-        MtproxyMtprotoOldClusterState,
-        MtproxyNetworkBoundary, MtproxyProcStats, MtproxyProcessId, MtproxyRpcBoundary,
-        MtproxyTlHeaderParseResult, AESNI_CIPHER_AES_256_CTR, AESNI_CONTRACT_OPS,
-        AESNI_IMPLEMENTED_OPS, APPLICATION_BOUNDARY_VERSION, CONCURRENCY_BOUNDARY_VERSION,
-        CPUID_MAGIC, CRYPTO_BOUNDARY_VERSION, DH_KEY_BYTES, DH_PARAMS_SELECT,
-        ENGINE_RPC_CONTRACT_OPS, ENGINE_RPC_IMPLEMENTED_OPS, EPOLLERR, EPOLLET, EPOLLIN, EPOLLOUT,
-        EPOLLPRI, EPOLLRDHUP, EVT_FROM_EPOLL, EVT_LEVEL, EVT_READ, EVT_SPEC, EVT_WRITE,
-        FFI_API_VERSION, JOBS_CONTRACT_OPS, JOBS_IMPLEMENTED_OPS, MPQ_CONTRACT_OPS,
-        MPQ_IMPLEMENTED_OPS, MTPROTO_CFG_FINALIZE_ERR_MISSING_PROXY_DIRECTIVES,
-        MTPROTO_CFG_FINALIZE_ERR_NO_PROXY_SERVERS_DEFINED, MTPROTO_CFG_FINALIZE_OK,
-        MTPROTO_CFG_GETLEX_EXT_OK, MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_NOT_FOUND,
-        MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_OK,
-        MTPROTO_CFG_PARSE_PROXY_TARGET_STEP_ERR_CLUSTER_EXTEND_INVARIANT,
-        MTPROTO_CFG_PARSE_PROXY_TARGET_STEP_ERR_EXPECTED_SEMICOLON,
-        MTPROTO_CFG_PARSE_PROXY_TARGET_STEP_ERR_PROXIES_INTERMIXED,
-        MTPROTO_CFG_PARSE_FULL_PASS_ERR_EXPECTED_SEMICOLON,
-        MTPROTO_CFG_PARSE_FULL_PASS_ERR_MISSING_PROXY_DIRECTIVES,
-        MTPROTO_CFG_PARSE_FULL_PASS_OK,
-        MTPROTO_CFG_PARSE_PROXY_TARGET_STEP_OK,
-        MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_EXPECTED_SEMICOLON,
-        MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_PROXIES_INTERMIXED,
-        MTPROTO_CFG_PARSE_DIRECTIVE_STEP_OK, MTPROTO_CFG_EXPECT_SEMICOLON_ERR_EXPECTED,
-        MTPROTO_CFG_EXPECT_SEMICOLON_OK,
-        MTPROTO_CFG_CLUSTER_TARGETS_ACTION_KEEP_EXISTING,
-        MTPROTO_CFG_CLUSTER_TARGETS_ACTION_SET_TARGET,
+        MtproxyCryptoBoundary, MtproxyMeminfoSummary, MtproxyMtprotoCfgClusterApplyDecisionResult,
+        MtproxyMtprotoCfgDirectiveStepResult, MtproxyMtprotoCfgDirectiveTokenResult,
+        MtproxyMtprotoCfgFinalizeResult, MtproxyMtprotoCfgGetlexExtResult,
+        MtproxyMtprotoCfgParseFullResult, MtproxyMtprotoCfgParseProxyTargetStepResult,
+        MtproxyMtprotoCfgPreinitResult, MtproxyMtprotoCfgProxyAction,
+        MtproxyMtprotoOldClusterState, MtproxyNetworkBoundary, MtproxyProcStats, MtproxyProcessId,
+        MtproxyRpcBoundary, MtproxyTlHeaderParseResult, AESNI_CIPHER_AES_256_CTR,
+        AESNI_CONTRACT_OPS, AESNI_IMPLEMENTED_OPS, APPLICATION_BOUNDARY_VERSION,
+        CONCURRENCY_BOUNDARY_VERSION, CPUID_MAGIC, CRC32_REFLECTED_POLY, CRYPTO_BOUNDARY_VERSION,
+        DH_KEY_BYTES, DH_PARAMS_SELECT, ENGINE_RPC_CONTRACT_OPS, ENGINE_RPC_IMPLEMENTED_OPS,
+        EPOLLERR, EPOLLET, EPOLLIN, EPOLLOUT, EPOLLPRI, EPOLLRDHUP, EVT_FROM_EPOLL, EVT_LEVEL,
+        EVT_READ, EVT_SPEC, EVT_WRITE, FFI_API_VERSION, GF32_CLMUL_POWERS_LEN, JOBS_CONTRACT_OPS,
+        JOBS_IMPLEMENTED_OPS, MPQ_CONTRACT_OPS, MPQ_IMPLEMENTED_OPS,
         MTPROTO_CFG_CLUSTER_APPLY_DECISION_ERR_PROXIES_INTERMIXED,
         MTPROTO_CFG_CLUSTER_APPLY_DECISION_ERR_TOO_MANY_AUTH_CLUSTERS,
         MTPROTO_CFG_CLUSTER_APPLY_DECISION_KIND_APPEND_LAST,
-        MTPROTO_CFG_CLUSTER_APPLY_DECISION_KIND_CREATE_NEW,
-        MTPROTO_CFG_CLUSTER_APPLY_DECISION_OK,
-        MTPROTO_CFG_PREINIT_ERR_INVALID_ARGS, MTPROTO_CFG_PREINIT_OK,
-        MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_INVALID_MAX_CONNECTIONS,
+        MTPROTO_CFG_CLUSTER_APPLY_DECISION_KIND_CREATE_NEW, MTPROTO_CFG_CLUSTER_APPLY_DECISION_OK,
+        MTPROTO_CFG_CLUSTER_TARGETS_ACTION_KEEP_EXISTING,
+        MTPROTO_CFG_CLUSTER_TARGETS_ACTION_SET_TARGET, MTPROTO_CFG_EXPECT_SEMICOLON_ERR_EXPECTED,
+        MTPROTO_CFG_EXPECT_SEMICOLON_OK, MTPROTO_CFG_FINALIZE_ERR_MISSING_PROXY_DIRECTIVES,
+        MTPROTO_CFG_FINALIZE_ERR_NO_PROXY_SERVERS_DEFINED, MTPROTO_CFG_FINALIZE_OK,
+        MTPROTO_CFG_GETLEX_EXT_OK, MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_NOT_FOUND,
+        MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_OK,
+        MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_EXPECTED_SEMICOLON,
+        MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_PROXIES_INTERMIXED,
+        MTPROTO_CFG_PARSE_DIRECTIVE_STEP_OK, MTPROTO_CFG_PARSE_FULL_PASS_ERR_EXPECTED_SEMICOLON,
+        MTPROTO_CFG_PARSE_FULL_PASS_ERR_MISSING_PROXY_DIRECTIVES, MTPROTO_CFG_PARSE_FULL_PASS_OK,
+        MTPROTO_CFG_PARSE_PROXY_TARGET_STEP_ERR_CLUSTER_EXTEND_INVARIANT,
+        MTPROTO_CFG_PARSE_PROXY_TARGET_STEP_ERR_EXPECTED_SEMICOLON,
+        MTPROTO_CFG_PARSE_PROXY_TARGET_STEP_ERR_PROXIES_INTERMIXED,
+        MTPROTO_CFG_PARSE_PROXY_TARGET_STEP_OK, MTPROTO_CFG_PREINIT_ERR_INVALID_ARGS,
+        MTPROTO_CFG_PREINIT_OK, MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_INVALID_MAX_CONNECTIONS,
         MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_INVALID_MIN_CONNECTIONS,
         MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_INVALID_TARGET_ID,
         MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_INVALID_TIMEOUT,
         MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_TARGET_ID_SPACE, MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_OK,
         MTPROTO_DIRECTIVE_TOKEN_KIND_DEFAULT_CLUSTER, MTPROTO_DIRECTIVE_TOKEN_KIND_MAX_CONNECTIONS,
         MTPROTO_DIRECTIVE_TOKEN_KIND_MIN_CONNECTIONS, MTPROTO_DIRECTIVE_TOKEN_KIND_PROXY_FOR,
-        MTPROTO_DIRECTIVE_TOKEN_KIND_TIMEOUT,
-        MTPROTO_PROXY_CONTRACT_OPS,
+        MTPROTO_DIRECTIVE_TOKEN_KIND_TIMEOUT, MTPROTO_PROXY_CONTRACT_OPS,
         MTPROTO_PROXY_IMPLEMENTED_OPS, NETWORK_BOUNDARY_VERSION, NET_CRYPTO_AES_CONTRACT_OPS,
         NET_CRYPTO_AES_IMPLEMENTED_OPS, NET_CRYPTO_DH_CONTRACT_OPS, NET_CRYPTO_DH_IMPLEMENTED_OPS,
         NET_EVENTS_CONTRACT_OPS, NET_EVENTS_IMPLEMENTED_OPS, NET_MSG_BUFFERS_CONTRACT_OPS,
@@ -4359,7 +4933,10 @@ mod tests {
             )
         };
         assert_eq!(rc, MTPROTO_CFG_CLUSTER_APPLY_DECISION_OK);
-        assert_eq!(out.kind, MTPROTO_CFG_CLUSTER_APPLY_DECISION_KIND_APPEND_LAST);
+        assert_eq!(
+            out.kind,
+            MTPROTO_CFG_CLUSTER_APPLY_DECISION_KIND_APPEND_LAST
+        );
         assert_eq!(out.cluster_index, 1);
     }
 
@@ -4706,7 +5283,10 @@ mod tests {
                 &raw mut out,
             )
         };
-        assert_eq!(rc, MTPROTO_CFG_PARSE_PROXY_TARGET_STEP_ERR_PROXIES_INTERMIXED);
+        assert_eq!(
+            rc,
+            MTPROTO_CFG_PARSE_PROXY_TARGET_STEP_ERR_PROXIES_INTERMIXED
+        );
 
         let rc = unsafe {
             mtproxy_ffi_mtproto_cfg_parse_proxy_target_step(
@@ -4883,21 +5463,13 @@ mod tests {
     fn mtproto_config_expect_semicolon_helper_matches_parser_behavior() {
         let mut advance = 0usize;
         let rc = unsafe {
-            mtproxy_ffi_mtproto_cfg_expect_semicolon(
-                b";".as_ptr().cast(),
-                1,
-                &raw mut advance,
-            )
+            mtproxy_ffi_mtproto_cfg_expect_semicolon(b";".as_ptr().cast(), 1, &raw mut advance)
         };
         assert_eq!(rc, MTPROTO_CFG_EXPECT_SEMICOLON_OK);
         assert_eq!(advance, 1);
 
         let rc = unsafe {
-            mtproxy_ffi_mtproto_cfg_expect_semicolon(
-                b" ".as_ptr().cast(),
-                1,
-                &raw mut advance,
-            )
+            mtproxy_ffi_mtproto_cfg_expect_semicolon(b" ".as_ptr().cast(), 1, &raw mut advance)
         };
         assert_eq!(rc, MTPROTO_CFG_EXPECT_SEMICOLON_ERR_EXPECTED);
     }
@@ -5448,6 +6020,38 @@ mod tests {
         let partial = unsafe { mtproxy_ffi_crc32c_partial(data.as_ptr(), data.len(), u32::MAX) };
         let final_crc = partial ^ u32::MAX;
         assert_eq!(final_crc, 0xe306_9283);
+    }
+
+    #[test]
+    fn crc32_check_and_repair_fixes_single_bit_flip() {
+        let mut data = *b"abcdef012345";
+        let original_crc = (unsafe { mtproxy_ffi_crc32_partial(data.as_ptr(), data.len(), u32::MAX) }) ^ u32::MAX;
+        let mut stored_crc = original_crc;
+        data[4] ^= 0x04;
+
+        let rc = unsafe {
+            mtproxy_ffi_crc32_check_and_repair(data.as_mut_ptr(), data.len(), &raw mut stored_crc)
+        };
+        assert_eq!(rc, 1);
+        assert_eq!(stored_crc, original_crc);
+        assert_eq!(&data, b"abcdef012345");
+    }
+
+    #[test]
+    fn gf32_combine_clmul_matches_legacy_vector_when_supported() {
+        #[cfg(target_arch = "x86_64")]
+        {
+            if !std::arch::is_x86_feature_detected!("pclmulqdq") {
+                return;
+            }
+        }
+
+        let mut powers = [0u32; GF32_CLMUL_POWERS_LEN];
+        unsafe {
+            mtproxy_ffi_gf32_compute_powers_clmul(powers.as_mut_ptr(), CRC32_REFLECTED_POLY);
+        }
+        let out = unsafe { mtproxy_ffi_gf32_combine_clmul(powers.as_ptr(), 0x89ab_cdef, 17) };
+        assert_eq!(out, 0x7be9_6e74_df25_97cc);
     }
 
     #[test]

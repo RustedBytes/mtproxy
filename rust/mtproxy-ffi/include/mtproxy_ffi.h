@@ -604,6 +604,32 @@ uint32_t mtproxy_ffi_crc32_partial(const uint8_t *data, size_t len, uint32_t crc
 // Semantics match C `crc32c_partial` function.
 uint32_t mtproxy_ffi_crc32c_partial(const uint8_t *data, size_t len, uint32_t crc);
 
+// CRC32 combine for concatenated blocks.
+uint32_t mtproxy_ffi_crc32_combine(uint32_t crc1, uint32_t crc2, int64_t len2);
+
+// CRC32C combine for concatenated blocks.
+uint32_t mtproxy_ffi_crc32c_combine(uint32_t crc1, uint32_t crc2, int64_t len2);
+
+// CRC64 (reflected polynomial 0xC96C5795D7870F42) partial update.
+uint64_t mtproxy_ffi_crc64_partial(const uint8_t *data, size_t len, uint64_t crc);
+
+// CRC64 combine for concatenated blocks.
+uint64_t mtproxy_ffi_crc64_combine(uint64_t crc1, uint64_t crc2, int64_t len2);
+
+// Feeds one byte into reflected CRC64 state.
+uint64_t mtproxy_ffi_crc64_feed_byte(uint64_t crc, uint8_t b);
+
+// GF32 helpers for CRC combine support.
+void mtproxy_ffi_gf32_compute_powers_generic(uint32_t *powers, size_t size, uint32_t poly);
+void mtproxy_ffi_gf32_compute_powers_clmul(uint32_t *powers, uint32_t poly);
+uint32_t mtproxy_ffi_gf32_combine_generic(const uint32_t *powers, uint32_t crc1, int64_t len2);
+uint64_t mtproxy_ffi_gf32_combine_clmul(const uint32_t *powers, uint32_t crc1, int64_t len2);
+
+// CRC32 repair helpers.
+int32_t mtproxy_ffi_crc32_find_corrupted_bit(int32_t size, uint32_t d);
+int32_t mtproxy_ffi_crc32_repair_bit(uint8_t *input, size_t len, int32_t k);
+int32_t mtproxy_ffi_crc32_check_and_repair(uint8_t *input, size_t len, uint32_t *input_crc32);
+
 // PID helpers compatible with common/pid.c semantics.
 int32_t mtproxy_ffi_pid_init_common(mtproxy_ffi_process_id_t *pid);
 int32_t mtproxy_ffi_pid_init_client(mtproxy_ffi_process_id_t *pid, uint32_t ip);

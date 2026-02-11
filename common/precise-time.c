@@ -19,7 +19,6 @@
 */
 #include <assert.h>
 #include <sys/time.h>
-#include <time.h>
 #include <stdint.h>
 /* unistd.h defines _POSIX_TIMERS */
 #include <unistd.h>

@@ -22,22 +22,16 @@
 #define	_FILE_OFFSET_BITS	64
 
 #include <assert.h>
-#include <errno.h>
 #include <pthread.h>
-#include <signal.h>
 #include <stddef.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
 #include <unistd.h>
 
 #include <linux/futex.h>
 #include <sys/syscall.h>
 
 #include "server-functions.h"
-#include "kprintf.h"
-#include "precise-time.h"
 #include "mp-queue.h"
 #include "jobs/jobs.h"
 #include "common/common-stats.h"

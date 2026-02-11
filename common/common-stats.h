@@ -23,9 +23,7 @@
 
 #pragma once
 
-#include <string.h>
 #include <sys/types.h>
-#include <stdio.h>
 
 #define AM_GET_MEMORY_USAGE_SELF 1
 #define AM_GET_MEMORY_USAGE_OVERALL 2
