@@ -1,0 +1,392 @@
+# MTProxy C-to-Rust Migration Plan
+
+1. Define Scope, Constraints, and Success Criteria
+   - Lock the migration target: same protocol behavior, same CLI semantics, and no production downtime.
+   - Define measurable goals: throughput, latency, memory ceiling, startup time, and error budget.
+   - Freeze non-essential feature work until parity is reached.
+   - Scope and constraints (draft):
+   - Proxy protocol behavior remains wire-compatible with current C binary.
+   - Existing operational CLI semantics remain compatible (`-u`, `-p`, `-H`, `-S`, `-M`, `--aes-pwd`).
+   - Cutover must support rollback to C binary in under 5 minutes.
+   - Success criteria targets (for Rust default cutover):
+   - Throughput: at least 95% of C baseline under identical load profile.
+   - Latency: p99 at most 110% of C baseline.
+   - Memory ceiling: RSS at most 120% of C baseline for equivalent workload.
+   - Startup behavior: startup smoke path remains deterministic and documented.
+   - Error budget: zero Sev-1 regressions in 14-day canary.
+   - Feature freeze policy:
+   - During parity phase, only security fixes, correctness fixes, and migration-related refactors are allowed.
+   - Net-new features are deferred until items 1-13 reach parity gates.
+   - Operation log:
+   - [x] 2026-02-11: Added explicit migration scope and hard constraints.
+   - [x] 2026-02-11: Added measurable acceptance targets for throughput/latency/memory/startup/error budget.
+   - [x] 2026-02-11: Added feature-freeze policy for parity phase.
+   - Done when: acceptance criteria are written and agreed in this file.
+
+2. Establish a Reliable Baseline from Current C Code
+   - Build current project from `Makefile` and capture known-good run commands from `README.md`.
+   - Record baseline behavior for startup, config loading, proxy traffic flow, stats endpoint, and shutdown.
+   - Capture baseline performance numbers (requests/sec, CPU, memory) for comparison.
+   - Baseline automation and artifacts:
+   - Script: `scripts/baseline_capture.sh`
+   - Baseline docs: `baseline/README.md`
+   - Latest capture pointer: `baseline/LATEST`
+   - Current capture: `baseline/20260211T105726Z`
+   - Initial measured values (`baseline/20260211T105726Z/summary.md`):
+   - Build elapsed: 3.88s
+   - Build max RSS: 62204 KB
+   - Binary size: 523K
+   - `--help` exit code: 2
+   - Startup smoke (missing config expected) exit code: 1
+   - Operation log:
+   - [x] 2026-02-11: Added baseline capture script that builds C binary and records logs/metrics/artifact fingerprints.
+   - [x] 2026-02-11: Captured known-good runtime command sequence from `README.md` into baseline artifacts.
+   - [x] 2026-02-11: Executed baseline capture and stored outputs under `baseline/20260211T105726Z`.
+   - [x] 2026-02-11: Recorded startup/config-loading behavior via smoke run against missing config inputs.
+   - [ ] 2026-02-11: Capture throughput/latency under representative MTProto load (deferred to item 3 harness).
+   - Done when: baseline script and baseline metrics are stored in the repo.
+
+3. Add a Test Harness Before Porting
+   - Create regression tests for critical flows: config parsing, secret handling, connection lifecycle, RPC paths, and stats output.
+   - Add packet-level golden tests for protocol framing and parsing.
+   - Add fuzz/property tests for parsing-heavy paths.
+   - Test harness implementation:
+   - Runner: `tests/run.sh` (invoked by `make test`)
+   - Harness docs: `tests/README.md`
+   - Regression suite: `tests/regression/test_cli_config_secret.sh`
+   - Runtime smoke suite: `tests/regression/test_runtime_smoke.sh`
+   - Golden suite: `tests/golden/test_tl_header_golden.sh` + `tests/golden/tl_header_golden.c`
+   - Fuzz/property suite: `tests/fuzz/test_config_parser_fuzz.sh`
+   - Fixtures: `tests/fixtures/config-valid-minimal.conf`, `tests/fixtures/config-invalid-missing-port.conf`, `tests/fixtures/config-invalid-empty.conf`
+   - Latest verification:
+   - Command: `make test`
+   - Result date: 2026-02-11
+   - Result: regression PASS, golden PASS, fuzz PASS (60/60), runtime smoke SKIP in this environment due upstream PID-width assert in `common/pid.c`
+   - Operation log:
+   - [x] 2026-02-11: Added a unified test runner and `make test` target.
+   - [x] 2026-02-11: Added regression coverage for config parsing and secret handling.
+   - [x] 2026-02-11: Added packet-level golden vectors for TL framing/parsing (`RPC_INVOKE_REQ`/`RPC_REQ_RESULT`/unsupported flags).
+   - [x] 2026-02-11: Added malformed-config fuzz/property sweep with timeout and crash detection.
+   - [x] 2026-02-11: Added runtime smoke checks for stats endpoint and malformed input survival, with explicit environment-aware skip behavior.
+   - Done when: tests fail on intentional behavior changes and pass on current C build.
+
+4. Create Rust Workspace and Tooling (No Behavior Change Yet)
+   - Add `Cargo.toml` workspace and initial crates (for example: `mtproxy-bin`, `mtproxy-core`, `mtproxy-ffi`).
+   - Add formatting/lint/test commands for Rust (`fmt`, `clippy`, `test`) and wire them into CI or scripts.
+   - Keep current C build path intact and default.
+   - Workspace and tooling implementation:
+   - Workspace manifest: `Cargo.toml`
+   - Initial crates:
+   - `rust/mtproxy-bin` (binary placeholder: `mtproxy-rust`)
+   - `rust/mtproxy-core` (core bootstrap crate)
+   - `rust/mtproxy-ffi` (FFI boundary bootstrap crate)
+   - Rust tooling script: `scripts/rust_tooling.sh`
+   - Rust docs: `rust/README.md`
+   - Make targets: `rust-check`, `rust-fmt`, `rust-fmt-check`, `rust-clippy`, `rust-test`, `rust-ci`
+   - Verification:
+   - `cargo check --workspace` (PASS, 2026-02-11)
+   - `make rust-ci` (PASS, 2026-02-11)
+   - `make all` (PASS, unchanged C default build path, 2026-02-11)
+   - Operation log:
+   - [x] 2026-02-11: Added Rust workspace root and crate structure.
+   - [x] 2026-02-11: Added script-backed Rust formatting/lint/test command set.
+   - [x] 2026-02-11: Wired Rust commands into `Makefile` without changing default C build target.
+   - [x] 2026-02-11: Verified `cargo check` passes and C build remains intact.
+   - Done when: `cargo check` passes while existing C binary still builds unchanged.
+
+5. Introduce a C/Rust Boundary for Incremental Migration
+   - Define stable FFI boundary so Rust and C modules can coexist during migration.
+   - Start with Rust calling C modules (or vice versa) through narrow, versioned interfaces.
+   - Document ownership rules for memory, threading, and error handling across FFI.
+   - Boundary implementation (first real bridge):
+   - Rust staticlib crate-type enabled in `rust/mtproxy-ffi/Cargo.toml`.
+   - Versioned C API declared in `rust/mtproxy-ffi/include/mtproxy_ffi.h`.
+   - Rust FFI exports implemented in `rust/mtproxy-ffi/src/lib.rs`:
+   - `mtproxy_ffi_api_version()`
+   - `mtproxy_ffi_startup_handshake(uint32_t expected_api_version)`
+   - C bridge wrapper implemented in `common/rust-ffi-bridge.c` and `common/rust-ffi-bridge.h`.
+   - Mixed startup hook added in `mtproto/mtproto-proxy.c` under `USE_RUST_FFI`.
+   - Mixed build target added in `Makefile`:
+   - `make mixed` -> `objs/bin/mtproto-proxy-mixed` (C engine + Rust staticlib).
+   - Boundary contract documentation:
+   - `rust/mtproxy-ffi/BOUNDARY.md`
+   - Verification:
+   - `make mixed` (PASS, 2026-02-11)
+   - `./objs/bin/mtproto-proxy-mixed -v /tmp/definitely-missing-mtproxy-config.conf` (PASS behavior parity: startup handshake log + same config-check failure path as C-only binary, exit code 1)
+   - `make all`, `make test`, `make rust-ci` (PASS, 2026-02-11)
+   - Operation log:
+   - [x] 2026-02-11: Added versioned Rust-exported C ABI surface and C bridge wrapper.
+   - [x] 2026-02-11: Added mixed build target that links C binary with Rust staticlib.
+   - [x] 2026-02-11: Wired startup handshake through FFI in mixed mode.
+   - [x] 2026-02-11: Documented ownership/threading/error-handling rules for the boundary.
+   - [x] 2026-02-11: Verified mixed binary startup flow parity with baseline failure path.
+   - Done when: a mixed C/Rust binary runs the same startup flow as the pure C binary.
+
+6. Migrate Low-Risk Utility Modules First (`common/`)
+   - Port deterministic utilities first: checksums/hashes/time/process helpers where behavior is easy to verify.
+   - Keep outputs byte-for-byte compatible via differential tests against C implementations.
+   - Replace one module at a time behind the FFI boundary.
+   - Step 6 module checklist (low-risk utility scope):
+   - [x] `common/crc32.c` (Rust-backed `crc32_partial` path in mixed mode, differential-checked)
+   - [x] `common/crc32c.c` (Rust-backed `crc32c_partial` path in mixed mode, differential-checked)
+   - [x] `common/md5.c` (mixed-mode Rust delegation for `md5`/`md5_hex`/`md5_hmac` with C fallback)
+   - [x] `common/sha1.c` (mixed-mode Rust delegation for `sha1` and `sha1_two_chunks` with C fallback)
+   - [x] `common/sha256.c` (mixed-mode Rust delegation for `sha256`/`sha256_two_chunks`/`sha256_hmac` with C fallback)
+   - [x] `common/precise-time.c` (mixed-mode Rust delegation for monotonic/realtime/precise-time helpers with C fallback)
+   - [x] `common/pid.c` (mixed-mode Rust delegation via FFI weak-symbol bridge)
+   - [x] `common/cpuid.c` (mixed-mode Rust delegation via FFI weak-symbol bridge)
+   - First utility migration implemented: CRC32 partial (`common/crc32` path)
+   - Rust implementation:
+   - `rust/mtproxy-ffi/src/lib.rs`: `mtproxy_ffi_crc32_partial(const uint8_t *data, size_t len, uint32_t crc)`
+   - C/Rust boundary updates:
+   - `rust/mtproxy-ffi/include/mtproxy_ffi.h`: CRC32 FFI API declaration
+   - `common/rust-ffi-bridge.c` + `common/rust-ffi-bridge.h`: CRC32/CRC32C bridge adapters and installers (`rust_ffi_enable_crc32_bridge`, `rust_ffi_enable_crc32c_bridge`)
+   - Additional Rust utility APIs implemented:
+   - `mtproxy_ffi_crc32c_partial(...)`
+   - `mtproxy_ffi_pid_init_common(...)`
+   - `mtproxy_ffi_pid_init_client(...)`
+   - `mtproxy_ffi_pid_init_server(...)`
+   - `mtproxy_ffi_matches_pid(...)`
+   - `mtproxy_ffi_process_id_is_newer(...)`
+   - `mtproxy_ffi_cpuid_fill(...)`
+   - `mtproxy_ffi_md5(...)`
+   - `mtproxy_ffi_md5_hex(...)`
+   - `mtproxy_ffi_md5_hmac(...)`
+   - `mtproxy_ffi_sha1(...)`
+   - `mtproxy_ffi_sha1_two_chunks(...)`
+   - `mtproxy_ffi_sha256(...)`
+   - `mtproxy_ffi_sha256_two_chunks(...)`
+   - `mtproxy_ffi_sha256_hmac(...)`
+   - `mtproxy_ffi_get_utime_monotonic(...)`
+   - `mtproxy_ffi_get_double_time(...)`
+   - `mtproxy_ffi_get_utime(...)`
+   - `mtproxy_ffi_get_precise_time(...)`
+   - `mtproxy_ffi_precise_now_value(...)`
+   - `mtproxy_ffi_precise_now_rdtsc_value(...)`
+   - `mtproxy_ffi_precise_time_value(...)`
+   - `mtproxy_ffi_precise_time_rdtsc_value(...)`
+   - Mixed startup hook:
+   - `mtproto/mtproto-proxy.c`: enables Rust CRC32 bridge in `USE_RUST_FFI` mode after handshake
+   - Differential compatibility validation:
+   - Runtime self-check in mixed startup compares Rust CRC32 vs `crc32_partial_generic` on fixed vectors and split updates.
+   - Golden differential artifact:
+   - `tests/golden/rust_crc32_differential.c`
+   - `tests/golden/test_rust_crc32_differential.sh`
+   - `tests/golden/rust_crc32c_differential.c`
+   - `tests/golden/test_rust_crc32c_differential.sh`
+   - `tests/golden/rust_hashes_differential.c`
+   - `tests/golden/test_rust_hashes_differential.sh`
+   - `tests/golden/rust_precise_time_smoke.c`
+   - `tests/golden/test_rust_precise_time_smoke.sh`
+   - Optional mixed harness path:
+   - `TEST_INCLUDE_MIXED=1 make test`
+   - `make mixed-test`
+   - Verification:
+   - `make rust-ci` (PASS, includes Rust CRC32 unit tests, 2026-02-11)
+   - `make mixed` (PASS, 2026-02-11)
+   - `make mixed-test` (PASS, includes CRC32/CRC32C differentials + hash differential + precise-time smoke checks, 2026-02-11)
+   - `./objs/bin/mtproto-proxy-mixed -v /tmp/definitely-missing-mtproxy-config.conf` (PASS: logs show startup handshake + CRC32/CRC32C differential self-checks + bridge enablement, 2026-02-11)
+   - Operation log:
+   - [x] 2026-02-11: Migrated CRC32 partial utility to Rust behind FFI.
+   - [x] 2026-02-11: Added mixed-mode bridge installer that swaps `crc32_partial` to Rust adapter after compatibility checks.
+   - [x] 2026-02-11: Added differential tests to prove byte-for-byte compatibility against C implementation.
+   - [x] 2026-02-11: Migrated CRC32C partial utility to Rust behind FFI with differential checks.
+   - [x] 2026-02-11: Migrated PID helpers to Rust-backed mixed-mode delegation.
+   - [x] 2026-02-11: Migrated CPUID helper to Rust-backed mixed-mode delegation.
+   - [x] 2026-02-11: Migrated MD5 helpers (`md5`, `md5_hex`, `md5_hmac`) to Rust-backed mixed-mode delegation.
+   - [x] 2026-02-11: Migrated SHA1 helpers (`sha1`, `sha1_two_chunks`) to Rust-backed mixed-mode delegation.
+   - [x] 2026-02-11: Migrated SHA256 helpers (`sha256`, `sha256_two_chunks`, `sha256_hmac`) to Rust-backed mixed-mode delegation.
+   - [x] 2026-02-11: Migrated precise-time helpers to Rust-backed mixed-mode delegation with mirrored state accessors.
+   - [x] 2026-02-11: Added mixed-mode hash differential test and precise-time smoke test to optional harness path.
+   - [x] 2026-02-11: Kept pure C default build path unchanged while enabling mixed utility replacement.
+   - Done when: selected `common` modules are Rust-backed and all differential tests pass.
+
+7. Migrate Config and Parsing Layer
+   - Port `parse-config`, `tl-parse`, and related parsing code with strict compatibility checks.
+   - Preserve error messages/codes where external tooling may rely on them.
+   - Increase fuzzing coverage for malformed/hostile inputs.
+   - Step 7 parser migration checklist:
+   - [x] `common/parse-config.c` scanner/int primitives delegate to Rust FFI in mixed mode with C fallback:
+   - `cfg_skipspc`, `cfg_skspc`, `cfg_getword`, `cfg_getstr`, `cfg_getint`, `cfg_getint_zero`, `cfg_getint_signed_zero`
+   - [x] `common/tl-parse.c` header parsing path (`tlf_query_header`, `tlf_query_answer_header`) delegates to Rust FFI parser helpers with C fallback.
+   - [x] Error-code compatibility preserved for migrated parser paths (`TL_ERROR_HEADER` and existing header error texts retained on C side).
+   - [x] Fuzz coverage expanded with additional hostile token/structure variants while keeping deterministic parser-rejection assertions.
+   - Rust parser API additions:
+   - `rust/mtproxy-ffi/include/mtproxy_ffi.h`:
+   - `mtproxy_ffi_cfg_skipspc`, `mtproxy_ffi_cfg_skspc`, `mtproxy_ffi_cfg_getword_len`, `mtproxy_ffi_cfg_getstr_len`
+   - `mtproxy_ffi_cfg_getint`, `mtproxy_ffi_cfg_getint_zero`, `mtproxy_ffi_cfg_getint_signed_zero`
+   - `mtproxy_ffi_tl_parse_query_header`, `mtproxy_ffi_tl_parse_answer_header`
+   - Rust implementation:
+   - `rust/mtproxy-ffi/src/lib.rs` (config lexer primitives + TL header parser helpers)
+   - Differential and compatibility tests:
+   - `tests/golden/rust_config_lexer_differential.c`
+   - `tests/golden/test_rust_config_lexer_differential.sh`
+   - `tests/golden/rust_tl_header_differential.c`
+   - `tests/golden/test_rust_tl_header_differential.sh`
+   - Harness updates:
+   - `tests/run.sh`: mixed-mode path now includes parser differential checks.
+   - `tests/fuzz/test_config_parser_fuzz.sh`: hostile malformed variants expanded.
+   - Verification:
+   - `make rust-ci` (PASS, includes Rust parser unit tests, 2026-02-11)
+   - `make all` (PASS, 2026-02-11)
+   - `make mixed` (PASS, 2026-02-11)
+   - `make test` (PASS, fuzz 60/60, 2026-02-11)
+   - `make mixed-test` (PASS, includes parser differential checks, 2026-02-11)
+   - Operation log:
+   - [x] 2026-02-11: Added Rust config-lexer primitive APIs and wired mixed-mode delegation in `common/parse-config.c`.
+   - [x] 2026-02-11: Added Rust TL query/answer header parser APIs and wired mixed-mode delegation in `common/tl-parse.c`.
+   - [x] 2026-02-11: Added parser differential tests for config lexer and TL header parsing.
+   - [x] 2026-02-11: Expanded malformed-config fuzz token space for parser hardening.
+   - [x] 2026-02-11: Verified no regression in existing golden/regression suites and mixed-mode startup path.
+   - Done when: Rust parser passes existing golden tests and fuzz corpus without regressions.
+
+8. Migrate Observability and Operational Utilities
+   - Port stats/logging/process metrics modules (`kprintf`, `common-stats`, `proc-stat`) to Rust equivalents.
+   - Keep existing operator-facing endpoints and field names stable.
+   - Validate output compatibility for monitoring consumers.
+   - Step 8 observability migration checklist:
+   - [x] `common/proc-stat.c` delegates `/proc/*/stat` parsing to Rust in mixed mode with C fallback preserved.
+   - [x] `common/common-stats.c` delegates `statm`/`meminfo` parsing helpers to Rust in mixed mode with C fallback preserved.
+   - [x] `common/kprintf.c` delegates log-prefix formatting helper to Rust in mixed mode with C fallback preserved.
+   - [x] Existing stats endpoint field names and key formatting remain unchanged (parser/helper swap only).
+   - Rust observability API additions:
+   - `mtproxy_ffi_parse_proc_stat_line(...)`
+   - `mtproxy_ffi_read_proc_stat_file(...)`
+   - `mtproxy_ffi_parse_statm(...)`
+   - `mtproxy_ffi_parse_meminfo_summary(...)`
+   - `mtproxy_ffi_format_log_prefix(...)`
+   - Differential and compatibility tests:
+   - `tests/golden/rust_observability_differential.c`
+   - `tests/golden/test_rust_observability_differential.sh`
+   - Harness updates:
+   - `tests/run.sh` mixed path includes observability differential test.
+   - `tests/README.md` documents observability differential suite.
+   - Verification:
+   - `make rust-ci` (PASS, includes observability helper unit coverage, 2026-02-11)
+   - `make all` (PASS, 2026-02-11)
+   - `make mixed` (PASS, 2026-02-11)
+   - `make test` (PASS, 2026-02-11)
+   - `make mixed-test` (PASS, includes observability differential check, 2026-02-11)
+   - `./objs/bin/mtproto-proxy-mixed -v /tmp/definitely-missing-mtproxy-config.conf` (PASS startup parity path, exit code 1, 2026-02-11)
+   - Operation log:
+   - [x] 2026-02-11: Added Rust proc-stat parser helpers and wired mixed-mode delegation in `common/proc-stat.c`.
+   - [x] 2026-02-11: Added Rust statm/meminfo parser helpers and wired mixed-mode delegation in `common/common-stats.c`.
+   - [x] 2026-02-11: Added Rust log-prefix formatter helper and wired mixed-mode delegation in `common/kprintf.c`.
+   - [x] 2026-02-11: Added observability differential test coverage to optional mixed harness path.
+   - Done when: operational dashboards can use the Rust-backed binary without changes.
+
+9. Migrate Concurrency and Job Infrastructure
+   - Port `jobs`, `mp-queue`, and thread orchestration pieces to Rust primitives.
+   - Preserve scheduling semantics and queue backpressure behavior.
+   - Add race/stress tests and long-running stability tests.
+   - Step 9 kickoff checklist (`mp-queue` + `jobs` boundary extraction first):
+   - [x] Extracted explicit Step 9 FFI boundary contract for `mp-queue`/`jobs` operations:
+   - `rust/mtproxy-ffi/include/mtproxy_ffi.h`: `mtproxy_ffi_concurrency_boundary_t`, op-mask constants, `mtproxy_ffi_get_concurrency_boundary(...)`
+   - `rust/mtproxy-ffi/src/lib.rs`: Rust export and contract payload (contract vs implemented op masks)
+   - [x] Added mixed-startup contract validation before config load:
+   - `common/rust-ffi-bridge.h`: `rust_ffi_check_concurrency_boundary()`
+   - `common/rust-ffi-bridge.c`: strict version/mask validation with fatal diagnostics on mismatch
+   - `mtproto/mtproto-proxy.c`: mixed pre-init hook now validates concurrency boundary after startup handshake
+   - [x] Added mixed-mode differential coverage for boundary extraction contract:
+   - `tests/golden/rust_concurrency_boundary_differential.c`
+   - `tests/golden/test_rust_concurrency_boundary_differential.sh`
+   - `tests/run.sh` + `tests/README.md` updated to include the new optional mixed suite
+   - Next queued implementation slices:
+   - [x] Routed first `mp-queue` operation set (`push`/`pop`/`is_empty`) through installable adapters with default C fallback.
+   - `common/mp-queue.h`: added `mpq_ops_t` + install/reset/get-default APIs.
+   - `common/mp-queue.c`: introduced dispatch table (`MpqActiveOps`) and C-default implementations (`mpq_*_c_impl`).
+   - `common/rust-ffi-bridge.c`: installs mixed-mode mp-queue adapters via `rust_ffi_enable_concurrency_bridges()`.
+   - [x] Routed first `jobs` lifecycle surface (`create_async_job` + `job_signal` + refcount ops) through installable adapters with default C fallback.
+   - `jobs/jobs.h`: added `jobs_lifecycle_ops_t` + install/reset/get-default APIs.
+   - `jobs/jobs.c`: introduced lifecycle dispatch table (`JobsActiveLifecycleOps`) and C-default implementations.
+   - `common/rust-ffi-bridge.c`: installs mixed-mode lifecycle adapters via `rust_ffi_enable_concurrency_bridges()`.
+   - `mtproto/mtproto-proxy.c`: mixed pre-init now invokes concurrency adapter install immediately after boundary validation.
+   - `rust/mtproxy-ffi/src/lib.rs`: Step 9 `*_implemented_ops` masks now advertise these routed slices.
+   - Verification:
+   - `cargo test -p mtproxy-ffi` (PASS, includes new Step 9 concurrency boundary unit coverage, 2026-02-11)
+   - `make mixed-test` (PASS, includes `test_rust_concurrency_boundary_differential.sh`, 2026-02-11)
+   - `make mixed-test` (PASS after enabling mp-queue/jobs lifecycle adapter routing, 2026-02-11)
+   - Operation log:
+   - [x] 2026-02-11: Added Step 9 `mp-queue`/`jobs` boundary contract API and op-mask constants to FFI headers.
+   - [x] 2026-02-11: Exported Rust concurrency boundary probe (`mtproxy_ffi_get_concurrency_boundary`) with explicit contract/implementation masks.
+   - [x] 2026-02-11: Added mixed startup validation hook for Step 9 boundary compatibility in `rust-ffi-bridge` and wired it in `mtfront_pre_init`.
+   - [x] 2026-02-11: Added optional mixed golden differential test for concurrency boundary contract and wired it into `tests/run.sh`.
+   - [x] 2026-02-11: Verified Step 9 boundary extraction via Rust unit tests and full mixed harness run.
+   - [x] 2026-02-11: Routed `mp-queue` (`push`/`pop`/`is_empty`) through installable dispatch ops with C-default implementations.
+   - [x] 2026-02-11: Routed `jobs` lifecycle (`create_async_job`/`job_signal`/`job_incref`/`job_decref`) through installable dispatch ops with C-default implementations.
+   - [x] 2026-02-11: Added mixed-mode concurrency adapter installer (`rust_ffi_enable_concurrency_bridges`) and wired it into startup.
+   - [x] 2026-02-11: Updated boundary implemented-op masks and strengthened concurrency boundary differential checks.
+   - Done when: multithreaded load tests match or exceed C stability.
+
+10. Migrate Network Foundation (`net/` Core)
+   - Port event loop, timers, connection state, and message buffer layers incrementally.
+   - Maintain wire-level behavior and timeout semantics exactly during transition.
+   - Keep connection lifecycle tests and soak tests running continuously.
+   - Step 10 kickoff checklist (`net-events`/`net-timers`/`net-msg-buffers` extraction first):
+   - [x] Added explicit Step 10 FFI boundary contract for net-core operations:
+   - `rust/mtproxy-ffi/include/mtproxy_ffi.h`: `mtproxy_ffi_network_boundary_t`, Step 10 op masks, helper declarations.
+   - `rust/mtproxy-ffi/src/lib.rs`: `mtproxy_ffi_get_network_boundary(...)` with contract/implemented masks.
+   - [x] Added mixed-startup boundary validation before config load:
+   - `common/rust-ffi-bridge.h`: `rust_ffi_check_network_boundary()`.
+   - `common/rust-ffi-bridge.c`: strict version/mask validation for Step 10 net-core boundary.
+   - `mtproto/mtproto-proxy.c`: mixed pre-init now validates Step 10 net boundary after Step 9 check.
+   - [x] Routed first `net-events` operation set through Rust FFI with C fallback:
+   - `net/net-events.c`: `epoll_conv_flags` and `epoll_unconv_flags` now delegate to `mtproxy_ffi_net_epoll_*` when linked.
+   - [x] Routed first `net-timers` helper through Rust FFI with C fallback:
+   - `net/net-timers.c`: wait-ms conversion in `thread_run_timers` now delegates to `mtproxy_ffi_net_timers_wait_msec`.
+   - [x] Routed first `net-msg-buffers` helper through Rust FFI with C fallback:
+   - `net/net-msg-buffers.c`: size-class index selection in `alloc_msg_buffer` now delegates to `mtproxy_ffi_msg_buffers_pick_size_index`.
+   - [x] Added mixed-mode differential coverage for Step 10 boundary/helper semantics:
+   - `tests/golden/rust_network_boundary_differential.c`
+   - `tests/golden/test_rust_network_boundary_differential.sh`
+   - `tests/run.sh` + `tests/README.md` updated to include the new optional mixed suite.
+   - Rust Step 10 API additions:
+   - `mtproxy_ffi_get_network_boundary(...)`
+   - `mtproxy_ffi_net_epoll_conv_flags(...)`
+   - `mtproxy_ffi_net_epoll_unconv_flags(...)`
+   - `mtproxy_ffi_net_timers_wait_msec(...)`
+   - `mtproxy_ffi_msg_buffers_pick_size_index(...)`
+   - Verification:
+   - `make rust-ci` (PASS, 2026-02-11)
+   - `make mixed` (PASS, 2026-02-11)
+   - `tests/golden/test_rust_network_boundary_differential.sh` (PASS, 2026-02-11)
+   - `./objs/bin/mtproto-proxy-mixed -v /tmp/definitely-missing-mtproxy-config.conf` (PASS: startup handshake + Step 9 boundary + Step 10 net boundary logs observed; expected config-check failure path; exit code 1, 2026-02-11)
+   - `make mixed-test` (FAIL in this sandbox due environment restrictions: netlink/socket operations are not permitted, 2026-02-11)
+   - Operation log:
+   - [x] 2026-02-11: Added Step 10 net-core boundary contract probe and op-mask constants to FFI headers/Rust exports.
+   - [x] 2026-02-11: Added mixed startup validation hook for Step 10 net boundary compatibility in `rust-ffi-bridge`.
+   - [x] 2026-02-11: Delegated `net-events` epoll flag conversion helpers to Rust with C fallback.
+   - [x] 2026-02-11: Delegated `net-timers` wait-ms conversion helper to Rust with C fallback.
+   - [x] 2026-02-11: Delegated `net-msg-buffers` size-class selection helper to Rust with C fallback.
+   - [x] 2026-02-11: Added mixed differential test coverage for Step 10 boundary/helper semantics and wired it into optional mixed harness.
+   - Done when: Rust-backed networking passes interoperability and soak tests.
+
+11. Migrate RPC/TCP Protocol Layers
+   - Port `net-tcp-*`, `net-rpc-targets`, and shared RPC machinery with packet-compatibility tests.
+   - Validate server/client interoperability against existing C binary and Telegram endpoints.
+   - Ensure no framing/parsing divergence under partial or fragmented packets.
+   - Done when: mixed and pure Rust modes are protocol-compatible in bidirectional tests.
+
+12. Migrate Crypto Integration Safely
+   - Port crypto glue (`net-crypto-*`, `crypto/aesni*`) with conservative approach.
+   - Keep trusted crypto backends (OpenSSL or audited Rust crates) and avoid ad-hoc crypto rewrites.
+   - Add known-answer tests and side-channel-aware reviews for sensitive paths.
+   - Done when: crypto tests, interoperability checks, and performance thresholds all pass.
+
+13. Port Engine and MTProto Application Logic Last
+   - Migrate `engine/*` and `mtproto/*` stateful logic after lower layers are stable.
+   - Use trace-based regression tests to validate state-machine equivalence.
+   - Keep fallback path to C implementation until full parity is proven.
+   - Done when: end-to-end proxy behavior is equivalent under production-like load.
+
+14. Flip Default to Rust and Decommission C Gradually
+   - Make Rust binary the default build/run target while keeping a short-lived C fallback option.
+   - Remove migrated C modules in small batches after each passes burn-in.
+   - Simplify build scripts and dependency graph after fallback window ends.
+   - Done when: production runs on Rust by default and deprecated C paths are removed.
+
+15. Final Hardening, Security Review, and Release
+   - Run full performance comparison vs baseline and investigate regressions.
+   - Audit all `unsafe`/FFI boundaries, memory ownership, and panic handling strategy.
+   - Update docs, runbook, deployment notes, and rollback plan.
+   - Done when: release criteria are met, migration is documented, and cutover is approved.

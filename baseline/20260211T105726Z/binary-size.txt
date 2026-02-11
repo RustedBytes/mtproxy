@@ -1,0 +1,1 @@
+-rwxrwxr-x 1 yehor yehor 523K Feb 11 10:57 /home/yehor/Work/RustedBytes/MTProxy/objs/bin/mtproto-proxy

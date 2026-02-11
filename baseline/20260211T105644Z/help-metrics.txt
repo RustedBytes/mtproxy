@@ -1,0 +1,5 @@
+Command exited with non-zero status 2
+help_elapsed_sec=0.00
+help_user_sec=0.00
+help_sys_sec=0.00
+help_maxrss_kb=4032

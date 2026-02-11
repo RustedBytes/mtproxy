@@ -1,0 +1,4 @@
+[1222392][2026-02-11 10:57:30.797765 local] Invoking engine mtproxy-0.02 compiled at Feb 11 2026 10:57:26 by gcc 13.3.0 64-bit after commit cafc3380a81671579ce366d0594b9a8e450827e9
+[1222392][2026-02-11 10:57:30.797800 local] config_filename = '/home/yehor/Work/RustedBytes/MTProxy/baseline/20260211T105726Z/missing-proxy-multi.conf'
+[1222392][2026-02-11 10:57:30.797806 local] cannot re-read config file /home/yehor/Work/RustedBytes/MTProxy/baseline/20260211T105726Z/missing-proxy-multi.conf: No such file or directory
+config check failed! (code -1)

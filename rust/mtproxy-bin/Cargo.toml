@@ -1,0 +1,17 @@
+[package]
+name = "mtproxy-bin"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "mtproxy-rust"
+path = "src/main.rs"
+
+[dependencies]
+mtproxy-core = { path = "../mtproxy-core" }
+mtproxy-ffi = { path = "../mtproxy-ffi" }
+
+[lints]
+workspace = true
