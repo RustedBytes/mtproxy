@@ -58,8 +58,8 @@
 
 #define MODULE tl_parse
 
-extern int32_t mtproxy_ffi_tl_parse_query_header (const uint8_t *data, size_t len, mtproxy_ffi_tl_header_parse_result_t *out) __attribute__ ((weak));
-extern int32_t mtproxy_ffi_tl_parse_answer_header (const uint8_t *data, size_t len, mtproxy_ffi_tl_header_parse_result_t *out) __attribute__ ((weak));
+extern int32_t mtproxy_ffi_tl_parse_query_header (const uint8_t *data, size_t len, mtproxy_ffi_tl_header_parse_result_t *out);
+extern int32_t mtproxy_ffi_tl_parse_answer_header (const uint8_t *data, size_t len, mtproxy_ffi_tl_header_parse_result_t *out);
 
 MODULE_STAT_TYPE {
   long long rpc_queries_received, rpc_answers_error, rpc_answers_received;
@@ -114,39 +114,36 @@ static int rust_tl_header_set_error (struct tl_in_state *tlio_in, const mtproxy_
 }
 
 static int rust_tl_try_query_header (struct tl_in_state *tlio_in, struct tl_query_header *header, int total_unread) {
-  if (!mtproxy_ffi_tl_parse_query_header) {
-    return 0;
-  }
-
   int unread = tl_fetch_unread ();
-  if (unread <= 0) {
-    return 0;
+  if (unread < 0) {
+    tl_fetch_set_error (TL_ERROR_HEADER, "Expected RPC_INVOKE_REQ or RPC_INVOKE_KPHP_REQ");
+    return -1;
   }
-
-  unsigned char *buf = malloc ((size_t) unread);
-  if (!buf) {
-    return 0;
+  unsigned char *buf = unread > 0 ? malloc ((size_t) unread) : NULL;
+  if (unread > 0 && !buf) {
+    tl_fetch_set_error (TL_ERROR_HEADER, "Expected RPC_INVOKE_REQ or RPC_INVOKE_KPHP_REQ");
+    return -1;
   }
-
-  int ok = (tl_fetch_lookup_data (buf, unread) == unread);
-  if (!ok) {
+  if (unread > 0 && tl_fetch_lookup_data (buf, unread) != unread) {
     free (buf);
-    return 0;
+    tl_fetch_set_error (TL_ERROR_HEADER, "Expected RPC_INVOKE_REQ or RPC_INVOKE_KPHP_REQ");
+    return -1;
   }
 
   mtproxy_ffi_tl_header_parse_result_t result = {0};
   int rc = mtproxy_ffi_tl_parse_query_header (buf, (size_t) unread, &result);
   free (buf);
-
-  if (rc < 0) {
-    return 0;
+  if (rc != 0) {
+    tl_fetch_set_error (TL_ERROR_HEADER, "Expected RPC_INVOKE_REQ or RPC_INVOKE_KPHP_REQ");
+    return -1;
   }
   if (result.status < 0) {
     rust_tl_header_set_error (tlio_in, &result);
     return -1;
   }
   if (result.consumed <= 0 || result.consumed > unread) {
-    return 0;
+    tl_fetch_set_error (TL_ERROR_HEADER, "Expected RPC_INVOKE_REQ or RPC_INVOKE_KPHP_REQ");
+    return -1;
   }
 
   header->op = result.op;
@@ -162,39 +159,37 @@ static int rust_tl_try_query_header (struct tl_in_state *tlio_in, struct tl_quer
 }
 
 static int rust_tl_try_answer_header (struct tl_in_state *tlio_in, struct tl_query_header *header, int total_unread) {
-  if (!mtproxy_ffi_tl_parse_answer_header) {
-    return 0;
-  }
-
   int unread = tl_fetch_unread ();
-  if (unread <= 0) {
-    return 0;
+  if (unread < 0) {
+    tl_fetch_set_error (TL_ERROR_HEADER, "Expected RPC_REQ_ERROR or RPC_REQ_RESULT");
+    return -1;
   }
-
-  unsigned char *buf = malloc ((size_t) unread);
-  if (!buf) {
-    return 0;
+  unsigned char *buf = unread > 0 ? malloc ((size_t) unread) : NULL;
+  if (unread > 0 && !buf) {
+    tl_fetch_set_error (TL_ERROR_HEADER, "Expected RPC_REQ_ERROR or RPC_REQ_RESULT");
+    return -1;
   }
-
-  int ok = (tl_fetch_lookup_data (buf, unread) == unread);
-  if (!ok) {
+  if (unread > 0 && tl_fetch_lookup_data (buf, unread) != unread) {
     free (buf);
-    return 0;
+    tl_fetch_set_error (TL_ERROR_HEADER, "Expected RPC_REQ_ERROR or RPC_REQ_RESULT");
+    return -1;
   }
 
   mtproxy_ffi_tl_header_parse_result_t result = {0};
   int rc = mtproxy_ffi_tl_parse_answer_header (buf, (size_t) unread, &result);
   free (buf);
 
-  if (rc < 0) {
-    return 0;
+  if (rc != 0) {
+    tl_fetch_set_error (TL_ERROR_HEADER, "Expected RPC_REQ_ERROR or RPC_REQ_RESULT");
+    return -1;
   }
   if (result.status < 0) {
     rust_tl_header_set_error (tlio_in, &result);
     return -1;
   }
   if (result.consumed <= 0 || result.consumed > unread) {
-    return 0;
+    tl_fetch_set_error (TL_ERROR_HEADER, "Expected RPC_REQ_ERROR or RPC_REQ_RESULT");
+    return -1;
   }
 
   header->op = result.op;
@@ -715,24 +710,6 @@ int tlf_init_str (struct tl_in_state *tlio_in, const char *s, int size) {
   return __tl_fetch_init (tlio_in, (void *)s, 0, tl_type_str, &tl_in_str_methods, size);
 }
 
-int tlf_query_flags (struct tl_in_state *tlio_in, struct tl_query_header *header) {
-  int flags = tl_fetch_int ();
-  if (tl_fetch_error ()) {
-    return -1;
-  }
-  if (header->flags & flags) {
-    tl_fetch_set_error_format (TL_ERROR_HEADER, "Duplicate flags in header 0x%08x", header->flags & flags);
-    return -1;
-  }
-  if (flags) {
-    tl_fetch_set_error_format (TL_ERROR_HEADER, "Unsupported flags in header 0x%08x", flags);
-    return -1;
-  }
-  header->flags |= flags;
-
-  return 0;
-}
-
 int tlf_query_header (struct tl_in_state *tlio_in, struct tl_query_header *header) {
   assert (header);
   memset (header, 0, sizeof (*header));
@@ -742,75 +719,10 @@ int tlf_query_header (struct tl_in_state *tlio_in, struct tl_query_header *heade
   }
 
   int rust_res = rust_tl_try_query_header (tlio_in, header, t);
-  if (rust_res < 0) {
+  if (rust_res <= 0) {
     return -1;
   }
-  if (rust_res > 0) {
-    return rust_res;
-  }
-
-  header->op = tl_fetch_int ();
-  header->real_op = header->op;
-  header->ref_cnt = 1;
-  if (header->op != (int)RPC_INVOKE_REQ && header->op != (int)RPC_INVOKE_KPHP_REQ) {
-    tl_fetch_set_error (TL_ERROR_HEADER, "Expected RPC_INVOKE_REQ or RPC_INVOKE_KPHP_REQ");
-    return -1;
-  }
-  header->qid = tl_fetch_long ();
-  if (header->op == (int)RPC_INVOKE_KPHP_REQ) {
-    //tl_fetch_raw_data (header->invoke_kphp_req_extra, 24);
-    if (tl_fetch_error ()) {
-      return -1;
-    }
-    MODULE_STAT->rpc_queries_received ++;
-    return t - tl_fetch_unread ();
-  }
-  while (1) {
-    int op = tl_fetch_lookup_int ();
-    int ok = 1;
-    switch (op) {
-    case RPC_DEST_ACTOR:
-      assert (tl_fetch_int () == (int)RPC_DEST_ACTOR);
-      header->actor_id = tl_fetch_long ();
-      break;
-    case RPC_DEST_ACTOR_FLAGS:
-      assert (tl_fetch_int () == (int)RPC_DEST_ACTOR_FLAGS);
-      header->actor_id = tl_fetch_long ();
-      tlf_query_flags (tlio_in, header);
-      break;
-    case RPC_DEST_FLAGS:
-      assert (tl_fetch_int () == (int)RPC_DEST_FLAGS);      
-      tlf_query_flags (tlio_in, header);
-      break;
-    default:
-      ok = 0;
-      break;
-    }
-    if (tl_fetch_error ()) {
-      return -1;
-    }
-    if (!ok) { 
-      MODULE_STAT->rpc_queries_received ++;
-      return t - tl_fetch_unread ();
-    }
-  }
-}
-
-int tlf_query_answer_flags (struct tl_in_state *tlio_in, struct tl_query_header *header) {
-  int flags = tl_fetch_int ();
-  if (tl_fetch_error ()) {
-    return -1;
-  }
-  if (header->flags & flags) {
-    tl_fetch_set_error_format (TL_ERROR_HEADER, "Duplicate flags in header 0x%08x", header->flags & flags);
-    return -1;
-  }
-  if (flags) {
-    tl_fetch_set_error_format (TL_ERROR_HEADER, "Unsupported flags in header 0x%08x", flags);
-    return -1;
-  }
-  header->flags |= flags;
-  return 0;
+  return rust_res;
 }
 
 int tlf_query_answer_header (struct tl_in_state *tlio_in, struct tl_query_header *header) {
@@ -822,57 +734,10 @@ int tlf_query_answer_header (struct tl_in_state *tlio_in, struct tl_query_header
   }
 
   int rust_res = rust_tl_try_answer_header (tlio_in, header, t);
-  if (rust_res < 0) {
+  if (rust_res <= 0) {
     return -1;
   }
-  if (rust_res > 0) {
-    return rust_res;
-  }
-
-  header->op = tl_fetch_int ();
-  header->real_op = header->op;
-  header->ref_cnt = 1;
-  if (header->op != RPC_REQ_ERROR && header->op != RPC_REQ_RESULT ) {
-    tl_fetch_set_error (TL_ERROR_HEADER, "Expected RPC_REQ_ERROR or RPC_REQ_RESULT");
-    return -1;
-  }
-  header->qid = tl_fetch_long ();
-  while (1) {
-    int ok = 1;
-    if (header->op != RPC_REQ_ERROR) {
-      int op = tl_fetch_lookup_int ();
-      switch (op) {
-      case RPC_REQ_ERROR:
-        assert (tl_fetch_int () == RPC_REQ_ERROR);
-        header->op = RPC_REQ_ERROR_WRAPPED;
-        tl_fetch_long ();
-        break;
-      case RPC_REQ_ERROR_WRAPPED:
-        header->op = RPC_REQ_ERROR_WRAPPED;
-        break;
-      case RPC_REQ_RESULT_FLAGS:
-        assert (tl_fetch_int () == (int)RPC_REQ_RESULT_FLAGS);
-        tlf_query_answer_flags (tlio_in, header);
-        break;
-      default:
-        ok = 0;
-        break;
-      }
-    } else {
-      ok = 0;
-    }
-    if (tl_fetch_error ()) {
-      return -1;
-    }
-    if (!ok) {
-      if (header->op == RPC_REQ_ERROR || header->op == RPC_REQ_ERROR_WRAPPED) {
-        MODULE_STAT->rpc_answers_error ++;
-      } else {
-        MODULE_STAT->rpc_answers_received ++;
-      }
-      return t - tl_fetch_unread ();
-    }
-  }
+  return rust_res;
 }
 
 static inline int __tl_store_init (struct tl_out_state *tlio_out, void *out, void *out_extra, enum tl_type type, const struct tl_out_methods *methods, int size, long long qid) {

@@ -40,8 +40,8 @@
 #include "net/net-connections.h"
 #include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 
-extern int32_t mtproxy_ffi_parse_statm (const char *buf, size_t len, int32_t m, int64_t page_size, int64_t *out_values) __attribute__ ((weak));
-extern int32_t mtproxy_ffi_parse_meminfo_summary (const char *buf, size_t len, mtproxy_ffi_meminfo_summary_t *out) __attribute__ ((weak));
+extern int32_t mtproxy_ffi_parse_statm (const char *buf, size_t len, int32_t m, int64_t page_size, int64_t *out_values);
+extern int32_t mtproxy_ffi_parse_meminfo_summary (const char *buf, size_t len, mtproxy_ffi_meminfo_summary_t *out);
 
 static int read_whole_file (char *filename, void *output, int olen) {
   int fd = open (filename, O_RDONLY), n = -1;
@@ -78,32 +78,16 @@ static int parse_statm (const char *buf, long long *a, int m) {
     page_size = sysconf (_SC_PAGESIZE);
     assert (page_size > 0);
   }
-
-  if (mtproxy_ffi_parse_statm) {
-    int64_t parsed[7] = {0};
-    if (mtproxy_ffi_parse_statm (buf, strlen (buf), m, page_size, parsed) == 0) {
-      int i;
-      for (i = 0; i < m && i < 7; i++) {
-        a[i] = parsed[i];
-      }
-      return 0;
-    }
-  }
-
-  int i;
   if (m > 7) {
     m = 7;
   }
-  const char *p = buf;
-  char *q;
-  errno = 0;
+  int64_t parsed[7] = {0};
+  if (mtproxy_ffi_parse_statm (buf, strlen (buf), m, page_size, parsed) != 0) {
+    return -1;
+  }
+  int i;
   for (i = 0; i < m; i++) {
-    a[i] = strtoll (p, &q, 10);
-    if (p == q || errno) {
-      return -1;
-    }
-    a[i] *= page_size;
-    p = q;
+    a[i] = parsed[i];
   }
   return 0;
 }
@@ -134,64 +118,19 @@ int am_get_memory_stats (am_memory_stat_t *S, int flags) {
   }
 
   if (flags & AM_GET_MEMORY_USAGE_OVERALL) {
-    char buf[16384], *p;
+    char buf[16384];
     int n = read_whole_file ("/proc/meminfo", buf, sizeof (buf));
     if (n < 0) {
       return -1;
     }
-
-    if (mtproxy_ffi_parse_meminfo_summary) {
-      mtproxy_ffi_meminfo_summary_t rs = {0};
-      if (mtproxy_ffi_parse_meminfo_summary (buf, n, &rs) == 0) {
-        S->mem_free = rs.mem_free;
-        S->mem_cached = rs.mem_cached;
-        S->swap_total = rs.swap_total;
-        S->swap_free = rs.swap_free;
-        S->swap_used = S->swap_total - S->swap_free;
-        return 0;
-      }
-    }
-
-    vkprintf (4, "/proc/meminfo: %s\n", buf);
-    char suffix[32];
-    long long value;
-    int r = 0;
-    for (p = strtok (buf, "\n"); r != 15 && p != NULL; p = strtok (NULL, "\n")) {
-      switch (*p++) {
-        case 'C':
-        if (!memcmp (p, "ached:", 6)) {
-          if (sscanf (p + 6, "%lld%31s", &value, suffix) == 2 && !strcmp (suffix, "kB")) {
-            S->mem_cached = value << 10;
-            r |= 8;
-          }
-        }
-        break;
-        case 'M':
-        if (!memcmp (p, "emFree:", 7)) {
-          if (sscanf (p + 7, "%lld%31s", &value, suffix) == 2 && !strcmp (suffix, "kB")) {
-            S->mem_free = value << 10;
-            r |= 1;
-          }
-        }
-        break;
-        case 'S':
-        if (!memcmp (p, "wapTotal:", 9)) {
-          if (sscanf (p + 9, "%lld%31s", &value, suffix) == 2 && !strcmp (suffix, "kB")) {
-            S->swap_total = value << 10;
-            r |= 2;
-          }
-        } else if (!memcmp (p, "wapFree:", 8)) {
-          if (sscanf (p + 8, "%lld%31s", &value, suffix) == 2 && !strcmp (suffix, "kB")) {
-            S->swap_free = value << 10;
-            r |= 4;
-          }
-        }
-        break;
-      }
-    }
-    if (r != 15) {
+    mtproxy_ffi_meminfo_summary_t rs = {0};
+    if (mtproxy_ffi_parse_meminfo_summary (buf, n, &rs) != 0) {
       return -1;
     }
+    S->mem_free = rs.mem_free;
+    S->mem_cached = rs.mem_cached;
+    S->swap_total = rs.swap_total;
+    S->swap_free = rs.swap_free;
     S->swap_used = S->swap_total - S->swap_free;
   }
   return 0;

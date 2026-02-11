@@ -44,7 +44,7 @@
 #include "precise-time.h"
 #include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 
-extern int32_t mtproxy_ffi_format_log_prefix (int32_t pid, int32_t year, int32_t mon, int32_t mday, int32_t hour, int32_t min, int32_t sec, int32_t usec, char *out, size_t out_len) __attribute__ ((weak));
+extern int32_t mtproxy_ffi_format_log_prefix (int32_t pid, int32_t year, int32_t mon, int32_t mday, int32_t hour, int32_t min, int32_t sec, int32_t usec, char *out, size_t out_len);
 
 int verbosity;
 const char *logname;
@@ -258,24 +258,19 @@ void kprintf (const char *format, ...) {
     memset (&t, 0, sizeof (t));
   }
 
-  int n = -1;
-  if (mtproxy_ffi_format_log_prefix) {
-    n = mtproxy_ffi_format_log_prefix (
-      getpid (),
-      t.tm_year + 1900,
-      t.tm_mon + 1,
-      t.tm_mday,
-      t.tm_hour,
-      t.tm_min,
-      t.tm_sec,
-      (int) tv.tv_usec,
-      mp_kprintf_buf,
-      sizeof (mp_kprintf_buf)
-    );
-  }
-  if (n < 0) {
-    n = snprintf (mp_kprintf_buf, sizeof (mp_kprintf_buf), "[%d][%4d-%02d-%02d %02d:%02d:%02d.%06d local] ", getpid (), t.tm_year + 1900, t.tm_mon + 1, t.tm_mday, t.tm_hour, t.tm_min, t.tm_sec, (int) tv.tv_usec);
-  }
+  int n = mtproxy_ffi_format_log_prefix (
+    getpid (),
+    t.tm_year + 1900,
+    t.tm_mon + 1,
+    t.tm_mday,
+    t.tm_hour,
+    t.tm_min,
+    t.tm_sec,
+    (int) tv.tv_usec,
+    mp_kprintf_buf,
+    sizeof (mp_kprintf_buf)
+  );
+  assert (n >= 0 && n < (int) sizeof (mp_kprintf_buf));
   if (n < sizeof (mp_kprintf_buf) - 1) {
     errno = old_errno;
     va_list ap;

@@ -41,13 +41,13 @@ static char *config_buff;
 char *config_name, *cfg_start, *cfg_end, *cfg_cur;
 int config_bytes, cfg_lno, cfg_lex = -1;
 
-extern int32_t mtproxy_ffi_cfg_skipspc (const char *cur, size_t len, int32_t line_no, mtproxy_ffi_cfg_scan_result_t *out) __attribute__ ((weak));
-extern int32_t mtproxy_ffi_cfg_skspc (const char *cur, size_t len, int32_t line_no, mtproxy_ffi_cfg_scan_result_t *out) __attribute__ ((weak));
-extern int32_t mtproxy_ffi_cfg_getword_len (const char *cur, size_t len) __attribute__ ((weak));
-extern int32_t mtproxy_ffi_cfg_getstr_len (const char *cur, size_t len) __attribute__ ((weak));
-extern int32_t mtproxy_ffi_cfg_getint (const char *cur, size_t len, mtproxy_ffi_cfg_int_result_t *out) __attribute__ ((weak));
-extern int32_t mtproxy_ffi_cfg_getint_zero (const char *cur, size_t len, mtproxy_ffi_cfg_int_result_t *out) __attribute__ ((weak));
-extern int32_t mtproxy_ffi_cfg_getint_signed_zero (const char *cur, size_t len, mtproxy_ffi_cfg_int_result_t *out) __attribute__ ((weak));
+extern int32_t mtproxy_ffi_cfg_skipspc (const char *cur, size_t len, int32_t line_no, mtproxy_ffi_cfg_scan_result_t *out);
+extern int32_t mtproxy_ffi_cfg_skspc (const char *cur, size_t len, int32_t line_no, mtproxy_ffi_cfg_scan_result_t *out);
+extern int32_t mtproxy_ffi_cfg_getword_len (const char *cur, size_t len);
+extern int32_t mtproxy_ffi_cfg_getstr_len (const char *cur, size_t len);
+extern int32_t mtproxy_ffi_cfg_getint (const char *cur, size_t len, mtproxy_ffi_cfg_int_result_t *out);
+extern int32_t mtproxy_ffi_cfg_getint_zero (const char *cur, size_t len, mtproxy_ffi_cfg_int_result_t *out);
+extern int32_t mtproxy_ffi_cfg_getint_signed_zero (const char *cur, size_t len, mtproxy_ffi_cfg_int_result_t *out);
 
 static size_t cfg_remaining_len (void) {
   if (!cfg_cur || !cfg_end || cfg_cur >= cfg_end) {
@@ -57,44 +57,21 @@ static size_t cfg_remaining_len (void) {
 }
 
 int cfg_skipspc (void) {
-  if (mtproxy_ffi_cfg_skipspc) {
-    mtproxy_ffi_cfg_scan_result_t out = {0};
-    int rc = mtproxy_ffi_cfg_skipspc (cfg_cur, cfg_remaining_len (), cfg_lno, &out);
-    if (rc == 0) {
-      cfg_cur += out.advance;
-      cfg_lno = out.line_no;
-      return out.ch;
-    }
-  }
-
-  while (*cfg_cur == ' ' || *cfg_cur == 9 || *cfg_cur == 13 || *cfg_cur == 10 || *cfg_cur == '#') {
-    if (*cfg_cur == '#') {
-      do cfg_cur++; while (*cfg_cur && *cfg_cur != 10);
-      continue;
-    }
-    if (*cfg_cur == 10) { 
-      cfg_lno++; 
-    }
-    cfg_cur++;
-  }
-  return (unsigned char) *cfg_cur;
+  mtproxy_ffi_cfg_scan_result_t out = {0};
+  int rc = mtproxy_ffi_cfg_skipspc (cfg_cur, cfg_remaining_len (), cfg_lno, &out);
+  assert (rc == 0);
+  cfg_cur += out.advance;
+  cfg_lno = out.line_no;
+  return out.ch;
 }
 
 int cfg_skspc (void) {
-  if (mtproxy_ffi_cfg_skspc) {
-    mtproxy_ffi_cfg_scan_result_t out = {0};
-    int rc = mtproxy_ffi_cfg_skspc (cfg_cur, cfg_remaining_len (), cfg_lno, &out);
-    if (rc == 0) {
-      cfg_cur += out.advance;
-      cfg_lno = out.line_no;
-      return out.ch;
-    }
-  }
-
-  while (*cfg_cur == ' ' || *cfg_cur == 9) {
-    cfg_cur++;
-  }
-  return (unsigned char) *cfg_cur;
+  mtproxy_ffi_cfg_scan_result_t out = {0};
+  int rc = mtproxy_ffi_cfg_skspc (cfg_cur, cfg_remaining_len (), cfg_lno, &out);
+  assert (rc == 0);
+  cfg_cur += out.advance;
+  cfg_lno = out.line_no;
+  return out.ch;
 }
 
 int cfg_getlex (void) {
@@ -112,129 +89,49 @@ int cfg_getlex (void) {
 
 int cfg_getword (void) {
   cfg_skspc();
-
-  if (mtproxy_ffi_cfg_getword_len) {
-    int32_t n = mtproxy_ffi_cfg_getword_len (cfg_cur, cfg_remaining_len ());
-    if (n >= 0) {
-      return n;
-    }
-  }
-
-  char *s = cfg_cur;
-  if (*s != '[') {
-    while ((*s >= 'a' && *s <= 'z') || (*s >= 'A' && *s <= 'Z') || (*s >= '0' && *s <= '9') || *s == '.' || *s == '-' || *s == '_') {
-      s++;
-    }
-  } else {
-    s++;
-    while ((*s >= 'a' && *s <= 'z') || (*s >= 'A' && *s <= 'Z') || (*s >= '0' && *s <= '9') || *s == '.' || *s == '-' || *s == '_' || *s == ':') {
-      s++;
-    }
-    if (*s == ']') {
-      s++;
-    }
-  }
-  return s - cfg_cur;
+  int32_t n = mtproxy_ffi_cfg_getword_len (cfg_cur, cfg_remaining_len ());
+  assert (n >= 0);
+  return n;
 }
 
 int cfg_getstr (void) {
   cfg_skspc();
-
-  if (mtproxy_ffi_cfg_getstr_len) {
-    int32_t n = mtproxy_ffi_cfg_getstr_len (cfg_cur, cfg_remaining_len ());
-    if (n >= 0) {
-      return n;
-    }
-  }
-
-  char *s = cfg_cur;
-  if (*s == '"') { return 1; } // fix later
-  while (*s > ' ' && *s != ';') {
-    s++;
-  }
-  return s - cfg_cur;
+  int32_t n = mtproxy_ffi_cfg_getstr_len (cfg_cur, cfg_remaining_len ());
+  assert (n >= 0);
+  return n;
 }
 
 long long cfg_getint (void) {
   cfg_skspc ();
-
-  if (mtproxy_ffi_cfg_getint) {
-    mtproxy_ffi_cfg_int_result_t out = {0};
-    int rc = mtproxy_ffi_cfg_getint (cfg_cur, cfg_remaining_len (), &out);
-    if (rc == 0) {
-      cfg_cur += out.consumed;
-      return out.value;
-    }
-  }
-
-  char *s = cfg_cur;
-  long long x = 0;
-  while (*s >= '0' && *s <= '9') {
-    x = x * 10 + *(s ++) - '0';
-  }
-  cfg_cur = s;
-  return x;
+  mtproxy_ffi_cfg_int_result_t out = {0};
+  int rc = mtproxy_ffi_cfg_getint (cfg_cur, cfg_remaining_len (), &out);
+  assert (rc == 0);
+  cfg_cur += out.consumed;
+  return out.value;
 }
 
 long long cfg_getint_zero (void) {
   cfg_skspc ();
-
-  if (mtproxy_ffi_cfg_getint_zero) {
-    mtproxy_ffi_cfg_int_result_t out = {0};
-    int rc = mtproxy_ffi_cfg_getint_zero (cfg_cur, cfg_remaining_len (), &out);
-    if (rc == 0) {
-      if (!out.consumed) {
-        return -1;
-      }
-      cfg_cur += out.consumed;
-      return out.value;
-    }
-  }
-
-  char *s = cfg_cur;
-  long long x = 0;
-  while (*s >= '0' && *s <= '9') {
-    x = x * 10 + *(s ++) - '0';
-  }
-  if (cfg_cur == s) {
+  mtproxy_ffi_cfg_int_result_t out = {0};
+  int rc = mtproxy_ffi_cfg_getint_zero (cfg_cur, cfg_remaining_len (), &out);
+  assert (rc == 0);
+  if (!out.consumed) {
     return -1;
-  } else {
-    cfg_cur = s;
-    return x;
   }
+  cfg_cur += out.consumed;
+  return out.value;
 }
 
 long long cfg_getint_signed_zero (void) {
   cfg_skspc ();
-
-  if (mtproxy_ffi_cfg_getint_signed_zero) {
-    mtproxy_ffi_cfg_int_result_t out = {0};
-    int rc = mtproxy_ffi_cfg_getint_signed_zero (cfg_cur, cfg_remaining_len (), &out);
-    if (rc == 0) {
-      if (!out.consumed) {
-        return (-1LL << 63);
-      }
-      cfg_cur += out.consumed;
-      return out.value;
-    }
-  }
-
-  char *s = cfg_cur;
-  long long x = 0;
-  int sgn = 1;
-  if (*s == '-') {
-    sgn = -1;
-    ++s;
-  }
-  while (*s >= '0' && *s <= '9') {
-    x = x * 10 + sgn * (*(s++) - '0');
-  }
-  if (s == cfg_cur + (sgn < 0)) {
+  mtproxy_ffi_cfg_int_result_t out = {0};
+  int rc = mtproxy_ffi_cfg_getint_signed_zero (cfg_cur, cfg_remaining_len (), &out);
+  assert (rc == 0);
+  if (!out.consumed) {
     return (-1LL << 63);
-  } else {
-    cfg_cur = s;
-    return x;
   }
+  cfg_cur += out.consumed;
+  return out.value;
 }
 
 void syntax (const char *msg, ...) {

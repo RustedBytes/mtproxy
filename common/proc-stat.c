@@ -25,7 +25,7 @@
 
 #include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 
-extern int32_t mtproxy_ffi_read_proc_stat_file (int32_t pid, int32_t tid, mtproxy_ffi_proc_stats_t *out) __attribute__ ((weak));
+extern int32_t mtproxy_ffi_read_proc_stat_file (int32_t pid, int32_t tid, mtproxy_ffi_proc_stats_t *out);
 
 static void copy_proc_stats_from_rust (struct proc_stats *dst, const mtproxy_ffi_proc_stats_t *src) {
   memset (dst, 0, sizeof (*dst));
@@ -74,77 +74,10 @@ static void copy_proc_stats_from_rust (struct proc_stats *dst, const mtproxy_ffi
 }
 
 int read_proc_stats (int pid, int tid, struct proc_stats *s) { 
-  if (mtproxy_ffi_read_proc_stat_file) {
-    mtproxy_ffi_proc_stats_t rs = {0};
-    if (mtproxy_ffi_read_proc_stat_file (pid, tid, &rs) == 0) {
-      copy_proc_stats_from_rust (s, &rs);
-      return 1;
-    }
+  mtproxy_ffi_proc_stats_t rs = {0};
+  if (mtproxy_ffi_read_proc_stat_file (pid, tid, &rs) != 0) {
+    return 0;
   }
-
-  const char *format = "%d %s %c %d %d %d %d %d %lu %lu %lu %lu %lu %lu %lu %ld %ld %ld %ld %ld %ld %lu %lu %ld %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu %d %d %lu %lu %llu"; 
-
-  char buf[256]; 
-  if (tid <= 0) {
-    sprintf (buf, "/proc/%d/stat", pid); 
-  } else {
-    sprintf (buf, "/proc/%d/task/%d/stat", pid, tid); 
-  }
-
-  FILE *proc = fopen (buf, "r"); 
-  if (proc) { 
-    if (42 == fscanf (proc, format, 
-          &s->pid,
-          s->comm,
-          &s->state,
-          &s->ppid,
-          &s->pgrp,
-          &s->session,
-          &s->tty_nr,
-          &s->tpgid,
-          &s->flags,
-          &s->minflt,
-          &s->cminflt,
-          &s->majflt,
-          &s->cmajflt,
-          &s->utime,
-          &s->stime,
-          &s->cutime,
-          &s->cstime,
-          &s->priority,
-          &s->nice,
-          &s->num_threads,
-          &s->itrealvalue,
-          &s->starttime,
-          &s->vsize,
-          &s->rss,
-          &s->rlim,
-          &s->startcode,
-          &s->endcode,
-          &s->startstack,
-          &s->kstkesp,
-          &s->kstkeip,
-          &s->signal,
-          &s->blocked,
-          &s->sigignore,
-          &s->sigcatch,
-          &s->wchan,
-          &s->nswap,
-          &s->cnswap,
-          &s->exit_signal,
-          &s->processor,
-          &s->rt_priority,
-          &s->policy,
-          &s->delayacct_blkio_ticks
-      )
-    ) { 
-      fclose(proc); 
-      return 1; 
-    } else { 
-      fclose(proc); 
-      return 0; 
-    } 
-  } else {  
-    return 0; 
-  } 
+  copy_proc_stats_from_rust (s, &rs);
+  return 1;
 } 
