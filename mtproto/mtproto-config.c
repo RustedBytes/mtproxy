@@ -63,24 +63,6 @@ char *config_filename;
 
 static uint32_t collect_auth_cluster_ids (const struct mf_config *MC, int32_t cluster_ids[MAX_CFG_CLUSTERS]);
 
-static int cfg_getlex_ext (void) {
-  if (cfg_cur > cfg_end) {
-    return cfg_lex = -1;
-  }
-  mtproxy_ffi_mtproto_cfg_getlex_ext_result_t token = {0};
-  int32_t rc = mtproxy_ffi_mtproto_cfg_getlex_ext (
-    cfg_cur,
-    (size_t) (cfg_end - cfg_cur),
-    &token
-  );
-  if (rc != MTPROXY_FFI_MTPROTO_CFG_GETLEX_EXT_OK) {
-    return cfg_lex = -1;
-  }
-  cfg_cur += token.advance;
-  return cfg_lex = token.lex;
-}
-
-
 static void forget_cluster_targets (struct mf_cluster *MFC) {
   if (MFC->cluster_targets) {
     MFC->cluster_targets = 0;
@@ -336,81 +318,73 @@ int parse_config (struct mf_config *MC, int flags, int config_fd) {
   
   while (cfg_skipspc ()) {
     int target_dc = 0;
-    mtproxy_ffi_mtproto_cfg_directive_token_result_t token = {0};
-    int32_t token_rc = mtproxy_ffi_mtproto_cfg_scan_directive_token (
+    int32_t cluster_ids[MAX_CFG_CLUSTERS];
+    uint32_t clusters_len = collect_auth_cluster_ids (MC, cluster_ids);
+    mtproxy_ffi_mtproto_cfg_directive_step_result_t step = {0};
+    int32_t step_rc = mtproxy_ffi_mtproto_cfg_parse_directive_step (
       cfg_cur,
       (size_t) (cfg_end - cfg_cur),
       MC->min_connections,
       MC->max_connections,
-      &token
+      cluster_ids,
+      clusters_len,
+      (uint32_t) MAX_CFG_CLUSTERS,
+      &step
     );
-    if (token_rc != MTPROXY_FFI_MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_OK) {
-      switch (token_rc) {
-        case MTPROXY_FFI_MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_INVALID_TIMEOUT:
+    if (step_rc != MTPROXY_FFI_MTPROTO_CFG_PARSE_DIRECTIVE_STEP_OK) {
+      switch (step_rc) {
+        case MTPROXY_FFI_MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_INVALID_TIMEOUT:
           Syntax ("invalid timeout");
           break;
-        case MTPROXY_FFI_MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_INVALID_MAX_CONNECTIONS:
+        case MTPROXY_FFI_MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_INVALID_MAX_CONNECTIONS:
           Syntax ("invalid max connections");
           break;
-        case MTPROXY_FFI_MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_INVALID_MIN_CONNECTIONS:
+        case MTPROXY_FFI_MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_INVALID_MIN_CONNECTIONS:
           Syntax ("invalid min connections");
           break;
-        case MTPROXY_FFI_MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_INVALID_TARGET_ID:
+        case MTPROXY_FFI_MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_INVALID_TARGET_ID:
           Syntax ("invalid target id (integer -32768..32767 expected)");
           break;
-        case MTPROXY_FFI_MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_TARGET_ID_SPACE:
+        case MTPROXY_FFI_MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_TARGET_ID_SPACE:
           Syntax ("space expected after target id");
           break;
-        case MTPROXY_FFI_MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_PROXY_EXPECTED:
+        case MTPROXY_FFI_MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_TOO_MANY_AUTH_CLUSTERS:
+          Syntax ("too many auth clusters", MC->auth_clusters);
+          break;
+        case MTPROXY_FFI_MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_PROXIES_INTERMIXED:
+          Syntax ("proxies for dc intermixed");
+          break;
+        case MTPROXY_FFI_MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_EXPECTED_SEMICOLON:
+          Syntax ("';' expected");
+          break;
+        case MTPROXY_FFI_MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_PROXY_EXPECTED:
           Syntax ("'proxy <ip>:<port>;' expected");
           break;
         default:
           Syntax ("'proxy <ip>:<port>;' expected");
       }
     }
-    cfg_cur += token.advance;
+    cfg_cur += step.advance;
 
-    switch (token.kind) {
+    switch (step.kind) {
       case MTPROXY_FFI_MTPROTO_DIRECTIVE_TOKEN_KIND_TIMEOUT:
-        MC->timeout = ((double) token.value) / 1000.0;
+        MC->timeout = ((double) step.value) / 1000.0;
         break;
       case MTPROXY_FFI_MTPROTO_DIRECTIVE_TOKEN_KIND_DEFAULT_CLUSTER:
-        MC->default_cluster_id = (int) token.value;
+        MC->default_cluster_id = (int) step.value;
         break;
       case MTPROXY_FFI_MTPROTO_DIRECTIVE_TOKEN_KIND_PROXY_FOR:
-        target_dc = (int) token.value;
+        target_dc = (int) step.value;
         /* fall through: proxy_for shares target apply path with proxy */
       case MTPROXY_FFI_MTPROTO_DIRECTIVE_TOKEN_KIND_PROXY: {
         have_proxy |= 1;
-        int32_t cluster_ids[MAX_CFG_CLUSTERS];
-        uint32_t clusters_len = collect_auth_cluster_ids (MC, cluster_ids);
-        mtproxy_ffi_mtproto_cfg_cluster_apply_decision_result_t decision = {0};
-        int32_t decision_rc = mtproxy_ffi_mtproto_cfg_decide_cluster_apply (
-          cluster_ids,
-          clusters_len,
-          target_dc,
-          (uint32_t) MAX_CFG_CLUSTERS,
-          &decision
-        );
-        if (decision_rc != MTPROXY_FFI_MTPROTO_CFG_CLUSTER_APPLY_DECISION_OK) {
-          switch (decision_rc) {
-            case MTPROXY_FFI_MTPROTO_CFG_CLUSTER_APPLY_DECISION_ERR_TOO_MANY_AUTH_CLUSTERS:
-              Syntax ("too many auth clusters", MC->auth_clusters);
-              break;
-            case MTPROXY_FFI_MTPROTO_CFG_CLUSTER_APPLY_DECISION_ERR_PROXIES_INTERMIXED:
-              Syntax ("proxies for dc %d intermixed", target_dc);
-              break;
-            default:
-              Syntax ("internal parser cluster decision failure");
-          }
-        }
         targ_ptr = cfg_parse_server_port (MC, flags);
         if (!targ_ptr) {
           return -1;
         }
 
-        if (decision.kind == MTPROXY_FFI_MTPROTO_CFG_CLUSTER_APPLY_DECISION_KIND_CREATE_NEW) {
-          if (decision.cluster_index != MC->auth_clusters) {
+        if (step.cluster_decision_kind == MTPROXY_FFI_MTPROTO_CFG_CLUSTER_APPLY_DECISION_KIND_CREATE_NEW) {
+          if (step.cluster_index != MC->auth_clusters) {
             Syntax ("internal parser cluster decision mismatch");
           }
 	  vkprintf (3, "-> added target to new auth_cluster #%d\n", MC->auth_clusters);
@@ -420,8 +394,8 @@ int parse_config (struct mf_config *MC, int flags, int config_fd) {
 	    MC->auth_cluster[MC->auth_clusters].cluster_id = target_dc;
 	  }
 	  MC->auth_clusters ++;
-        } else if (decision.kind == MTPROXY_FFI_MTPROTO_CFG_CLUSTER_APPLY_DECISION_KIND_APPEND_LAST) {
-          int cluster_index = decision.cluster_index;
+        } else if (step.cluster_decision_kind == MTPROXY_FFI_MTPROTO_CFG_CLUSTER_APPLY_DECISION_KIND_APPEND_LAST) {
+          int cluster_index = step.cluster_index;
           if (cluster_index < 0 || cluster_index >= MC->auth_clusters || cluster_index + 1 != MC->auth_clusters) {
             Syntax ("internal parser cluster decision mismatch");
           }
@@ -435,24 +409,32 @@ int parse_config (struct mf_config *MC, int flags, int config_fd) {
         } else {
 	  Syntax ("internal parser cluster decision mismatch");
         }
+        size_t semicolon_advance = 0;
+        int32_t semicolon_rc = mtproxy_ffi_mtproto_cfg_expect_semicolon (
+          cfg_cur,
+          (size_t) (cfg_end - cfg_cur),
+          &semicolon_advance
+        );
+        if (semicolon_rc != MTPROXY_FFI_MTPROTO_CFG_EXPECT_SEMICOLON_OK) {
+          Syntax ("'proxy <ip>:<port>;' expected");
+        }
+        cfg_cur += semicolon_advance;
         break;
       }
       case MTPROXY_FFI_MTPROTO_DIRECTIVE_TOKEN_KIND_MAX_CONNECTIONS:
-        MC->max_connections = (int) token.value;
+        MC->max_connections = (int) step.value;
         break;
       case MTPROXY_FFI_MTPROTO_DIRECTIVE_TOKEN_KIND_MIN_CONNECTIONS:
-        MC->min_connections = (int) token.value;
+        MC->min_connections = (int) step.value;
         break;
       case MTPROXY_FFI_MTPROTO_DIRECTIVE_TOKEN_KIND_EOF:
         break;
       default:
         Syntax ("'proxy <ip>:<port>;' expected");
     }
-    if (token.kind == MTPROXY_FFI_MTPROTO_DIRECTIVE_TOKEN_KIND_EOF) {
+    if (step.kind == MTPROXY_FFI_MTPROTO_DIRECTIVE_TOKEN_KIND_EOF) {
       break;
     }
-    cfg_getlex_ext ();
-    Expect (';');
   }
 
   int32_t cluster_ids[MAX_CFG_CLUSTERS];

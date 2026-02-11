@@ -59,6 +59,14 @@ typedef struct mtproxy_ffi_mtproto_cfg_directive_token_result {
   int64_t value;
 } mtproxy_ffi_mtproto_cfg_directive_token_result_t;
 
+typedef struct mtproxy_ffi_mtproto_cfg_directive_step_result {
+  int32_t kind;
+  size_t advance;
+  int64_t value;
+  int32_t cluster_decision_kind;
+  int32_t cluster_index;
+} mtproxy_ffi_mtproto_cfg_directive_step_result_t;
+
 typedef struct mtproxy_ffi_mtproto_cfg_finalize_result {
   uint32_t default_cluster_index;
   int32_t has_default_cluster_index;
@@ -130,6 +138,23 @@ typedef struct mtproxy_ffi_mtproto_old_cluster_state {
 #define MTPROXY_FFI_MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_TARGET_ID_SPACE          (-6)
 #define MTPROXY_FFI_MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_PROXY_EXPECTED           (-7)
 #define MTPROXY_FFI_MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_INTERNAL                 (-8)
+
+#define MTPROXY_FFI_MTPROTO_CFG_PARSE_DIRECTIVE_STEP_OK                            0
+#define MTPROXY_FFI_MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_INVALID_ARGS             (-1)
+#define MTPROXY_FFI_MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_INVALID_TIMEOUT          (-2)
+#define MTPROXY_FFI_MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_INVALID_MAX_CONNECTIONS  (-3)
+#define MTPROXY_FFI_MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_INVALID_MIN_CONNECTIONS  (-4)
+#define MTPROXY_FFI_MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_INVALID_TARGET_ID        (-5)
+#define MTPROXY_FFI_MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_TARGET_ID_SPACE          (-6)
+#define MTPROXY_FFI_MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_PROXY_EXPECTED           (-7)
+#define MTPROXY_FFI_MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_TOO_MANY_AUTH_CLUSTERS  (-8)
+#define MTPROXY_FFI_MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_PROXIES_INTERMIXED      (-9)
+#define MTPROXY_FFI_MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_EXPECTED_SEMICOLON      (-10)
+#define MTPROXY_FFI_MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_INTERNAL                 (-11)
+
+#define MTPROXY_FFI_MTPROTO_CFG_EXPECT_SEMICOLON_OK                     0
+#define MTPROXY_FFI_MTPROTO_CFG_EXPECT_SEMICOLON_ERR_INVALID_ARGS      (-1)
+#define MTPROXY_FFI_MTPROTO_CFG_EXPECT_SEMICOLON_ERR_EXPECTED          (-2)
 
 #define MTPROXY_FFI_MTPROTO_DIRECTIVE_TOKEN_KIND_EOF              0
 #define MTPROXY_FFI_MTPROTO_DIRECTIVE_TOKEN_KIND_TIMEOUT          1
@@ -454,6 +479,21 @@ int32_t mtproxy_ffi_mtproto_cfg_scan_directive_token(
   int64_t min_connections,
   int64_t max_connections,
   mtproxy_ffi_mtproto_cfg_directive_token_result_t *out
+);
+int32_t mtproxy_ffi_mtproto_cfg_parse_directive_step(
+  const char *cur,
+  size_t len,
+  int64_t min_connections,
+  int64_t max_connections,
+  const int32_t *cluster_ids,
+  uint32_t clusters_len,
+  uint32_t max_clusters,
+  mtproxy_ffi_mtproto_cfg_directive_step_result_t *out
+);
+int32_t mtproxy_ffi_mtproto_cfg_expect_semicolon(
+  const char *cur,
+  size_t len,
+  size_t *out_advance
 );
 int32_t mtproxy_ffi_mtproto_cfg_parse_server_port(
   const char *cur,

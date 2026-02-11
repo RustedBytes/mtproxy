@@ -331,6 +331,15 @@ pub struct MtprotoDirectiveTokenPreview {
     pub value: i64,
 }
 
+/// One-step parse result for C directive-loop control flow.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct MtprotoDirectiveStepPreview {
+    pub kind: MtprotoDirectiveTokenKind,
+    pub advance: usize,
+    pub value: i64,
+    pub cluster_apply_decision: Option<MtprotoClusterApplyDecision>,
+}
+
 fn parse_unsigned_from(input: &[u8], cursor: &mut usize) -> i64 {
     cfg_skspc_in_place(input, cursor);
     let mut value = 0i64;
@@ -463,6 +472,72 @@ pub fn cfg_scan_directive_token(
             })
         }
         _ => Err(MtprotoDirectiveParseError::ProxyDirectiveExpected),
+    }
+}
+
+/// Parses and validates a trailing semicolon for the current directive.
+pub fn cfg_expect_semicolon(
+    input: &[u8],
+    cursor: &mut usize,
+) -> Result<(), MtprotoDirectiveParseError> {
+    let sep = cfg_getlex_ext(input, cursor);
+    if sep != i32::from(b';') {
+        return Err(MtprotoDirectiveParseError::ExpectedSemicolon(sep));
+    }
+    Ok(())
+}
+
+/// Parses one directive step from `parse_config()` C control flow.
+///
+/// For scalar directives (`timeout`, `default`, `min_connections`,
+/// `max_connections`) this includes semicolon validation and returned
+/// `advance` consumes the whole directive statement.
+///
+/// For proxy directives (`proxy`, `proxy_for`) this returns cluster-apply
+/// decision metadata and leaves `advance` at the start of `host:port` payload.
+pub fn cfg_parse_directive_step(
+    input: &[u8],
+    min_connections: i64,
+    max_connections: i64,
+    cluster_ids: &[i32],
+    max_clusters: usize,
+) -> Result<MtprotoDirectiveStepPreview, MtprotoDirectiveParseError> {
+    let token = cfg_scan_directive_token(input, min_connections, max_connections)?;
+    match token.kind {
+        MtprotoDirectiveTokenKind::Eof => Ok(MtprotoDirectiveStepPreview {
+            kind: token.kind,
+            advance: token.advance,
+            value: token.value,
+            cluster_apply_decision: None,
+        }),
+        MtprotoDirectiveTokenKind::Proxy | MtprotoDirectiveTokenKind::ProxyFor => {
+            let cluster_id = if token.kind == MtprotoDirectiveTokenKind::ProxyFor {
+                i32::try_from(token.value)
+                    .map_err(|_| MtprotoDirectiveParseError::InvalidTargetId(token.value))?
+            } else {
+                0
+            };
+            let decision = decide_proxy_cluster_apply(cluster_ids, cluster_id, max_clusters)?;
+            Ok(MtprotoDirectiveStepPreview {
+                kind: token.kind,
+                advance: token.advance,
+                value: token.value,
+                cluster_apply_decision: Some(decision),
+            })
+        }
+        MtprotoDirectiveTokenKind::Timeout
+        | MtprotoDirectiveTokenKind::DefaultCluster
+        | MtprotoDirectiveTokenKind::MaxConnections
+        | MtprotoDirectiveTokenKind::MinConnections => {
+            let mut cursor = token.advance;
+            cfg_expect_semicolon(input, &mut cursor)?;
+            Ok(MtprotoDirectiveStepPreview {
+                kind: token.kind,
+                advance: cursor,
+                value: token.value,
+                cluster_apply_decision: None,
+            })
+        }
     }
 }
 
@@ -828,10 +903,7 @@ pub fn parse_config_directive_blocks<const MAX_CLUSTERS: usize, const MAX_TARGET
             _ => return Err(MtprotoDirectiveParseError::ProxyDirectiveExpected),
         }
 
-        let sep = cfg_getlex_ext(input, &mut cursor);
-        if sep != i32::from(b';') {
-            return Err(MtprotoDirectiveParseError::ExpectedSemicolon(sep));
-        }
+        cfg_expect_semicolon(input, &mut cursor)?;
     }
 
     let mut cluster_ids = [0i32; MAX_CLUSTERS];
@@ -849,7 +921,8 @@ pub fn parse_config_directive_blocks<const MAX_CLUSTERS: usize, const MAX_TARGET
 #[cfg(test)]
 mod tests {
     use super::{
-        cfg_getlex_ext, cfg_parse_server_port, cfg_parse_server_port_preview,
+        cfg_expect_semicolon, cfg_getlex_ext, cfg_parse_directive_step, cfg_parse_server_port,
+        cfg_parse_server_port_preview,
         decide_proxy_cluster_apply,
         extend_old_mf_cluster, finalize_parse_config_state, init_old_mf_cluster,
         mf_cluster_lookup_index, parse_config_directive_blocks, preinit_config,
@@ -1117,6 +1190,51 @@ mod tests {
         )
         .expect_err("expected semicolon parse error");
 
+        assert_eq!(err, MtprotoDirectiveParseError::ExpectedSemicolon(0));
+    }
+
+    #[test]
+    fn cfg_expect_semicolon_validates_separator() {
+        let mut cursor = 0usize;
+        cfg_expect_semicolon(b";", &mut cursor).expect("semicolon should parse");
+        assert_eq!(cursor, 1);
+
+        cursor = 0;
+        let err = cfg_expect_semicolon(b":", &mut cursor).expect_err("colon must fail");
+        assert_eq!(err, MtprotoDirectiveParseError::ExpectedSemicolon(i32::from(b':')));
+    }
+
+    #[test]
+    fn cfg_parse_directive_step_consumes_scalar_semicolon() {
+        let step = cfg_parse_directive_step(b"timeout 250;", 2, 64, &[], 8).expect("step parse");
+        assert_eq!(step.kind, super::MtprotoDirectiveTokenKind::Timeout);
+        assert_eq!(step.value, 250);
+        assert_eq!(step.advance, 12);
+        assert_eq!(step.cluster_apply_decision, None);
+    }
+
+    #[test]
+    fn cfg_parse_directive_step_returns_proxy_decision_without_host_parse() {
+        let cluster_ids = [4, -2];
+        let step =
+            cfg_parse_directive_step(b"proxy_for -2   dc1:443;", 2, 64, &cluster_ids, 8)
+                .expect("proxy step parse");
+        assert_eq!(step.kind, super::MtprotoDirectiveTokenKind::ProxyFor);
+        assert_eq!(step.value, -2);
+        assert_eq!(step.advance, 15);
+        assert_eq!(
+            step.cluster_apply_decision,
+            Some(MtprotoClusterApplyDecision {
+                kind: MtprotoClusterApplyDecisionKind::AppendLast,
+                cluster_index: 1,
+            })
+        );
+    }
+
+    #[test]
+    fn cfg_parse_directive_step_reports_semicolon_error_for_scalar_directive() {
+        let err = cfg_parse_directive_step(b"timeout 250", 2, 64, &[], 8)
+            .expect_err("missing semicolon should fail");
         assert_eq!(err, MtprotoDirectiveParseError::ExpectedSemicolon(0));
     }
 

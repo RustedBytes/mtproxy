@@ -87,6 +87,21 @@ const MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_INVALID_TARGET_ID: i32 = -5;
 const MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_TARGET_ID_SPACE: i32 = -6;
 const MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_PROXY_EXPECTED: i32 = -7;
 const MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_INTERNAL: i32 = -8;
+const MTPROTO_CFG_PARSE_DIRECTIVE_STEP_OK: i32 = 0;
+const MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_INVALID_ARGS: i32 = -1;
+const MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_INVALID_TIMEOUT: i32 = -2;
+const MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_INVALID_MAX_CONNECTIONS: i32 = -3;
+const MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_INVALID_MIN_CONNECTIONS: i32 = -4;
+const MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_INVALID_TARGET_ID: i32 = -5;
+const MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_TARGET_ID_SPACE: i32 = -6;
+const MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_PROXY_EXPECTED: i32 = -7;
+const MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_TOO_MANY_AUTH_CLUSTERS: i32 = -8;
+const MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_PROXIES_INTERMIXED: i32 = -9;
+const MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_EXPECTED_SEMICOLON: i32 = -10;
+const MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_INTERNAL: i32 = -11;
+const MTPROTO_CFG_EXPECT_SEMICOLON_OK: i32 = 0;
+const MTPROTO_CFG_EXPECT_SEMICOLON_ERR_INVALID_ARGS: i32 = -1;
+const MTPROTO_CFG_EXPECT_SEMICOLON_ERR_EXPECTED: i32 = -2;
 const MTPROTO_DIRECTIVE_TOKEN_KIND_EOF: i32 = 0;
 const MTPROTO_DIRECTIVE_TOKEN_KIND_TIMEOUT: i32 = 1;
 const MTPROTO_DIRECTIVE_TOKEN_KIND_DEFAULT_CLUSTER: i32 = 2;
@@ -260,6 +275,16 @@ pub struct MtproxyMtprotoCfgDirectiveTokenResult {
     pub kind: i32,
     pub advance: usize,
     pub value: i64,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct MtproxyMtprotoCfgDirectiveStepResult {
+    pub kind: i32,
+    pub advance: usize,
+    pub value: i64,
+    pub cluster_decision_kind: i32,
+    pub cluster_index: i32,
 }
 
 #[repr(C)]
@@ -1151,6 +1176,42 @@ fn mtproto_cfg_scan_directive_token_err_to_code(
     }
 }
 
+fn mtproto_cfg_parse_directive_step_err_to_code(
+    err: mtproxy_core::runtime::mtproto::config::MtprotoDirectiveParseError,
+) -> i32 {
+    use mtproxy_core::runtime::mtproto::config::MtprotoDirectiveParseError;
+    match err {
+        MtprotoDirectiveParseError::InvalidTimeout(_) => {
+            MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_INVALID_TIMEOUT
+        }
+        MtprotoDirectiveParseError::InvalidMaxConnections(_) => {
+            MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_INVALID_MAX_CONNECTIONS
+        }
+        MtprotoDirectiveParseError::InvalidMinConnections(_) => {
+            MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_INVALID_MIN_CONNECTIONS
+        }
+        MtprotoDirectiveParseError::InvalidTargetId(_) => {
+            MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_INVALID_TARGET_ID
+        }
+        MtprotoDirectiveParseError::SpaceExpectedAfterTargetId => {
+            MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_TARGET_ID_SPACE
+        }
+        MtprotoDirectiveParseError::ProxyDirectiveExpected => {
+            MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_PROXY_EXPECTED
+        }
+        MtprotoDirectiveParseError::TooManyAuthClusters(_) => {
+            MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_TOO_MANY_AUTH_CLUSTERS
+        }
+        MtprotoDirectiveParseError::ProxiesIntermixed(_) => {
+            MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_PROXIES_INTERMIXED
+        }
+        MtprotoDirectiveParseError::ExpectedSemicolon(_) => {
+            MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_EXPECTED_SEMICOLON
+        }
+        _ => MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_INTERNAL,
+    }
+}
+
 fn mtproto_cfg_finalize_err_to_code(
     err: mtproxy_core::runtime::mtproto::config::MtprotoDirectiveParseError,
 ) -> i32 {
@@ -1263,6 +1324,107 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_scan_directive_token(
             MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_OK
         }
         Err(err) => mtproto_cfg_scan_directive_token_err_to_code(err),
+    }
+}
+
+/// Parses one directive step from `mtproto-config` control flow.
+///
+/// # Safety
+/// `cur` must be readable for `len` bytes when `len > 0`;
+/// `cluster_ids` must be readable for `clusters_len` entries when `clusters_len > 0`;
+/// `out` must be writable.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_parse_directive_step(
+    cur: *const c_char,
+    len: usize,
+    min_connections: i64,
+    max_connections: i64,
+    cluster_ids: *const i32,
+    clusters_len: u32,
+    max_clusters: u32,
+    out: *mut MtproxyMtprotoCfgDirectiveStepResult,
+) -> i32 {
+    if out.is_null() {
+        return MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_INVALID_ARGS;
+    }
+    let Some(bytes) = cfg_bytes_from_cstr(cur, len) else {
+        return MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_INVALID_ARGS;
+    };
+    let Ok(clusters_len_usize) = usize::try_from(clusters_len) else {
+        return MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_INVALID_ARGS;
+    };
+    let Ok(max_clusters_usize) = usize::try_from(max_clusters) else {
+        return MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_INVALID_ARGS;
+    };
+    if clusters_len_usize > 0 && cluster_ids.is_null() {
+        return MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_INVALID_ARGS;
+    }
+    let cluster_ids_slice = if clusters_len_usize == 0 {
+        &[]
+    } else {
+        unsafe { core::slice::from_raw_parts(cluster_ids, clusters_len_usize) }
+    };
+
+    match mtproxy_core::runtime::mtproto::config::cfg_parse_directive_step(
+        bytes,
+        min_connections,
+        max_connections,
+        cluster_ids_slice,
+        max_clusters_usize,
+    ) {
+        Ok(step) => {
+            let (cluster_decision_kind, cluster_index) = if let Some(decision) = step.cluster_apply_decision {
+                let Ok(cluster_index) = i32::try_from(decision.cluster_index) else {
+                    return MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_INTERNAL;
+                };
+                (
+                    mtproto_cfg_cluster_apply_decision_kind_to_ffi(decision.kind),
+                    cluster_index,
+                )
+            } else {
+                (0, -1)
+            };
+            let out_ref = unsafe { &mut *out };
+            *out_ref = MtproxyMtprotoCfgDirectiveStepResult {
+                kind: mtproto_directive_token_kind_to_ffi(step.kind),
+                advance: step.advance,
+                value: step.value,
+                cluster_decision_kind,
+                cluster_index,
+            };
+            MTPROTO_CFG_PARSE_DIRECTIVE_STEP_OK
+        }
+        Err(err) => mtproto_cfg_parse_directive_step_err_to_code(err),
+    }
+}
+
+/// Parses a required trailing semicolon from `mtproto-config`.
+///
+/// # Safety
+/// `cur` must be readable for `len` bytes when `len > 0`; `out_advance` must be writable.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_expect_semicolon(
+    cur: *const c_char,
+    len: usize,
+    out_advance: *mut usize,
+) -> i32 {
+    if out_advance.is_null() {
+        return MTPROTO_CFG_EXPECT_SEMICOLON_ERR_INVALID_ARGS;
+    }
+    let Some(bytes) = cfg_bytes_from_cstr(cur, len) else {
+        return MTPROTO_CFG_EXPECT_SEMICOLON_ERR_INVALID_ARGS;
+    };
+    let mut cursor = 0usize;
+    match mtproxy_core::runtime::mtproto::config::cfg_expect_semicolon(bytes, &mut cursor) {
+        Ok(()) => {
+            let out_ref = unsafe { &mut *out_advance };
+            *out_ref = cursor;
+            MTPROTO_CFG_EXPECT_SEMICOLON_OK
+        }
+        Err(mtproxy_core::runtime::mtproto::config::MtprotoDirectiveParseError::ExpectedSemicolon(
+            _,
+        )) => MTPROTO_CFG_EXPECT_SEMICOLON_ERR_EXPECTED,
+        Err(_) => MTPROTO_CFG_EXPECT_SEMICOLON_ERR_INVALID_ARGS,
     }
 }
 
@@ -3589,6 +3751,7 @@ mod tests {
         mtproxy_ffi_get_rpc_boundary, mtproxy_ffi_get_utime_monotonic, mtproxy_ffi_matches_pid,
         mtproxy_ffi_md5, mtproxy_ffi_md5_hex, mtproxy_ffi_msg_buffers_pick_size_index,
         mtproxy_ffi_mtproto_cfg_decide_cluster_apply, mtproxy_ffi_mtproto_cfg_finalize,
+        mtproxy_ffi_mtproto_cfg_expect_semicolon, mtproxy_ffi_mtproto_cfg_parse_directive_step,
         mtproxy_ffi_mtproto_cfg_getlex_ext, mtproxy_ffi_mtproto_cfg_lookup_cluster_index,
         mtproxy_ffi_mtproto_cfg_parse_server_port, mtproxy_ffi_mtproto_cfg_preinit,
         mtproxy_ffi_mtproto_cfg_scan_directive_token,
@@ -3608,8 +3771,9 @@ mod tests {
         mtproxy_ffi_tl_parse_query_header, MtproxyAesKeyData, MtproxyApplicationBoundary,
         MtproxyCfgIntResult, MtproxyCfgScanResult, MtproxyConcurrencyBoundary, MtproxyCpuid,
         MtproxyCryptoBoundary, MtproxyMeminfoSummary,
-        MtproxyMtprotoCfgClusterApplyDecisionResult, MtproxyMtprotoCfgDirectiveTokenResult,
-        MtproxyMtprotoCfgFinalizeResult, MtproxyMtprotoCfgGetlexExtResult,
+        MtproxyMtprotoCfgClusterApplyDecisionResult, MtproxyMtprotoCfgDirectiveStepResult,
+        MtproxyMtprotoCfgDirectiveTokenResult, MtproxyMtprotoCfgFinalizeResult,
+        MtproxyMtprotoCfgGetlexExtResult,
         MtproxyMtprotoCfgParseServerPortResult, MtproxyMtprotoCfgPreinitResult,
         MtproxyMtprotoOldClusterState,
         MtproxyNetworkBoundary, MtproxyProcStats, MtproxyProcessId, MtproxyRpcBoundary,
@@ -3626,6 +3790,10 @@ mod tests {
         MTPROTO_CFG_PARSE_SERVER_PORT_ERR_PORT_EXPECTED,
         MTPROTO_CFG_PARSE_SERVER_PORT_ERR_PORT_RANGE,
         MTPROTO_CFG_PARSE_SERVER_PORT_ERR_TOO_MANY_TARGETS, MTPROTO_CFG_PARSE_SERVER_PORT_OK,
+        MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_EXPECTED_SEMICOLON,
+        MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_PROXIES_INTERMIXED,
+        MTPROTO_CFG_PARSE_DIRECTIVE_STEP_OK, MTPROTO_CFG_EXPECT_SEMICOLON_ERR_EXPECTED,
+        MTPROTO_CFG_EXPECT_SEMICOLON_OK,
         MTPROTO_CFG_CLUSTER_APPLY_DECISION_ERR_PROXIES_INTERMIXED,
         MTPROTO_CFG_CLUSTER_APPLY_DECISION_ERR_TOO_MANY_AUTH_CLUSTERS,
         MTPROTO_CFG_CLUSTER_APPLY_DECISION_KIND_APPEND_LAST,
@@ -3639,7 +3807,8 @@ mod tests {
         MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_TARGET_ID_SPACE, MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_OK,
         MTPROTO_DIRECTIVE_TOKEN_KIND_DEFAULT_CLUSTER, MTPROTO_DIRECTIVE_TOKEN_KIND_MAX_CONNECTIONS,
         MTPROTO_DIRECTIVE_TOKEN_KIND_MIN_CONNECTIONS, MTPROTO_DIRECTIVE_TOKEN_KIND_PROXY_FOR,
-        MTPROTO_DIRECTIVE_TOKEN_KIND_TIMEOUT, MTPROTO_PROXY_CONTRACT_OPS,
+        MTPROTO_DIRECTIVE_TOKEN_KIND_TIMEOUT,
+        MTPROTO_PROXY_CONTRACT_OPS,
         MTPROTO_PROXY_IMPLEMENTED_OPS, NETWORK_BOUNDARY_VERSION, NET_CRYPTO_AES_CONTRACT_OPS,
         NET_CRYPTO_AES_IMPLEMENTED_OPS, NET_CRYPTO_DH_CONTRACT_OPS, NET_CRYPTO_DH_IMPLEMENTED_OPS,
         NET_EVENTS_CONTRACT_OPS, NET_EVENTS_IMPLEMENTED_OPS, NET_MSG_BUFFERS_CONTRACT_OPS,
@@ -4127,6 +4296,113 @@ mod tests {
         assert_eq!(rc, MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_OK);
         assert_eq!(out.kind, MTPROTO_DIRECTIVE_TOKEN_KIND_MAX_CONNECTIONS);
         assert_eq!(out.value, 64);
+    }
+
+    #[test]
+    fn mtproto_config_parse_directive_step_helper_consumes_scalar_semicolon() {
+        let mut out = MtproxyMtprotoCfgDirectiveStepResult::default();
+        let rc = unsafe {
+            mtproxy_ffi_mtproto_cfg_parse_directive_step(
+                b"timeout 250;".as_ptr().cast(),
+                12,
+                2,
+                64,
+                core::ptr::null(),
+                0,
+                8,
+                &raw mut out,
+            )
+        };
+        assert_eq!(rc, MTPROTO_CFG_PARSE_DIRECTIVE_STEP_OK);
+        assert_eq!(out.kind, MTPROTO_DIRECTIVE_TOKEN_KIND_TIMEOUT);
+        assert_eq!(out.advance, 12);
+        assert_eq!(out.value, 250);
+        assert_eq!(out.cluster_decision_kind, 0);
+        assert_eq!(out.cluster_index, -1);
+    }
+
+    #[test]
+    fn mtproto_config_parse_directive_step_helper_returns_proxy_decision() {
+        let cluster_ids = [4, -2];
+        let mut out = MtproxyMtprotoCfgDirectiveStepResult::default();
+        let input = b"proxy_for -2   dc1:443;";
+        let rc = unsafe {
+            mtproxy_ffi_mtproto_cfg_parse_directive_step(
+                input.as_ptr().cast(),
+                input.len(),
+                2,
+                64,
+                cluster_ids.as_ptr(),
+                u32::try_from(cluster_ids.len()).expect("len fits"),
+                8,
+                &raw mut out,
+            )
+        };
+        assert_eq!(rc, MTPROTO_CFG_PARSE_DIRECTIVE_STEP_OK);
+        assert_eq!(out.kind, MTPROTO_DIRECTIVE_TOKEN_KIND_PROXY_FOR);
+        assert_eq!(out.advance, 15);
+        assert_eq!(out.value, -2);
+        assert_eq!(
+            out.cluster_decision_kind,
+            MTPROTO_CFG_CLUSTER_APPLY_DECISION_KIND_APPEND_LAST
+        );
+        assert_eq!(out.cluster_index, 1);
+    }
+
+    #[test]
+    fn mtproto_config_parse_directive_step_helper_reports_expected_errors() {
+        let mut out = MtproxyMtprotoCfgDirectiveStepResult::default();
+        let rc = unsafe {
+            mtproxy_ffi_mtproto_cfg_parse_directive_step(
+                b"timeout 250".as_ptr().cast(),
+                11,
+                2,
+                64,
+                core::ptr::null(),
+                0,
+                8,
+                &raw mut out,
+            )
+        };
+        assert_eq!(rc, MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_EXPECTED_SEMICOLON);
+
+        let cluster_ids = [4, -2, 7];
+        let rc = unsafe {
+            mtproxy_ffi_mtproto_cfg_parse_directive_step(
+                b"proxy_for -2 dc1:443".as_ptr().cast(),
+                20,
+                2,
+                64,
+                cluster_ids.as_ptr(),
+                u32::try_from(cluster_ids.len()).expect("len fits"),
+                8,
+                &raw mut out,
+            )
+        };
+        assert_eq!(rc, MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_PROXIES_INTERMIXED);
+    }
+
+    #[test]
+    fn mtproto_config_expect_semicolon_helper_matches_parser_behavior() {
+        let mut advance = 0usize;
+        let rc = unsafe {
+            mtproxy_ffi_mtproto_cfg_expect_semicolon(
+                b";".as_ptr().cast(),
+                1,
+                &raw mut advance,
+            )
+        };
+        assert_eq!(rc, MTPROTO_CFG_EXPECT_SEMICOLON_OK);
+        assert_eq!(advance, 1);
+
+        let rc = unsafe {
+            mtproxy_ffi_mtproto_cfg_expect_semicolon(
+                b" ".as_ptr().cast(),
+                1,
+                &raw mut advance,
+            )
+        };
+        assert_eq!(rc, MTPROTO_CFG_EXPECT_SEMICOLON_ERR_EXPECTED);
     }
 
     #[test]
