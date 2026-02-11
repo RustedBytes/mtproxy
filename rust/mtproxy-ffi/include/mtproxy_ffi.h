@@ -710,6 +710,12 @@ int32_t mtproxy_ffi_mtproto_cfg_finalize(
   int32_t default_cluster_id,
   mtproxy_ffi_mtproto_cfg_finalize_result_t *out
 );
+int32_t mtproxy_ffi_mtproto_cfg_parse_config(
+  void *mc,
+  int32_t flags,
+  int32_t config_fd
+);
+int32_t mtproxy_ffi_mtproto_cfg_do_reload_config(int32_t flags);
 
 // CRC32 (IEEE, reflected polynomial 0xEDB88320) partial update.
 // Semantics match C `crc32_partial` function.

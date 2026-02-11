@@ -2,7 +2,7 @@
 
 use aes::Aes256;
 use cbc::cipher::{BlockDecryptMut, BlockEncryptMut, KeyIvInit, StreamCipher};
-use core::ffi::{c_char, c_int, c_long, c_void};
+use core::ffi::{c_char, c_double, c_int, c_long, c_void};
 use core::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 use ctr::Ctr128BE;
 use hmac::{Hmac, Mac};
@@ -129,6 +129,8 @@ const MTPROTO_CFG_PARSE_FULL_PASS_ERR_MISSING_PROXY_DIRECTIVES: i32 = -16;
 const MTPROTO_CFG_PARSE_FULL_PASS_ERR_NO_PROXY_SERVERS_DEFINED: i32 = -17;
 const MTPROTO_CFG_PARSE_FULL_PASS_ERR_INTERNAL: i32 = -18;
 const MTPROTO_CFG_FULL_PASS_MAX_CLUSTERS: usize = 1024;
+const MTPROTO_CFG_MAX_CLUSTERS: usize = 1024;
+const MTPROTO_CFG_MAX_TARGETS: usize = 4096;
 const MTPROTO_CFG_EXPECT_SEMICOLON_OK: i32 = 0;
 const MTPROTO_CFG_EXPECT_SEMICOLON_ERR_INVALID_ARGS: i32 = -1;
 const MTPROTO_CFG_EXPECT_SEMICOLON_ERR_EXPECTED: i32 = -2;
@@ -198,6 +200,7 @@ const DH_MOD_MIN_LEN: usize = 241;
 const DH_MOD_MAX_LEN: usize = 256;
 const AESNI_CIPHER_AES_256_CBC: i32 = 1;
 const AESNI_CIPHER_AES_256_CTR: i32 = 2;
+const O_RDONLY_FLAG: c_int = 0;
 const AES_ROLE_XOR_MASK: [u8; 6] = [
     b'C' ^ b'S',
     b'L' ^ b'E',
@@ -445,6 +448,43 @@ pub struct MtproxyMtprotoOldClusterState {
     pub has_first_target_index: i32,
 }
 
+type MtproxyConnTargetJob = *mut c_void;
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct MtproxyMfCluster {
+    targets_num: c_int,
+    write_targets_num: c_int,
+    targets_allocated: c_int,
+    flags: c_int,
+    cluster_id: c_int,
+    cluster_targets: *mut MtproxyConnTargetJob,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct MtproxyMfGroupStats {
+    tot_clusters: c_int,
+}
+
+#[repr(C)]
+struct MtproxyMfConfig {
+    tot_targets: c_int,
+    auth_clusters: c_int,
+    default_cluster_id: c_int,
+    min_connections: c_int,
+    max_connections: c_int,
+    timeout: f64,
+    config_bytes: c_int,
+    config_loaded_at: c_int,
+    config_md5_hex: *mut c_char,
+    auth_stats: MtproxyMfGroupStats,
+    have_proxy: c_int,
+    default_cluster: *mut MtproxyMfCluster,
+    targets: [MtproxyConnTargetJob; MTPROTO_CFG_MAX_TARGETS],
+    auth_cluster: [MtproxyMfCluster; MTPROTO_CFG_MAX_CLUSTERS],
+}
+
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct MtproxyTlHeaderParseResult {
@@ -668,10 +708,43 @@ unsafe extern "C" {
     fn time(timer: *mut c_long) -> c_long;
     fn clock_gettime(clock_id: c_int, tp: *mut Timespec) -> c_int;
     fn gettimeofday(tv: *mut Timeval, tz: *mut c_void) -> c_int;
+    fn open(pathname: *const c_char, flags: c_int, ...) -> c_int;
+    fn close(fd: c_int) -> c_int;
+    fn exit(status: c_int) -> !;
     fn lrand48_j() -> c_long;
+    fn drand48() -> c_double;
     fn srand48(seedval: c_long);
     fn malloc(size: usize) -> *mut c_void;
+    fn calloc(nmemb: usize, size: usize) -> *mut c_void;
     fn free(ptr: *mut c_void);
+    fn kprintf(format: *const c_char, ...);
+    fn syntax(msg: *const c_char, ...);
+    fn load_config(file: *const c_char, fd: c_int) -> c_int;
+    fn reset_config();
+    fn md5_hex_config(out: *mut c_char);
+    fn clear_config(mc: *mut MtproxyMfConfig, do_destroy_targets: c_int);
+    fn create_all_outbound_connections() -> c_int;
+    fn kdb_load_hosts() -> c_int;
+
+    fn mtproxy_ffi_mtproto_cfg_resolve_default_target_from_cfg_cur() -> c_int;
+    fn mtproxy_ffi_mtproto_cfg_set_default_target_endpoint(
+        port: u16,
+        min_connections: i64,
+        max_connections: i64,
+        reconnect_timeout: c_double,
+    );
+    fn mtproxy_ffi_mtproto_cfg_create_target(mc: *mut MtproxyMfConfig, target_index: u32);
+    fn mtproxy_ffi_mtproto_cfg_now_or_time() -> c_int;
+
+    static mut default_cfg_min_connections: c_int;
+    static mut default_cfg_max_connections: c_int;
+    static mut cfg_cur: *mut c_char;
+    static mut cfg_end: *mut c_char;
+    static mut config_filename: *mut c_char;
+    static mut config_bytes: c_int;
+    static mut CurConf: *mut MtproxyMfConfig;
+    static mut NextConf: *mut MtproxyMfConfig;
+    static mut verbosity: c_int;
 }
 
 type Aes256Ctr = Ctr128BE<Aes256>;
@@ -2284,6 +2357,425 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_finalize(
         }
         Err(err) => mtproto_cfg_finalize_err_to_code(err),
     }
+}
+
+unsafe fn mtproto_cfg_syntax_literal(msg: &[u8]) {
+    unsafe { syntax(msg.as_ptr().cast()) };
+}
+
+unsafe fn mtproto_cfg_report_parse_full_pass_error(pass_rc: i32, tot_targets: c_int) {
+    match pass_rc {
+        MTPROTO_CFG_PARSE_FULL_PASS_ERR_INVALID_TIMEOUT => {
+            unsafe { mtproto_cfg_syntax_literal(b"invalid timeout\0") };
+        }
+        MTPROTO_CFG_PARSE_FULL_PASS_ERR_INVALID_MAX_CONNECTIONS => {
+            unsafe { mtproto_cfg_syntax_literal(b"invalid max connections\0") };
+        }
+        MTPROTO_CFG_PARSE_FULL_PASS_ERR_INVALID_MIN_CONNECTIONS => {
+            unsafe { mtproto_cfg_syntax_literal(b"invalid min connections\0") };
+        }
+        MTPROTO_CFG_PARSE_FULL_PASS_ERR_INVALID_TARGET_ID => {
+            unsafe {
+                mtproto_cfg_syntax_literal(b"invalid target id (integer -32768..32767 expected)\0")
+            };
+        }
+        MTPROTO_CFG_PARSE_FULL_PASS_ERR_TARGET_ID_SPACE => {
+            unsafe { mtproto_cfg_syntax_literal(b"space expected after target id\0") };
+        }
+        MTPROTO_CFG_PARSE_FULL_PASS_ERR_TOO_MANY_AUTH_CLUSTERS => {
+            unsafe { mtproto_cfg_syntax_literal(b"too many auth clusters\0") };
+        }
+        MTPROTO_CFG_PARSE_FULL_PASS_ERR_PROXIES_INTERMIXED => {
+            unsafe { mtproto_cfg_syntax_literal(b"proxies for dc intermixed\0") };
+        }
+        MTPROTO_CFG_PARSE_FULL_PASS_ERR_EXPECTED_SEMICOLON => {
+            unsafe { mtproto_cfg_syntax_literal(b"';' expected\0") };
+        }
+        MTPROTO_CFG_PARSE_FULL_PASS_ERR_PROXY_EXPECTED => {
+            unsafe { mtproto_cfg_syntax_literal(b"'proxy <ip>:<port>;' expected\0") };
+        }
+        MTPROTO_CFG_PARSE_FULL_PASS_ERR_TOO_MANY_TARGETS => {
+            unsafe { syntax(b"too many targets (%d)\0".as_ptr().cast(), tot_targets) };
+        }
+        MTPROTO_CFG_PARSE_FULL_PASS_ERR_HOSTNAME_EXPECTED => {
+            unsafe { mtproto_cfg_syntax_literal(b"hostname expected\0") };
+        }
+        MTPROTO_CFG_PARSE_FULL_PASS_ERR_PORT_EXPECTED => {
+            unsafe { mtproto_cfg_syntax_literal(b"port number expected\0") };
+        }
+        MTPROTO_CFG_PARSE_FULL_PASS_ERR_PORT_RANGE => {
+            unsafe { mtproto_cfg_syntax_literal(b"port number out of range\0") };
+        }
+        MTPROTO_CFG_PARSE_FULL_PASS_ERR_CLUSTER_EXTEND_INVARIANT => {
+            unsafe { mtproto_cfg_syntax_literal(b"IMPOSSIBLE\0") };
+        }
+        MTPROTO_CFG_PARSE_FULL_PASS_ERR_MISSING_PROXY_DIRECTIVES => {
+            unsafe {
+                mtproto_cfg_syntax_literal(
+                    b"expected to find a mtproto-proxy configuration with `proxy' directives\0",
+                )
+            };
+        }
+        MTPROTO_CFG_PARSE_FULL_PASS_ERR_NO_PROXY_SERVERS_DEFINED => {
+            unsafe {
+                mtproto_cfg_syntax_literal(
+                    b"no MTProto next proxy servers defined to forward queries to\0",
+                )
+            };
+        }
+        _ => unsafe { mtproto_cfg_syntax_literal(b"internal parser full-pass failure\0") },
+    }
+}
+
+/// Full `parse_config()` runtime path extracted from C implementation.
+///
+/// # Safety
+/// `mc` must point to a writable `struct mf_config`.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_parse_config(
+    mc: *mut c_void,
+    flags: i32,
+    config_fd: i32,
+) -> i32 {
+    if mc.is_null() || (flags & 4) == 0 {
+        return -1;
+    }
+    let mc_ptr = mc.cast::<MtproxyMfConfig>();
+    let mc_ref = unsafe { &mut *mc_ptr };
+
+    if (flags & 17) == 0 && unsafe { load_config(config_filename.cast_const(), config_fd) } < 0 {
+        return -2;
+    }
+
+    unsafe { reset_config() };
+    let parse_start = unsafe { cfg_cur };
+    let parse_end = unsafe { cfg_end };
+    if parse_start.is_null() || parse_end.is_null() {
+        unsafe { mtproto_cfg_syntax_literal(b"internal parser cursor mismatch\0") };
+        return -1;
+    }
+    let parse_delta = unsafe { parse_end.offset_from(parse_start) };
+    if parse_delta < 0 {
+        unsafe { mtproto_cfg_syntax_literal(b"internal parser cursor mismatch\0") };
+        return -1;
+    }
+    let parse_len = parse_delta as usize;
+
+    let actions = unsafe {
+        calloc(
+            MTPROTO_CFG_MAX_TARGETS,
+            core::mem::size_of::<MtproxyMtprotoCfgProxyAction>(),
+        )
+    }
+    .cast::<MtproxyMtprotoCfgProxyAction>();
+    if actions.is_null() {
+        unsafe { mtproto_cfg_syntax_literal(b"out of memory while parsing configuration\0") };
+        return -1;
+    }
+
+    let mut res = -1;
+    let mut parsed = MtproxyMtprotoCfgParseFullResult::default();
+    'parse: loop {
+        let pass_rc = unsafe {
+            mtproxy_ffi_mtproto_cfg_parse_full_pass(
+                parse_start.cast_const(),
+                parse_len,
+                i64::from(default_cfg_min_connections),
+                i64::from(default_cfg_max_connections),
+                if (flags & 1) != 0 { 1 } else { 0 },
+                MTPROTO_CFG_MAX_CLUSTERS as u32,
+                MTPROTO_CFG_MAX_TARGETS as u32,
+                actions,
+                MTPROTO_CFG_MAX_TARGETS as u32,
+                &raw mut parsed,
+            )
+        };
+        if pass_rc != MTPROTO_CFG_PARSE_FULL_PASS_OK {
+            unsafe { mtproto_cfg_report_parse_full_pass_error(pass_rc, mc_ref.tot_targets) };
+            break 'parse;
+        }
+
+        mc_ref.tot_targets = parsed.tot_targets as c_int;
+        mc_ref.auth_clusters = parsed.auth_clusters as c_int;
+        mc_ref.auth_stats.tot_clusters = parsed.auth_tot_clusters as c_int;
+        mc_ref.min_connections = parsed.min_connections as c_int;
+        mc_ref.max_connections = parsed.max_connections as c_int;
+        mc_ref.timeout = parsed.timeout_seconds;
+        mc_ref.default_cluster_id = parsed.default_cluster_id;
+        mc_ref.have_proxy = if parsed.have_proxy != 0 { 1 } else { 0 };
+        mc_ref.default_cluster = core::ptr::null_mut();
+
+        let Ok(actions_len) = usize::try_from(parsed.actions_len) else {
+            unsafe { mtproto_cfg_syntax_literal(b"internal parser action count mismatch\0") };
+            break 'parse;
+        };
+        if actions_len > MTPROTO_CFG_MAX_TARGETS {
+            unsafe { mtproto_cfg_syntax_literal(b"internal parser action count mismatch\0") };
+            break 'parse;
+        }
+
+        for i in 0..actions_len {
+            let action = unsafe { *actions.add(i) };
+            if action.host_offset > parse_len {
+                unsafe { mtproto_cfg_syntax_literal(b"internal parser host offset mismatch\0") };
+                break 'parse;
+            }
+            let Some(host_advance) = action.host_offset.checked_add(action.step.advance) else {
+                unsafe { mtproto_cfg_syntax_literal(b"internal parser target advance mismatch\0") };
+                break 'parse;
+            };
+            if host_advance > parse_len {
+                unsafe { mtproto_cfg_syntax_literal(b"internal parser target advance mismatch\0") };
+                break 'parse;
+            }
+
+            let host_cur = unsafe { parse_start.add(action.host_offset) };
+            unsafe { cfg_cur = host_cur };
+            if unsafe { mtproxy_ffi_mtproto_cfg_resolve_default_target_from_cfg_cur() } < 0 {
+                break 'parse;
+            }
+
+            if action.step.target_index >= MTPROTO_CFG_MAX_TARGETS as u32
+                || action.step.target_index >= parsed.tot_targets
+            {
+                unsafe { mtproto_cfg_syntax_literal(b"internal parser target index mismatch\0") };
+                break 'parse;
+            }
+            unsafe { cfg_cur = host_cur.add(action.step.advance) };
+            unsafe {
+                mtproxy_ffi_mtproto_cfg_set_default_target_endpoint(
+                    action.step.port,
+                    action.step.min_connections,
+                    action.step.max_connections,
+                    1.0 + 0.1 * drand48(),
+                );
+            }
+
+            if (flags & 1) != 0 {
+                unsafe { mtproxy_ffi_mtproto_cfg_create_target(mc_ptr, action.step.target_index) };
+            }
+
+            if action.step.cluster_index < 0
+                || action.step.cluster_index >= MTPROTO_CFG_MAX_CLUSTERS as i32
+            {
+                unsafe {
+                    mtproto_cfg_syntax_literal(b"internal parser cluster decision mismatch\0")
+                };
+                break 'parse;
+            }
+            if action.step.auth_clusters_after > MTPROTO_CFG_MAX_CLUSTERS as u32 {
+                unsafe {
+                    mtproto_cfg_syntax_literal(b"internal parser auth cluster count mismatch\0")
+                };
+                break 'parse;
+            }
+
+            let Ok(cluster_index) = usize::try_from(action.step.cluster_index) else {
+                unsafe {
+                    mtproto_cfg_syntax_literal(b"internal parser cluster decision mismatch\0")
+                };
+                break 'parse;
+            };
+            let mfc = &mut mc_ref.auth_cluster[cluster_index];
+            mfc.flags = action.step.cluster_state_after.flags as c_int;
+            mfc.targets_num = action.step.cluster_state_after.targets_num as c_int;
+            mfc.write_targets_num = action.step.cluster_state_after.write_targets_num as c_int;
+            mfc.targets_allocated = 0;
+            mfc.cluster_id = action.step.cluster_state_after.cluster_id;
+            match action.step.cluster_targets_action {
+                MTPROTO_CFG_CLUSTER_TARGETS_ACTION_KEEP_EXISTING => {}
+                MTPROTO_CFG_CLUSTER_TARGETS_ACTION_CLEAR => {
+                    mfc.cluster_targets = core::ptr::null_mut();
+                }
+                MTPROTO_CFG_CLUSTER_TARGETS_ACTION_SET_TARGET => {
+                    if (flags & 1) == 0 {
+                        unsafe {
+                            mtproto_cfg_syntax_literal(
+                                b"internal parser cluster target action mismatch\0",
+                            )
+                        };
+                        break 'parse;
+                    }
+                    if action.step.cluster_targets_index >= MTPROTO_CFG_MAX_TARGETS as u32
+                        || action.step.cluster_targets_index >= action.step.tot_targets_after
+                    {
+                        unsafe {
+                            mtproto_cfg_syntax_literal(
+                                b"internal parser cluster target index mismatch\0",
+                            )
+                        };
+                        break 'parse;
+                    }
+                    let target_index = action.step.cluster_targets_index as usize;
+                    mfc.cluster_targets = &mut mc_ref.targets[target_index];
+                }
+                _ => {
+                    unsafe {
+                        mtproto_cfg_syntax_literal(
+                            b"internal parser cluster target action mismatch\0",
+                        )
+                    };
+                    break 'parse;
+                }
+            }
+
+            if action.step.cluster_decision_kind
+                == MTPROTO_CFG_CLUSTER_APPLY_DECISION_KIND_CREATE_NEW
+            {
+                if unsafe { verbosity } >= 3 {
+                    unsafe {
+                        kprintf(
+                            b"-> added target to new auth_cluster #%d\n\0"
+                                .as_ptr()
+                                .cast(),
+                            action.step.cluster_index,
+                        );
+                    }
+                }
+            } else if action.step.cluster_decision_kind
+                == MTPROTO_CFG_CLUSTER_APPLY_DECISION_KIND_APPEND_LAST
+                && unsafe { verbosity } >= 3
+            {
+                unsafe {
+                    kprintf(
+                        b"-> added target to old auth_cluster #%d\n\0"
+                            .as_ptr()
+                            .cast(),
+                        action.step.cluster_index,
+                    );
+                }
+            }
+        }
+
+        mc_ref.tot_targets = parsed.tot_targets as c_int;
+        mc_ref.auth_clusters = parsed.auth_clusters as c_int;
+        mc_ref.auth_stats.tot_clusters = parsed.auth_tot_clusters as c_int;
+        mc_ref.have_proxy = if parsed.have_proxy != 0 { 1 } else { 0 };
+        if parsed.has_default_cluster_index != 0 {
+            if parsed.default_cluster_index >= parsed.auth_clusters
+                || parsed.default_cluster_index >= MTPROTO_CFG_MAX_CLUSTERS as u32
+            {
+                unsafe {
+                    mtproto_cfg_syntax_literal(b"internal parser default cluster index mismatch\0")
+                };
+                break 'parse;
+            }
+            let default_index = parsed.default_cluster_index as usize;
+            mc_ref.default_cluster = &mut mc_ref.auth_cluster[default_index];
+        } else {
+            mc_ref.default_cluster = core::ptr::null_mut();
+        }
+
+        res = 0;
+        break 'parse;
+    }
+
+    unsafe { free(actions.cast()) };
+    res
+}
+
+/// Full `do_reload_config()` runtime path extracted from C implementation.
+///
+/// # Safety
+/// Uses and mutates process-global C runtime state (`CurConf`, `NextConf`, parser globals).
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_do_reload_config(flags: i32) -> i32 {
+    if (flags & 4) == 0 {
+        return -1;
+    }
+
+    let mut fd = -1;
+    if (flags & 16) == 0 {
+        fd = unsafe { open(config_filename.cast_const(), O_RDONLY_FLAG) };
+        if fd < 0 {
+            unsafe {
+                kprintf(
+                    b"cannot re-read config file %s: %m\n\0".as_ptr().cast(),
+                    config_filename,
+                );
+            }
+            return -1;
+        }
+
+        let reload_hosts = unsafe { kdb_load_hosts() };
+        if reload_hosts > 0 && unsafe { verbosity } >= 1 {
+            unsafe { kprintf(b"/etc/hosts changed, reloaded\n\0".as_ptr().cast()) };
+        }
+    }
+
+    let mut res = unsafe { mtproxy_ffi_mtproto_cfg_parse_config(NextConf.cast(), flags & !1, fd) };
+
+    if fd >= 0 {
+        unsafe { close(fd) };
+    }
+
+    if res < 0 {
+        unsafe {
+            kprintf(
+                b"error while re-reading config file %s, new configuration NOT applied\n\0"
+                    .as_ptr()
+                    .cast(),
+                config_filename,
+            );
+        }
+        return res;
+    }
+
+    if (flags & 32) != 0 {
+        return 0;
+    }
+
+    res = unsafe { mtproxy_ffi_mtproto_cfg_parse_config(NextConf.cast(), flags | 1, -1) };
+    if res < 0 {
+        unsafe { clear_config(NextConf, 0) };
+        unsafe {
+            kprintf(
+                b"fatal error while re-reading config file %s\n\0"
+                    .as_ptr()
+                    .cast(),
+                config_filename,
+            )
+        };
+        unsafe { exit(-res) };
+    }
+
+    let old_cur_conf = unsafe { CurConf };
+    unsafe {
+        CurConf = NextConf;
+        NextConf = old_cur_conf;
+    }
+
+    unsafe { clear_config(NextConf, 1) };
+    if (flags & 1) != 0 {
+        unsafe { create_all_outbound_connections() };
+    }
+
+    let cur_conf = unsafe { CurConf };
+    if !cur_conf.is_null() {
+        let cur_conf_ref = unsafe { &mut *cur_conf };
+        let cur_now = unsafe { mtproxy_ffi_mtproto_cfg_now_or_time() };
+        cur_conf_ref.config_loaded_at = cur_now;
+        cur_conf_ref.config_bytes = unsafe { config_bytes };
+        cur_conf_ref.config_md5_hex = unsafe { malloc(33).cast() };
+        if !cur_conf_ref.config_md5_hex.is_null() {
+            unsafe {
+                md5_hex_config(cur_conf_ref.config_md5_hex);
+                *cur_conf_ref.config_md5_hex.add(32) = 0;
+            }
+        }
+    }
+
+    unsafe {
+        kprintf(
+            b"configuration file %s re-read successfully (%d bytes parsed), new configuration active\n\0"
+                .as_ptr()
+                .cast(),
+            config_filename,
+            config_bytes,
+        );
+    }
+
+    0
 }
 
 fn md5_digest_impl(input: &[u8], out: &mut [u8; DIGEST_MD5_LEN]) -> bool {

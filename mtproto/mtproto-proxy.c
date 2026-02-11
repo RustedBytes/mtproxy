@@ -2414,7 +2414,7 @@ void mtfront_pre_init(void) {
   }
 #endif
 
-  int res = do_reload_config(0x26);
+  int res = mtproxy_ffi_mtproto_cfg_do_reload_config(0x26);
 
   if (res < 0) {
     fprintf(stderr, "config check failed! (code %d)\n", res);
@@ -2478,7 +2478,7 @@ void mtfront_pre_init(void) {
 }
 
 void mtfront_pre_start(void) {
-  int res = do_reload_config(0x17);
+  int res = mtproxy_ffi_mtproto_cfg_do_reload_config(0x17);
 
   if (res < 0) {
     fprintf(stderr, "config check failed! (code %d)\n", res);
