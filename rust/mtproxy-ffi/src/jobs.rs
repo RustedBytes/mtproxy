@@ -1,6 +1,7 @@
 use core::ffi::c_void;
 use core::ptr;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::vec::Vec;
 
@@ -43,6 +44,9 @@ struct TokioJobsBridge {
     subclasses: Mutex<HashMap<(i32, i32), Arc<ClassQueue>>>,
     subclass_state: Mutex<HashMap<(i32, i32), SubclassState>>,
     subclass_permits: Mutex<HashMap<i32, Arc<ClassPermitPool>>>,
+    timer_queues: Mutex<HashMap<i32, Arc<ClassQueue>>>,
+    message_queues: Mutex<HashMap<i32, Arc<ClassQueue>>>,
+    next_queue_id: AtomicI32,
 }
 
 static TOKIO_JOBS_BRIDGE: OnceLock<TokioJobsBridge> = OnceLock::new();
@@ -67,6 +71,9 @@ fn build_tokio_jobs_bridge() -> TokioJobsBridge {
         subclasses: Mutex::new(HashMap::new()),
         subclass_state: Mutex::new(HashMap::new()),
         subclass_permits: Mutex::new(HashMap::new()),
+        timer_queues: Mutex::new(HashMap::new()),
+        message_queues: Mutex::new(HashMap::new()),
+        next_queue_id: AtomicI32::new(1),
     }
 }
 
@@ -117,6 +124,74 @@ fn permit_pool_for_class(bridge: &TokioJobsBridge, job_class: i32) -> Option<Arc
             .or_insert_with(alloc_permit_pool)
             .clone(),
     )
+}
+
+fn alloc_user_queue(map: &Mutex<HashMap<i32, Arc<ClassQueue>>>, bridge: &TokioJobsBridge) -> i32 {
+    let queue_id = bridge.next_queue_id.fetch_add(1, Ordering::Relaxed);
+    if queue_id <= 0 {
+        return -3;
+    }
+    let mut queues = match map.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    queues.insert(queue_id, alloc_queue());
+    queue_id
+}
+
+fn drop_user_queue(map: &Mutex<HashMap<i32, Arc<ClassQueue>>>, queue_id: i32) -> i32 {
+    if queue_id <= 0 {
+        return -2;
+    }
+    let mut queues = match map.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    if queues.remove(&queue_id).is_some() {
+        0
+    } else {
+        -2
+    }
+}
+
+fn user_queue_by_id(
+    map: &Mutex<HashMap<i32, Arc<ClassQueue>>>,
+    queue_id: i32,
+) -> Option<Arc<ClassQueue>> {
+    if queue_id <= 0 {
+        return None;
+    }
+    let queues = match map.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    queues.get(&queue_id).cloned()
+}
+
+fn enqueue_user_queue_item(queue: &ClassQueue, ptr: JobPtr) -> i32 {
+    if queue.tx.send(ptr).is_err() {
+        return -4;
+    }
+    0
+}
+
+fn dequeue_user_queue_item(queue: &ClassQueue, out_ptr: *mut *mut c_void) -> i32 {
+    let mut receiver = match queue.rx.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    let received = match receiver.try_recv() {
+        Ok(ptr) => Some(ptr),
+        Err(TryRecvError::Empty) | Err(TryRecvError::Disconnected) => None,
+    };
+    let Some(ptr) = received else {
+        return 0;
+    };
+    // SAFETY: pointer validated by caller-facing wrapper.
+    unsafe {
+        *out_ptr = ptr as *mut c_void;
+    }
+    1
 }
 
 fn state_for_subclass(
@@ -585,6 +660,170 @@ pub extern "C" fn mtproxy_ffi_jobs_tokio_drain_main(
     drained
 }
 
+/// Allocates one Tokio-backed timer-manager queue.
+///
+/// Return values:
+/// - `> 0`: queue id
+/// - `-1`: scheduler not initialized
+/// - `-3`: queue id space exhausted
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_jobs_tokio_timer_queue_create() -> i32 {
+    let Some(bridge) = TOKIO_JOBS_BRIDGE.get() else {
+        return -1;
+    };
+    alloc_user_queue(&bridge.timer_queues, bridge)
+}
+
+/// Destroys one Tokio-backed timer-manager queue by id.
+///
+/// Return values:
+/// - `0`: destroyed
+/// - `-1`: scheduler not initialized
+/// - `-2`: invalid/unknown queue id
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_jobs_tokio_timer_queue_destroy(queue_id: i32) -> i32 {
+    let Some(bridge) = TOKIO_JOBS_BRIDGE.get() else {
+        return -1;
+    };
+    drop_user_queue(&bridge.timer_queues, queue_id)
+}
+
+/// Enqueues one opaque pointer into Tokio-backed timer-manager queue.
+///
+/// Return values:
+/// - `0`: enqueued
+/// - `-1`: null pointer
+/// - `-2`: scheduler not initialized
+/// - `-3`: invalid queue id
+/// - `-4`: queue closed
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_jobs_tokio_timer_queue_push(
+    queue_id: i32,
+    ptr: *mut c_void,
+) -> i32 {
+    if ptr.is_null() {
+        return -1;
+    }
+    let Some(bridge) = TOKIO_JOBS_BRIDGE.get() else {
+        return -2;
+    };
+    let Some(queue) = user_queue_by_id(&bridge.timer_queues, queue_id) else {
+        return -3;
+    };
+    enqueue_user_queue_item(&queue, ptr as JobPtr)
+}
+
+/// Dequeues one opaque pointer from Tokio-backed timer-manager queue.
+///
+/// Return values:
+/// - `1`: one pointer dequeued into `out_ptr`
+/// - `0`: queue currently empty/disconnected
+/// - `-1`: null `out_ptr`
+/// - `-2`: scheduler not initialized
+/// - `-3`: invalid queue id
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_jobs_tokio_timer_queue_pop(
+    queue_id: i32,
+    out_ptr: *mut *mut c_void,
+) -> i32 {
+    if out_ptr.is_null() {
+        return -1;
+    }
+    // SAFETY: pointer validated above; caller owns storage.
+    unsafe {
+        *out_ptr = ptr::null_mut();
+    }
+    let Some(bridge) = TOKIO_JOBS_BRIDGE.get() else {
+        return -2;
+    };
+    let Some(queue) = user_queue_by_id(&bridge.timer_queues, queue_id) else {
+        return -3;
+    };
+    dequeue_user_queue_item(&queue, out_ptr)
+}
+
+/// Allocates one Tokio-backed message queue.
+///
+/// Return values:
+/// - `> 0`: queue id
+/// - `-1`: scheduler not initialized
+/// - `-3`: queue id space exhausted
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_jobs_tokio_message_queue_create() -> i32 {
+    let Some(bridge) = TOKIO_JOBS_BRIDGE.get() else {
+        return -1;
+    };
+    alloc_user_queue(&bridge.message_queues, bridge)
+}
+
+/// Destroys one Tokio-backed message queue by id.
+///
+/// Return values:
+/// - `0`: destroyed
+/// - `-1`: scheduler not initialized
+/// - `-2`: invalid/unknown queue id
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_jobs_tokio_message_queue_destroy(queue_id: i32) -> i32 {
+    let Some(bridge) = TOKIO_JOBS_BRIDGE.get() else {
+        return -1;
+    };
+    drop_user_queue(&bridge.message_queues, queue_id)
+}
+
+/// Enqueues one opaque pointer into Tokio-backed message queue.
+///
+/// Return values:
+/// - `0`: enqueued
+/// - `-1`: null pointer
+/// - `-2`: scheduler not initialized
+/// - `-3`: invalid queue id
+/// - `-4`: queue closed
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_jobs_tokio_message_queue_push(
+    queue_id: i32,
+    ptr: *mut c_void,
+) -> i32 {
+    if ptr.is_null() {
+        return -1;
+    }
+    let Some(bridge) = TOKIO_JOBS_BRIDGE.get() else {
+        return -2;
+    };
+    let Some(queue) = user_queue_by_id(&bridge.message_queues, queue_id) else {
+        return -3;
+    };
+    enqueue_user_queue_item(&queue, ptr as JobPtr)
+}
+
+/// Dequeues one opaque pointer from Tokio-backed message queue.
+///
+/// Return values:
+/// - `1`: one pointer dequeued into `out_ptr`
+/// - `0`: queue currently empty/disconnected
+/// - `-1`: null `out_ptr`
+/// - `-2`: scheduler not initialized
+/// - `-3`: invalid queue id
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_jobs_tokio_message_queue_pop(
+    queue_id: i32,
+    out_ptr: *mut *mut c_void,
+) -> i32 {
+    if out_ptr.is_null() {
+        return -1;
+    }
+    // SAFETY: pointer validated above; caller owns storage.
+    unsafe {
+        *out_ptr = ptr::null_mut();
+    }
+    let Some(bridge) = TOKIO_JOBS_BRIDGE.get() else {
+        return -2;
+    };
+    let Some(queue) = user_queue_by_id(&bridge.message_queues, queue_id) else {
+        return -3;
+    };
+    dequeue_user_queue_item(&queue, out_ptr)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -596,7 +835,14 @@ mod tests {
         mtproxy_ffi_jobs_tokio_subclass_has_pending,
         mtproxy_ffi_jobs_tokio_subclass_mark_processed,
         mtproxy_ffi_jobs_tokio_subclass_permit_acquire,
-        mtproxy_ffi_jobs_tokio_subclass_permit_release, JOB_CLASS_MAIN,
+        mtproxy_ffi_jobs_tokio_subclass_permit_release,
+        mtproxy_ffi_jobs_tokio_message_queue_create,
+        mtproxy_ffi_jobs_tokio_message_queue_destroy,
+        mtproxy_ffi_jobs_tokio_message_queue_pop,
+        mtproxy_ffi_jobs_tokio_message_queue_push,
+        mtproxy_ffi_jobs_tokio_timer_queue_create,
+        mtproxy_ffi_jobs_tokio_timer_queue_destroy, mtproxy_ffi_jobs_tokio_timer_queue_pop,
+        mtproxy_ffi_jobs_tokio_timer_queue_push, JOB_CLASS_MAIN,
     };
     use core::ffi::c_void;
     use core::ptr;
@@ -810,5 +1056,59 @@ mod tests {
         );
         assert_eq!(rx.recv_timeout(Duration::from_secs(1)).unwrap_or(-1), 0);
         let _ = worker.join();
+    }
+
+    #[test]
+    fn tokio_bridge_timer_queue_roundtrip() {
+        assert_eq!(mtproxy_ffi_jobs_tokio_init(), 0);
+
+        let queue_id = mtproxy_ffi_jobs_tokio_timer_queue_create();
+        assert!(queue_id > 0);
+
+        let item = 0x7777usize as *mut c_void;
+        assert_eq!(mtproxy_ffi_jobs_tokio_timer_queue_push(queue_id, item), 0);
+
+        let mut out: *mut c_void = ptr::null_mut();
+        assert_eq!(
+            unsafe { mtproxy_ffi_jobs_tokio_timer_queue_pop(queue_id, &raw mut out) },
+            1
+        );
+        assert_eq!(out, item);
+
+        out = ptr::null_mut();
+        assert_eq!(
+            unsafe { mtproxy_ffi_jobs_tokio_timer_queue_pop(queue_id, &raw mut out) },
+            0
+        );
+        assert!(out.is_null());
+
+        assert_eq!(mtproxy_ffi_jobs_tokio_timer_queue_destroy(queue_id), 0);
+    }
+
+    #[test]
+    fn tokio_bridge_message_queue_roundtrip() {
+        assert_eq!(mtproxy_ffi_jobs_tokio_init(), 0);
+
+        let queue_id = mtproxy_ffi_jobs_tokio_message_queue_create();
+        assert!(queue_id > 0);
+
+        let item = 0x8888usize as *mut c_void;
+        assert_eq!(mtproxy_ffi_jobs_tokio_message_queue_push(queue_id, item), 0);
+
+        let mut out: *mut c_void = ptr::null_mut();
+        assert_eq!(
+            unsafe { mtproxy_ffi_jobs_tokio_message_queue_pop(queue_id, &raw mut out) },
+            1
+        );
+        assert_eq!(out, item);
+
+        out = ptr::null_mut();
+        assert_eq!(
+            unsafe { mtproxy_ffi_jobs_tokio_message_queue_pop(queue_id, &raw mut out) },
+            0
+        );
+        assert!(out.is_null());
+
+        assert_eq!(mtproxy_ffi_jobs_tokio_message_queue_destroy(queue_id), 0);
     }
 }

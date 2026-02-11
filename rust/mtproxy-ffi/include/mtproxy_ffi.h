@@ -520,6 +520,18 @@ int32_t mtproxy_ffi_jobs_tokio_drain_main(
   int32_t max_items
 );
 
+// jobs helper: Tokio-backed timer-manager queue primitives.
+int32_t mtproxy_ffi_jobs_tokio_timer_queue_create(void);
+int32_t mtproxy_ffi_jobs_tokio_timer_queue_destroy(int32_t queue_id);
+int32_t mtproxy_ffi_jobs_tokio_timer_queue_push(int32_t queue_id, void *ptr);
+int32_t mtproxy_ffi_jobs_tokio_timer_queue_pop(int32_t queue_id, void **out_ptr);
+
+// jobs helper: Tokio-backed message-queue primitives.
+int32_t mtproxy_ffi_jobs_tokio_message_queue_create(void);
+int32_t mtproxy_ffi_jobs_tokio_message_queue_destroy(int32_t queue_id);
+int32_t mtproxy_ffi_jobs_tokio_message_queue_push(int32_t queue_id, void *ptr);
+int32_t mtproxy_ffi_jobs_tokio_message_queue_pop(int32_t queue_id, void **out_ptr);
+
 // net-events helpers for incremental event-loop migration.
 int32_t mtproxy_ffi_net_epoll_conv_flags(int32_t flags);
 int32_t mtproxy_ffi_net_epoll_unconv_flags(int32_t epoll_flags);

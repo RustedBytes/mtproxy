@@ -445,12 +445,8 @@ int create_job_thread_ex(int thread_class, void *(*thread_work)(void *)) {
     assert(main_job_thread);
     JC->job_queue = alloc_mp_queue_w();
     main_job_thread->job_class_mask &= ~(1 << thread_class);
-    /*if (max_job_class_threads[thread_class] == 1) {
-      run_pending_main_jobs ();
-    }*/
   }
   assert(JC->job_queue);
-  ;
 
   int i;
   struct job_thread *JT = 0;
@@ -546,12 +542,6 @@ int init_async_jobs(void) {
   if (!cur_job_threads) {
     assert(create_job_thread(JC_MAIN) >= 0);
   }
-
-  /*
-  int i;
-  for (i = 1; i < 16; i++) if (i != JC_MAIN) {
-    create_job_class_threads (i);
-  }*/
 
   return cur_job_threads;
 }
@@ -654,7 +644,7 @@ int unlock_job(JOB_REF_ARG(job)) {
     assert(job->j_flags & JF_LOCKED);
     int flags = job->j_flags;
     int todo = flags & job->j_status & (-1 << 24);
-    if (!todo) /* {{{ */ {
+    if (!todo) {
       int new_flags = flags & ~JF_LOCKED;
       if (!__sync_bool_compare_and_swap(&job->j_flags, flags, new_flags)) {
         continue;
@@ -676,20 +666,16 @@ int unlock_job(JOB_REF_ARG(job)) {
         assert(0 && "unhandled JS_FINISH\n");
         MODULE_STAT->jobs_allocated_memory -=
             sizeof(struct async_job) + job->j_custom_bytes;
-        // complete_job (job);
-        job_free(JOB_REF_PASS(job)); // ???
+        job_free(JOB_REF_PASS(job));
         JT->jobs_active--;
         return -1;
       }
     }
-    /* }}} */
-
     int signo = 7 - __builtin_clz(todo);
     int req_class = (job->j_sigclass >> (signo * 4)) & 15;
     int is_fast = job->j_status & JSS_FAST(signo);
     int cur_subclass = job->j_subclass;
 
-    /* {{{ Try to run signal signo */
     if (((JT->job_class_mask >> req_class) & 1) &&
         (is_fast || !JT->current_job) && (cur_subclass == save_subclass)) {
       job_t current_job = JT->current_job;
@@ -737,9 +723,6 @@ int unlock_job(JOB_REF_ARG(job)) {
       }
       continue;
     }
-    /* }}} */
-
-    /* {{{ Try to Queue */
     if (!req_class) {
       // have a "fast" signal with *-class, put it into MAIN queue
       req_class = JC_MAIN;
@@ -772,7 +755,6 @@ int unlock_job(JOB_REF_ARG(job)) {
         }
         if (JQ == &MainJobQueue && main_thread_interrupt_status == 1 &&
             __sync_fetch_and_add(&main_thread_interrupt_status, 1) == 1) {
-          // pthread_kill (main_pthread_id, SIGRTMAX - 7);
           vkprintf(JOBS_DEBUG, "WAKING UP MAIN THREAD\n");
           wakeup_main_thread();
         }
@@ -817,7 +799,6 @@ int unlock_job(JOB_REF_ARG(job)) {
       job_decref(JOB_REF_PASS(job));
       return 0;
     }
-    /* }}} */
   }
 }
 
@@ -1006,7 +987,6 @@ void *job_thread_ex(void *arg, void (*work_one)(void *, int)) {
   JT->status |= JTS_RUNNING;
 
   int thread_class = JT->thread_class;
-  // void **hptr = thread_hazard_pointers;
 
   if (JT->job_class->max_threads == 1) {
     JT->timer_manager = alloc_timer_manager(thread_class);
@@ -1391,7 +1371,7 @@ int insert_connection_into_job_list(job_t list_job, connection_job_t c) {
 }
 
 struct job_timer_manager_extra {
-  struct mp_queue *mpq;
+  int tokio_queue_id;
 };
 
 job_t timer_manager_job;
@@ -1437,10 +1417,18 @@ int do_timer_manager_job(job_t job, int op, struct job_thread *JT) {
   }
 
   struct job_timer_manager_extra *e = (void *)job->j_custom;
+  assert(e->tokio_queue_id > 0);
 
   while (1) {
-    job_t W = mpq_pop_nw(e->mpq, 4);
-    if (!W) {
+    job_t W = NULL;
+    int32_t rc = mtproxy_ffi_jobs_tokio_timer_queue_pop(e->tokio_queue_id,
+                                                         (void **)&W);
+    if (rc < 0) {
+      kprintf("fatal: rust tokio timer queue pop failed (qid=%d rc=%d)\n",
+              e->tokio_queue_id, (int)rc);
+      assert(0);
+    }
+    if (!rc || !W) {
       break;
     }
     do_immediate_timer_insert(W);
@@ -1471,7 +1459,12 @@ job_t alloc_timer_manager(int thread_class) {
       0, sizeof(struct job_timer_manager_extra), 0, JOB_REF_NULL);
   timer_manager->j_refcnt = 1;
   struct job_timer_manager_extra *e = (void *)timer_manager->j_custom;
-  e->mpq = alloc_mp_queue_w();
+  e->tokio_queue_id = mtproxy_ffi_jobs_tokio_timer_queue_create();
+  if (e->tokio_queue_id <= 0) {
+    kprintf("fatal: rust tokio timer queue create failed (rc=%d)\n",
+            e->tokio_queue_id);
+    assert(0);
+  }
   unlock_job(JOB_REF_CREATE_PASS(timer_manager));
   if (thread_class == JC_EPOLL) {
     timer_manager_job = job_incref(timer_manager);
@@ -1534,14 +1527,12 @@ int job_timer_check(job_t job) {
   }
 
   job_timer_remove(job);
-  // ev->real_wakeup_time = 0;
   return 1;
 }
 
 void job_timer_insert(job_t job, double timeout) {
   assert(job->j_type & JT_HAVE_TIMER);
   struct event_timer *ev = (void *)job->j_custom;
-  // timeout = (ceil (timeout * 1000)) * 0.001;
   if (ev->real_wakeup_time == timeout) {
     return;
   }
@@ -1579,7 +1570,13 @@ void job_timer_insert(job_t job, double timeout) {
   MODULE_STAT->timer_ops_scheduler++;
   assert(m);
   struct job_timer_manager_extra *e = (void *)m->j_custom;
-  mpq_push_w(e->mpq, job_incref(job), 0);
+  int32_t rc =
+      mtproxy_ffi_jobs_tokio_timer_queue_push(e->tokio_queue_id, job_incref(job));
+  if (rc < 0) {
+    kprintf("fatal: rust tokio timer queue push failed (qid=%d rc=%d)\n",
+            e->tokio_queue_id, (int)rc);
+    assert(0);
+  }
   job_signal(JOB_REF_CREATE_PASS(m), JS_RUN);
 }
 
@@ -1652,7 +1649,18 @@ void job_message_queue_free(job_t job) {
     assert(!Q->first);
     Q->last = NULL;
 
-    while ((M = mpq_pop_nw(Q->unsorted, 4))) {
+    while (1) {
+      M = NULL;
+      int32_t rc = mtproxy_ffi_jobs_tokio_message_queue_pop(Q->tokio_queue_id,
+                                                             (void **)&M);
+      if (rc < 0) {
+        kprintf("fatal: rust tokio message queue pop failed (qid=%d rc=%d)\n",
+                Q->tokio_queue_id, (int)rc);
+        assert(0);
+      }
+      if (!rc || !M) {
+        break;
+      }
       if (M->src) {
         job_decref(JOB_REF_PASS(M->src));
       }
@@ -1661,7 +1669,13 @@ void job_message_queue_free(job_t job) {
       }
       free(M);
     }
-    free_mp_queue((*q)->unsorted);
+    int32_t destroy_rc =
+        mtproxy_ffi_jobs_tokio_message_queue_destroy(Q->tokio_queue_id);
+    if (destroy_rc < 0) {
+      kprintf("fatal: rust tokio message queue destroy failed (qid=%d rc=%d)\n",
+              Q->tokio_queue_id, (int)destroy_rc);
+      assert(0);
+    }
     free(*q);
   }
   *q = NULL;
@@ -1669,7 +1683,12 @@ void job_message_queue_free(job_t job) {
 
 void job_message_queue_init(job_t job) {
   struct job_message_queue *q = calloc(sizeof(*q), 1);
-  q->unsorted = alloc_mp_queue_w();
+  q->tokio_queue_id = mtproxy_ffi_jobs_tokio_message_queue_create();
+  if (q->tokio_queue_id <= 0) {
+    kprintf("fatal: rust tokio message queue create failed (rc=%d)\n",
+            q->tokio_queue_id);
+    assert(0);
+  }
   job_message_queue_set(job, q);
 }
 
@@ -1700,27 +1719,16 @@ void job_message_send(JOB_REF_ARG(job), JOB_REF_ARG(src), unsigned int type,
   (dup ? rwm_clone : rwm_move)(&M->message, raw);
 
   struct job_message_queue *q = job_message_queue_get(job);
-  mpq_push_w(q->unsorted, M, 0);
+  int32_t rc =
+      mtproxy_ffi_jobs_tokio_message_queue_push(q->tokio_queue_id, (void *)M);
+  if (rc < 0) {
+    kprintf("fatal: rust tokio message queue push failed (qid=%d rc=%d)\n",
+            q->tokio_queue_id, (int)rc);
+    assert(0);
+  }
 
   job_signal(JOB_REF_PASS(job), JS_MSG);
 }
-/*
-void job_message_send_data (JOB_REF_ARG (job), JOB_REF_ARG (src), unsigned int
-type, void *ptr1, void *ptr2, int int1, long long long1, int payload_ints, const
-unsigned int *payload, unsigned int flags) { assert (job->j_type &
-JT_HAVE_MSG_QUEUE); struct job_message *M = malloc (sizeof (*M) + payload_ints *
-4); M->type = type; M->flags = 0; M->src = PTR_MOVE (src); M->payload_ints =
-payload_ints; M->next = NULL; M->flags = flags; memcpy (M->payload, payload,
-payload_ints * 4); M->message_ptr1 = ptr1; M->message_ptr2 = ptr2;
-  M->message_int1 = int1;
-  M->message_long1 = long1;
-  M->message_magic = 0;
-
-  struct job_message_queue *q = job_message_queue_get (job);
-  mpq_push_w (q->unsorted, M, 0);
-
-  job_signal (JOB_REF_PASS (job), JS_RUN);
-}*/
 
 void job_message_send_fake(
     JOB_REF_ARG(job),
@@ -1762,8 +1770,15 @@ void job_message_queue_work(job_t job,
   struct job_message_queue *q = job_message_queue_get(job);
 
   while (1) {
-    struct job_message *msg = mpq_pop_nw(q->unsorted, 4);
-    if (!msg) {
+    struct job_message *msg = NULL;
+    int32_t rc =
+        mtproxy_ffi_jobs_tokio_message_queue_pop(q->tokio_queue_id, (void **)&msg);
+    if (rc < 0) {
+      kprintf("fatal: rust tokio message queue pop failed (qid=%d rc=%d)\n",
+              q->tokio_queue_id, (int)rc);
+      assert(0);
+    }
+    if (!rc || !msg) {
       break;
     }
     msg->next = NULL;

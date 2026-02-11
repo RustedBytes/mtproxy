@@ -280,7 +280,7 @@ struct job_message {
 };
 
 struct job_message_queue {
-  struct mp_queue *unsorted;
+  int tokio_queue_id;
   struct job_message *first, *last;
   unsigned int payload_magic;
 };
@@ -417,9 +417,6 @@ void job_message_send_fake(
     void *extra, JOB_REF_ARG(src), unsigned int type, struct raw_message *raw,
     int dup, int payload_ints, const unsigned int *payload, unsigned int flags,
     void (*destructor)(struct job_message *M));
-// void job_message_send_data (JOB_REF_ARG (job), JOB_REF_ARG (src), unsigned
-// int type, void *ptr1, void *ptr2, int int1, long long long1, int
-// payload_ints, const unsigned int *payload, unsigned int flags);
 static inline void job_message_send_empty(JOB_REF_ARG(job), JOB_REF_ARG(src),
                                           unsigned int type,
                                           unsigned int flags) {
