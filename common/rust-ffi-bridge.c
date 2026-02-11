@@ -14,44 +14,6 @@
 
 #define RUST_FFI_EXPECTED_API_VERSION 1u
 
-static mpq_ops_t RustMpqFallbackOps;
-static jobs_lifecycle_ops_t RustJobsLifecycleFallbackOps;
-
-static long rust_mpq_push_adapter (struct mp_queue *MQ, mqn_value_t val, int flags) {
-  assert (RustMpqFallbackOps.push);
-  return RustMpqFallbackOps.push (MQ, val, flags);
-}
-
-static mqn_value_t rust_mpq_pop_adapter (struct mp_queue *MQ, int flags) {
-  assert (RustMpqFallbackOps.pop);
-  return RustMpqFallbackOps.pop (MQ, flags);
-}
-
-static int rust_mpq_is_empty_adapter (struct mp_queue *MQ) {
-  assert (RustMpqFallbackOps.is_empty);
-  return RustMpqFallbackOps.is_empty (MQ);
-}
-
-static job_t rust_jobs_create_async_job_adapter (job_function_t run_job, unsigned long long job_signals, int job_subclass, int custom_bytes, unsigned long long job_type, JOB_REF_ARG (parent_job)) {
-  assert (RustJobsLifecycleFallbackOps.create_async_job);
-  return RustJobsLifecycleFallbackOps.create_async_job (run_job, job_signals, job_subclass, custom_bytes, job_type, JOB_REF_PASS (parent_job));
-}
-
-static void rust_jobs_job_signal_adapter (JOB_REF_ARG (job), int signo) {
-  assert (RustJobsLifecycleFallbackOps.job_signal);
-  RustJobsLifecycleFallbackOps.job_signal (JOB_REF_PASS (job), signo);
-}
-
-static job_t rust_jobs_job_incref_adapter (job_t job) {
-  assert (RustJobsLifecycleFallbackOps.job_incref);
-  return RustJobsLifecycleFallbackOps.job_incref (job);
-}
-
-static void rust_jobs_job_decref_adapter (JOB_REF_ARG (job)) {
-  assert (RustJobsLifecycleFallbackOps.job_decref);
-  RustJobsLifecycleFallbackOps.job_decref (JOB_REF_PASS (job));
-}
-
 int rust_ffi_startup_check(void) {
   uint32_t api_version = mtproxy_ffi_api_version();
   if (api_version != RUST_FFI_EXPECTED_API_VERSION) {
@@ -511,39 +473,9 @@ int rust_ffi_enable_concurrency_bridges(void) {
     return -2;
   }
 
-  mpq_get_default_ops (&RustMpqFallbackOps);
-  jobs_get_default_lifecycle_ops (&RustJobsLifecycleFallbackOps);
-
-  mpq_ops_t mpq_ops = RustMpqFallbackOps;
-  if (boundary.mpq_contract_ops & MTPROXY_FFI_MPQ_OP_PUSH) {
-    mpq_ops.push = rust_mpq_push_adapter;
-  }
-  if (boundary.mpq_contract_ops & MTPROXY_FFI_MPQ_OP_POP) {
-    mpq_ops.pop = rust_mpq_pop_adapter;
-  }
-  if (boundary.mpq_contract_ops & MTPROXY_FFI_MPQ_OP_IS_EMPTY) {
-    mpq_ops.is_empty = rust_mpq_is_empty_adapter;
-  }
-  mpq_install_ops (&mpq_ops);
-
-  jobs_lifecycle_ops_t jobs_ops = RustJobsLifecycleFallbackOps;
-  if (boundary.jobs_contract_ops & MTPROXY_FFI_JOBS_OP_CREATE_ASYNC_JOB) {
-    jobs_ops.create_async_job = rust_jobs_create_async_job_adapter;
-  }
-  if (boundary.jobs_contract_ops & MTPROXY_FFI_JOBS_OP_JOB_SIGNAL) {
-    jobs_ops.job_signal = rust_jobs_job_signal_adapter;
-  }
-  if (boundary.jobs_contract_ops & MTPROXY_FFI_JOBS_OP_JOB_INCREF) {
-    jobs_ops.job_incref = rust_jobs_job_incref_adapter;
-  }
-  if (boundary.jobs_contract_ops & MTPROXY_FFI_JOBS_OP_JOB_DECREF) {
-    jobs_ops.job_decref = rust_jobs_job_decref_adapter;
-  }
-  jobs_install_lifecycle_ops (&jobs_ops);
-
   vkprintf (
     1,
-    "rust ffi concurrency adapters installed: mpq(push/pop/is_empty) jobs(create/signal/incref/decref) with C fallback\n"
+    "rust ffi concurrency boundary validated; temporary mpq/jobs dispatch adapters are decommissioned\n"
   );
   return 0;
 }

@@ -94,7 +94,7 @@ extern int32_t mtproxy_ffi_crypto_aes_create_keys (
   int32_t secret_len,
   const uint8_t *temp_key,
   int32_t temp_key_len
-) __attribute__ ((weak));
+);
 
 int aes_crypto_init (connection_job_t c, void *key_data, int key_data_len) {
   assert (key_data_len == sizeof (struct aes_key_data));
@@ -252,10 +252,10 @@ int aes_generate_nonce (char res[16]) {
 // key := SUBSTR(MD5(str+1),0,12).SHA1(str)
 // iv  := MD5(str+2)
 
-static int aes_create_keys_c_impl (struct aes_key_data *R, int am_client, const char nonce_server[16], const char nonce_client[16], int client_timestamp,
-		     unsigned server_ip, unsigned short server_port, const unsigned char server_ipv6[16], 
-		     unsigned client_ip, unsigned short client_port, const unsigned char client_ipv6[16],
-		     const aes_secret_t *key, const unsigned char *temp_key, int temp_key_len) {
+static int __attribute__ ((unused)) aes_create_keys_c_impl (struct aes_key_data *R, int am_client, const char nonce_server[16], const char nonce_client[16], int client_timestamp,
+			     unsigned server_ip, unsigned short server_port, const unsigned char server_ipv6[16], 
+			     unsigned client_ip, unsigned short client_port, const unsigned char client_ipv6[16],
+			     const aes_secret_t *key, const unsigned char *temp_key, int temp_key_len) {
   unsigned char str[16+16+4+4+2+6+4+2+MAX_PWD_LEN+16+16+4+16*2 + 256];
   int i, str_len;
 
@@ -329,37 +329,17 @@ static int aes_create_keys_c_impl (struct aes_key_data *R, int am_client, const 
 }
 
 int aes_create_keys (struct aes_key_data *R, int am_client, const char nonce_server[16], const char nonce_client[16], int client_timestamp,
-		     unsigned server_ip, unsigned short server_port, const unsigned char server_ipv6[16], 
-		     unsigned client_ip, unsigned short client_port, const unsigned char client_ipv6[16],
-		     const aes_secret_t *key, const unsigned char *temp_key, int temp_key_len) {
-  if (mtproxy_ffi_crypto_aes_create_keys && key) {
-    int32_t rc = mtproxy_ffi_crypto_aes_create_keys (
-      R,
-      am_client,
-      (const uint8_t *) nonce_server,
-      (const uint8_t *) nonce_client,
-      client_timestamp,
-      server_ip,
-      server_port,
-      server_ipv6,
-      client_ip,
-      client_port,
-      client_ipv6,
-      (const uint8_t *) key->secret,
-      key->secret_len,
-      temp_key,
-      temp_key_len
-    );
-    if (rc > 0) {
-      return rc;
-    }
+			     unsigned server_ip, unsigned short server_port, const unsigned char server_ipv6[16], 
+			     unsigned client_ip, unsigned short client_port, const unsigned char client_ipv6[16],
+			     const aes_secret_t *key, const unsigned char *temp_key, int temp_key_len) {
+  if (!key) {
+    return -1;
   }
-
-  return aes_create_keys_c_impl (
+  int32_t rc = mtproxy_ffi_crypto_aes_create_keys (
     R,
     am_client,
-    nonce_server,
-    nonce_client,
+    (const uint8_t *) nonce_server,
+    (const uint8_t *) nonce_client,
     client_timestamp,
     server_ip,
     server_port,
@@ -367,10 +347,13 @@ int aes_create_keys (struct aes_key_data *R, int am_client, const char nonce_ser
     client_ip,
     client_port,
     client_ipv6,
-    key,
+    (const uint8_t *) key->secret,
+    key->secret_len,
     temp_key,
     temp_key_len
   );
+  assert (rc == 1 || rc < 0);
+  return rc;
 }
 
 int get_crypto_key_id (void) {

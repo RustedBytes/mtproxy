@@ -81,44 +81,17 @@ BIGNUM *rpc_dh_prime, *rpc_dh_generator;
 
 __thread BN_CTX *rpc_BN_ctx;
 
-extern int32_t mtproxy_ffi_crypto_dh_is_good_rpc_dh_bin (const uint8_t *data, size_t len, const uint8_t *prime_prefix, size_t prime_prefix_len) __attribute__ ((weak));
-
-static int is_good_rpc_dh_bin_c_impl (const unsigned char *data) {
-  int i;
-  int ok = 0;
-  for (i = 0; i < 8; i++) {
-    if (data[i]) {
-      ok = 1;
-      break;
-    }
-  }
-  if (!ok) {
-    return 0;
-  }
-  for (i = 0; i < 8; i++) {
-    if (data[i] > rpc_dh_prime_bin[i]) {
-      return 0;
-    }
-    if (data[i] < rpc_dh_prime_bin[i]) {
-      return 1;
-    }
-  }
-  return 0;
-}
+extern int32_t mtproxy_ffi_crypto_dh_is_good_rpc_dh_bin (const uint8_t *data, size_t len, const uint8_t *prime_prefix, size_t prime_prefix_len);
 
 static int is_good_rpc_dh_bin (const unsigned char *data) {
-  if (mtproxy_ffi_crypto_dh_is_good_rpc_dh_bin) {
-    int32_t r = mtproxy_ffi_crypto_dh_is_good_rpc_dh_bin (
-      data,
-      256,
-      rpc_dh_prime_bin,
-      8
-    );
-    if (r == 0 || r == 1) {
-      return r;
-    }
-  }
-  return is_good_rpc_dh_bin_c_impl (data);
+  int32_t r = mtproxy_ffi_crypto_dh_is_good_rpc_dh_bin (
+    data,
+    256,
+    rpc_dh_prime_bin,
+    8
+  );
+  assert (r == 0 || r == 1);
+  return r;
 }
 
 

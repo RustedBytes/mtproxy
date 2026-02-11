@@ -424,42 +424,6 @@ static void job_signal_c_impl (JOB_REF_ARG (job), int signo);
 static job_t job_incref_c_impl (job_t job);
 static void job_decref_c_impl (JOB_REF_ARG (job));
 
-static const jobs_lifecycle_ops_t JobsDefaultLifecycleOps = {
-  .create_async_job = create_async_job_c_impl,
-  .job_signal = job_signal_c_impl,
-  .job_incref = job_incref_c_impl,
-  .job_decref = job_decref_c_impl,
-};
-
-static jobs_lifecycle_ops_t JobsActiveLifecycleOps = {
-  .create_async_job = create_async_job_c_impl,
-  .job_signal = job_signal_c_impl,
-  .job_incref = job_incref_c_impl,
-  .job_decref = job_decref_c_impl,
-};
-
-void jobs_install_lifecycle_ops (const jobs_lifecycle_ops_t *ops) {
-  if (!ops) {
-    JobsActiveLifecycleOps = JobsDefaultLifecycleOps;
-    return;
-  }
-  JobsActiveLifecycleOps.create_async_job = ops->create_async_job ? ops->create_async_job : JobsDefaultLifecycleOps.create_async_job;
-  JobsActiveLifecycleOps.job_signal = ops->job_signal ? ops->job_signal : JobsDefaultLifecycleOps.job_signal;
-  JobsActiveLifecycleOps.job_incref = ops->job_incref ? ops->job_incref : JobsDefaultLifecycleOps.job_incref;
-  JobsActiveLifecycleOps.job_decref = ops->job_decref ? ops->job_decref : JobsDefaultLifecycleOps.job_decref;
-}
-
-void jobs_reset_lifecycle_ops (void) {
-  JobsActiveLifecycleOps = JobsDefaultLifecycleOps;
-}
-
-void jobs_get_default_lifecycle_ops (jobs_lifecycle_ops_t *out) {
-  if (!out) {
-    return;
-  }
-  *out = JobsDefaultLifecycleOps;
-}
-
 void *job_thread (void *arg);
 void *job_thread_sub (void *arg);
 
@@ -837,15 +801,15 @@ static job_t job_incref_c_impl (job_t job) {
 }
 
 void job_signal (JOB_REF_ARG (job), int signo) {
-  JobsActiveLifecycleOps.job_signal (JOB_REF_PASS (job), signo);
+  job_signal_c_impl (JOB_REF_PASS (job), signo);
 }
 
 void job_decref (JOB_REF_ARG (job)) {
-  JobsActiveLifecycleOps.job_decref (JOB_REF_PASS (job));
+  job_decref_c_impl (JOB_REF_PASS (job));
 }
 
 job_t job_incref (job_t job) {
-  return JobsActiveLifecycleOps.job_incref (job);
+  return job_incref_c_impl (job);
 }
 
 void process_one_job (JOB_REF_ARG (job), int thread_class) {
@@ -1162,7 +1126,7 @@ static job_t create_async_job_c_impl (job_function_t run_job, unsigned long long
 }
 
 job_t create_async_job (job_function_t run_job, unsigned long long job_signals, int job_subclass, int custom_bytes, unsigned long long job_type, JOB_REF_ARG (parent_job)) {
-  return JobsActiveLifecycleOps.create_async_job (run_job, job_signals, job_subclass, custom_bytes, job_type, JOB_REF_PASS (parent_job));
+  return create_async_job_c_impl (run_job, job_signals, job_subclass, custom_bytes, job_type, JOB_REF_PASS (parent_job));
 }
 
 int schedule_job (JOB_REF_ARG (job)) {

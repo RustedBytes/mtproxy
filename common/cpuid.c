@@ -19,12 +19,11 @@
 */
 
 #include <assert.h>
-#include <cpuid.h>
 
 #include "cpuid.h"
 #include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 
-extern int32_t mtproxy_ffi_cpuid_fill (mtproxy_ffi_cpuid_t *out) __attribute__ ((weak));
+extern int32_t mtproxy_ffi_cpuid_fill (mtproxy_ffi_cpuid_t *out);
 
 
 #define CPUID_MAGIC 0x280147b8
@@ -36,23 +35,8 @@ kdb_cpuid_t *kdb_cpuid (void) {
     return &cached;
   }
 
-  if (mtproxy_ffi_cpuid_fill) {
-    int rc = mtproxy_ffi_cpuid_fill ((mtproxy_ffi_cpuid_t *) &cached);
-    assert (rc == 0);
-    assert (cached.magic == CPUID_MAGIC);
-    return &cached;
-  }
-
-  unsigned int a;
-  assert(
-    __get_cpuid(1,
-        &a,
-        (unsigned int*) &cached.ebx,
-        (unsigned int*) &cached.ecx,
-        (unsigned int*) &cached.edx
-    ) != 0
-  );
-
-  cached.magic = CPUID_MAGIC;
+  int rc = mtproxy_ffi_cpuid_fill ((mtproxy_ffi_cpuid_t *) &cached);
+  assert (rc == 0);
+  assert (cached.magic == CPUID_MAGIC);
   return &cached;
 }

@@ -35,86 +35,38 @@
 #include "common/pid.h"
 #include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 
-extern int32_t mtproxy_ffi_pid_init_common (mtproxy_ffi_process_id_t *pid) __attribute__ ((weak));
-extern int32_t mtproxy_ffi_pid_init_client (mtproxy_ffi_process_id_t *pid, uint32_t ip) __attribute__ ((weak));
-extern int32_t mtproxy_ffi_pid_init_server (mtproxy_ffi_process_id_t *pid, uint32_t ip, int32_t port) __attribute__ ((weak));
-extern int32_t mtproxy_ffi_matches_pid (const mtproxy_ffi_process_id_t *x, const mtproxy_ffi_process_id_t *y) __attribute__ ((weak));
-extern int32_t mtproxy_ffi_process_id_is_newer (const mtproxy_ffi_process_id_t *a, const mtproxy_ffi_process_id_t *b) __attribute__ ((weak));
+extern int32_t mtproxy_ffi_pid_init_common (mtproxy_ffi_process_id_t *pid);
+extern int32_t mtproxy_ffi_pid_init_client (mtproxy_ffi_process_id_t *pid, uint32_t ip);
+extern int32_t mtproxy_ffi_pid_init_server (mtproxy_ffi_process_id_t *pid, uint32_t ip, int32_t port);
+extern int32_t mtproxy_ffi_matches_pid (const mtproxy_ffi_process_id_t *x, const mtproxy_ffi_process_id_t *y);
+extern int32_t mtproxy_ffi_process_id_is_newer (const mtproxy_ffi_process_id_t *a, const mtproxy_ffi_process_id_t *b);
 
 npid_t PID;
 
 void init_common_PID (void) {
-  if (mtproxy_ffi_pid_init_common) {
-    int rc = mtproxy_ffi_pid_init_common ((mtproxy_ffi_process_id_t *) &PID);
-    assert (rc == 0);
-    return;
-  }
-
-  if (!PID.pid) {
-    int p = getpid ();
-    /* Keep historical modulo-16-bit process id storage without crashing on hosts
-       where pid_max is above 65535. */
-    PID.pid = (unsigned short) p;
-  }
-  if (!PID.utime) {
-    PID.utime = time (0);
-  }
+  int rc = mtproxy_ffi_pid_init_common ((mtproxy_ffi_process_id_t *) &PID);
+  assert (rc == 0);
 }
 
 void init_client_PID (unsigned ip) {
-  if (mtproxy_ffi_pid_init_client) {
-    int rc = mtproxy_ffi_pid_init_client ((mtproxy_ffi_process_id_t *) &PID, ip);
-    assert (rc == 0);
-    return;
-  }
-
-  if (ip && ip != 0x7f000001) {
-    PID.ip = ip;
-  }
-  // PID.port = 0;
-  init_common_PID ();
+  int rc = mtproxy_ffi_pid_init_client ((mtproxy_ffi_process_id_t *) &PID, ip);
+  assert (rc == 0);
 };
 
 void init_server_PID (unsigned ip, int port) {
-  if (mtproxy_ffi_pid_init_server) {
-    int rc = mtproxy_ffi_pid_init_server ((mtproxy_ffi_process_id_t *) &PID, ip, port);
-    assert (rc == 0);
-    return;
-  }
-
-  if (ip && ip != 0x7f000001) {
-    PID.ip = ip;
-  }
-  if (!PID.port) {
-    PID.port = port;
-  }
-  init_common_PID ();
+  int rc = mtproxy_ffi_pid_init_server ((mtproxy_ffi_process_id_t *) &PID, ip, port);
+  assert (rc == 0);
 };
 
 /* returns 1 if X is a special case of Y, 2 if they match completely */
 int matches_pid (npid_t *X, npid_t *Y) {
-  if (mtproxy_ffi_matches_pid) {
-    return mtproxy_ffi_matches_pid ((const mtproxy_ffi_process_id_t *) X, (const mtproxy_ffi_process_id_t *) Y);
-  }
-
-  if (!memcmp (X, Y, sizeof (struct process_id))) {
-    return 2;
-  } else if ((!Y->ip || X->ip == Y->ip) && (!Y->port || X->port == Y->port) && (!Y->pid || X->pid == Y->pid) && (!Y->utime || X->utime == Y->utime)) {
-    return 1;
-  } else {
-    return 0;
-  }
+  int rc = mtproxy_ffi_matches_pid ((const mtproxy_ffi_process_id_t *) X, (const mtproxy_ffi_process_id_t *) Y);
+  assert (rc >= 0 && rc <= 2);
+  return rc;
 }
 
 int process_id_is_newer (struct process_id *a, struct process_id *b) {
-  if (mtproxy_ffi_process_id_is_newer) {
-    return mtproxy_ffi_process_id_is_newer ((const mtproxy_ffi_process_id_t *) a, (const mtproxy_ffi_process_id_t *) b);
-  }
-
-  assert (!memcmp (a, b, 6));
-  if (a->utime < b->utime) { return 0; }
-  if (a->utime > b->utime) { return 1; }
-  int x = (a->pid - b->pid) & 0x7fff;
-  if (x && x <= 0x3fff) { return 1; }
-  return 0;
+  int rc = mtproxy_ffi_process_id_is_newer ((const mtproxy_ffi_process_id_t *) a, (const mtproxy_ffi_process_id_t *) b);
+  assert (rc == 0 || rc == 1);
+  return rc;
 }

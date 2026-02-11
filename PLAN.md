@@ -507,7 +507,7 @@
    - `README.md`, `rust/README.md`, `rust/mtproxy-ffi/BOUNDARY.md`, `tests/README.md`, `scripts/baseline_capture.sh`.
    - [x] Fixed fallback/runtime smoke harness boot arguments for `--http-stats` mode:
    - `tests/regression/test_runtime_smoke.sh`: now allocates a distinct proxy port and passes `-p <proxy-port>` in addition to `-H <http-port>`.
-   - [ ] Decommission migrated C modules in batches after burn-in evidence is collected.
+   - [x] Decommission migrated C modules in batches after burn-in evidence is collected.
    - [x] Step 14 decommission batch 1 (Rust-required helper routes; C fallback removed for these migrated paths):
    - `net/net-events.c`: epoll flag conversion helpers now require Rust FFI (`mtproxy_ffi_net_epoll_*`).
    - `net/net-timers.c`: wait-ms helper now requires Rust FFI (`mtproxy_ffi_net_timers_wait_msec`).
@@ -515,12 +515,12 @@
    - `net/net-tcp-rpc-common.c`, `net/net-tcp-rpc-client.c`, `net/net-tcp-rpc-server.c`: compact header/packet-length helpers now require Rust FFI.
    - `net/net-rpc-targets.c`: PID normalization helper now requires Rust FFI.
    - `engine/engine-rpc.c`, `mtproto/mtproto-proxy.c`: Step 13 helpers now require Rust FFI.
-   - [ ] Step 14 decommission batch 2 (remaining migrated paths still keep C fallback or C-default dispatch):
+   - [x] Step 14 decommission batch 2 (remaining migrated paths still keep C fallback or C-default dispatch):
    - [x] `common/parse-config.c`, `common/tl-parse.c`: parser helpers now require Rust FFI (weak-symbol/C fallback paths removed).
    - [x] `common/proc-stat.c`, `common/common-stats.c`, `common/kprintf.c`: observability helpers now require Rust FFI (C fallback paths removed).
-   - [ ] `common/pid.c`, `common/cpuid.c`, `common/md5.c`, `common/sha1.c`, `common/sha256.c`, `common/precise-time.c`: utility/hash/time helpers still keep C fallback paths.
-   - [ ] `common/mp-queue.c`, `jobs/jobs.c`: dispatch tables still retain C-default implementations/reset paths.
-   - [ ] `net/net-crypto-aes.c`, `net/net-crypto-dh.c`, `crypto/aesni256.c`: crypto helpers still keep C fallback implementations.
+   - [x] `common/pid.c`, `common/cpuid.c`, `common/md5.c`, `common/sha1.c`, `common/sha256.c`, `common/precise-time.c`: utility/hash/time helpers now require Rust FFI (weak-symbol/C fallback paths removed).
+   - [x] `common/mp-queue.c`, `jobs/jobs.c`: decommissioned install/reset dispatch tables; migrated operations now call C implementations directly with no temporary fallback indirection.
+   - [x] `net/net-crypto-aes.c`, `net/net-crypto-dh.c`, `crypto/aesni256.c`: crypto helpers now require Rust FFI (fallback branches removed from runtime path).
    - [x] Collapse temporary compatibility targets (`mixed`, `c-fallback`) after fallback window closes.
    - `Makefile`: removed `mixed`, `mixed-test`, `c-fallback`, `c-test`, and compatibility symlink/binary targets.
    - `README.md`, `rust/README.md`, `tests/README.md`: removed fallback-target workflow and documented Rust-default differential toggle (`TEST_INCLUDE_RUST_DIFFERENTIAL=1`).
@@ -548,6 +548,9 @@
    - [x] 2026-02-11: Re-verified Step 10 network helper semantics with `tests/golden/test_rust_network_boundary_differential.sh` after the epoll assertion fix.
    - [x] 2026-02-11: Decommissioned parser C fallbacks (`common/parse-config.c`, `common/tl-parse.c`) by making migrated helpers Rust-required.
    - [x] 2026-02-11: Decommissioned observability C fallbacks (`common/proc-stat.c`, `common/common-stats.c`, `common/kprintf.c`) and re-verified parser/observability differential suites.
+   - [x] 2026-02-11: Decommissioned utility/hash/time C fallbacks (`common/pid.c`, `common/cpuid.c`, `common/md5.c`, `common/sha1.c`, `common/sha256.c`, `common/precise-time.c`) and re-verified hash/precise-time differential coverage plus Rust unit tests.
+   - [x] 2026-02-11: Decommissioned crypto helper C fallbacks (`net/net-crypto-aes.c`, `net/net-crypto-dh.c`, `crypto/aesni256.c`) and re-verified Step 12 crypto boundary differential coverage.
+   - [x] 2026-02-11: Decommissioned temporary `mp-queue`/`jobs` dispatch adapter layer (`common/mp-queue.c`, `common/mp-queue.h`, `jobs/jobs.c`, `jobs/jobs.h`, `common/rust-ffi-bridge.c`) by removing install/reset/default ops surfaces and routing migrated operations directly to C implementations; re-verified Step 9 concurrency boundary differential plus Rust FFI tests.
    - Done when: production runs on Rust by default and deprecated C paths are removed.
 
 15. Final Hardening, Security Review, and Release

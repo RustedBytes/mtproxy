@@ -78,39 +78,6 @@ static long mpq_push_c_impl (struct mp_queue *MQ, mqn_value_t val, int flags);
 static mqn_value_t mpq_pop_c_impl (struct mp_queue *MQ, int flags);
 static int mpq_is_empty_c_impl (struct mp_queue *MQ);
 
-static const mpq_ops_t MpqDefaultOps = {
-  .push = mpq_push_c_impl,
-  .pop = mpq_pop_c_impl,
-  .is_empty = mpq_is_empty_c_impl,
-};
-
-static mpq_ops_t MpqActiveOps = {
-  .push = mpq_push_c_impl,
-  .pop = mpq_pop_c_impl,
-  .is_empty = mpq_is_empty_c_impl,
-};
-
-void mpq_install_ops (const mpq_ops_t *ops) {
-  if (!ops) {
-    MpqActiveOps = MpqDefaultOps;
-    return;
-  }
-  MpqActiveOps.push = ops->push ? ops->push : MpqDefaultOps.push;
-  MpqActiveOps.pop = ops->pop ? ops->pop : MpqDefaultOps.pop;
-  MpqActiveOps.is_empty = ops->is_empty ? ops->is_empty : MpqDefaultOps.is_empty;
-}
-
-void mpq_reset_ops (void) {
-  MpqActiveOps = MpqDefaultOps;
-}
-
-void mpq_get_default_ops (mpq_ops_t *out) {
-  if (!out) {
-    return;
-  }
-  *out = MpqDefaultOps;
-}
-
 /* hazard pointers, one per thread */
 
 void *mqb_hazard_ptr[MAX_MPQ_THREADS][THREAD_HPTRS] __attribute__ ((aligned(64)));
@@ -635,15 +602,15 @@ static long mpq_push_c_impl (struct mp_queue *MQ, mqn_value_t val, int flags) {
 }
 
 long mpq_push (struct mp_queue *MQ, mqn_value_t val, int flags) {
-  return MpqActiveOps.push (MQ, val, flags);
+  return mpq_push_c_impl (MQ, val, flags);
 }
 
 mqn_value_t mpq_pop (struct mp_queue *MQ, int flags) {
-  return MpqActiveOps.pop (MQ, flags);
+  return mpq_pop_c_impl (MQ, flags);
 }
 
 int mpq_is_empty (struct mp_queue *MQ) {
-  return MpqActiveOps.is_empty (MQ);
+  return mpq_is_empty_c_impl (MQ);
 }
 
 mqn_value_t mpq_pop_w (struct mp_queue *MQ, int flags) {

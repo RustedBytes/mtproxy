@@ -263,17 +263,6 @@ struct job_timer_info {
 
 #define MAX_JOB_THREADS		256
 
-typedef struct jobs_lifecycle_ops {
-  job_t (*create_async_job) (job_function_t run_job, unsigned long long job_signals, int job_subclass, int custom_bytes, unsigned long long job_type, JOB_REF_ARG (parent_job));
-  void (*job_signal) (JOB_REF_ARG (job), int signo);
-  job_t (*job_incref) (job_t job);
-  void (*job_decref) (JOB_REF_ARG (job));
-} jobs_lifecycle_ops_t;
-
-void jobs_install_lifecycle_ops (const jobs_lifecycle_ops_t *ops);
-void jobs_reset_lifecycle_ops (void);
-void jobs_get_default_lifecycle_ops (jobs_lifecycle_ops_t *out);
-
 long int lrand48_j (void);
 long int mrand48_j (void);
 double drand48_j (void);

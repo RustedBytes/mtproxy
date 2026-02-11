@@ -128,16 +128,6 @@ void free_mp_queue (struct mp_queue *MQ);  // same + invoke free()
 #define	MPQF_STORE_PTR	4096
 #define	MPQF_MAX_ITERATIONS	(MPQF_STORE_PTR - 1)
 
-typedef struct mpq_ops {
-  long (*push) (struct mp_queue *MQ, mqn_value_t val, int flags);
-  mqn_value_t (*pop) (struct mp_queue *MQ, int flags);
-  int (*is_empty) (struct mp_queue *MQ);
-} mpq_ops_t;
-
-void mpq_install_ops (const mpq_ops_t *ops);
-void mpq_reset_ops (void);
-void mpq_get_default_ops (mpq_ops_t *out);
-
 long mpq_push (struct mp_queue *MQ, mqn_value_t val, int flags);
 mqn_value_t mpq_pop (struct mp_queue *MQ, int flags);
 int mpq_is_empty (struct mp_queue *MQ);

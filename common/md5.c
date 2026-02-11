@@ -36,9 +36,9 @@
 
 #include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 
-extern int32_t mtproxy_ffi_md5 (const uint8_t *input, size_t len, uint8_t output[16]) __attribute__ ((weak));
-extern int32_t mtproxy_ffi_md5_hex (const uint8_t *input, size_t len, char output[32]) __attribute__ ((weak));
-extern int32_t mtproxy_ffi_md5_hmac (const uint8_t *key, size_t key_len, const uint8_t *input, size_t len, uint8_t output[16]) __attribute__ ((weak));
+extern int32_t mtproxy_ffi_md5 (const uint8_t *input, size_t len, uint8_t output[16]);
+extern int32_t mtproxy_ffi_md5_hex (const uint8_t *input, size_t len, char output[32]);
+extern int32_t mtproxy_ffi_md5_hmac (const uint8_t *key, size_t key_len, const uint8_t *input, size_t len, uint8_t output[16]);
 
 /*
  * 32-bit integer manipulation macros (little endian)
@@ -285,39 +285,15 @@ void md5_finish( md5_context *ctx, unsigned char output[16] )
  */
 void md5( unsigned char *input, int ilen, unsigned char output[16] )
 {
-    if (mtproxy_ffi_md5) {
-        size_t len = ilen > 0 ? (size_t) ilen : 0;
-        int rc = mtproxy_ffi_md5 ((const uint8_t *) input, len, (uint8_t *) output);
-        assert (rc == 0);
-        return;
-    }
-
-    md5_context ctx;
-
-    md5_starts( &ctx );
-    md5_update( &ctx, input, ilen );
-    md5_finish( &ctx, output );
-
-    memset( &ctx, 0, sizeof( md5_context ) );
+    size_t len = ilen > 0 ? (size_t) ilen : 0;
+    int rc = mtproxy_ffi_md5 ((const uint8_t *) input, len, (uint8_t *) output);
+    assert (rc == 0);
 }
 
 void md5_hex (char *input, int ilen, char output[32]) {
-    if (mtproxy_ffi_md5_hex) {
-      size_t len = ilen > 0 ? (size_t) ilen : 0;
-      int rc = mtproxy_ffi_md5_hex ((const uint8_t *) input, len, output);
-      assert (rc == 0);
-      return;
-    }
-
-    static char hcyf[16] = "0123456789abcdef";
-    unsigned char out[16];
-    int i;
-
-    md5 ((unsigned char *) input, ilen, out);
-    for (i = 0; i < 16; i++) {
-      output[2*i] = hcyf[(out[i] >> 4) & 15];
-      output[2*i+1] = hcyf[out[i] & 15];
-    }
+    size_t len = ilen > 0 ? (size_t) ilen : 0;
+    int rc = mtproxy_ffi_md5_hex ((const uint8_t *) input, len, output);
+    assert (rc == 0);
 }
 
 /*
@@ -412,21 +388,10 @@ void md5_hmac_finish( md5_context *ctx, unsigned char output[16] )
 void md5_hmac( unsigned char *key, int keylen, unsigned char *input, int ilen,
                unsigned char output[16] )
 {
-    if (mtproxy_ffi_md5_hmac) {
-        size_t key_len = keylen > 0 ? (size_t) keylen : 0;
-        size_t len = ilen > 0 ? (size_t) ilen : 0;
-        int rc = mtproxy_ffi_md5_hmac ((const uint8_t *) key, key_len, (const uint8_t *) input, len, (uint8_t *) output);
-        assert (rc == 0);
-        return;
-    }
-
-    md5_context ctx;
-
-    md5_hmac_starts( &ctx, key, keylen );
-    md5_hmac_update( &ctx, input, ilen );
-    md5_hmac_finish( &ctx, output );
-
-    memset( &ctx, 0, sizeof( md5_context ) );
+    size_t key_len = keylen > 0 ? (size_t) keylen : 0;
+    size_t len = ilen > 0 ? (size_t) ilen : 0;
+    int rc = mtproxy_ffi_md5_hmac ((const uint8_t *) key, key_len, (const uint8_t *) input, len, (uint8_t *) output);
+    assert (rc == 0);
 }
 
 #if defined(XYSSL_SELF_TEST)
