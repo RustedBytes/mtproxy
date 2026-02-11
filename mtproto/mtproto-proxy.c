@@ -40,6 +40,7 @@
 
 #include "common/rust-ffi-bridge.h"
 #include "common/tl-parse.h"
+#include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 #include "engine/engine-net.h"
 #include "engine/engine.h"
 #include "kprintf.h"
@@ -133,10 +134,6 @@ int cur_http_origin_len, cur_http_referer_len, cur_http_user_agent_len;
 
 int check_conn_buffers(connection_job_t c);
 void lru_insert_conn(connection_job_t c);
-
-extern int mtproxy_ffi_mtproto_ext_conn_hash(int in_fd, long long in_conn_id,
-                                             int hash_shift);
-extern int mtproxy_ffi_mtproto_conn_tag(int generation);
 
 /*
  *
@@ -1151,75 +1148,21 @@ int forward_tcp_query(struct tl_in_state *tlio_in, connection_job_t C,
                       int remote_ip_port[5], int our_ip_port[5]);
 
 unsigned parse_text_ipv4(char *str) {
-  int a, b, c, d;
-  if (sscanf(str, "%d.%d.%d.%d", &a, &b, &c, &d) != 4) {
+  uint32_t out_ip = 0;
+  int32_t rc = mtproxy_ffi_mtproto_parse_text_ipv4(str, &out_ip);
+  if (rc < 0) {
     return 0;
   }
-  if ((a | b | c | d) & -0x100) {
-    return 0;
-  }
-  return (a << 24) | (b << 16) | (c << 8) | d;
+  return out_ip;
 }
 
 int parse_text_ipv6(unsigned char ip[16], const char *str) {
-  const char *ptr = str;
-  int i, k = -1;
-  if (*ptr == ':' && ptr[1] == ':') {
-    k = 0;
-    ptr += 2;
-  }
-  for (i = 0; i < 8; i++) {
-    int c = *ptr;
-    if (i > 0) {
-      if (c == ':') {
-        c = *++ptr;
-      } else if (k >= 0) {
-        break;
-      } else {
-        return -1; // ':' expected
-      }
-      if (c == ':') {
-        if (k >= 0) {
-          return -1; // second '::'
-        }
-        k = i;
-        c = *++ptr;
-      }
-    }
-    int j = 0, v = 0;
-    while ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') ||
-           (c >= 'a' && c <= 'f')) {
-      c |= 0x20;
-      v = (v << 4) + (c <= '9' ? c - '0' : c - 'a' + 10);
-      if (++j > 4) {
-        return -1; // more than 4 hex digits in component
-      }
-      c = *++ptr;
-    }
-    if (!j) {
-      if (k == i) {
-        break;
-      }
-      return -1; // hex digit or ':' expected
-    }
-    ip[2 * i] = (v >> 8);
-    ip[2 * i + 1] = (v & 0xff);
-  }
-  if (*ptr) {
+  int32_t consumed = -1;
+  int32_t rc = mtproxy_ffi_mtproto_parse_text_ipv6(str, ip, &consumed);
+  if (rc < 0) {
     return -1;
   }
-  /*
-  if (*ptr && *ptr != '/' && *ptr != ' ' && *ptr != '\n' && *ptr != '\r' && *ptr
-  != '\t') { return -1; // extra characters
-  }
-  */
-  if (i < 8) {
-    assert(k >= 0 && k <= i);
-    int gap = 2 * (8 - i);
-    memmove(ip + 2 * k + gap, ip + 2 * k, 2 * (i - k));
-    memset(ip + 2 * k, 0, gap);
-  }
-  return ptr - str;
+  return consumed;
 }
 
 struct http_query_info {
@@ -1773,27 +1716,21 @@ int forward_mtproto_packet(struct tl_in_state *tlio_in, connection_job_t C,
     return 0;
   }
   assert(tl_fetch_lookup_data(header, sizeof(header)) == sizeof(header));
-  long long auth_key_id = *(long long *)header;
-  if (auth_key_id) {
+  mtproxy_ffi_mtproto_packet_inspect_result_t inspected = {0};
+  int32_t inspect_rc = mtproxy_ffi_mtproto_inspect_packet_header(
+      (const uint8_t *)header, sizeof(header), len, &inspected);
+  if (inspect_rc < 0) {
+    return 0;
+  }
+  if (inspected.kind == MTPROXY_FFI_MTPROTO_PACKET_KIND_ENCRYPTED) {
+    long long auth_key_id = inspected.auth_key_id;
     return forward_mtproto_enc_packet(tlio_in, C, auth_key_id, len,
                                       remote_ip_port, rpc_flags);
   }
+  if (inspected.kind != MTPROXY_FFI_MTPROTO_PACKET_KIND_UNENCRYPTED_DH) {
+    return 0;
+  }
   vkprintf(2, "received mtproto packet of %d bytes\n", len);
-  int inner_len = header[4];
-  if (inner_len + 20 > len) {
-    vkprintf(1, "received packet with bad inner length: %d (%d expected)\n",
-             inner_len, len - 20);
-    return 0;
-  }
-  if (inner_len < 20) {
-    // must have at least function id and nonce
-    return 0;
-  }
-  int function = header[5];
-  if (function != CODE_req_pq && function != CODE_req_pq_multi &&
-      function != CODE_req_DH_params && function != CODE_set_client_DH_params) {
-    return 0;
-  }
   conn_target_job_t S = choose_proxy_target(TCP_RPC_DATA(C)->extra_int4);
 
   assert(len == TL_IN_REMAINING);
@@ -1952,24 +1889,70 @@ int forward_tcp_query(struct tl_in_state *tlio_in, connection_job_t c,
 
 /* -------------------------- EXTERFACE ---------------------------- */
 
+static int mtfront_set_rust_parse_error(
+    struct tl_in_state *tlio_in,
+    const mtproxy_ffi_mtproto_parse_function_result_t *result) {
+  char msg[sizeof(result->error) + 1];
+  int len = result->error_len;
+  if (len < 0) {
+    len = 0;
+  }
+  if (len > (int)sizeof(result->error)) {
+    len = (int)sizeof(result->error);
+  }
+  if (len > 0) {
+    memcpy(msg, result->error, len);
+  }
+  msg[len] = 0;
+  if (!len) {
+    strcpy(msg, "MTProxy parse error");
+  }
+  return tlf_set_error(
+      tlio_in, result->errnum ? result->errnum : TL_ERROR_INTERNAL, msg);
+}
+
 struct tl_act_extra *mtfront_parse_function(struct tl_in_state *tlio_in,
                                             long long actor_id) {
   ++api_invoke_requests;
-  if (actor_id != 0) {
-    tl_fetch_set_error(TL_ERROR_WRONG_ACTOR_ID,
-                       "MTProxy only supports actor_id = 0");
+  int unread = tl_fetch_unread();
+  if (unread < 0) {
+    tl_fetch_set_error(TL_ERROR_NOT_ENOUGH_DATA, "Unable to inspect TL query");
     return 0;
   }
-  int op = tl_fetch_int();
-  if (tl_fetch_error()) {
+  unsigned char *buf = unread > 0 ? malloc((size_t)unread) : 0;
+  if (unread > 0 && !buf) {
+    tl_fetch_set_error(TL_ERROR_INTERNAL, "Unable to allocate parser buffer");
     return 0;
   }
-  switch (op) {
-  default:
-    tl_fetch_set_error_format(TL_ERROR_UNKNOWN_FUNCTION_ID, "Unknown op %08x",
-                              op);
+  if (unread > 0 && tl_fetch_lookup_data(buf, unread) != unread) {
+    free(buf);
+    tl_fetch_set_error(TL_ERROR_INTERNAL, "Unable to read parser buffer");
     return 0;
   }
+
+  mtproxy_ffi_mtproto_parse_function_result_t result = {0};
+  int32_t rc =
+      mtproxy_ffi_mtproto_parse_function(buf, (size_t)unread, actor_id, &result);
+  free(buf);
+  if (rc < 0) {
+    tl_fetch_set_error(TL_ERROR_INTERNAL, "Rust mtfront parser bridge failed");
+    return 0;
+  }
+
+  if (result.consumed > 0) {
+    int skip = result.consumed;
+    if (skip > unread) {
+      skip = unread;
+    }
+    tl_fetch_skip(skip);
+  }
+
+  if (result.status < 0) {
+    mtfront_set_rust_parse_error(tlio_in, &result);
+    return 0;
+  }
+
+  return 0;
 }
 
 /* ------------------------ FLOOD CONTROL -------------------------- */

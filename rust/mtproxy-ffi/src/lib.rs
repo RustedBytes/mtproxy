@@ -160,6 +160,9 @@ const MTPROTO_CFG_CLUSTER_APPLY_DECISION_ERR_PROXIES_INTERMIXED: i32 = -3;
 const MTPROTO_CFG_CLUSTER_APPLY_DECISION_ERR_INTERNAL: i32 = -4;
 const MTPROTO_CFG_CLUSTER_APPLY_DECISION_KIND_CREATE_NEW: i32 = 1;
 const MTPROTO_CFG_CLUSTER_APPLY_DECISION_KIND_APPEND_LAST: i32 = 2;
+const MTPROTO_PACKET_KIND_INVALID: i32 = 0;
+const MTPROTO_PACKET_KIND_ENCRYPTED: i32 = 1;
+const MTPROTO_PACKET_KIND_UNENCRYPTED_DH: i32 = 2;
 const CRYPTO_TEMP_DH_PARAMS_MAGIC: i32 = i32::from_ne_bytes(0xab45_ccd3_u32.to_ne_bytes());
 
 const TCP_RPC_PACKET_LEN_STATE_SKIP: i32 = 0;
@@ -406,6 +409,15 @@ pub struct MtproxyMtprotoCfgClusterApplyDecisionResult {
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct MtproxyMtprotoPacketInspectResult {
+    pub kind: i32,
+    pub auth_key_id: i64,
+    pub inner_len: i32,
+    pub function_id: i32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct MtproxyMtprotoOldClusterState {
     pub cluster_id: i32,
     pub targets_num: u32,
@@ -425,6 +437,16 @@ pub struct MtproxyTlHeaderParseResult {
     pub flags: i32,
     pub qid: i64,
     pub actor_id: i64,
+    pub errnum: i32,
+    pub error_len: i32,
+    pub error: [c_char; 192],
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct MtproxyMtprotoParseFunctionResult {
+    pub status: i32,
+    pub consumed: i32,
     pub errnum: i32,
     pub error_len: i32,
     pub error: [c_char; 192],
@@ -604,6 +626,18 @@ impl Default for MtproxyTlHeaderParseResult {
             flags: 0,
             qid: 0,
             actor_id: 0,
+            errnum: 0,
+            error_len: 0,
+            error: [0; 192],
+        }
+    }
+}
+
+impl Default for MtproxyMtprotoParseFunctionResult {
+    fn default() -> Self {
+        Self {
+            status: 0,
+            consumed: 0,
             errnum: 0,
             error_len: 0,
             error: [0; 192],
@@ -1094,6 +1128,135 @@ pub extern "C" fn mtproxy_ffi_mtproto_ext_conn_hash(
 #[no_mangle]
 pub extern "C" fn mtproxy_ffi_mtproto_conn_tag(generation: i32) -> i32 {
     mtproto_conn_tag_impl(generation)
+}
+
+/// Parses dotted IPv4 text into host-order integer (`a<<24|b<<16|c<<8|d`).
+///
+/// # Safety
+/// `str` must be a valid NUL-terminated C string, `out_ip` must be writable.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_parse_text_ipv4(
+    str: *const c_char,
+    out_ip: *mut u32,
+) -> i32 {
+    if str.is_null() || out_ip.is_null() {
+        return -1;
+    }
+    let input = unsafe { CStr::from_ptr(str) }.to_string_lossy();
+    let parsed = mtproxy_core::runtime::mtproto::proxy::parse_text_ipv4(&input);
+    let out_ref = unsafe { &mut *out_ip };
+    *out_ref = parsed;
+    0
+}
+
+/// Parses textual IPv6 and writes 16-byte network-order output.
+///
+/// # Safety
+/// `str` must be a valid NUL-terminated C string,
+/// `out_ip`/`out_consumed` must be writable.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_parse_text_ipv6(
+    str: *const c_char,
+    out_ip: *mut u8,
+    out_consumed: *mut i32,
+) -> i32 {
+    if str.is_null() || out_ip.is_null() || out_consumed.is_null() {
+        return -1;
+    }
+    let input = unsafe { CStr::from_ptr(str) }.to_string_lossy();
+    let mut parsed_ip = [0u8; 16];
+    let consumed = mtproxy_core::runtime::mtproto::proxy::parse_text_ipv6(&mut parsed_ip, &input);
+    let out_ip_slice = unsafe { core::slice::from_raw_parts_mut(out_ip, 16) };
+    out_ip_slice.copy_from_slice(&parsed_ip);
+    let out_consumed_ref = unsafe { &mut *out_consumed };
+    *out_consumed_ref = consumed;
+    0
+}
+
+/// Classifies MTProto packet shape from fixed unencrypted header bytes.
+///
+/// # Safety
+/// `header` must point to `header_len` readable bytes when `header_len > 0`,
+/// `out` must be writable.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_inspect_packet_header(
+    header: *const u8,
+    header_len: usize,
+    packet_len: i32,
+    out: *mut MtproxyMtprotoPacketInspectResult,
+) -> i32 {
+    if out.is_null() {
+        return -1;
+    }
+    let Some(bytes) = slice_from_ptr(header, header_len) else {
+        return -1;
+    };
+    let out_ref = unsafe { &mut *out };
+    *out_ref = MtproxyMtprotoPacketInspectResult::default();
+
+    match mtproxy_core::runtime::mtproto::proxy::inspect_mtproto_packet_header(bytes, packet_len) {
+        Some(mtproxy_core::runtime::mtproto::proxy::MtprotoPacketKind::Encrypted {
+            auth_key_id,
+        }) => {
+            out_ref.kind = MTPROTO_PACKET_KIND_ENCRYPTED;
+            out_ref.auth_key_id = auth_key_id;
+        }
+        Some(mtproxy_core::runtime::mtproto::proxy::MtprotoPacketKind::UnencryptedDh {
+            inner_len,
+            function,
+        }) => {
+            out_ref.kind = MTPROTO_PACKET_KIND_UNENCRYPTED_DH;
+            out_ref.inner_len = inner_len;
+            out_ref.function_id = function;
+        }
+        None => {
+            out_ref.kind = MTPROTO_PACKET_KIND_INVALID;
+        }
+    }
+    0
+}
+
+fn mtproto_parse_function_impl(
+    data: &[u8],
+    actor_id: i64,
+    out: &mut MtproxyMtprotoParseFunctionResult,
+) {
+    let mut in_state = mtproxy_core::runtime::config::tl_parse::TlInState::new(data);
+    match mtproxy_core::runtime::mtproto::proxy::parse_mtfront_function(&mut in_state, actor_id) {
+        Ok(()) => {
+            out.status = 0;
+            out.consumed = saturating_i32_from_usize(in_state.position());
+        }
+        Err(err) => {
+            out.status = -1;
+            out.consumed = saturating_i32_from_usize(in_state.position());
+            out.errnum = err.errnum;
+            copy_mtproto_parse_error_message(out, &err.message);
+        }
+    }
+}
+
+/// Parses mtfront function envelope from unread TL bytes.
+///
+/// # Safety
+/// `data` must point to `len` readable bytes when `len > 0`, `out` must be writable.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_parse_function(
+    data: *const u8,
+    len: usize,
+    actor_id: i64,
+    out: *mut MtproxyMtprotoParseFunctionResult,
+) -> i32 {
+    if out.is_null() {
+        return -1;
+    }
+    let Some(bytes) = slice_from_ptr(data, len) else {
+        return -1;
+    };
+    let out_ref = unsafe { &mut *out };
+    *out_ref = MtproxyMtprotoParseFunctionResult::default();
+    mtproto_parse_function_impl(bytes, actor_id, out_ref);
+    0
 }
 
 /// Returns scalar config state initialized by `preinit_config()`.
@@ -4689,6 +4852,20 @@ fn copy_error_message(out: &mut MtproxyTlHeaderParseResult, message: &str) {
     out.error_len = i32::try_from(n).unwrap_or(i32::MAX);
 }
 
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+fn copy_mtproto_parse_error_message(out: &mut MtproxyMtprotoParseFunctionResult, message: &str) {
+    let bytes = message.as_bytes();
+    let cap = out.error.len().saturating_sub(1);
+    let n = bytes.len().min(cap);
+    for (dst, src) in out.error.iter_mut().take(n).zip(bytes.iter().copied()) {
+        *dst = c_char::from_ne_bytes([src]);
+    }
+    if let Some(last) = out.error.get_mut(n) {
+        *last = 0;
+    }
+    out.error_len = i32::try_from(n).unwrap_or(i32::MAX);
+}
+
 fn saturating_i32_from_usize(value: usize) -> i32 {
     match i32::try_from(value) {
         Ok(converted) => converted,
@@ -5075,6 +5252,8 @@ mod tests {
         mtproxy_ffi_mtproto_cfg_parse_full_pass, mtproxy_ffi_mtproto_cfg_parse_proxy_target_step,
         mtproxy_ffi_mtproto_cfg_preinit, mtproxy_ffi_mtproto_cfg_scan_directive_token,
         mtproxy_ffi_mtproto_conn_tag, mtproxy_ffi_mtproto_ext_conn_hash,
+        mtproxy_ffi_mtproto_inspect_packet_header, mtproxy_ffi_mtproto_parse_function,
+        mtproxy_ffi_mtproto_parse_text_ipv4, mtproxy_ffi_mtproto_parse_text_ipv6,
         mtproxy_ffi_net_epoll_conv_flags, mtproxy_ffi_net_epoll_unconv_flags,
         mtproxy_ffi_net_timers_wait_msec, mtproxy_ffi_parse_meminfo_summary,
         mtproxy_ffi_parse_proc_stat_line, mtproxy_ffi_parse_statm, mtproxy_ffi_pid_init_common,
@@ -5093,8 +5272,9 @@ mod tests {
         MtproxyMtprotoCfgFinalizeResult, MtproxyMtprotoCfgGetlexExtResult,
         MtproxyMtprotoCfgParseFullResult, MtproxyMtprotoCfgParseProxyTargetStepResult,
         MtproxyMtprotoCfgPreinitResult, MtproxyMtprotoCfgProxyAction,
-        MtproxyMtprotoOldClusterState, MtproxyNetworkBoundary, MtproxyProcStats, MtproxyProcessId,
-        MtproxyRpcBoundary, MtproxyTlHeaderParseResult, AESNI_CIPHER_AES_256_CTR,
+        MtproxyMtprotoOldClusterState, MtproxyMtprotoPacketInspectResult,
+        MtproxyMtprotoParseFunctionResult, MtproxyNetworkBoundary, MtproxyProcStats,
+        MtproxyProcessId, MtproxyRpcBoundary, MtproxyTlHeaderParseResult, AESNI_CIPHER_AES_256_CTR,
         AESNI_CONTRACT_OPS, AESNI_IMPLEMENTED_OPS, APPLICATION_BOUNDARY_VERSION,
         CONCURRENCY_BOUNDARY_VERSION, CPUID_MAGIC, CRC32_REFLECTED_POLY, CRYPTO_BOUNDARY_VERSION,
         DH_KEY_BYTES, DH_PARAMS_SELECT, ENGINE_RPC_CONTRACT_OPS, ENGINE_RPC_IMPLEMENTED_OPS,
@@ -5126,17 +5306,19 @@ mod tests {
         MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_TARGET_ID_SPACE, MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_OK,
         MTPROTO_DIRECTIVE_TOKEN_KIND_DEFAULT_CLUSTER, MTPROTO_DIRECTIVE_TOKEN_KIND_MAX_CONNECTIONS,
         MTPROTO_DIRECTIVE_TOKEN_KIND_MIN_CONNECTIONS, MTPROTO_DIRECTIVE_TOKEN_KIND_PROXY_FOR,
-        MTPROTO_DIRECTIVE_TOKEN_KIND_TIMEOUT, MTPROTO_PROXY_CONTRACT_OPS,
-        MTPROTO_PROXY_IMPLEMENTED_OPS, NETWORK_BOUNDARY_VERSION, NET_CRYPTO_AES_CONTRACT_OPS,
-        NET_CRYPTO_AES_IMPLEMENTED_OPS, NET_CRYPTO_DH_CONTRACT_OPS, NET_CRYPTO_DH_IMPLEMENTED_OPS,
-        NET_EVENTS_CONTRACT_OPS, NET_EVENTS_IMPLEMENTED_OPS, NET_MSG_BUFFERS_CONTRACT_OPS,
-        NET_MSG_BUFFERS_IMPLEMENTED_OPS, NET_TIMERS_CONTRACT_OPS, NET_TIMERS_IMPLEMENTED_OPS,
-        RPC_BOUNDARY_VERSION, RPC_INVOKE_REQ, RPC_REQ_RESULT, RPC_TARGETS_CONTRACT_OPS,
-        RPC_TARGETS_IMPLEMENTED_OPS, TCP_RPC_CLIENT_CONTRACT_OPS, TCP_RPC_CLIENT_IMPLEMENTED_OPS,
-        TCP_RPC_COMMON_CONTRACT_OPS, TCP_RPC_COMMON_IMPLEMENTED_OPS,
-        TCP_RPC_PACKET_LEN_STATE_INVALID, TCP_RPC_PACKET_LEN_STATE_READY,
-        TCP_RPC_PACKET_LEN_STATE_SHORT, TCP_RPC_PACKET_LEN_STATE_SKIP, TCP_RPC_SERVER_CONTRACT_OPS,
-        TCP_RPC_SERVER_IMPLEMENTED_OPS, TLS_REQUEST_PUBLIC_KEY_BYTES,
+        MTPROTO_DIRECTIVE_TOKEN_KIND_TIMEOUT, MTPROTO_PACKET_KIND_ENCRYPTED,
+        MTPROTO_PACKET_KIND_INVALID, MTPROTO_PACKET_KIND_UNENCRYPTED_DH,
+        MTPROTO_PROXY_CONTRACT_OPS, MTPROTO_PROXY_IMPLEMENTED_OPS, NETWORK_BOUNDARY_VERSION,
+        NET_CRYPTO_AES_CONTRACT_OPS, NET_CRYPTO_AES_IMPLEMENTED_OPS, NET_CRYPTO_DH_CONTRACT_OPS,
+        NET_CRYPTO_DH_IMPLEMENTED_OPS, NET_EVENTS_CONTRACT_OPS, NET_EVENTS_IMPLEMENTED_OPS,
+        NET_MSG_BUFFERS_CONTRACT_OPS, NET_MSG_BUFFERS_IMPLEMENTED_OPS, NET_TIMERS_CONTRACT_OPS,
+        NET_TIMERS_IMPLEMENTED_OPS, RPC_BOUNDARY_VERSION, RPC_INVOKE_REQ, RPC_REQ_RESULT,
+        RPC_TARGETS_CONTRACT_OPS, RPC_TARGETS_IMPLEMENTED_OPS, TCP_RPC_CLIENT_CONTRACT_OPS,
+        TCP_RPC_CLIENT_IMPLEMENTED_OPS, TCP_RPC_COMMON_CONTRACT_OPS,
+        TCP_RPC_COMMON_IMPLEMENTED_OPS, TCP_RPC_PACKET_LEN_STATE_INVALID,
+        TCP_RPC_PACKET_LEN_STATE_READY, TCP_RPC_PACKET_LEN_STATE_SHORT,
+        TCP_RPC_PACKET_LEN_STATE_SKIP, TCP_RPC_SERVER_CONTRACT_OPS, TCP_RPC_SERVER_IMPLEMENTED_OPS,
+        TLS_REQUEST_PUBLIC_KEY_BYTES,
     };
 
     #[test]
@@ -5294,6 +5476,108 @@ mod tests {
             c_hash(-1, -17, 20)
         );
         assert_eq!(mtproxy_ffi_mtproto_ext_conn_hash(1, 2, 0), -1);
+    }
+
+    #[test]
+    fn mtproto_text_parsers_are_wired_to_core_proxy_module() {
+        let mut out_ip = 0u32;
+        assert_eq!(
+            unsafe {
+                mtproxy_ffi_mtproto_parse_text_ipv4(b"127.0.0.1\0".as_ptr().cast(), &raw mut out_ip)
+            },
+            0
+        );
+        assert_eq!(out_ip, 0x7f00_0001);
+
+        let mut out_ipv6 = [0u8; 16];
+        let mut consumed = 0i32;
+        assert_eq!(
+            unsafe {
+                mtproxy_ffi_mtproto_parse_text_ipv6(
+                    b"::1\0".as_ptr().cast(),
+                    out_ipv6.as_mut_ptr(),
+                    &raw mut consumed,
+                )
+            },
+            0
+        );
+        assert_eq!(consumed, 3);
+        assert_eq!(out_ipv6, [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
+    }
+
+    #[test]
+    fn mtproto_packet_inspect_bridge_classifies_header_shapes() {
+        let mut out = MtproxyMtprotoPacketInspectResult::default();
+        let mut header = [0u8; 28];
+
+        header[0..8].copy_from_slice(&0x1122_3344_5566_7788_i64.to_le_bytes());
+        assert_eq!(
+            unsafe {
+                mtproxy_ffi_mtproto_inspect_packet_header(
+                    header.as_ptr(),
+                    header.len(),
+                    64,
+                    &raw mut out,
+                )
+            },
+            0
+        );
+        assert_eq!(out.kind, MTPROTO_PACKET_KIND_ENCRYPTED);
+        assert_eq!(out.auth_key_id, 0x1122_3344_5566_7788_i64);
+
+        header.fill(0);
+        header[16..20].copy_from_slice(&20_i32.to_le_bytes());
+        header[20..24].copy_from_slice(&0x6046_9778_i32.to_le_bytes());
+        assert_eq!(
+            unsafe {
+                mtproxy_ffi_mtproto_inspect_packet_header(
+                    header.as_ptr(),
+                    header.len(),
+                    40,
+                    &raw mut out,
+                )
+            },
+            0
+        );
+        assert_eq!(out.kind, MTPROTO_PACKET_KIND_UNENCRYPTED_DH);
+        assert_eq!(out.inner_len, 20);
+        assert_eq!(out.function_id, 0x6046_9778_i32);
+
+        header[20..24].copy_from_slice(&0_i32.to_le_bytes());
+        assert_eq!(
+            unsafe {
+                mtproxy_ffi_mtproto_inspect_packet_header(
+                    header.as_ptr(),
+                    header.len(),
+                    40,
+                    &raw mut out,
+                )
+            },
+            0
+        );
+        assert_eq!(out.kind, MTPROTO_PACKET_KIND_INVALID);
+    }
+
+    #[test]
+    fn mtproto_parse_function_bridge_returns_core_errors_and_consumed_bytes() {
+        let mut out = MtproxyMtprotoParseFunctionResult::default();
+        let op = 0x1234_5678_i32.to_le_bytes();
+
+        assert_eq!(
+            unsafe { mtproxy_ffi_mtproto_parse_function(op.as_ptr(), op.len(), 1, &raw mut out) },
+            0
+        );
+        assert_eq!(out.status, -1);
+        assert_eq!(out.errnum, -2002);
+        assert_eq!(out.consumed, 0);
+
+        assert_eq!(
+            unsafe { mtproxy_ffi_mtproto_parse_function(op.as_ptr(), op.len(), 0, &raw mut out) },
+            0
+        );
+        assert_eq!(out.status, -1);
+        assert_eq!(out.errnum, -2000);
+        assert_eq!(out.consumed, 4);
     }
 
     #[test]

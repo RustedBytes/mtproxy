@@ -62,6 +62,10 @@ Current exported API:
 - `mtproxy_ffi_engine_rpc_result_header_len(...)`
 - `mtproxy_ffi_mtproto_ext_conn_hash(...)`
 - `mtproxy_ffi_mtproto_conn_tag(...)`
+- `mtproxy_ffi_mtproto_parse_text_ipv4(...)`
+- `mtproxy_ffi_mtproto_parse_text_ipv6(...)`
+- `mtproxy_ffi_mtproto_inspect_packet_header(...)`
+- `mtproxy_ffi_mtproto_parse_function(...)`
 
 ## Call flow
 
@@ -96,6 +100,7 @@ Current exported API:
 - `crypto/aesni256.c` can delegate `EVP_CipherUpdate` wrapper helper to Rust when symbols are linked.
 - `engine/engine-rpc.c` delegates TL result header helpers (`tl_result_new_flags`, `tl_result_get_header_len`) to Rust (Step 14 decommission batch removed C fallback path).
 - `mtproto/mtproto-proxy.c` delegates ext-connection hash bucket and connection-tag helpers to Rust (Step 14 decommission batch removed C fallback path).
+- `mtproto/mtproto-proxy.c` also delegates textual IP parsing, MTProto packet shape inspection, and `mtfront_parse_function` envelope/error mapping to Rust.
 - If handshake fails, startup aborts before config load.
 
 ## Ownership and memory rules

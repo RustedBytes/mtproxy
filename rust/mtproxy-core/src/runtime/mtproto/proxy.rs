@@ -746,17 +746,26 @@ fn read_i64_le(data: &[u8], offset: usize) -> Option<i64> {
 
 #[must_use]
 pub fn inspect_mtproto_packet(data: &[u8]) -> Option<MtprotoPacketKind> {
-    if data.len() < 28 || (data.len() & 3) != 0 {
+    let packet_len = i32::try_from(data.len()).ok()?;
+    inspect_mtproto_packet_header(data, packet_len)
+}
+
+#[must_use]
+pub fn inspect_mtproto_packet_header(data: &[u8], packet_len: i32) -> Option<MtprotoPacketKind> {
+    if packet_len < 28 || (packet_len & 3) != 0 {
         return None;
     }
+    if data.len() < 24 {
+        return None;
+    }
+
     let auth_key_id = read_i64_le(data, 0)?;
     if auth_key_id != 0 {
         return Some(MtprotoPacketKind::Encrypted { auth_key_id });
     }
 
     let inner_len = read_i32_le(data, 16)?;
-    let total_len = i32::try_from(data.len()).ok()?;
-    if inner_len.saturating_add(20) > total_len {
+    if inner_len.saturating_add(20) > packet_len {
         return None;
     }
     if inner_len < 20 {
@@ -1040,12 +1049,13 @@ mod tests {
     use alloc::vec::Vec;
 
     use super::{
-        build_rpc_proxy_req, inspect_mtproto_packet, mtproto_conn_tag, mtproto_ext_conn_hash,
-        parse_client_packet, parse_forwarded_answer_header, parse_forwarded_query_header,
-        parse_mtfront_function, parse_rpc_proxy_req, parse_rpc_proxy_req_extra, parse_text_ipv4,
-        parse_text_ipv6, ExtConnLookupMode, ExtConnLookupOutcome, ExtConnectionTable,
-        HttpQueryInfo, MtprotoPacketKind, ProxyReqBuildInput, RpcClientPacket, CODE_REQ_PQ,
-        RPC_CLOSE_EXT, RPC_PONG, RPC_PROXY_ANS, RPC_SIMPLE_ACK, TL_HTTP_QUERY_INFO, TL_PROXY_TAG,
+        build_rpc_proxy_req, inspect_mtproto_packet, inspect_mtproto_packet_header,
+        mtproto_conn_tag, mtproto_ext_conn_hash, parse_client_packet,
+        parse_forwarded_answer_header, parse_forwarded_query_header, parse_mtfront_function,
+        parse_rpc_proxy_req, parse_rpc_proxy_req_extra, parse_text_ipv4, parse_text_ipv6,
+        ExtConnLookupMode, ExtConnLookupOutcome, ExtConnectionTable, HttpQueryInfo,
+        MtprotoPacketKind, ProxyReqBuildInput, RpcClientPacket, CODE_REQ_PQ, RPC_CLOSE_EXT,
+        RPC_PONG, RPC_PROXY_ANS, RPC_SIMPLE_ACK, TL_HTTP_QUERY_INFO, TL_PROXY_TAG,
     };
     use crate::runtime::config::tl_parse::{TlInState, TlOutState, RPC_INVOKE_REQ, RPC_REQ_RESULT};
 
@@ -1200,6 +1210,10 @@ mod tests {
                 function: CODE_REQ_PQ
             }
         );
+
+        let parsed_header_only =
+            inspect_mtproto_packet_header(&plain[..28], 40).expect("header-only parse");
+        assert_eq!(parsed_header_only, parsed_plain);
 
         plain[20..24].copy_from_slice(&0_i32.to_le_bytes());
         assert!(inspect_mtproto_packet(&plain).is_none());

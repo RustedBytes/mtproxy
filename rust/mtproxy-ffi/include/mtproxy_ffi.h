@@ -134,6 +134,21 @@ typedef struct mtproxy_ffi_mtproto_cfg_parse_full_result {
   uint32_t actions_len;
 } mtproxy_ffi_mtproto_cfg_parse_full_result_t;
 
+typedef struct mtproxy_ffi_mtproto_packet_inspect_result {
+  int32_t kind;
+  int64_t auth_key_id;
+  int32_t inner_len;
+  int32_t function_id;
+} mtproxy_ffi_mtproto_packet_inspect_result_t;
+
+typedef struct mtproxy_ffi_mtproto_parse_function_result {
+  int32_t status;
+  int32_t consumed;
+  int32_t errnum;
+  int32_t error_len;
+  char error[192];
+} mtproxy_ffi_mtproto_parse_function_result_t;
+
 #define MTPROXY_FFI_MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_OK                  0
 #define MTPROXY_FFI_MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_NOT_FOUND           1
 #define MTPROXY_FFI_MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_ERR_INVALID_ARGS   (-1)
@@ -230,6 +245,10 @@ typedef struct mtproxy_ffi_mtproto_cfg_parse_full_result {
 #define MTPROXY_FFI_MTPROTO_CFG_CLUSTER_TARGETS_ACTION_KEEP_EXISTING 0
 #define MTPROXY_FFI_MTPROTO_CFG_CLUSTER_TARGETS_ACTION_CLEAR         1
 #define MTPROXY_FFI_MTPROTO_CFG_CLUSTER_TARGETS_ACTION_SET_TARGET    2
+
+#define MTPROXY_FFI_MTPROTO_PACKET_KIND_INVALID        0
+#define MTPROXY_FFI_MTPROTO_PACKET_KIND_ENCRYPTED      1
+#define MTPROXY_FFI_MTPROTO_PACKET_KIND_UNENCRYPTED_DH 2
 
 typedef struct mtproxy_ffi_tl_header_parse_result {
   int32_t status;
@@ -565,6 +584,24 @@ int32_t mtproxy_ffi_engine_rpc_result_header_len(int32_t flags);
 // mtproto-proxy helpers for external-connection hashing/tagging.
 int32_t mtproxy_ffi_mtproto_ext_conn_hash(int32_t in_fd, int64_t in_conn_id, int32_t hash_shift);
 int32_t mtproxy_ffi_mtproto_conn_tag(int32_t generation);
+int32_t mtproxy_ffi_mtproto_parse_text_ipv4(const char *str, uint32_t *out_ip);
+int32_t mtproxy_ffi_mtproto_parse_text_ipv6(
+  const char *str,
+  uint8_t out_ip[16],
+  int32_t *out_consumed
+);
+int32_t mtproxy_ffi_mtproto_inspect_packet_header(
+  const uint8_t *header,
+  size_t header_len,
+  int32_t packet_len,
+  mtproxy_ffi_mtproto_packet_inspect_result_t *out
+);
+int32_t mtproxy_ffi_mtproto_parse_function(
+  const uint8_t *data,
+  size_t len,
+  int64_t actor_id,
+  mtproxy_ffi_mtproto_parse_function_result_t *out
+);
 
 // mtproto-config helpers for Step 15 parser/apply runtime migration.
 int32_t mtproxy_ffi_mtproto_cfg_preinit(
