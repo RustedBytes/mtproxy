@@ -59,13 +59,9 @@
 
 struct mf_config Config[2], *CurConf = Config, *NextConf = Config + 1;
 
-
-//#define MAX_CONFIG_SIZE (1 << 20)
-
-//char config_buff[MAX_CONFIG_SIZE+4], *config_filename, *cfg_start, *cfg_end, *cfg_cur;
-//int config_bytes, cfg_lno, cfg_lex = -1;
-
 char *config_filename;
+
+static uint32_t collect_auth_cluster_ids (const struct mf_config *MC, int32_t cluster_ids[MAX_CFG_CLUSTERS]);
 
 static int cfg_getlex_ext (void) {
   if (cfg_cur > cfg_end) {
@@ -85,7 +81,7 @@ static int cfg_getlex_ext (void) {
 }
 
 
-void forget_cluster_targets (struct mf_group_stats *GS, struct mf_cluster *MFC, int do_destroy_targets) {
+static void forget_cluster_targets (struct mf_cluster *MFC) {
   if (MFC->cluster_targets) {
     MFC->cluster_targets = 0;
   }
@@ -93,8 +89,8 @@ void forget_cluster_targets (struct mf_group_stats *GS, struct mf_cluster *MFC, 
   MFC->targets_allocated = 0;
 }
 
-void clear_mf_cluster (struct mf_group_stats *GS, struct mf_cluster *MFC, int do_destroy_targets) {
-  forget_cluster_targets (GS, MFC, do_destroy_targets);
+static void clear_mf_cluster (struct mf_group_stats *GS, struct mf_cluster *MFC) {
+  forget_cluster_targets (MFC);
   MFC->flags = 0;
   GS->tot_clusters --;
 }
@@ -109,7 +105,7 @@ void clear_config (struct mf_config *MC, int do_destroy_targets) {
     memset (MC->targets, 0, MC->tot_targets * sizeof (conn_target_job_t));
   }
   for (j = 0; j < MC->auth_clusters; j++) {
-    clear_mf_cluster (&MC->auth_stats, &MC->auth_cluster[j], do_destroy_targets);
+    clear_mf_cluster (&MC->auth_stats, &MC->auth_cluster[j]);
   }
   MC->tot_targets = 0;
   MC->auth_clusters = 0;
@@ -192,8 +188,7 @@ conn_target_job_t *cfg_parse_server_port (struct mf_config *MC, int flags) {
 }
 
 
-static void init_old_mf_cluster (struct mf_config *MC, struct mf_group_stats *GS, struct mf_cluster *MFC, conn_target_job_t *targets, int targets_num, int flags, int cluster_id) {
-  assert (targets_num == 1);
+static void init_old_mf_cluster (struct mf_config *MC, struct mf_group_stats *GS, struct mf_cluster *MFC, conn_target_job_t *targets, int flags, int cluster_id) {
   assert (targets >= MC->targets);
   ptrdiff_t first_target_index = targets - MC->targets;
   assert (first_target_index >= 0 && first_target_index < MAX_CFG_TARGETS);
@@ -256,23 +251,39 @@ static int extend_old_mf_cluster (struct mf_config *MC, struct mf_cluster *MFC, 
 }
 
 struct mf_cluster *mf_cluster_lookup (struct mf_config *MC, int cluster_id, int force) {
-  int i;
-  for (i = 0; i < MC->auth_clusters; i++) {
-    if (MC->auth_cluster[i].cluster_id == cluster_id) {
-      return &(MC->auth_cluster[i]);
+  int32_t cluster_ids[MAX_CFG_CLUSTERS];
+  uint32_t clusters_len = collect_auth_cluster_ids (MC, cluster_ids);
+
+  int32_t default_cluster_index = 0;
+  int32_t has_default_cluster_index = 0;
+  if (MC->default_cluster) {
+    ptrdiff_t idx = MC->default_cluster - MC->auth_cluster;
+    if (idx >= 0 && idx < MC->auth_clusters) {
+      default_cluster_index = (int32_t) idx;
+      has_default_cluster_index = 1;
     }
   }
-  return force ? MC->default_cluster : 0;
-}
 
-static void preinit_config (struct mf_config *MC) {
-  MC->tot_targets = 0;
-  MC->auth_clusters = 0;
-  MC->min_connections = default_cfg_min_connections;
-  MC->max_connections = default_cfg_max_connections;
-  MC->timeout = 0.3;
-  MC->default_cluster_id = 0;
-  MC->default_cluster = 0;
+  int32_t cluster_index = -1;
+  int32_t lookup_rc = mtproxy_ffi_mtproto_cfg_lookup_cluster_index (
+    cluster_ids,
+    clusters_len,
+    cluster_id,
+    force ? 1 : 0,
+    default_cluster_index,
+    has_default_cluster_index,
+    &cluster_index
+  );
+  if (lookup_rc == MTPROXY_FFI_MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_OK) {
+    if (cluster_index >= 0 && cluster_index < MC->auth_clusters) {
+      return &MC->auth_cluster[cluster_index];
+    }
+    return force ? MC->default_cluster : 0;
+  }
+  if (lookup_rc == MTPROXY_FFI_MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_NOT_FOUND) {
+    return force ? MC->default_cluster : 0;
+  }
+  return force ? MC->default_cluster : 0;
 }
 
 static uint32_t collect_auth_cluster_ids (const struct mf_config *MC, int32_t cluster_ids[MAX_CFG_CLUSTERS]) {
@@ -306,7 +317,22 @@ int parse_config (struct mf_config *MC, int flags, int config_fd) {
 
   reset_config ();
 
-  preinit_config (MC);
+  mtproxy_ffi_mtproto_cfg_preinit_result_t preinit = {0};
+  int32_t preinit_rc = mtproxy_ffi_mtproto_cfg_preinit (
+    default_cfg_min_connections,
+    default_cfg_max_connections,
+    &preinit
+  );
+  if (preinit_rc != MTPROXY_FFI_MTPROTO_CFG_PREINIT_OK) {
+    Syntax ("internal parser preinit failure");
+  }
+  MC->tot_targets = preinit.tot_targets;
+  MC->auth_clusters = preinit.auth_clusters;
+  MC->min_connections = (int) preinit.min_connections;
+  MC->max_connections = (int) preinit.max_connections;
+  MC->timeout = preinit.timeout_seconds;
+  MC->default_cluster_id = preinit.default_cluster_id;
+  MC->default_cluster = 0;
   
   while (cfg_skipspc ()) {
     int target_dc = 0;
@@ -356,51 +382,58 @@ int parse_config (struct mf_config *MC, int flags, int config_fd) {
         /* fall through: proxy_for shares target apply path with proxy */
       case MTPROXY_FFI_MTPROTO_DIRECTIVE_TOKEN_KIND_PROXY: {
         have_proxy |= 1;
-        if (MC->auth_clusters >= MAX_CFG_CLUSTERS) {
-          Syntax ("too many auth clusters", MC->auth_clusters);
+        int32_t cluster_ids[MAX_CFG_CLUSTERS];
+        uint32_t clusters_len = collect_auth_cluster_ids (MC, cluster_ids);
+        mtproxy_ffi_mtproto_cfg_cluster_apply_decision_result_t decision = {0};
+        int32_t decision_rc = mtproxy_ffi_mtproto_cfg_decide_cluster_apply (
+          cluster_ids,
+          clusters_len,
+          target_dc,
+          (uint32_t) MAX_CFG_CLUSTERS,
+          &decision
+        );
+        if (decision_rc != MTPROXY_FFI_MTPROTO_CFG_CLUSTER_APPLY_DECISION_OK) {
+          switch (decision_rc) {
+            case MTPROXY_FFI_MTPROTO_CFG_CLUSTER_APPLY_DECISION_ERR_TOO_MANY_AUTH_CLUSTERS:
+              Syntax ("too many auth clusters", MC->auth_clusters);
+              break;
+            case MTPROXY_FFI_MTPROTO_CFG_CLUSTER_APPLY_DECISION_ERR_PROXIES_INTERMIXED:
+              Syntax ("proxies for dc %d intermixed", target_dc);
+              break;
+            default:
+              Syntax ("internal parser cluster decision failure");
+          }
         }
         targ_ptr = cfg_parse_server_port (MC, flags);
         if (!targ_ptr) {
           return -1;
         }
-        int32_t cluster_ids[MAX_CFG_CLUSTERS];
-        uint32_t clusters_len = collect_auth_cluster_ids (MC, cluster_ids);
-        int32_t cluster_index = -1;
-        int32_t lookup_rc = mtproxy_ffi_mtproto_cfg_lookup_cluster_index (
-          cluster_ids,
-          clusters_len,
-          target_dc,
-          0,
-          0,
-          0,
-          &cluster_index
-        );
-        struct mf_cluster *MFC = 0;
-        if (lookup_rc == MTPROXY_FFI_MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_OK) {
-          if (cluster_index < 0 || cluster_index >= MC->auth_clusters) {
-            Syntax ("internal parser cluster index mismatch");
+
+        if (decision.kind == MTPROXY_FFI_MTPROTO_CFG_CLUSTER_APPLY_DECISION_KIND_CREATE_NEW) {
+          if (decision.cluster_index != MC->auth_clusters) {
+            Syntax ("internal parser cluster decision mismatch");
           }
-          MFC = &MC->auth_cluster[cluster_index];
-        } else if (lookup_rc != MTPROXY_FFI_MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_NOT_FOUND) {
-          Syntax ("internal parser cluster lookup failure");
-        }
-        if (!MFC) {
 	  vkprintf (3, "-> added target to new auth_cluster #%d\n", MC->auth_clusters);
 	  if (flags & 1) {
-	    init_old_mf_cluster (MC, &MC->auth_stats, &MC->auth_cluster[MC->auth_clusters], targ_ptr, 1, 1, target_dc);
+	    init_old_mf_cluster (MC, &MC->auth_stats, &MC->auth_cluster[MC->auth_clusters], targ_ptr, 1, target_dc);
 	  } else {
 	    MC->auth_cluster[MC->auth_clusters].cluster_id = target_dc;
 	  }
 	  MC->auth_clusters ++;
-        } else if (MFC == &MC->auth_cluster[MC->auth_clusters - 1]) {
-	  vkprintf (3, "-> added target to old auth_cluster #%d\n", MC->auth_clusters - 1);
+        } else if (decision.kind == MTPROXY_FFI_MTPROTO_CFG_CLUSTER_APPLY_DECISION_KIND_APPEND_LAST) {
+          int cluster_index = decision.cluster_index;
+          if (cluster_index < 0 || cluster_index >= MC->auth_clusters || cluster_index + 1 != MC->auth_clusters) {
+            Syntax ("internal parser cluster decision mismatch");
+          }
+          struct mf_cluster *MFC = &MC->auth_cluster[cluster_index];
+	  vkprintf (3, "-> added target to old auth_cluster #%d\n", cluster_index);
 	  if (flags & 1) {
 	    if (!extend_old_mf_cluster (MC, MFC, targ_ptr, target_dc)) {
 	      Syntax ("IMPOSSIBLE");
 	    }
 	  }
         } else {
-	  Syntax ("proxies for dc %d intermixed", target_dc);
+	  Syntax ("internal parser cluster decision mismatch");
         }
         break;
       }
@@ -485,8 +518,6 @@ int do_reload_config (int flags) {
     close (fd);
   }
 
-  //  clear_config (NextConf);
-  
   if (res < 0) {
     kprintf ("error while re-reading config file %s, new configuration NOT applied\n", config_filename);
     return res;

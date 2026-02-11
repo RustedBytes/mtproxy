@@ -259,6 +259,19 @@ pub struct MtprotoConfigDefaults {
     pub max_connections: i64,
 }
 
+/// Scalar state written by `preinit_config()` in C runtime paths.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MtprotoPreinitState {
+    pub tot_targets: usize,
+    pub auth_clusters: usize,
+    pub min_connections: i64,
+    pub max_connections: i64,
+    pub timeout_seconds: f64,
+    pub default_cluster_id: i32,
+    pub have_proxy: bool,
+    pub default_cluster_index: Option<usize>,
+}
+
 /// Parse options for directive-block processing.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct MtprotoDirectiveParseOptions {
@@ -466,6 +479,54 @@ pub fn mf_cluster_lookup_index(
     force_default_cluster_index
 }
 
+/// Cluster-apply action selected for `proxy`/`proxy_for` directive handling.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum MtprotoClusterApplyDecisionKind {
+    CreateNew = 1,
+    AppendLast = 2,
+}
+
+/// Decision result for cluster selection in `parse_config()` apply flow.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct MtprotoClusterApplyDecision {
+    pub kind: MtprotoClusterApplyDecisionKind,
+    pub cluster_index: usize,
+}
+
+/// Decides how a proxy target should be applied to clusters.
+///
+/// This mirrors the C flow currently used in `parse_config()`:
+/// - too-many-clusters guard runs before lookup logic
+/// - missing cluster means create-new at `auth_clusters`
+/// - existing cluster is valid only when it is the last cluster
+pub fn decide_proxy_cluster_apply(
+    cluster_ids: &[i32],
+    cluster_id: i32,
+    max_clusters: usize,
+) -> Result<MtprotoClusterApplyDecision, MtprotoDirectiveParseError> {
+    if cluster_ids.len() >= max_clusters {
+        return Err(MtprotoDirectiveParseError::TooManyAuthClusters(
+            cluster_ids.len(),
+        ));
+    }
+
+    match mf_cluster_lookup_index(cluster_ids, cluster_id, None) {
+        None => Ok(MtprotoClusterApplyDecision {
+            kind: MtprotoClusterApplyDecisionKind::CreateNew,
+            cluster_index: cluster_ids.len(),
+        }),
+        Some(idx) => {
+            if idx + 1 != cluster_ids.len() {
+                return Err(MtprotoDirectiveParseError::ProxiesIntermixed(cluster_id));
+            }
+            Ok(MtprotoClusterApplyDecision {
+                kind: MtprotoClusterApplyDecisionKind::AppendLast,
+                cluster_index: idx,
+            })
+        }
+    }
+}
+
 fn lookup_cluster_index<const MAX_CLUSTERS: usize, const MAX_TARGETS: usize>(
     cfg: &MtprotoConfigState<MAX_CLUSTERS, MAX_TARGETS>,
     cluster_id: i32,
@@ -632,6 +693,23 @@ pub fn preinit_config<const MAX_CLUSTERS: usize, const MAX_TARGETS: usize>(
     }
 }
 
+/// Returns the scalar state produced by `preinit_config()`.
+#[must_use]
+pub fn preinit_config_snapshot(defaults: MtprotoConfigDefaults) -> MtprotoPreinitState {
+    let mut cfg = MtprotoConfigState::<1, 1>::new();
+    preinit_config(&mut cfg, defaults);
+    MtprotoPreinitState {
+        tot_targets: cfg.tot_targets,
+        auth_clusters: cfg.auth_clusters,
+        min_connections: cfg.min_connections,
+        max_connections: cfg.max_connections,
+        timeout_seconds: cfg.timeout_seconds,
+        default_cluster_id: cfg.default_cluster_id,
+        have_proxy: cfg.have_proxy,
+        default_cluster_index: cfg.default_cluster_index,
+    }
+}
+
 fn parse_proxy_directive<const MAX_CLUSTERS: usize, const MAX_TARGETS: usize>(
     input: &[u8],
     cursor: &mut usize,
@@ -772,10 +850,13 @@ pub fn parse_config_directive_blocks<const MAX_CLUSTERS: usize, const MAX_TARGET
 mod tests {
     use super::{
         cfg_getlex_ext, cfg_parse_server_port, cfg_parse_server_port_preview,
+        decide_proxy_cluster_apply,
         extend_old_mf_cluster, finalize_parse_config_state, init_old_mf_cluster,
         mf_cluster_lookup_index, parse_config_directive_blocks, preinit_config,
+        preinit_config_snapshot,
         MtprotoClusterState, MtprotoConfigDefaults, MtprotoConfigState, MtprotoDirectiveParseError,
-        MtprotoDirectiveParseOptions, CFG_LEX_EOF, CFG_LEX_INVALID,
+        MtprotoDirectiveParseOptions, MtprotoClusterApplyDecision,
+        MtprotoClusterApplyDecisionKind, CFG_LEX_EOF, CFG_LEX_INVALID,
     };
 
     fn lexeme(byte: u8) -> i32 {
@@ -900,6 +981,24 @@ mod tests {
         assert_eq!(cfg.default_cluster_id, 0);
         assert_eq!(cfg.default_cluster_index, None);
         assert!(!cfg.have_proxy);
+    }
+
+    #[test]
+    fn preinit_snapshot_matches_mutating_preinit_scalars() {
+        let defaults = MtprotoConfigDefaults {
+            min_connections: 3,
+            max_connections: 40,
+        };
+        let snapshot = preinit_config_snapshot(defaults);
+
+        assert_eq!(snapshot.tot_targets, 0);
+        assert_eq!(snapshot.auth_clusters, 0);
+        assert_eq!(snapshot.min_connections, 3);
+        assert_eq!(snapshot.max_connections, 40);
+        assert!((snapshot.timeout_seconds - 0.3).abs() < 1e-9);
+        assert_eq!(snapshot.default_cluster_id, 0);
+        assert!(!snapshot.have_proxy);
+        assert_eq!(snapshot.default_cluster_index, None);
     }
 
     #[test]
@@ -1164,6 +1263,50 @@ mod tests {
         assert_eq!(mf_cluster_lookup_index(&cluster_ids, -2, Some(3)), Some(1));
         assert_eq!(mf_cluster_lookup_index(&cluster_ids, 100, Some(3)), Some(3));
         assert_eq!(mf_cluster_lookup_index(&cluster_ids, 100, None), None);
+    }
+
+    #[test]
+    fn decide_proxy_cluster_apply_selects_new_cluster_when_missing() {
+        let cluster_ids = [4, -2];
+        let decision =
+            decide_proxy_cluster_apply(&cluster_ids, 7, 8).expect("new-cluster decision expected");
+        assert_eq!(
+            decision,
+            MtprotoClusterApplyDecision {
+                kind: MtprotoClusterApplyDecisionKind::CreateNew,
+                cluster_index: 2,
+            }
+        );
+    }
+
+    #[test]
+    fn decide_proxy_cluster_apply_selects_append_when_last_cluster_matches() {
+        let cluster_ids = [4, -2];
+        let decision =
+            decide_proxy_cluster_apply(&cluster_ids, -2, 8).expect("append decision expected");
+        assert_eq!(
+            decision,
+            MtprotoClusterApplyDecision {
+                kind: MtprotoClusterApplyDecisionKind::AppendLast,
+                cluster_index: 1,
+            }
+        );
+    }
+
+    #[test]
+    fn decide_proxy_cluster_apply_rejects_intermixed_cluster_reuse() {
+        let cluster_ids = [4, -2, 7];
+        let err = decide_proxy_cluster_apply(&cluster_ids, -2, 8)
+            .expect_err("intermixed cluster must be rejected");
+        assert_eq!(err, MtprotoDirectiveParseError::ProxiesIntermixed(-2));
+    }
+
+    #[test]
+    fn decide_proxy_cluster_apply_preserves_too_many_clusters_guard() {
+        let cluster_ids = [4, -2];
+        let err = decide_proxy_cluster_apply(&cluster_ids, -2, 2)
+            .expect_err("max-clusters guard should fail before lookup");
+        assert_eq!(err, MtprotoDirectiveParseError::TooManyAuthClusters(2));
     }
 
     #[test]

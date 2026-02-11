@@ -64,6 +64,20 @@ typedef struct mtproxy_ffi_mtproto_cfg_finalize_result {
   int32_t has_default_cluster_index;
 } mtproxy_ffi_mtproto_cfg_finalize_result_t;
 
+typedef struct mtproxy_ffi_mtproto_cfg_preinit_result {
+  int32_t tot_targets;
+  int32_t auth_clusters;
+  int64_t min_connections;
+  int64_t max_connections;
+  double timeout_seconds;
+  int32_t default_cluster_id;
+} mtproxy_ffi_mtproto_cfg_preinit_result_t;
+
+typedef struct mtproxy_ffi_mtproto_cfg_cluster_apply_decision_result {
+  int32_t kind;
+  int32_t cluster_index;
+} mtproxy_ffi_mtproto_cfg_cluster_apply_decision_result_t;
+
 typedef struct mtproxy_ffi_mtproto_old_cluster_state {
   int32_t cluster_id;
   uint32_t targets_num;
@@ -90,6 +104,19 @@ typedef struct mtproxy_ffi_mtproto_old_cluster_state {
 #define MTPROXY_FFI_MTPROTO_CFG_FINALIZE_ERR_MISSING_PROXY_DIRECTIVES    (-2)
 #define MTPROXY_FFI_MTPROTO_CFG_FINALIZE_ERR_NO_PROXY_SERVERS_DEFINED    (-3)
 #define MTPROXY_FFI_MTPROTO_CFG_FINALIZE_ERR_INTERNAL                    (-4)
+
+#define MTPROXY_FFI_MTPROTO_CFG_PREINIT_OK                     0
+#define MTPROXY_FFI_MTPROTO_CFG_PREINIT_ERR_INVALID_ARGS      (-1)
+#define MTPROXY_FFI_MTPROTO_CFG_PREINIT_ERR_INTERNAL          (-2)
+
+#define MTPROXY_FFI_MTPROTO_CFG_CLUSTER_APPLY_DECISION_OK                           0
+#define MTPROXY_FFI_MTPROTO_CFG_CLUSTER_APPLY_DECISION_ERR_INVALID_ARGS            (-1)
+#define MTPROXY_FFI_MTPROTO_CFG_CLUSTER_APPLY_DECISION_ERR_TOO_MANY_AUTH_CLUSTERS (-2)
+#define MTPROXY_FFI_MTPROTO_CFG_CLUSTER_APPLY_DECISION_ERR_PROXIES_INTERMIXED     (-3)
+#define MTPROXY_FFI_MTPROTO_CFG_CLUSTER_APPLY_DECISION_ERR_INTERNAL                (-4)
+
+#define MTPROXY_FFI_MTPROTO_CFG_CLUSTER_APPLY_DECISION_KIND_CREATE_NEW  1
+#define MTPROXY_FFI_MTPROTO_CFG_CLUSTER_APPLY_DECISION_KIND_APPEND_LAST 2
 
 #define MTPROXY_FFI_MTPROTO_CFG_GETLEX_EXT_OK                     0
 #define MTPROXY_FFI_MTPROTO_CFG_GETLEX_EXT_ERR_INVALID_ARGS      (-1)
@@ -404,6 +431,18 @@ int32_t mtproxy_ffi_mtproto_ext_conn_hash(int32_t in_fd, int64_t in_conn_id, int
 int32_t mtproxy_ffi_mtproto_conn_tag(int32_t generation);
 
 // mtproto-config helpers for Step 15 parser/apply runtime migration.
+int32_t mtproxy_ffi_mtproto_cfg_preinit(
+  int64_t default_min_connections,
+  int64_t default_max_connections,
+  mtproxy_ffi_mtproto_cfg_preinit_result_t *out
+);
+int32_t mtproxy_ffi_mtproto_cfg_decide_cluster_apply(
+  const int32_t *cluster_ids,
+  uint32_t clusters_len,
+  int32_t cluster_id,
+  uint32_t max_clusters,
+  mtproxy_ffi_mtproto_cfg_cluster_apply_decision_result_t *out
+);
 int32_t mtproxy_ffi_mtproto_cfg_getlex_ext(
   const char *cur,
   size_t len,
