@@ -196,8 +196,6 @@ const AES_ROLE_XOR_MASK: [u8; 6] = [
     b'N' ^ b'E',
     b'T' ^ b'R',
 ];
-const MTPROTO_EXT_CONN_HASH_MULT_A: u64 = 11_400_714_819_323_198_485;
-const MTPROTO_EXT_CONN_HASH_MULT_B: u64 = 13_043_817_825_332_782_213;
 const TLS_X25519_MOD_HEX: &[u8] =
     b"7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed\0";
 const TLS_X25519_POW_HEX: &[u8] =
@@ -961,22 +959,12 @@ fn engine_rpc_result_header_len_impl(flags: i32) -> i32 {
     }
 }
 
-fn mtproto_ext_conn_hash_impl(in_fd: i32, in_conn_id: i64, hash_shift: i32) -> i32 {
-    if !(1..=31).contains(&hash_shift) {
-        return -1;
-    }
-    let shift_u = u32::try_from(hash_shift).unwrap_or(0);
-    let in_fd_u = u64::from_ne_bytes(i64::from(in_fd).to_ne_bytes());
-    let in_conn_id_u = u64::from_ne_bytes(in_conn_id.to_ne_bytes());
-    let h = in_fd_u
-        .wrapping_mul(MTPROTO_EXT_CONN_HASH_MULT_A)
-        .wrapping_add(in_conn_id_u.wrapping_mul(MTPROTO_EXT_CONN_HASH_MULT_B));
-    let v = h >> (64 - shift_u);
-    i32::try_from(v).unwrap_or(-1)
+fn mtproto_conn_tag_impl(generation: i32) -> i32 {
+    mtproxy_core::runtime::mtproto::proxy::mtproto_conn_tag(generation)
 }
 
-fn mtproto_conn_tag_impl(generation: i32) -> i32 {
-    1 + (generation & 0x00ff_ffff)
+fn mtproto_ext_conn_hash_impl(in_fd: i32, in_conn_id: i64, hash_shift: i32) -> i32 {
+    mtproxy_core::runtime::mtproto::proxy::mtproto_ext_conn_hash(in_fd, in_conn_id, hash_shift)
 }
 
 /// Converts net event flags into Linux epoll flags.
