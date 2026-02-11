@@ -112,7 +112,7 @@ ${LIB}/libkdb.a: ${LIB_OBJS}
 	rm -f $@ && ar rcs $@ $^
 
 clean:
-	rm -rf ${OBJ} ${DEP} ${EXE} || true
+	rm -rf ${OBJ} ${DEP} ${EXE} target || true
 
 force-clean: clean
 

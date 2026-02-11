@@ -453,13 +453,50 @@ pub fn cfg_scan_directive_token(
     }
 }
 
+/// Port of `mf_cluster_lookup()` index selection semantics.
+#[must_use]
+pub fn mf_cluster_lookup_index(
+    cluster_ids: &[i32],
+    cluster_id: i32,
+    force_default_cluster_index: Option<usize>,
+) -> Option<usize> {
+    if let Some(idx) = cluster_ids.iter().position(|id| *id == cluster_id) {
+        return Some(idx);
+    }
+    force_default_cluster_index
+}
+
 fn lookup_cluster_index<const MAX_CLUSTERS: usize, const MAX_TARGETS: usize>(
     cfg: &MtprotoConfigState<MAX_CLUSTERS, MAX_TARGETS>,
     cluster_id: i32,
 ) -> Option<usize> {
-    cfg.auth_cluster[..cfg.auth_clusters]
+    let cluster_ids = cfg.auth_cluster[..cfg.auth_clusters]
         .iter()
-        .position(|cluster| cluster.cluster_id == cluster_id)
+        .map(|cluster| cluster.cluster_id);
+    let mut ids_buf = [0i32; MAX_CLUSTERS];
+    for (idx, id) in cluster_ids.enumerate() {
+        ids_buf[idx] = id;
+    }
+    mf_cluster_lookup_index(&ids_buf[..cfg.auth_clusters], cluster_id, None)
+}
+
+/// Finalizes parse-loop terminal checks and default-cluster lookup.
+pub fn finalize_parse_config_state(
+    have_proxy: bool,
+    cluster_ids: &[i32],
+    default_cluster_id: i32,
+) -> Result<Option<usize>, MtprotoDirectiveParseError> {
+    if !have_proxy {
+        return Err(MtprotoDirectiveParseError::MissingProxyDirectives);
+    }
+    if cluster_ids.is_empty() {
+        return Err(MtprotoDirectiveParseError::NoProxyServersDefined);
+    }
+    Ok(mf_cluster_lookup_index(
+        cluster_ids,
+        default_cluster_id,
+        None,
+    ))
 }
 
 /// Stateless parser preview for `cfg_parse_server_port()` syntax and range checks.
@@ -719,13 +756,15 @@ pub fn parse_config_directive_blocks<const MAX_CLUSTERS: usize, const MAX_TARGET
         }
     }
 
-    if !cfg.have_proxy {
-        return Err(MtprotoDirectiveParseError::MissingProxyDirectives);
+    let mut cluster_ids = [0i32; MAX_CLUSTERS];
+    for idx in 0..cfg.auth_clusters {
+        cluster_ids[idx] = cfg.auth_cluster[idx].cluster_id;
     }
-    if cfg.auth_clusters == 0 {
-        return Err(MtprotoDirectiveParseError::NoProxyServersDefined);
-    }
-    cfg.default_cluster_index = lookup_cluster_index(cfg, cfg.default_cluster_id);
+    cfg.default_cluster_index = finalize_parse_config_state(
+        cfg.have_proxy,
+        &cluster_ids[..cfg.auth_clusters],
+        cfg.default_cluster_id,
+    )?;
     Ok(())
 }
 
@@ -733,7 +772,8 @@ pub fn parse_config_directive_blocks<const MAX_CLUSTERS: usize, const MAX_TARGET
 mod tests {
     use super::{
         cfg_getlex_ext, cfg_parse_server_port, cfg_parse_server_port_preview,
-        extend_old_mf_cluster, init_old_mf_cluster, parse_config_directive_blocks, preinit_config,
+        extend_old_mf_cluster, finalize_parse_config_state, init_old_mf_cluster,
+        mf_cluster_lookup_index, parse_config_directive_blocks, preinit_config,
         MtprotoClusterState, MtprotoConfigDefaults, MtprotoConfigState, MtprotoDirectiveParseError,
         MtprotoDirectiveParseOptions, CFG_LEX_EOF, CFG_LEX_INVALID,
     };
@@ -1116,5 +1156,29 @@ mod tests {
 
         assert!(!extend_old_mf_cluster(&mut cluster, 6, -2));
         assert!(!extend_old_mf_cluster(&mut cluster, 5, -3));
+    }
+
+    #[test]
+    fn mf_cluster_lookup_index_prefers_exact_match_then_force_default() {
+        let cluster_ids = [4, -2, 0, 17];
+        assert_eq!(mf_cluster_lookup_index(&cluster_ids, -2, Some(3)), Some(1));
+        assert_eq!(mf_cluster_lookup_index(&cluster_ids, 100, Some(3)), Some(3));
+        assert_eq!(mf_cluster_lookup_index(&cluster_ids, 100, None), None);
+    }
+
+    #[test]
+    fn finalize_parse_config_state_enforces_terminal_requirements() {
+        let cluster_ids = [5, 7];
+        let default_idx =
+            finalize_parse_config_state(true, &cluster_ids, 7).expect("finalize should pass");
+        assert_eq!(default_idx, Some(1));
+
+        let err = finalize_parse_config_state(false, &cluster_ids, 7)
+            .expect_err("missing proxy should fail");
+        assert_eq!(err, MtprotoDirectiveParseError::MissingProxyDirectives);
+
+        let err =
+            finalize_parse_config_state(true, &[], 7).expect_err("empty cluster list should fail");
+        assert_eq!(err, MtprotoDirectiveParseError::NoProxyServersDefined);
     }
 }

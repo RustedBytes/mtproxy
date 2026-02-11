@@ -59,6 +59,11 @@ typedef struct mtproxy_ffi_mtproto_cfg_directive_token_result {
   int64_t value;
 } mtproxy_ffi_mtproto_cfg_directive_token_result_t;
 
+typedef struct mtproxy_ffi_mtproto_cfg_finalize_result {
+  uint32_t default_cluster_index;
+  int32_t has_default_cluster_index;
+} mtproxy_ffi_mtproto_cfg_finalize_result_t;
+
 typedef struct mtproxy_ffi_mtproto_old_cluster_state {
   int32_t cluster_id;
   uint32_t targets_num;
@@ -75,6 +80,16 @@ typedef struct mtproxy_ffi_mtproto_old_cluster_state {
 #define MTPROXY_FFI_MTPROTO_CFG_PARSE_SERVER_PORT_ERR_PORT_EXPECTED     (-4)
 #define MTPROXY_FFI_MTPROTO_CFG_PARSE_SERVER_PORT_ERR_PORT_RANGE        (-5)
 #define MTPROXY_FFI_MTPROTO_CFG_PARSE_SERVER_PORT_ERR_INTERNAL          (-6)
+
+#define MTPROXY_FFI_MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_OK                  0
+#define MTPROXY_FFI_MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_NOT_FOUND           1
+#define MTPROXY_FFI_MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_ERR_INVALID_ARGS   (-1)
+
+#define MTPROXY_FFI_MTPROTO_CFG_FINALIZE_OK                               0
+#define MTPROXY_FFI_MTPROTO_CFG_FINALIZE_ERR_INVALID_ARGS                (-1)
+#define MTPROXY_FFI_MTPROTO_CFG_FINALIZE_ERR_MISSING_PROXY_DIRECTIVES    (-2)
+#define MTPROXY_FFI_MTPROTO_CFG_FINALIZE_ERR_NO_PROXY_SERVERS_DEFINED    (-3)
+#define MTPROXY_FFI_MTPROTO_CFG_FINALIZE_ERR_INTERNAL                    (-4)
 
 #define MTPROXY_FFI_MTPROTO_CFG_GETLEX_EXT_OK                     0
 #define MTPROXY_FFI_MTPROTO_CFG_GETLEX_EXT_ERR_INVALID_ARGS      (-1)
@@ -409,6 +424,22 @@ int32_t mtproxy_ffi_mtproto_cfg_parse_server_port(
   int64_t min_connections,
   int64_t max_connections,
   mtproxy_ffi_mtproto_cfg_parse_server_port_result_t *out
+);
+int32_t mtproxy_ffi_mtproto_cfg_lookup_cluster_index(
+  const int32_t *cluster_ids,
+  uint32_t clusters_len,
+  int32_t cluster_id,
+  int32_t force,
+  int32_t default_cluster_index,
+  int32_t has_default_cluster_index,
+  int32_t *out_cluster_index
+);
+int32_t mtproxy_ffi_mtproto_cfg_finalize(
+  int32_t have_proxy,
+  const int32_t *cluster_ids,
+  uint32_t clusters_len,
+  int32_t default_cluster_id,
+  mtproxy_ffi_mtproto_cfg_finalize_result_t *out
 );
 int32_t mtproxy_ffi_mtproto_init_old_cluster(
   uint32_t first_target_index,

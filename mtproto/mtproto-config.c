@@ -265,14 +265,6 @@ struct mf_cluster *mf_cluster_lookup (struct mf_config *MC, int cluster_id, int 
   return force ? MC->default_cluster : 0;
 }
 
-void dump_mf_cluster (struct mf_cluster *MFC) {
-  int i;
-  kprintf ("Current state of cluster `%s` (N=%d, M=%d, alloc=%d):\n", "(nil)", MFC->targets_num, MFC->write_targets_num, MFC->targets_allocated);
-  for (i = 0; i < MFC->targets_num; i++) {
-    kprintf ("Target #%d [%c]: %s:%d\n", i, i < MFC->write_targets_num ? 'W' : 'R', show_ip (ntohl (CONN_TARGET_INFO(MFC->cluster_targets[i])->target.s_addr)), CONN_TARGET_INFO(MFC->cluster_targets[i])->port);
-  }
-}
-
 static void preinit_config (struct mf_config *MC) {
   MC->tot_targets = 0;
   MC->auth_clusters = 0;
@@ -281,6 +273,21 @@ static void preinit_config (struct mf_config *MC) {
   MC->timeout = 0.3;
   MC->default_cluster_id = 0;
   MC->default_cluster = 0;
+}
+
+static uint32_t collect_auth_cluster_ids (const struct mf_config *MC, int32_t cluster_ids[MAX_CFG_CLUSTERS]) {
+  assert (MC);
+  int count = MC->auth_clusters;
+  if (count < 0) {
+    count = 0;
+  }
+  if (count > MAX_CFG_CLUSTERS) {
+    count = MAX_CFG_CLUSTERS;
+  }
+  for (int i = 0; i < count; i++) {
+    cluster_ids[i] = MC->auth_cluster[i].cluster_id;
+  }
+  return (uint32_t) count;
 }
 
 // flags = 0 -- syntax check only (first pass), flags = 1 -- create targets and points as well (second pass)
@@ -356,7 +363,27 @@ int parse_config (struct mf_config *MC, int flags, int config_fd) {
         if (!targ_ptr) {
           return -1;
         }
-        struct mf_cluster *MFC = mf_cluster_lookup (MC, target_dc, 0);
+        int32_t cluster_ids[MAX_CFG_CLUSTERS];
+        uint32_t clusters_len = collect_auth_cluster_ids (MC, cluster_ids);
+        int32_t cluster_index = -1;
+        int32_t lookup_rc = mtproxy_ffi_mtproto_cfg_lookup_cluster_index (
+          cluster_ids,
+          clusters_len,
+          target_dc,
+          0,
+          0,
+          0,
+          &cluster_index
+        );
+        struct mf_cluster *MFC = 0;
+        if (lookup_rc == MTPROXY_FFI_MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_OK) {
+          if (cluster_index < 0 || cluster_index >= MC->auth_clusters) {
+            Syntax ("internal parser cluster index mismatch");
+          }
+          MFC = &MC->auth_cluster[cluster_index];
+        } else if (lookup_rc != MTPROXY_FFI_MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_NOT_FOUND) {
+          Syntax ("internal parser cluster lookup failure");
+        }
         if (!MFC) {
 	  vkprintf (3, "-> added target to new auth_cluster #%d\n", MC->auth_clusters);
 	  if (flags & 1) {
@@ -395,24 +422,45 @@ int parse_config (struct mf_config *MC, int flags, int config_fd) {
     Expect (';');
   }
 
-  if (have_proxy != 1) {
-    Syntax ("expected to find a mtproto-proxy configuration with `proxy' directives");
+  int32_t cluster_ids[MAX_CFG_CLUSTERS];
+  uint32_t clusters_len = collect_auth_cluster_ids (MC, cluster_ids);
+  mtproxy_ffi_mtproto_cfg_finalize_result_t finalize = {0};
+  int32_t finalize_rc = mtproxy_ffi_mtproto_cfg_finalize (
+    have_proxy & 1,
+    cluster_ids,
+    clusters_len,
+    MC->default_cluster_id,
+    &finalize
+  );
+  if (finalize_rc != MTPROXY_FFI_MTPROTO_CFG_FINALIZE_OK) {
+    switch (finalize_rc) {
+      case MTPROXY_FFI_MTPROTO_CFG_FINALIZE_ERR_MISSING_PROXY_DIRECTIVES:
+        Syntax ("expected to find a mtproto-proxy configuration with `proxy' directives");
+        break;
+      case MTPROXY_FFI_MTPROTO_CFG_FINALIZE_ERR_NO_PROXY_SERVERS_DEFINED:
+        Syntax ("no MTProto next proxy servers defined to forward queries to");
+        break;
+      default:
+        Syntax ("internal parser finalize failure");
+    }
   }
+
   MC->have_proxy = have_proxy & 1;
-  if (!MC->auth_clusters) {
-    Syntax ("no MTProto next proxy servers defined to forward queries to");
+  if (finalize.has_default_cluster_index) {
+    uint32_t idx = finalize.default_cluster_index;
+    if (idx >= clusters_len) {
+      Syntax ("internal parser default cluster index mismatch");
+    }
+    MC->default_cluster = &MC->auth_cluster[idx];
+  } else {
+    MC->default_cluster = 0;
   }
-  MC->default_cluster = mf_cluster_lookup (MC, MC->default_cluster_id, 0);
   return 0;
 }
-
-static int need_reload_config = 0;
-
 
 // flags: +1 = create targets and connections, +2 = allow proxies, +4 = allow proxies only, +16 = do not re-load file itself, +32 = preload config + perform syntax check, do not apply
 int do_reload_config (int flags) {
   int res;
-  need_reload_config = 0;
 
   int fd = -1;
   assert (flags & 4);

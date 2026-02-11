@@ -101,6 +101,14 @@ const MTPROTO_CFG_PARSE_SERVER_PORT_ERR_HOSTNAME_EXPECTED: i32 = -3;
 const MTPROTO_CFG_PARSE_SERVER_PORT_ERR_PORT_EXPECTED: i32 = -4;
 const MTPROTO_CFG_PARSE_SERVER_PORT_ERR_PORT_RANGE: i32 = -5;
 const MTPROTO_CFG_PARSE_SERVER_PORT_ERR_INTERNAL: i32 = -6;
+const MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_OK: i32 = 0;
+const MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_NOT_FOUND: i32 = 1;
+const MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_ERR_INVALID_ARGS: i32 = -1;
+const MTPROTO_CFG_FINALIZE_OK: i32 = 0;
+const MTPROTO_CFG_FINALIZE_ERR_INVALID_ARGS: i32 = -1;
+const MTPROTO_CFG_FINALIZE_ERR_MISSING_PROXY_DIRECTIVES: i32 = -2;
+const MTPROTO_CFG_FINALIZE_ERR_NO_PROXY_SERVERS_DEFINED: i32 = -3;
+const MTPROTO_CFG_FINALIZE_ERR_INTERNAL: i32 = -4;
 
 const TCP_RPC_PACKET_LEN_STATE_SKIP: i32 = 0;
 const TCP_RPC_PACKET_LEN_STATE_READY: i32 = 1;
@@ -242,6 +250,13 @@ pub struct MtproxyMtprotoCfgDirectiveTokenResult {
     pub kind: i32,
     pub advance: usize,
     pub value: i64,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct MtproxyMtprotoCfgFinalizeResult {
+    pub default_cluster_index: u32,
+    pub has_default_cluster_index: i32,
 }
 
 #[repr(C)]
@@ -992,6 +1007,21 @@ fn mtproto_cfg_scan_directive_token_err_to_code(
     }
 }
 
+fn mtproto_cfg_finalize_err_to_code(
+    err: mtproxy_core::runtime::mtproto::config::MtprotoDirectiveParseError,
+) -> i32 {
+    use mtproxy_core::runtime::mtproto::config::MtprotoDirectiveParseError;
+    match err {
+        MtprotoDirectiveParseError::MissingProxyDirectives => {
+            MTPROTO_CFG_FINALIZE_ERR_MISSING_PROXY_DIRECTIVES
+        }
+        MtprotoDirectiveParseError::NoProxyServersDefined => {
+            MTPROTO_CFG_FINALIZE_ERR_NO_PROXY_SERVERS_DEFINED
+        }
+        _ => MTPROTO_CFG_FINALIZE_ERR_INTERNAL,
+    }
+}
+
 fn mtproto_old_cluster_from_ffi(
     state: &MtproxyMtprotoOldClusterState,
 ) -> Option<mtproxy_core::runtime::mtproto::config::MtprotoClusterState> {
@@ -1144,6 +1174,116 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_parse_server_port(
             MTPROTO_CFG_PARSE_SERVER_PORT_OK
         }
         Err(err) => mtproto_cfg_parse_server_port_err_to_code(err),
+    }
+}
+
+/// Looks up a cluster index by `cluster_id` mirroring `mf_cluster_lookup()`.
+///
+/// # Safety
+/// `cluster_ids` must be readable for `clusters_len` entries when `clusters_len > 0`;
+/// `out_cluster_index` must be writable.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_lookup_cluster_index(
+    cluster_ids: *const i32,
+    clusters_len: u32,
+    cluster_id: i32,
+    force: i32,
+    default_cluster_index: i32,
+    has_default_cluster_index: i32,
+    out_cluster_index: *mut i32,
+) -> i32 {
+    if out_cluster_index.is_null() {
+        return MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_ERR_INVALID_ARGS;
+    }
+    let Ok(clusters_len_usize) = usize::try_from(clusters_len) else {
+        return MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_ERR_INVALID_ARGS;
+    };
+    if clusters_len_usize > 0 && cluster_ids.is_null() {
+        return MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_ERR_INVALID_ARGS;
+    }
+    let default_idx = if has_default_cluster_index != 0 {
+        let Ok(idx) = usize::try_from(default_cluster_index) else {
+            return MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_ERR_INVALID_ARGS;
+        };
+        if idx >= clusters_len_usize {
+            return MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_ERR_INVALID_ARGS;
+        }
+        Some(idx)
+    } else {
+        None
+    };
+    let cluster_ids_slice = if clusters_len_usize == 0 {
+        &[]
+    } else {
+        unsafe { core::slice::from_raw_parts(cluster_ids, clusters_len_usize) }
+    };
+    let lookup = mtproxy_core::runtime::mtproto::config::mf_cluster_lookup_index(
+        cluster_ids_slice,
+        cluster_id,
+        if force != 0 { default_idx } else { None },
+    );
+    let out_ref = unsafe { &mut *out_cluster_index };
+    let Some(idx) = lookup else {
+        *out_ref = -1;
+        return MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_NOT_FOUND;
+    };
+    let Ok(idx_i32) = i32::try_from(idx) else {
+        return MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_ERR_INVALID_ARGS;
+    };
+    *out_ref = idx_i32;
+    MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_OK
+}
+
+/// Finalizes parse-loop invariants and resolves optional default-cluster index.
+///
+/// # Safety
+/// `cluster_ids` must be readable for `clusters_len` entries when `clusters_len > 0`;
+/// `out` must be writable.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_finalize(
+    have_proxy: i32,
+    cluster_ids: *const i32,
+    clusters_len: u32,
+    default_cluster_id: i32,
+    out: *mut MtproxyMtprotoCfgFinalizeResult,
+) -> i32 {
+    if out.is_null() {
+        return MTPROTO_CFG_FINALIZE_ERR_INVALID_ARGS;
+    }
+    let Ok(clusters_len_usize) = usize::try_from(clusters_len) else {
+        return MTPROTO_CFG_FINALIZE_ERR_INVALID_ARGS;
+    };
+    if clusters_len_usize > 0 && cluster_ids.is_null() {
+        return MTPROTO_CFG_FINALIZE_ERR_INVALID_ARGS;
+    }
+    let cluster_ids_slice = if clusters_len_usize == 0 {
+        &[]
+    } else {
+        unsafe { core::slice::from_raw_parts(cluster_ids, clusters_len_usize) }
+    };
+    match mtproxy_core::runtime::mtproto::config::finalize_parse_config_state(
+        have_proxy != 0,
+        cluster_ids_slice,
+        default_cluster_id,
+    ) {
+        Ok(default_cluster_index) => {
+            let (has_default_cluster_index, default_cluster_index) =
+                if let Some(idx) = default_cluster_index {
+                    let Ok(idx_u32) = u32::try_from(idx) else {
+                        return MTPROTO_CFG_FINALIZE_ERR_INTERNAL;
+                    };
+                    (1, idx_u32)
+                } else {
+                    (0, 0)
+                };
+            let out_ref = unsafe { &mut *out };
+            *out_ref = MtproxyMtprotoCfgFinalizeResult {
+                default_cluster_index,
+                has_default_cluster_index,
+            };
+            MTPROTO_CFG_FINALIZE_OK
+        }
+        Err(err) => mtproto_cfg_finalize_err_to_code(err),
     }
 }
 
@@ -3304,7 +3444,8 @@ mod tests {
         mtproxy_ffi_get_network_boundary, mtproxy_ffi_get_precise_time,
         mtproxy_ffi_get_rpc_boundary, mtproxy_ffi_get_utime_monotonic, mtproxy_ffi_matches_pid,
         mtproxy_ffi_md5, mtproxy_ffi_md5_hex, mtproxy_ffi_msg_buffers_pick_size_index,
-        mtproxy_ffi_mtproto_cfg_getlex_ext, mtproxy_ffi_mtproto_cfg_parse_server_port,
+        mtproxy_ffi_mtproto_cfg_finalize, mtproxy_ffi_mtproto_cfg_getlex_ext,
+        mtproxy_ffi_mtproto_cfg_lookup_cluster_index, mtproxy_ffi_mtproto_cfg_parse_server_port,
         mtproxy_ffi_mtproto_cfg_scan_directive_token, mtproxy_ffi_mtproto_conn_tag,
         mtproxy_ffi_mtproto_ext_conn_hash, mtproxy_ffi_mtproto_extend_old_cluster,
         mtproxy_ffi_mtproto_init_old_cluster, mtproxy_ffi_net_epoll_conv_flags,
@@ -3321,16 +3462,19 @@ mod tests {
         mtproxy_ffi_tl_parse_query_header, MtproxyAesKeyData, MtproxyApplicationBoundary,
         MtproxyCfgIntResult, MtproxyCfgScanResult, MtproxyConcurrencyBoundary, MtproxyCpuid,
         MtproxyCryptoBoundary, MtproxyMeminfoSummary, MtproxyMtprotoCfgDirectiveTokenResult,
-        MtproxyMtprotoCfgGetlexExtResult, MtproxyMtprotoCfgParseServerPortResult,
-        MtproxyMtprotoOldClusterState, MtproxyNetworkBoundary, MtproxyProcStats, MtproxyProcessId,
-        MtproxyRpcBoundary, MtproxyTlHeaderParseResult, AESNI_CIPHER_AES_256_CTR,
-        AESNI_CONTRACT_OPS, AESNI_IMPLEMENTED_OPS, APPLICATION_BOUNDARY_VERSION,
-        CONCURRENCY_BOUNDARY_VERSION, CPUID_MAGIC, CRYPTO_BOUNDARY_VERSION, DH_KEY_BYTES,
-        DH_PARAMS_SELECT, ENGINE_RPC_CONTRACT_OPS, ENGINE_RPC_IMPLEMENTED_OPS, EPOLLERR, EPOLLET,
-        EPOLLIN, EPOLLOUT, EPOLLPRI, EPOLLRDHUP, EVT_FROM_EPOLL, EVT_LEVEL, EVT_READ, EVT_SPEC,
-        EVT_WRITE, FFI_API_VERSION, JOBS_CONTRACT_OPS, JOBS_IMPLEMENTED_OPS, MPQ_CONTRACT_OPS,
-        MPQ_IMPLEMENTED_OPS, MTPROTO_CFG_GETLEX_EXT_OK,
-        MTPROTO_CFG_PARSE_SERVER_PORT_ERR_HOSTNAME_EXPECTED,
+        MtproxyMtprotoCfgFinalizeResult, MtproxyMtprotoCfgGetlexExtResult,
+        MtproxyMtprotoCfgParseServerPortResult, MtproxyMtprotoOldClusterState,
+        MtproxyNetworkBoundary, MtproxyProcStats, MtproxyProcessId, MtproxyRpcBoundary,
+        MtproxyTlHeaderParseResult, AESNI_CIPHER_AES_256_CTR, AESNI_CONTRACT_OPS,
+        AESNI_IMPLEMENTED_OPS, APPLICATION_BOUNDARY_VERSION, CONCURRENCY_BOUNDARY_VERSION,
+        CPUID_MAGIC, CRYPTO_BOUNDARY_VERSION, DH_KEY_BYTES, DH_PARAMS_SELECT,
+        ENGINE_RPC_CONTRACT_OPS, ENGINE_RPC_IMPLEMENTED_OPS, EPOLLERR, EPOLLET, EPOLLIN, EPOLLOUT,
+        EPOLLPRI, EPOLLRDHUP, EVT_FROM_EPOLL, EVT_LEVEL, EVT_READ, EVT_SPEC, EVT_WRITE,
+        FFI_API_VERSION, JOBS_CONTRACT_OPS, JOBS_IMPLEMENTED_OPS, MPQ_CONTRACT_OPS,
+        MPQ_IMPLEMENTED_OPS, MTPROTO_CFG_FINALIZE_ERR_MISSING_PROXY_DIRECTIVES,
+        MTPROTO_CFG_FINALIZE_ERR_NO_PROXY_SERVERS_DEFINED, MTPROTO_CFG_FINALIZE_OK,
+        MTPROTO_CFG_GETLEX_EXT_OK, MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_NOT_FOUND,
+        MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_OK, MTPROTO_CFG_PARSE_SERVER_PORT_ERR_HOSTNAME_EXPECTED,
         MTPROTO_CFG_PARSE_SERVER_PORT_ERR_PORT_EXPECTED,
         MTPROTO_CFG_PARSE_SERVER_PORT_ERR_PORT_RANGE,
         MTPROTO_CFG_PARSE_SERVER_PORT_ERR_TOO_MANY_TARGETS, MTPROTO_CFG_PARSE_SERVER_PORT_OK,
@@ -3746,6 +3890,88 @@ mod tests {
         assert_eq!(rc, MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_OK);
         assert_eq!(out.kind, MTPROTO_DIRECTIVE_TOKEN_KIND_MAX_CONNECTIONS);
         assert_eq!(out.value, 64);
+    }
+
+    #[test]
+    fn mtproto_config_cluster_lookup_helper_matches_c_rules() {
+        let cluster_ids = [-2, 0, 7];
+        let mut out_cluster_index = -1;
+
+        let rc = unsafe {
+            mtproxy_ffi_mtproto_cfg_lookup_cluster_index(
+                cluster_ids.as_ptr(),
+                u32::try_from(cluster_ids.len()).expect("len fits"),
+                0,
+                0,
+                0,
+                0,
+                &raw mut out_cluster_index,
+            )
+        };
+        assert_eq!(rc, MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_OK);
+        assert_eq!(out_cluster_index, 1);
+
+        let rc = unsafe {
+            mtproxy_ffi_mtproto_cfg_lookup_cluster_index(
+                cluster_ids.as_ptr(),
+                u32::try_from(cluster_ids.len()).expect("len fits"),
+                42,
+                0,
+                0,
+                0,
+                &raw mut out_cluster_index,
+            )
+        };
+        assert_eq!(rc, MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_NOT_FOUND);
+        assert_eq!(out_cluster_index, -1);
+
+        let rc = unsafe {
+            mtproxy_ffi_mtproto_cfg_lookup_cluster_index(
+                cluster_ids.as_ptr(),
+                u32::try_from(cluster_ids.len()).expect("len fits"),
+                42,
+                1,
+                2,
+                1,
+                &raw mut out_cluster_index,
+            )
+        };
+        assert_eq!(rc, MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_OK);
+        assert_eq!(out_cluster_index, 2);
+    }
+
+    #[test]
+    fn mtproto_config_finalize_helper_enforces_terminal_checks() {
+        let cluster_ids = [-2, 0];
+        let mut out = MtproxyMtprotoCfgFinalizeResult::default();
+
+        let rc = unsafe {
+            mtproxy_ffi_mtproto_cfg_finalize(
+                1,
+                cluster_ids.as_ptr(),
+                u32::try_from(cluster_ids.len()).expect("len fits"),
+                0,
+                &raw mut out,
+            )
+        };
+        assert_eq!(rc, MTPROTO_CFG_FINALIZE_OK);
+        assert_eq!(out.has_default_cluster_index, 1);
+        assert_eq!(out.default_cluster_index, 1);
+
+        let rc = unsafe {
+            mtproxy_ffi_mtproto_cfg_finalize(
+                0,
+                cluster_ids.as_ptr(),
+                u32::try_from(cluster_ids.len()).expect("len fits"),
+                0,
+                &raw mut out,
+            )
+        };
+        assert_eq!(rc, MTPROTO_CFG_FINALIZE_ERR_MISSING_PROXY_DIRECTIVES);
+
+        let rc =
+            unsafe { mtproxy_ffi_mtproto_cfg_finalize(1, core::ptr::null(), 0, 0, &raw mut out) };
+        assert_eq!(rc, MTPROTO_CFG_FINALIZE_ERR_NO_PROXY_SERVERS_DEFINED);
     }
 
     #[test]
