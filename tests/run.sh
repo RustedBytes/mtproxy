@@ -27,6 +27,7 @@ if [ "${TEST_INCLUDE_MIXED:-0}" = "1" ]; then
   "$ROOT_DIR/tests/golden/test_rust_precise_time_smoke.sh"
   "$ROOT_DIR/tests/golden/test_rust_concurrency_boundary_differential.sh"
   "$ROOT_DIR/tests/golden/test_rust_network_boundary_differential.sh"
+  "$ROOT_DIR/tests/golden/test_rust_rpc_boundary_differential.sh"
 fi
 
 log_pass "All enabled test suites completed"

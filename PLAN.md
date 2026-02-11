@@ -365,6 +365,47 @@
    - Port `net-tcp-*`, `net-rpc-targets`, and shared RPC machinery with packet-compatibility tests.
    - Validate server/client interoperability against existing C binary and Telegram endpoints.
    - Ensure no framing/parsing divergence under partial or fragmented packets.
+   - Step 11 kickoff checklist (`net-tcp-rpc-common` + parse-len guards + rpc-target PID normalization first):
+   - [x] Added explicit Step 11 FFI boundary contract for RPC/TCP operations:
+   - `rust/mtproxy-ffi/include/mtproxy_ffi.h`: `mtproxy_ffi_rpc_boundary_t`, Step 11 op-mask constants, helper declarations.
+   - `rust/mtproxy-ffi/src/lib.rs`: `mtproxy_ffi_get_rpc_boundary(...)` with contract/implemented masks.
+   - [x] Added mixed-startup boundary validation before config load:
+   - `common/rust-ffi-bridge.h`: `rust_ffi_check_rpc_boundary()`.
+   - `common/rust-ffi-bridge.c`: strict version/mask validation for Step 11 rpc/tcp boundary.
+   - `mtproto/mtproto-proxy.c`: mixed pre-init now validates Step 11 rpc boundary after Step 10 net boundary.
+   - [x] Routed first `net-tcp-rpc-common` framing helper through Rust FFI with C fallback:
+   - `net/net-tcp-rpc-common.c`: compact/medium length-prefix encoding in `tcp_rpc_write_packet_compact` now delegates to `mtproxy_ffi_tcp_rpc_encode_compact_header`.
+   - [x] Routed first `net-tcp-rpc-client` parse helper through Rust FFI with C fallback:
+   - `net/net-tcp-rpc-client.c`: packet-length classification in `tcp_rpcc_parse_execute` now delegates to `mtproxy_ffi_tcp_rpc_client_packet_len_state`.
+   - [x] Routed first `net-tcp-rpc-server` parse helpers through Rust FFI with C fallback:
+   - `net/net-tcp-rpc-server.c`: malformed-header and packet-length classification in `tcp_rpcs_parse_execute` now delegate to `mtproxy_ffi_tcp_rpc_server_packet_header_malformed` and `mtproxy_ffi_tcp_rpc_server_packet_len_state`.
+   - [x] Routed first `net-rpc-targets` helper through Rust FFI with C fallback:
+   - `net/net-rpc-targets.c`: zero-ip PID normalization in lookup/delete paths now delegates to `mtproxy_ffi_rpc_target_normalize_pid`.
+   - [x] Added mixed-mode differential coverage for Step 11 boundary/helper semantics:
+   - `tests/golden/rust_rpc_boundary_differential.c`
+   - `tests/golden/test_rust_rpc_boundary_differential.sh`
+   - `tests/run.sh` + `tests/README.md` updated to include the new optional mixed suite.
+   - Rust Step 11 API additions:
+   - `mtproxy_ffi_get_rpc_boundary(...)`
+   - `mtproxy_ffi_tcp_rpc_encode_compact_header(...)`
+   - `mtproxy_ffi_tcp_rpc_client_packet_len_state(...)`
+   - `mtproxy_ffi_tcp_rpc_server_packet_header_malformed(...)`
+   - `mtproxy_ffi_tcp_rpc_server_packet_len_state(...)`
+   - `mtproxy_ffi_rpc_target_normalize_pid(...)`
+   - Verification:
+   - `make rust-ci` (PASS, 2026-02-11)
+   - `make mixed` (PASS, 2026-02-11)
+   - `tests/golden/test_rust_rpc_boundary_differential.sh` (PASS, 2026-02-11)
+   - `./objs/bin/mtproto-proxy-mixed -v /tmp/definitely-missing-mtproxy-config.conf` (PASS: startup handshake + Step 9 boundary + Step 10 net boundary + Step 11 rpc boundary logs observed; expected config-check failure path; exit code 1, 2026-02-11)
+   - `make mixed-test` (FAIL in this sandbox due environment restrictions: netlink/socket operations are not permitted, 2026-02-11)
+   - Operation log:
+   - [x] 2026-02-11: Added Step 11 rpc/tcp boundary contract probe and op-mask constants to FFI headers/Rust exports.
+   - [x] 2026-02-11: Added mixed startup validation hook for Step 11 rpc boundary compatibility in `rust-ffi-bridge`.
+   - [x] 2026-02-11: Delegated `net-tcp-rpc-common` compact/medium length-prefix encoding helper to Rust with C fallback.
+   - [x] 2026-02-11: Delegated `net-tcp-rpc-client` packet-length classification helper to Rust with C fallback.
+   - [x] 2026-02-11: Delegated `net-tcp-rpc-server` malformed-header and packet-length classification helpers to Rust with C fallback.
+   - [x] 2026-02-11: Delegated `net-rpc-targets` PID normalization helper to Rust with C fallback.
+   - [x] 2026-02-11: Added mixed differential test coverage for Step 11 boundary/helper semantics and wired it into optional mixed harness.
    - Done when: mixed and pure Rust modes are protocol-compatible in bidirectional tests.
 
 12. Migrate Crypto Integration Safely

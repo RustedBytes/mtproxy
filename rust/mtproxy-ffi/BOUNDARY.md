@@ -31,12 +31,21 @@ Current exported API:
 - `mtproxy_ffi_net_epoll_unconv_flags(...)`
 - `mtproxy_ffi_net_timers_wait_msec(...)`
 - `mtproxy_ffi_msg_buffers_pick_size_index(...)`
+- Step 11 boundary contract probe:
+- `mtproxy_ffi_get_rpc_boundary(...)` (reports tcp-rpc/rpc-target operation contract vs implemented subsets)
+- Step 11 rpc/tcp helpers:
+- `mtproxy_ffi_tcp_rpc_encode_compact_header(...)`
+- `mtproxy_ffi_tcp_rpc_client_packet_len_state(...)`
+- `mtproxy_ffi_tcp_rpc_server_packet_header_malformed(...)`
+- `mtproxy_ffi_tcp_rpc_server_packet_len_state(...)`
+- `mtproxy_ffi_rpc_target_normalize_pid(...)`
 
 ## Call flow
 
 - C startup path (`mtproto/mtproto-proxy.c`, mixed build only) calls `rust_ffi_startup_check()`.
 - C startup then calls `rust_ffi_check_concurrency_boundary()` to validate extracted Step 9 mp-queue/jobs contract.
 - C startup then calls `rust_ffi_check_network_boundary()` to validate extracted Step 10 net-core contract.
+- C startup then calls `rust_ffi_check_rpc_boundary()` to validate extracted Step 11 rpc/tcp contract.
 - C startup then calls `rust_ffi_enable_concurrency_bridges()` to install Step 9 adapter routing:
 - mp-queue: `push`/`pop`/`is_empty`
 - jobs lifecycle: `create_async_job`/`job_signal`/`job_incref`/`job_decref`
@@ -53,6 +62,10 @@ Current exported API:
 - `net/net-events.c` can delegate epoll flag conversion helpers to Rust when symbols are linked.
 - `net/net-timers.c` can delegate timer wait-ms conversion helper to Rust when symbols are linked.
 - `net/net-msg-buffers.c` can delegate size-class index selection helper to Rust when symbols are linked.
+- `net/net-tcp-rpc-common.c` can delegate compact/medium packet-length prefix encoding helper to Rust when symbols are linked.
+- `net/net-tcp-rpc-client.c` can delegate non-compact packet-length classification helper to Rust when symbols are linked.
+- `net/net-tcp-rpc-server.c` can delegate packet-header malformed check and packet-length classification helpers to Rust when symbols are linked.
+- `net/net-rpc-targets.c` can delegate zero-ip PID normalization helper to Rust when symbols are linked.
 - If handshake fails, startup aborts before config load.
 
 ## Ownership and memory rules
@@ -68,8 +81,10 @@ Current exported API:
 - For observability helpers, C passes borrowed textual `/proc` slices (or pid/tid) and Rust returns POD parsed structures.
 - For concurrency boundary probe, C passes writable POD `mtproxy_ffi_concurrency_boundary_t` and Rust fills version/op masks.
 - For network boundary probe, C passes writable POD `mtproxy_ffi_network_boundary_t` and Rust fills version/op masks.
+- For rpc boundary probe, C passes writable POD `mtproxy_ffi_rpc_boundary_t` and Rust fills version/op masks.
 - For net-core helpers, C passes plain integers and borrowed POD arrays (`buffer_sizes`) with no ownership transfer.
-- Boundary `*_implemented_ops` currently advertises routed Step 9 and Step 10 slices listed above.
+- For rpc/tcp helpers, C passes plain integers and POD struct pointers (`process_id`) with no ownership transfer.
+- Boundary `*_implemented_ops` currently advertises routed Step 9, Step 10, and Step 11 slices listed above.
 - No heap ownership is transferred between C and Rust.
 - Return values are plain integer POD types.
 

@@ -30,6 +30,7 @@ const RPC_DEST_FLAGS: i32 = i32::from_ne_bytes(0xe352_035e_u32.to_ne_bytes());
 const RPC_REQ_RESULT_FLAGS: i32 = i32::from_ne_bytes(0x8cc8_4ce1_u32.to_ne_bytes());
 const CONCURRENCY_BOUNDARY_VERSION: u32 = 1;
 const NETWORK_BOUNDARY_VERSION: u32 = 1;
+const RPC_BOUNDARY_VERSION: u32 = 1;
 const MPQ_CONTRACT_OPS: u32 =
     (1u32 << 0) | (1u32 << 1) | (1u32 << 2) | (1u32 << 3) | (1u32 << 4) | (1u32 << 5);
 const JOBS_CONTRACT_OPS: u32 =
@@ -42,6 +43,19 @@ const NET_MSG_BUFFERS_CONTRACT_OPS: u32 = 1u32 << 0;
 const NET_EVENTS_IMPLEMENTED_OPS: u32 = NET_EVENTS_CONTRACT_OPS;
 const NET_TIMERS_IMPLEMENTED_OPS: u32 = NET_TIMERS_CONTRACT_OPS;
 const NET_MSG_BUFFERS_IMPLEMENTED_OPS: u32 = NET_MSG_BUFFERS_CONTRACT_OPS;
+const TCP_RPC_COMMON_CONTRACT_OPS: u32 = 1u32 << 0;
+const TCP_RPC_CLIENT_CONTRACT_OPS: u32 = 1u32 << 0;
+const TCP_RPC_SERVER_CONTRACT_OPS: u32 = (1u32 << 0) | (1u32 << 1);
+const RPC_TARGETS_CONTRACT_OPS: u32 = 1u32 << 0;
+const TCP_RPC_COMMON_IMPLEMENTED_OPS: u32 = TCP_RPC_COMMON_CONTRACT_OPS;
+const TCP_RPC_CLIENT_IMPLEMENTED_OPS: u32 = TCP_RPC_CLIENT_CONTRACT_OPS;
+const TCP_RPC_SERVER_IMPLEMENTED_OPS: u32 = TCP_RPC_SERVER_CONTRACT_OPS;
+const RPC_TARGETS_IMPLEMENTED_OPS: u32 = RPC_TARGETS_CONTRACT_OPS;
+
+const TCP_RPC_PACKET_LEN_STATE_SKIP: i32 = 0;
+const TCP_RPC_PACKET_LEN_STATE_READY: i32 = 1;
+const TCP_RPC_PACKET_LEN_STATE_INVALID: i32 = -1;
+const TCP_RPC_PACKET_LEN_STATE_SHORT: i32 = -2;
 
 const EVT_SPEC: u32 = 1;
 const EVT_WRITE: u32 = 2;
@@ -251,6 +265,20 @@ pub struct MtproxyNetworkBoundary {
     pub net_msg_buffers_implemented_ops: u32,
 }
 
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct MtproxyRpcBoundary {
+    pub boundary_version: u32,
+    pub tcp_rpc_common_contract_ops: u32,
+    pub tcp_rpc_common_implemented_ops: u32,
+    pub tcp_rpc_client_contract_ops: u32,
+    pub tcp_rpc_client_implemented_ops: u32,
+    pub tcp_rpc_server_contract_ops: u32,
+    pub tcp_rpc_server_implemented_ops: u32,
+    pub rpc_targets_contract_ops: u32,
+    pub rpc_targets_implemented_ops: u32,
+}
+
 impl Default for MtproxyTlHeaderParseResult {
     fn default() -> Self {
         Self {
@@ -373,6 +401,30 @@ pub unsafe extern "C" fn mtproxy_ffi_get_network_boundary(out: *mut MtproxyNetwo
     0
 }
 
+/// Returns extracted Step 11 boundary contract for RPC/TCP migration.
+///
+/// # Safety
+/// `out` must be a valid writable pointer to `MtproxyRpcBoundary`.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_get_rpc_boundary(out: *mut MtproxyRpcBoundary) -> i32 {
+    if out.is_null() {
+        return -1;
+    }
+    let out_ref = unsafe { &mut *out };
+    *out_ref = MtproxyRpcBoundary {
+        boundary_version: RPC_BOUNDARY_VERSION,
+        tcp_rpc_common_contract_ops: TCP_RPC_COMMON_CONTRACT_OPS,
+        tcp_rpc_common_implemented_ops: TCP_RPC_COMMON_IMPLEMENTED_OPS,
+        tcp_rpc_client_contract_ops: TCP_RPC_CLIENT_CONTRACT_OPS,
+        tcp_rpc_client_implemented_ops: TCP_RPC_CLIENT_IMPLEMENTED_OPS,
+        tcp_rpc_server_contract_ops: TCP_RPC_SERVER_CONTRACT_OPS,
+        tcp_rpc_server_implemented_ops: TCP_RPC_SERVER_IMPLEMENTED_OPS,
+        rpc_targets_contract_ops: RPC_TARGETS_CONTRACT_OPS,
+        rpc_targets_implemented_ops: RPC_TARGETS_IMPLEMENTED_OPS,
+    };
+    0
+}
+
 fn net_epoll_conv_flags_impl(flags: i32) -> i32 {
     if flags == 0 {
         return 0;
@@ -440,6 +492,59 @@ fn msg_buffers_pick_size_index_impl(buffer_sizes: &[i32], size_hint: i32) -> i32
     idx
 }
 
+fn tcp_rpc_encode_compact_header_impl(payload_len: i32, is_medium: i32) -> (i32, i32) {
+    if is_medium != 0 {
+        return (payload_len, 4);
+    }
+    if payload_len <= 0x7e * 4 {
+        return (payload_len >> 2, 1);
+    }
+    let len_u = u32::from_ne_bytes(payload_len.to_ne_bytes());
+    let encoded = (len_u << 6) | 0x7f;
+    (i32::from_ne_bytes(encoded.to_ne_bytes()), 4)
+}
+
+fn tcp_rpc_client_packet_len_state_impl(packet_len: i32, max_packet_len: i32) -> i32 {
+    if packet_len <= 0
+        || (packet_len & 3) != 0
+        || (max_packet_len > 0 && packet_len > max_packet_len)
+    {
+        return TCP_RPC_PACKET_LEN_STATE_INVALID;
+    }
+    if packet_len == 4 {
+        return TCP_RPC_PACKET_LEN_STATE_SKIP;
+    }
+    if packet_len < 16 {
+        return TCP_RPC_PACKET_LEN_STATE_SHORT;
+    }
+    TCP_RPC_PACKET_LEN_STATE_READY
+}
+
+fn tcp_rpc_server_packet_header_malformed_impl(packet_len: i32) -> i32 {
+    i32::from(
+        packet_len <= 0 || (packet_len & i32::from_ne_bytes(0xc000_0003_u32.to_ne_bytes())) != 0,
+    )
+}
+
+fn tcp_rpc_server_packet_len_state_impl(packet_len: i32, max_packet_len: i32) -> i32 {
+    if max_packet_len > 0 && packet_len > max_packet_len {
+        return TCP_RPC_PACKET_LEN_STATE_INVALID;
+    }
+    if packet_len == 4 {
+        return TCP_RPC_PACKET_LEN_STATE_SKIP;
+    }
+    if packet_len < 16 {
+        return TCP_RPC_PACKET_LEN_STATE_INVALID;
+    }
+    TCP_RPC_PACKET_LEN_STATE_READY
+}
+
+fn rpc_target_normalize_pid_impl(pid: &mut MtproxyProcessId, default_ip: u32) {
+    if pid.ip == 0 {
+        pid.ip = default_ip;
+    }
+}
+
 /// Converts net event flags into Linux epoll flags.
 #[no_mangle]
 pub extern "C" fn mtproxy_ffi_net_epoll_conv_flags(flags: i32) -> i32 {
@@ -476,6 +581,69 @@ pub unsafe extern "C" fn mtproxy_ffi_msg_buffers_pick_size_index(
     };
     let sizes = unsafe { core::slice::from_raw_parts(buffer_sizes, count) };
     msg_buffers_pick_size_index_impl(sizes, size_hint)
+}
+
+/// Encodes compact/medium tcp-rpc length prefix exactly like C path.
+///
+/// # Safety
+/// `out_prefix_word` and `out_prefix_bytes` must be valid writable pointers.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_tcp_rpc_encode_compact_header(
+    payload_len: i32,
+    is_medium: i32,
+    out_prefix_word: *mut i32,
+    out_prefix_bytes: *mut i32,
+) -> i32 {
+    if out_prefix_word.is_null() || out_prefix_bytes.is_null() {
+        return -1;
+    }
+    let (prefix_word, prefix_bytes) = tcp_rpc_encode_compact_header_impl(payload_len, is_medium);
+    let out_word = unsafe { &mut *out_prefix_word };
+    let out_bytes = unsafe { &mut *out_prefix_bytes };
+    *out_word = prefix_word;
+    *out_bytes = prefix_bytes;
+    0
+}
+
+/// Classifies packet length for non-compact tcp-rpc client parser path.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_tcp_rpc_client_packet_len_state(
+    packet_len: i32,
+    max_packet_len: i32,
+) -> i32 {
+    tcp_rpc_client_packet_len_state_impl(packet_len, max_packet_len)
+}
+
+/// Returns `1` when tcp-rpc server packet header is malformed before fallback.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_tcp_rpc_server_packet_header_malformed(packet_len: i32) -> i32 {
+    tcp_rpc_server_packet_header_malformed_impl(packet_len)
+}
+
+/// Classifies packet length for non-compact tcp-rpc server parser path.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_tcp_rpc_server_packet_len_state(
+    packet_len: i32,
+    max_packet_len: i32,
+) -> i32 {
+    tcp_rpc_server_packet_len_state_impl(packet_len, max_packet_len)
+}
+
+/// Normalizes rpc-target PID (`ip=0` -> `default_ip`) to match C behavior.
+///
+/// # Safety
+/// `pid` must be a valid writable pointer to `MtproxyProcessId`.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_rpc_target_normalize_pid(
+    pid: *mut MtproxyProcessId,
+    default_ip: u32,
+) -> i32 {
+    if pid.is_null() {
+        return -1;
+    }
+    let pid_ref = unsafe { &mut *pid };
+    rpc_target_normalize_pid_impl(pid_ref, default_ip);
+    0
 }
 
 fn crc32_partial_impl(data: &[u8], mut crc: u32) -> u32 {
@@ -1934,24 +2102,34 @@ mod tests {
         mtproxy_ffi_cfg_getword_len, mtproxy_ffi_cfg_skipspc, mtproxy_ffi_cpuid_fill,
         mtproxy_ffi_crc32_partial, mtproxy_ffi_crc32c_partial,
         mtproxy_ffi_get_concurrency_boundary, mtproxy_ffi_get_network_boundary,
-        mtproxy_ffi_get_precise_time, mtproxy_ffi_get_utime_monotonic, mtproxy_ffi_matches_pid,
-        mtproxy_ffi_md5, mtproxy_ffi_md5_hex, mtproxy_ffi_msg_buffers_pick_size_index,
+        mtproxy_ffi_get_precise_time, mtproxy_ffi_get_rpc_boundary,
+        mtproxy_ffi_get_utime_monotonic, mtproxy_ffi_matches_pid, mtproxy_ffi_md5,
+        mtproxy_ffi_md5_hex, mtproxy_ffi_msg_buffers_pick_size_index,
         mtproxy_ffi_net_epoll_conv_flags, mtproxy_ffi_net_epoll_unconv_flags,
         mtproxy_ffi_net_timers_wait_msec, mtproxy_ffi_parse_meminfo_summary,
         mtproxy_ffi_parse_proc_stat_line, mtproxy_ffi_parse_statm, mtproxy_ffi_pid_init_common,
         mtproxy_ffi_precise_now_rdtsc_value, mtproxy_ffi_precise_now_value,
-        mtproxy_ffi_process_id_is_newer, mtproxy_ffi_read_proc_stat_file, mtproxy_ffi_sha1,
-        mtproxy_ffi_sha1_two_chunks, mtproxy_ffi_sha256, mtproxy_ffi_sha256_hmac,
-        mtproxy_ffi_sha256_two_chunks, mtproxy_ffi_startup_handshake,
-        mtproxy_ffi_tl_parse_answer_header, mtproxy_ffi_tl_parse_query_header, MtproxyCfgIntResult,
-        MtproxyCfgScanResult, MtproxyConcurrencyBoundary, MtproxyCpuid, MtproxyMeminfoSummary,
-        MtproxyNetworkBoundary, MtproxyProcStats, MtproxyProcessId, MtproxyTlHeaderParseResult,
+        mtproxy_ffi_process_id_is_newer, mtproxy_ffi_read_proc_stat_file,
+        mtproxy_ffi_rpc_target_normalize_pid, mtproxy_ffi_sha1, mtproxy_ffi_sha1_two_chunks,
+        mtproxy_ffi_sha256, mtproxy_ffi_sha256_hmac, mtproxy_ffi_sha256_two_chunks,
+        mtproxy_ffi_startup_handshake, mtproxy_ffi_tcp_rpc_client_packet_len_state,
+        mtproxy_ffi_tcp_rpc_encode_compact_header,
+        mtproxy_ffi_tcp_rpc_server_packet_header_malformed,
+        mtproxy_ffi_tcp_rpc_server_packet_len_state, mtproxy_ffi_tl_parse_answer_header,
+        mtproxy_ffi_tl_parse_query_header, MtproxyCfgIntResult, MtproxyCfgScanResult,
+        MtproxyConcurrencyBoundary, MtproxyCpuid, MtproxyMeminfoSummary, MtproxyNetworkBoundary,
+        MtproxyProcStats, MtproxyProcessId, MtproxyRpcBoundary, MtproxyTlHeaderParseResult,
         CONCURRENCY_BOUNDARY_VERSION, CPUID_MAGIC, EPOLLERR, EPOLLET, EPOLLIN, EPOLLOUT, EPOLLPRI,
         EPOLLRDHUP, EVT_FROM_EPOLL, EVT_LEVEL, EVT_READ, EVT_SPEC, EVT_WRITE, FFI_API_VERSION,
         JOBS_CONTRACT_OPS, JOBS_IMPLEMENTED_OPS, MPQ_CONTRACT_OPS, MPQ_IMPLEMENTED_OPS,
         NETWORK_BOUNDARY_VERSION, NET_EVENTS_CONTRACT_OPS, NET_EVENTS_IMPLEMENTED_OPS,
         NET_MSG_BUFFERS_CONTRACT_OPS, NET_MSG_BUFFERS_IMPLEMENTED_OPS, NET_TIMERS_CONTRACT_OPS,
-        NET_TIMERS_IMPLEMENTED_OPS, RPC_INVOKE_REQ, RPC_REQ_RESULT,
+        NET_TIMERS_IMPLEMENTED_OPS, RPC_BOUNDARY_VERSION, RPC_INVOKE_REQ, RPC_REQ_RESULT,
+        RPC_TARGETS_CONTRACT_OPS, RPC_TARGETS_IMPLEMENTED_OPS, TCP_RPC_CLIENT_CONTRACT_OPS,
+        TCP_RPC_CLIENT_IMPLEMENTED_OPS, TCP_RPC_COMMON_CONTRACT_OPS,
+        TCP_RPC_COMMON_IMPLEMENTED_OPS, TCP_RPC_PACKET_LEN_STATE_INVALID,
+        TCP_RPC_PACKET_LEN_STATE_READY, TCP_RPC_PACKET_LEN_STATE_SHORT,
+        TCP_RPC_PACKET_LEN_STATE_SKIP, TCP_RPC_SERVER_CONTRACT_OPS, TCP_RPC_SERVER_IMPLEMENTED_OPS,
     };
 
     #[test]
@@ -2001,6 +2179,30 @@ mod tests {
             out.net_msg_buffers_implemented_ops,
             NET_MSG_BUFFERS_IMPLEMENTED_OPS
         );
+    }
+
+    #[test]
+    fn rpc_boundary_contract_is_reported() {
+        let mut out = MtproxyRpcBoundary::default();
+        assert_eq!(unsafe { mtproxy_ffi_get_rpc_boundary(&raw mut out) }, 0);
+        assert_eq!(out.boundary_version, RPC_BOUNDARY_VERSION);
+        assert_eq!(out.tcp_rpc_common_contract_ops, TCP_RPC_COMMON_CONTRACT_OPS);
+        assert_eq!(
+            out.tcp_rpc_common_implemented_ops,
+            TCP_RPC_COMMON_IMPLEMENTED_OPS
+        );
+        assert_eq!(out.tcp_rpc_client_contract_ops, TCP_RPC_CLIENT_CONTRACT_OPS);
+        assert_eq!(
+            out.tcp_rpc_client_implemented_ops,
+            TCP_RPC_CLIENT_IMPLEMENTED_OPS
+        );
+        assert_eq!(out.tcp_rpc_server_contract_ops, TCP_RPC_SERVER_CONTRACT_OPS);
+        assert_eq!(
+            out.tcp_rpc_server_implemented_ops,
+            TCP_RPC_SERVER_IMPLEMENTED_OPS
+        );
+        assert_eq!(out.rpc_targets_contract_ops, RPC_TARGETS_CONTRACT_OPS);
+        assert_eq!(out.rpc_targets_implemented_ops, RPC_TARGETS_IMPLEMENTED_OPS);
     }
 
     #[test]
@@ -2070,6 +2272,114 @@ mod tests {
             )
         };
         assert_eq!(tiny, 0);
+    }
+
+    #[test]
+    fn tcp_rpc_compact_header_encoding_matches_c_logic() {
+        let mut prefix_word = 0;
+        let mut prefix_bytes = 0;
+        assert_eq!(
+            unsafe {
+                mtproxy_ffi_tcp_rpc_encode_compact_header(
+                    512,
+                    1,
+                    &raw mut prefix_word,
+                    &raw mut prefix_bytes,
+                )
+            },
+            0
+        );
+        assert_eq!(prefix_word, 512);
+        assert_eq!(prefix_bytes, 4);
+
+        assert_eq!(
+            unsafe {
+                mtproxy_ffi_tcp_rpc_encode_compact_header(
+                    64,
+                    0,
+                    &raw mut prefix_word,
+                    &raw mut prefix_bytes,
+                )
+            },
+            0
+        );
+        assert_eq!(prefix_word, 16);
+        assert_eq!(prefix_bytes, 1);
+
+        assert_eq!(
+            unsafe {
+                mtproxy_ffi_tcp_rpc_encode_compact_header(
+                    2000,
+                    0,
+                    &raw mut prefix_word,
+                    &raw mut prefix_bytes,
+                )
+            },
+            0
+        );
+        let expected_u = (u32::from_ne_bytes(2000_i32.to_ne_bytes()) << 6) | 0x7f;
+        assert_eq!(u32::from_ne_bytes(prefix_word.to_ne_bytes()), expected_u);
+        assert_eq!(prefix_bytes, 4);
+    }
+
+    #[test]
+    fn tcp_rpc_packet_len_state_helpers_match_current_rules() {
+        assert_eq!(
+            mtproxy_ffi_tcp_rpc_client_packet_len_state(4, 1024),
+            TCP_RPC_PACKET_LEN_STATE_SKIP
+        );
+        assert_eq!(
+            mtproxy_ffi_tcp_rpc_client_packet_len_state(12, 1024),
+            TCP_RPC_PACKET_LEN_STATE_SHORT
+        );
+        assert_eq!(
+            mtproxy_ffi_tcp_rpc_client_packet_len_state(16, 1024),
+            TCP_RPC_PACKET_LEN_STATE_READY
+        );
+        assert_eq!(
+            mtproxy_ffi_tcp_rpc_client_packet_len_state(3, 1024),
+            TCP_RPC_PACKET_LEN_STATE_INVALID
+        );
+        assert_eq!(
+            mtproxy_ffi_tcp_rpc_client_packet_len_state(2048, 1024),
+            TCP_RPC_PACKET_LEN_STATE_INVALID
+        );
+
+        assert_eq!(mtproxy_ffi_tcp_rpc_server_packet_header_malformed(0), 1);
+        assert_eq!(
+            mtproxy_ffi_tcp_rpc_server_packet_header_malformed(i32::from_ne_bytes(
+                0xc000_0000_u32.to_ne_bytes()
+            )),
+            1
+        );
+        assert_eq!(mtproxy_ffi_tcp_rpc_server_packet_header_malformed(16), 0);
+        assert_eq!(
+            mtproxy_ffi_tcp_rpc_server_packet_len_state(4, 1024),
+            TCP_RPC_PACKET_LEN_STATE_SKIP
+        );
+        assert_eq!(
+            mtproxy_ffi_tcp_rpc_server_packet_len_state(16, 1024),
+            TCP_RPC_PACKET_LEN_STATE_READY
+        );
+        assert_eq!(
+            mtproxy_ffi_tcp_rpc_server_packet_len_state(2048, 1024),
+            TCP_RPC_PACKET_LEN_STATE_INVALID
+        );
+    }
+
+    #[test]
+    fn rpc_target_pid_normalization_matches_c_fallback() {
+        let mut pid = MtproxyProcessId {
+            ip: 0,
+            port: 443,
+            pid: 10,
+            utime: 100,
+        };
+        assert_eq!(
+            unsafe { mtproxy_ffi_rpc_target_normalize_pid(&raw mut pid, 0x7f00_0001) },
+            0
+        );
+        assert_eq!(pid.ip, 0x7f00_0001);
     }
 
     #[test]

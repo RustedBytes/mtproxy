@@ -234,6 +234,113 @@ int rust_ffi_check_network_boundary(void) {
   return 0;
 }
 
+int rust_ffi_check_rpc_boundary(void) {
+  mtproxy_ffi_rpc_boundary_t boundary = {0};
+  int32_t rc = mtproxy_ffi_get_rpc_boundary (&boundary);
+  if (rc < 0) {
+    kprintf ("fatal: rust ffi rpc boundary probe failed (code %d)\n", rc);
+    return -1;
+  }
+
+  if (boundary.boundary_version != MTPROXY_FFI_RPC_BOUNDARY_VERSION) {
+    kprintf (
+      "fatal: rust ffi rpc boundary version mismatch: expected %u, got %u\n",
+      (unsigned) MTPROXY_FFI_RPC_BOUNDARY_VERSION,
+      (unsigned) boundary.boundary_version
+    );
+    return -2;
+  }
+
+  const uint32_t expected_tcp_rpc_common_contract_ops = MTPROXY_FFI_TCP_RPC_COMMON_OP_COMPACT_ENCODE;
+  if ((boundary.tcp_rpc_common_contract_ops & expected_tcp_rpc_common_contract_ops) != expected_tcp_rpc_common_contract_ops) {
+    kprintf (
+      "fatal: rust ffi tcp-rpc-common boundary contract incomplete: expected mask %08x, got %08x\n",
+      (unsigned) expected_tcp_rpc_common_contract_ops,
+      (unsigned) boundary.tcp_rpc_common_contract_ops
+    );
+    return -3;
+  }
+
+  const uint32_t expected_tcp_rpc_client_contract_ops = MTPROXY_FFI_TCP_RPC_CLIENT_OP_PACKET_LEN_STATE;
+  if ((boundary.tcp_rpc_client_contract_ops & expected_tcp_rpc_client_contract_ops) != expected_tcp_rpc_client_contract_ops) {
+    kprintf (
+      "fatal: rust ffi tcp-rpc-client boundary contract incomplete: expected mask %08x, got %08x\n",
+      (unsigned) expected_tcp_rpc_client_contract_ops,
+      (unsigned) boundary.tcp_rpc_client_contract_ops
+    );
+    return -4;
+  }
+
+  const uint32_t expected_tcp_rpc_server_contract_ops =
+    MTPROXY_FFI_TCP_RPC_SERVER_OP_HEADER_MALFORMED |
+    MTPROXY_FFI_TCP_RPC_SERVER_OP_PACKET_LEN_STATE;
+  if ((boundary.tcp_rpc_server_contract_ops & expected_tcp_rpc_server_contract_ops) != expected_tcp_rpc_server_contract_ops) {
+    kprintf (
+      "fatal: rust ffi tcp-rpc-server boundary contract incomplete: expected mask %08x, got %08x\n",
+      (unsigned) expected_tcp_rpc_server_contract_ops,
+      (unsigned) boundary.tcp_rpc_server_contract_ops
+    );
+    return -5;
+  }
+
+  const uint32_t expected_rpc_targets_contract_ops = MTPROXY_FFI_RPC_TARGETS_OP_NORMALIZE_PID;
+  if ((boundary.rpc_targets_contract_ops & expected_rpc_targets_contract_ops) != expected_rpc_targets_contract_ops) {
+    kprintf (
+      "fatal: rust ffi rpc-targets boundary contract incomplete: expected mask %08x, got %08x\n",
+      (unsigned) expected_rpc_targets_contract_ops,
+      (unsigned) boundary.rpc_targets_contract_ops
+    );
+    return -6;
+  }
+
+  if ((boundary.tcp_rpc_common_implemented_ops & ~boundary.tcp_rpc_common_contract_ops) != 0) {
+    kprintf (
+      "fatal: rust ffi tcp-rpc-common implementation mask %08x exceeds contract %08x\n",
+      (unsigned) boundary.tcp_rpc_common_implemented_ops,
+      (unsigned) boundary.tcp_rpc_common_contract_ops
+    );
+    return -7;
+  }
+  if ((boundary.tcp_rpc_client_implemented_ops & ~boundary.tcp_rpc_client_contract_ops) != 0) {
+    kprintf (
+      "fatal: rust ffi tcp-rpc-client implementation mask %08x exceeds contract %08x\n",
+      (unsigned) boundary.tcp_rpc_client_implemented_ops,
+      (unsigned) boundary.tcp_rpc_client_contract_ops
+    );
+    return -8;
+  }
+  if ((boundary.tcp_rpc_server_implemented_ops & ~boundary.tcp_rpc_server_contract_ops) != 0) {
+    kprintf (
+      "fatal: rust ffi tcp-rpc-server implementation mask %08x exceeds contract %08x\n",
+      (unsigned) boundary.tcp_rpc_server_implemented_ops,
+      (unsigned) boundary.tcp_rpc_server_contract_ops
+    );
+    return -9;
+  }
+  if ((boundary.rpc_targets_implemented_ops & ~boundary.rpc_targets_contract_ops) != 0) {
+    kprintf (
+      "fatal: rust ffi rpc-targets implementation mask %08x exceeds contract %08x\n",
+      (unsigned) boundary.rpc_targets_implemented_ops,
+      (unsigned) boundary.rpc_targets_contract_ops
+    );
+    return -10;
+  }
+
+  vkprintf (
+    1,
+    "rust ffi rpc boundary extracted: common(contract=%08x implemented=%08x) client(contract=%08x implemented=%08x) server(contract=%08x implemented=%08x) targets(contract=%08x implemented=%08x)\n",
+    (unsigned) boundary.tcp_rpc_common_contract_ops,
+    (unsigned) boundary.tcp_rpc_common_implemented_ops,
+    (unsigned) boundary.tcp_rpc_client_contract_ops,
+    (unsigned) boundary.tcp_rpc_client_implemented_ops,
+    (unsigned) boundary.tcp_rpc_server_contract_ops,
+    (unsigned) boundary.tcp_rpc_server_implemented_ops,
+    (unsigned) boundary.rpc_targets_contract_ops,
+    (unsigned) boundary.rpc_targets_implemented_ops
+  );
+  return 0;
+}
+
 int rust_ffi_enable_concurrency_bridges(void) {
   mtproxy_ffi_concurrency_boundary_t boundary = {0};
   int32_t rc = mtproxy_ffi_get_concurrency_boundary (&boundary);

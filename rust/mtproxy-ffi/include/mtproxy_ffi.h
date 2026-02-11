@@ -142,6 +142,34 @@ typedef struct mtproxy_ffi_network_boundary {
   uint32_t net_msg_buffers_implemented_ops;
 } mtproxy_ffi_network_boundary_t;
 
+#define MTPROXY_FFI_RPC_BOUNDARY_VERSION 1u
+
+#define MTPROXY_FFI_TCP_RPC_COMMON_OP_COMPACT_ENCODE      (1u << 0)
+
+#define MTPROXY_FFI_TCP_RPC_CLIENT_OP_PACKET_LEN_STATE    (1u << 0)
+
+#define MTPROXY_FFI_TCP_RPC_SERVER_OP_HEADER_MALFORMED    (1u << 0)
+#define MTPROXY_FFI_TCP_RPC_SERVER_OP_PACKET_LEN_STATE    (1u << 1)
+
+#define MTPROXY_FFI_RPC_TARGETS_OP_NORMALIZE_PID          (1u << 0)
+
+typedef struct mtproxy_ffi_rpc_boundary {
+  uint32_t boundary_version;
+  uint32_t tcp_rpc_common_contract_ops;
+  uint32_t tcp_rpc_common_implemented_ops;
+  uint32_t tcp_rpc_client_contract_ops;
+  uint32_t tcp_rpc_client_implemented_ops;
+  uint32_t tcp_rpc_server_contract_ops;
+  uint32_t tcp_rpc_server_implemented_ops;
+  uint32_t rpc_targets_contract_ops;
+  uint32_t rpc_targets_implemented_ops;
+} mtproxy_ffi_rpc_boundary_t;
+
+#define MTPROXY_FFI_TCP_RPC_PACKET_LEN_STATE_SKIP    0
+#define MTPROXY_FFI_TCP_RPC_PACKET_LEN_STATE_READY   1
+#define MTPROXY_FFI_TCP_RPC_PACKET_LEN_STATE_INVALID (-1)
+#define MTPROXY_FFI_TCP_RPC_PACKET_LEN_STATE_SHORT   (-2)
+
 // FFI API surface version exposed by Rust side.
 uint32_t mtproxy_ffi_api_version(void);
 
@@ -154,6 +182,9 @@ int32_t mtproxy_ffi_get_concurrency_boundary(mtproxy_ffi_concurrency_boundary_t 
 
 // Reports extracted Step 10 boundary contract for net core operations.
 int32_t mtproxy_ffi_get_network_boundary(mtproxy_ffi_network_boundary_t *out);
+
+// Reports extracted Step 11 boundary contract for RPC/TCP operations.
+int32_t mtproxy_ffi_get_rpc_boundary(mtproxy_ffi_rpc_boundary_t *out);
 
 // net-events helpers for incremental event-loop migration.
 int32_t mtproxy_ffi_net_epoll_conv_flags(int32_t flags);
@@ -168,6 +199,24 @@ int32_t mtproxy_ffi_msg_buffers_pick_size_index(
   int32_t buffer_size_values,
   int32_t size_hint
 );
+
+// net-tcp-rpc-common helper: computes compact/medium packet length prefix.
+int32_t mtproxy_ffi_tcp_rpc_encode_compact_header(
+  int32_t payload_len,
+  int32_t is_medium,
+  int32_t *out_prefix_word,
+  int32_t *out_prefix_bytes
+);
+
+// net-tcp-rpc-client helper: classifies packet length from non-compact mode parser.
+int32_t mtproxy_ffi_tcp_rpc_client_packet_len_state(int32_t packet_len, int32_t max_packet_len);
+
+// net-tcp-rpc-server helpers: classifies malformed header and packet length state.
+int32_t mtproxy_ffi_tcp_rpc_server_packet_header_malformed(int32_t packet_len);
+int32_t mtproxy_ffi_tcp_rpc_server_packet_len_state(int32_t packet_len, int32_t max_packet_len);
+
+// net-rpc-targets helper: normalizes zero-ip PID to default local IP.
+int32_t mtproxy_ffi_rpc_target_normalize_pid(mtproxy_ffi_process_id_t *pid, uint32_t default_ip);
 
 // CRC32 (IEEE, reflected polynomial 0xEDB88320) partial update.
 // Semantics match C `crc32_partial` function.

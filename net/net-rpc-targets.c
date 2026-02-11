@@ -25,6 +25,7 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 #include <unistd.h>
 #include "net/net-rpc-targets.h"
 #include "vv/vv-tree.h"
@@ -39,6 +40,21 @@
 #include "common/common-stats.h"
 #include "common/mp-queue.h"
 #include "common/server-functions.h"
+#include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
+
+extern int32_t mtproxy_ffi_rpc_target_normalize_pid (mtproxy_ffi_process_id_t *pid, uint32_t default_ip) __attribute__ ((weak));
+
+static inline void rpc_target_normalize_pid (struct process_id *pid) {
+  assert (pid);
+  if (mtproxy_ffi_rpc_target_normalize_pid) {
+    if (mtproxy_ffi_rpc_target_normalize_pid ((mtproxy_ffi_process_id_t *) pid, PID.ip) == 0) {
+      return;
+    }
+  }
+  if (!pid->ip) {
+    pid->ip = PID.ip;
+  }
+}
 
 #define rpc_target_cmp(a,b) (RPC_TARGET_INFO(a)->PID.port ? memcmp (&RPC_TARGET_INFO(a)->PID, &RPC_TARGET_INFO(b)->PID, 6) : memcmp (&RPC_TARGET_INFO(a)->PID, &RPC_TARGET_INFO(b)->PID, 8)) 
 
@@ -158,9 +174,7 @@ void rpc_target_delete_conn (connection_job_t C) {
   //st_update_host ();
   struct rpc_target_info t;
   t.PID = TCP_RPC_DATA(C)->remote_pid;
-  if (!t.PID.ip) {
-    t.PID.ip = PID.ip;
-  }
+  rpc_target_normalize_pid (&t.PID);
   
   vkprintf (2, "rpc_target_insert_conn: ip = " IP_PRINT_STR ", port = %d, fd = %d\n", IP_TO_PRINT (t.PID.ip), (int) t.PID.port, c->fd);
   rpc_target_job_t fake_target = ((void *)&t) - offsetof (struct async_job, j_custom);
@@ -195,7 +209,7 @@ rpc_target_job_t rpc_target_lookup (struct process_id *pid) {
   assert (pid);
   struct rpc_target_info t;
   t.PID = *pid;
-  if (!t.PID.ip) { t.PID.ip = PID.ip; }
+  rpc_target_normalize_pid (&t.PID);
   rpc_target_job_t fake_target = ((void *)&t) - offsetof (struct async_job, j_custom);
   assert (RPC_TARGET_INFO(fake_target) == &t);
  

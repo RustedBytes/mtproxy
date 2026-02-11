@@ -29,6 +29,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <time.h>
 #include <unistd.h>
 #include <stddef.h>
@@ -50,6 +51,28 @@
 #include "net/net-crypto-dh.h"
 
 #include "net/net-thread.h"
+
+extern int32_t mtproxy_ffi_tcp_rpc_client_packet_len_state (int32_t packet_len, int32_t max_packet_len) __attribute__ ((weak));
+
+static inline int tcp_rpc_client_packet_len_state (int packet_len, int max_packet_len) {
+  if (mtproxy_ffi_tcp_rpc_client_packet_len_state) {
+    int32_t state = mtproxy_ffi_tcp_rpc_client_packet_len_state (packet_len, max_packet_len);
+    if (state >= -2 && state <= 1) {
+      return state;
+    }
+  }
+
+  if (packet_len <= 0 || (packet_len & 3) || (packet_len > max_packet_len && max_packet_len > 0)) {
+    return -1;
+  }
+  if (packet_len == 4) {
+    return 0;
+  }
+  if (packet_len < 16) {
+    return -2;
+  }
+  return 1;
+}
 
 /*
  *
@@ -346,18 +369,17 @@ int tcp_rpcc_parse_execute (connection_job_t C) /* {{{ */ {
 
     int packet_len;
     assert (rwm_fetch_lookup (&c->in, &packet_len, 4) == 4);
-    if (packet_len <= 0 || (packet_len & 3) || (packet_len > TCP_RPCC_FUNC(C)->max_packet_len && TCP_RPCC_FUNC(C)->max_packet_len > 0)) {
+    int packet_len_state = tcp_rpc_client_packet_len_state (packet_len, TCP_RPCC_FUNC(C)->max_packet_len);
+    if (packet_len_state == -1) {
       vkprintf (1, "error while parsing packet: bad packet length %d\n", packet_len);
       fail_connection (C, -1);
       return 0;
     }
-
-    if (packet_len == 4) {
+    if (packet_len_state == 0) {
       assert (rwm_skip_data (&c->in, 4) == 4);
       continue;
     }
-
-    if (packet_len < 16) {
+    if (packet_len_state == -2) {
       vkprintf (1, "error while parsing packet: bad packet length %d\n", packet_len);
       fail_connection (C, -2);
       return 0;
@@ -690,5 +712,3 @@ int tcp_rpcc_start_crypto (connection_job_t C, char *nonce, int key_select, unsi
  *                END (BASIC RPC CLIENT)
  *
  */
-
-

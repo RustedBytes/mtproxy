@@ -29,6 +29,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -49,6 +50,38 @@
 #include "net/net-config.h"
 
 #include "vv/vv-io.h"
+
+extern int32_t mtproxy_ffi_tcp_rpc_server_packet_header_malformed (int32_t packet_len) __attribute__ ((weak));
+extern int32_t mtproxy_ffi_tcp_rpc_server_packet_len_state (int32_t packet_len, int32_t max_packet_len) __attribute__ ((weak));
+
+static inline int tcp_rpc_server_packet_header_malformed (int packet_len) {
+  if (mtproxy_ffi_tcp_rpc_server_packet_header_malformed) {
+    int32_t malformed = mtproxy_ffi_tcp_rpc_server_packet_header_malformed (packet_len);
+    if (malformed == 0 || malformed == 1) {
+      return malformed;
+    }
+  }
+  return (packet_len <= 0 || (packet_len & 0xc0000003)) ? 1 : 0;
+}
+
+static inline int tcp_rpc_server_packet_len_state (int packet_len, int max_packet_len) {
+  if (mtproxy_ffi_tcp_rpc_server_packet_len_state) {
+    int32_t state = mtproxy_ffi_tcp_rpc_server_packet_len_state (packet_len, max_packet_len);
+    if (state >= -2 && state <= 1) {
+      return state;
+    }
+  }
+  if ((packet_len > max_packet_len && max_packet_len > 0)) {
+    return -1;
+  }
+  if (packet_len == 4) {
+    return 0;
+  }
+  if (packet_len < 16) {
+    return -1;
+  }
+  return 1;
+}
 /*
  *
  *                BASIC RPC SERVER INTERFACE
@@ -333,7 +366,7 @@ int tcp_rpcs_parse_execute (connection_job_t C) {
       packet_len &= ~RPC_F_QUICKACK;
     }
 
-    if (packet_len <= 0 || (packet_len & 0xc0000003)) {
+    if (tcp_rpc_server_packet_header_malformed (packet_len)) {
       if (D->in_packet_num <= -2 && (packet_len == *(int *)"HEAD" || packet_len == *(int *)"POST" || packet_len == *(int *)"GET " || packet_len == *(int *)"OPTI") && TCP_RPCS_FUNC(C)->http_fallback_type) {
         vkprintf (1, "switching to http fallback for connection %d\n", c->fd);
         memset (c->custom_data, 0, sizeof (c->custom_data));
@@ -353,21 +386,16 @@ int tcp_rpcs_parse_execute (connection_job_t C) {
       return 0;
     }
 
-    if ((packet_len > TCP_RPCS_FUNC(C)->max_packet_len && TCP_RPCS_FUNC(C)->max_packet_len > 0))  {
+    int packet_len_state = tcp_rpc_server_packet_len_state (packet_len, TCP_RPCS_FUNC(C)->max_packet_len);
+    if (packet_len_state == -1) {
       vkprintf (1, "error while parsing packet: bad packet length %d\n", packet_len);
       fail_connection (C, -1);
       return 0;
     }
-    
-    if (packet_len == 4) {
+
+    if (packet_len_state == 0) {
       assert (rwm_skip_data (&c->in, 4) == 4);
       continue;
-    }
-    
-    if (packet_len < 16) {
-      vkprintf (1, "error while parsing packet: bad packet length %d\n", packet_len);
-      fail_connection (C, -1);
-      return 0;
     }
 
     if (len < packet_len) {

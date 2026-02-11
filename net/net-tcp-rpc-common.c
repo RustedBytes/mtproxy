@@ -25,6 +25,7 @@
 
 #include <assert.h>
 #include <stdio.h>
+#include <stdint.h>
 #include <sys/uio.h>
 
 #include "common/precise-time.h"
@@ -35,6 +36,32 @@
 #include "net/net-tcp-rpc-common.h"
 #include "kprintf.h"
 #include "vv/vv-io.h"
+
+extern int32_t mtproxy_ffi_tcp_rpc_encode_compact_header (int32_t payload_len, int32_t is_medium, int32_t *out_prefix_word, int32_t *out_prefix_bytes) __attribute__ ((weak));
+
+static void tcp_rpc_compact_encode_header (int payload_len, int is_medium, int *prefix_word, int *prefix_bytes) {
+  assert (prefix_word && prefix_bytes);
+  if (mtproxy_ffi_tcp_rpc_encode_compact_header) {
+    int32_t word = 0;
+    int32_t bytes = 0;
+    if (mtproxy_ffi_tcp_rpc_encode_compact_header (payload_len, is_medium, &word, &bytes) == 0 && (bytes == 1 || bytes == 4)) {
+      *prefix_word = word;
+      *prefix_bytes = bytes;
+      return;
+    }
+  }
+
+  if (is_medium) {
+    *prefix_word = payload_len;
+    *prefix_bytes = 4;
+  } else if (payload_len <= 0x7e * 4) {
+    *prefix_word = payload_len >> 2;
+    *prefix_bytes = 1;
+  } else {
+    *prefix_word = (payload_len << 6) | 0x7f;
+    *prefix_bytes = 4;
+  }
+}
 
 // Flags:
 //   Flag 1 - can not edit this message. Need to make copy.
@@ -201,15 +228,11 @@ int tcp_rpc_write_packet_compact (connection_job_t C, struct raw_message *raw) {
   if (!(TCP_RPC_DATA(C)->flags & RPC_F_PAD)) {
     assert (!(len & 3));
   }
-  if (TCP_RPC_DATA(C)->flags & RPC_F_MEDIUM) {
-    rwm_push_data_front (raw, &len, 4);
-  } else if (len <= 0x7e * 4) {
-    len >>= 2;
-    rwm_push_data_front (raw, &len, 1);
-  } else {
-    len = (len << 6) | 0x7f;
-    rwm_push_data_front (raw, &len, 4);
-  }
+  int prefix_word = 0;
+  int prefix_bytes = 0;
+  tcp_rpc_compact_encode_header (len, (TCP_RPC_DATA(C)->flags & RPC_F_MEDIUM) ? 1 : 0, &prefix_word, &prefix_bytes);
+  assert (prefix_bytes == 1 || prefix_bytes == 4);
+  rwm_push_data_front (raw, &prefix_word, prefix_bytes);
   rwm_union (&CONN_INFO(C)->out, raw);
 
   return 0;
@@ -271,4 +294,3 @@ int tcp_add_dh_accept (void) {
   }
   return 0;
 }
-
