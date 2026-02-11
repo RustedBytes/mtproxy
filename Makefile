@@ -36,6 +36,7 @@ RUST_OBJECTS	=	\
   ${OBJ}/mtproto/mtproto-proxy.rust.o ${OBJ}/mtproto/mtproto-config.o ${OBJ}/net/net-tcp-rpc-ext-server.o
 RUST_OBJECTS_COMMON	=	\
   ${OBJ}/mtproto/mtproto-config.o ${OBJ}/net/net-tcp-rpc-ext-server.o
+RUST_RS_SOURCES := $(shell find rust/mtproxy-core/src rust/mtproxy-ffi/src -type f -name '*.rs')
 
 DEPENDENCE_CXX		:=	$(subst ${OBJ}/,${DEP}/,$(patsubst %.o,%.d,${OBJECTS_CXX}))
 DEPENDENCE_STRANGE	:=	$(subst ${OBJ}/,${DEP}/,$(patsubst %.o,%.d,${OBJECTS_STRANGE}))
@@ -99,10 +100,10 @@ ${EXELIST}: ${LIBLIST}
 ${EXE}/mtproto-proxy: ${RUST_OBJECTS} ${LIB}/libkdb.a ${RUST_FFI_STATICLIB}
 	${CC} -o $@ ${RUST_OBJECTS} ${LIB}/libkdb.a ${RUST_FFI_STATICLIB} ${LDFLAGS} -ldl
 
-${RUST_FFI_STATICLIB}: Cargo.toml rust/mtproxy-ffi/Cargo.toml rust/mtproxy-ffi/src/lib.rs rust/mtproxy-core/src/lib.rs
+${RUST_FFI_STATICLIB}: Cargo.toml Cargo.lock rust/mtproxy-core/Cargo.toml rust/mtproxy-ffi/Cargo.toml ${RUST_RS_SOURCES}
 	cargo build -p mtproxy-ffi
 
-${RUST_FFI_STATICLIB_RELEASE}: Cargo.toml rust/mtproxy-ffi/Cargo.toml rust/mtproxy-ffi/src/lib.rs rust/mtproxy-core/src/lib.rs
+${RUST_FFI_STATICLIB_RELEASE}: Cargo.toml Cargo.lock rust/mtproxy-core/Cargo.toml rust/mtproxy-ffi/Cargo.toml ${RUST_RS_SOURCES}
 	cargo build --release -p mtproxy-ffi
 
 release: ${ALLDIRS} ${RUST_OBJECTS} ${LIB}/libkdb.a ${RUST_FFI_STATICLIB_RELEASE}

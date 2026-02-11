@@ -56,7 +56,7 @@ pub const NET_MODULE_PLAN: [NetModulePlanEntry; 15] = [
     NetModulePlanEntry {
         c_translation_unit: "net/net-http-server.c",
         rust_module: "runtime::net::http_server",
-        state: NetMigrationState::Planned,
+        state: NetMigrationState::HelperExtracted,
     },
     NetModulePlanEntry {
         c_translation_unit: "net/net-msg-buffers.c",

@@ -26,7 +26,8 @@
         mtproxy_ffi_net_connection_is_active, mtproxy_ffi_net_epoll_conv_flags,
         mtproxy_ffi_net_epoll_unconv_flags, mtproxy_ffi_net_select_best_key_signature,
         mtproxy_ffi_net_timers_wait_msec, mtproxy_ffi_net_add_nat_info,
-        mtproxy_ffi_net_translate_ip,
+        mtproxy_ffi_net_translate_ip, mtproxy_ffi_net_http_error_msg_text,
+        mtproxy_ffi_net_http_gen_date, mtproxy_ffi_net_http_gen_time,
         mtproxy_ffi_parse_meminfo_summary, mtproxy_ffi_parse_proc_stat_line,
         mtproxy_ffi_parse_statm, mtproxy_ffi_pid_init_common, mtproxy_ffi_precise_now_rdtsc_value,
         mtproxy_ffi_precise_now_value, mtproxy_ffi_process_id_is_newer,
@@ -1541,6 +1542,57 @@
 
         let passthrough = u32::from(std::net::Ipv4Addr::new(8, 8, 8, 8));
         assert_eq!(mtproxy_ffi_net_translate_ip(passthrough), passthrough);
+    }
+
+    #[test]
+    fn net_http_error_msg_text_matches_c_semantics() {
+        let mut code = 404;
+        let msg_ptr = unsafe { mtproxy_ffi_net_http_error_msg_text(&raw mut code) };
+        assert!(!msg_ptr.is_null());
+        let msg = unsafe { std::ffi::CStr::from_ptr(msg_ptr) };
+        assert_eq!(msg.to_str().unwrap_or_default(), "Not Found");
+        assert_eq!(code, 404);
+
+        code = 777;
+        let msg_ptr = unsafe { mtproxy_ffi_net_http_error_msg_text(&raw mut code) };
+        assert!(!msg_ptr.is_null());
+        let msg = unsafe { std::ffi::CStr::from_ptr(msg_ptr) };
+        assert_eq!(msg.to_str().unwrap_or_default(), "Internal Server Error");
+        assert_eq!(code, 500);
+
+        let null_msg = unsafe { mtproxy_ffi_net_http_error_msg_text(core::ptr::null_mut()) };
+        assert!(null_msg.is_null());
+    }
+
+    #[test]
+    fn net_http_time_helpers_match_c_semantics() {
+        let mut out = [0i8; 30];
+        assert_eq!(
+            unsafe {
+                mtproxy_ffi_net_http_gen_date(
+                    out.as_mut_ptr(),
+                    i32::try_from(out.len()).unwrap_or(i32::MAX),
+                    0,
+                )
+            },
+            0
+        );
+        let date = unsafe { std::ffi::CStr::from_ptr(out.as_ptr()) };
+        assert_eq!(date.to_str().unwrap_or_default(), "Thu, 01 Jan 1970 00:00:00 GMT");
+
+        let mut parsed = -1;
+        let rc = unsafe { mtproxy_ffi_net_http_gen_time(out.as_ptr(), &raw mut parsed) };
+        assert_eq!(rc, 0);
+        assert_eq!(parsed, 0);
+
+        let invalid_tz = b"Thu, 01 Jan 1970 00:00:00 UTC\0";
+        let rc = unsafe { mtproxy_ffi_net_http_gen_time(invalid_tz.as_ptr().cast(), &raw mut parsed) };
+        assert_eq!(rc, -16);
+
+        assert_eq!(
+            unsafe { mtproxy_ffi_net_http_gen_time(core::ptr::null(), &raw mut parsed) },
+            -8
+        );
     }
 
     #[test]

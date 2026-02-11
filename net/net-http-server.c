@@ -27,6 +27,7 @@
 #define _FILE_OFFSET_BITS 64
 
 #include <assert.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -57,6 +58,9 @@ int hts_do_wakeup(connection_job_t c);
 int hts_init_accepted(connection_job_t c);
 int hts_close_connection(connection_job_t c, int who);
 int hts_write_packet(connection_job_t C, struct raw_message *raw);
+extern const char *mtproxy_ffi_net_http_error_msg_text(int32_t *code);
+extern int32_t mtproxy_ffi_net_http_gen_date(char *out, int32_t out_len,
+                                              int32_t time);
 
 conn_type_t ct_http_server = {.magic = CONN_FUNC_MAGIC,
                               .title = "http_server",
@@ -132,63 +136,12 @@ int hts_close_connection(connection_job_t c, int who) {
   return cpu_server_close_connection(c, who);
 }
 
-static inline char *http_get_error_msg_text(int *code) {
-  /* the most frequent case */
-  if (*code == 200) {
-    return "OK";
-  }
-  switch (*code) {
-  /* python generated from old array */
-  case 201:
-    return "Created";
-  case 202:
-    return "Accepted";
-  case 204:
-    return "No Content";
-  case 206:
-    return "Partial Content";
-  case 301:
-    return "Moved Permanently";
-  case 302:
-    return "Found";
-  case 303:
-    return "See Other";
-  case 304:
-    return "Not Modified";
-  case 307:
-    return "Temporary Redirect";
-  case 400:
-    return "Bad Request";
-  case 403:
-    return "Forbidden";
-  case 404:
-    return "Not Found";
-  case 405:
-    return "Method Not Allowed";
-  case 406:
-    return "Not Acceptable";
-  case 408:
-    return "Request Timeout";
-  case 411:
-    return "Length Required";
-  case 413:
-    return "Request Entity Too Large";
-  case 414:
-    return "Request URI Too Long";
-  case 418:
-    return "I'm a teapot";
-  case 429:
-    return "Too Many Requests";
-  case 501:
-    return "Not Implemented";
-  case 502:
-    return "Bad Gateway";
-  case 503:
-    return "Service Unavailable";
-  default:
-    *code = 500;
-  }
-  return "Internal Server Error";
+static inline const char *http_get_error_msg_text(int *code) {
+  int32_t normalized = *code;
+  const char *message = mtproxy_ffi_net_http_error_msg_text(&normalized);
+  assert(message);
+  *code = normalized;
+  return message;
 }
 
 static char error_text_pattern[] = "<html>\r\n"
@@ -716,103 +669,9 @@ int hts_do_wakeup(connection_job_t c) {
 char now_date_string[] = "Thu, 01 Jan 1970 00:00:00 GMT";
 int now_date_utime;
 
-static char months[] = "JanFebMarAprMayJunJulAugSepOctNovDecGlk";
-static char dows[] = "SunMonTueWedThuFriSatEar";
-
-int dd[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
-
 void gen_http_date(char date_buffer[29], int time) {
-  int day, mon, year, hour, min, sec, xd, i, dow;
-  if (time < 0)
-    time = 0;
-  sec = time % 60;
-  time /= 60;
-  min = time % 60;
-  time /= 60;
-  hour = time % 24;
-  time /= 24;
-  dow = (time + 4) % 7;
-  xd = time % (365 * 3 + 366);
-  time /= (365 * 3 + 366);
-  year = time * 4 + 1970;
-  if (xd >= 365) {
-    year++;
-    xd -= 365;
-    if (xd >= 365) {
-      year++;
-      xd -= 365;
-      if (xd >= 366) {
-        year++;
-        xd -= 366;
-      }
-    }
-  }
-  if (year & 3) {
-    dd[1] = 28;
-  } else {
-    dd[1] = 29;
-  }
-
-  for (i = 0; i < 12; i++) {
-    if (xd < dd[i]) {
-      break;
-    }
-    xd -= dd[i];
-  }
-
-  day = xd + 1;
-  mon = i;
-  assert(day >= 1 && day <= 31 && mon >= 0 && mon <= 11 && year >= 1970 &&
-         year <= 2039);
-
-  sprintf(date_buffer, "%.3s, %.2d %.3s %d %.2d:%.2d:%.2d GM", dows + dow * 3,
-          day, months + mon * 3, year, hour, min, sec);
-  date_buffer[28] = 'T';
-}
-
-int gen_http_time(char *date_buffer, int *time) {
-  char dow[4];
-  char month[4];
-  char tz[16];
-  int i, year, mon, day, hour, min, sec;
-  int argc = sscanf(date_buffer, "%3s, %d %3s %d %d:%d:%d %15s", dow, &day,
-                    month, &year, &hour, &min, &sec, tz);
-  if (argc != 8) {
-    return (argc > 0) ? -argc : -8;
-  }
-  for (mon = 0; mon < 12; mon++) {
-    if (!memcmp(months + mon * 3, month, 3)) {
-      break;
-    }
-  }
-  if (mon == 12) {
-    return -11;
-  }
-  if (year < 1970 || year > 2039) {
-    return -12;
-  }
-  if (hour < 0 || hour >= 24) {
-    return -13;
-  }
-  if (min < 0 || min >= 60) {
-    return -14;
-  }
-  if (sec < 0 || sec >= 60) {
-    return -15;
-  }
-  if (strcmp(tz, "GMT")) {
-    return -16;
-  }
-  int d = (year - 1970) * 365 + ((year - 1969) >> 2) + (day - 1);
-  if (!(year & 3) && mon >= 2) {
-    d++;
-  }
-  dd[1] = 28;
-  for (i = 0; i < mon; i++) {
-    d += dd[i];
-  }
-  *time = (((d * 24 + hour) * 60 + min) * 60) + sec;
-  return 0;
+  int32_t rc = mtproxy_ffi_net_http_gen_date(date_buffer, HTTP_DATE_LEN, time);
+  assert(rc == 0);
 }
 
 char *cur_http_date(void) {

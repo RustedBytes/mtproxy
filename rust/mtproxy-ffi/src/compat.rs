@@ -205,6 +205,19 @@ fn net_translate_ip_impl(local_ip: u32) -> u32 {
     mtproxy_core::runtime::net::connections::nat_translate_ip(local_ip)
 }
 
+fn net_http_error_msg_text_impl(code: i32) -> (i32, *const c_char) {
+    let (normalized_code, message) = mtproxy_core::runtime::net::http_server::http_error_msg_text(code);
+    (normalized_code, message.as_ptr().cast::<c_char>())
+}
+
+fn net_http_gen_date_impl(time: i32) -> [u8; 29] {
+    mtproxy_core::runtime::net::http_server::gen_http_date(time)
+}
+
+fn net_http_gen_time_impl(date_text: &str) -> Result<i32, i32> {
+    mtproxy_core::runtime::net::http_server::gen_http_time(date_text)
+}
+
 fn msg_buffers_pick_size_index_impl(buffer_sizes: &[i32], size_hint: i32) -> i32 {
     mtproxy_core::runtime::net::msg_buffers::pick_size_index(buffer_sizes, size_hint)
 }
@@ -342,6 +355,73 @@ pub unsafe extern "C" fn mtproxy_ffi_net_add_nat_info(rule_text: *const c_char) 
 #[no_mangle]
 pub extern "C" fn mtproxy_ffi_net_translate_ip(local_ip: u32) -> u32 {
     net_translate_ip_impl(local_ip)
+}
+
+/// Returns HTTP status text and normalizes unknown status code to `500`.
+///
+/// # Safety
+/// `code` must be a valid writable pointer to `i32`.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_http_error_msg_text(code: *mut i32) -> *const c_char {
+    if code.is_null() {
+        return core::ptr::null();
+    }
+    let in_code = unsafe { *code };
+    let (normalized_code, message_ptr) = net_http_error_msg_text_impl(in_code);
+    let code_ref = unsafe { &mut *code };
+    *code_ref = normalized_code;
+    message_ptr
+}
+
+/// Formats unix time as legacy HTTP date (`29` bytes, no trailing NUL required).
+///
+/// # Safety
+/// `out` must be writable for at least `out_len` bytes.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_http_gen_date(
+    out: *mut c_char,
+    out_len: i32,
+    time: i32,
+) -> i32 {
+    if out.is_null() || out_len < 29 {
+        return -1;
+    }
+    let Ok(out_count) = usize::try_from(out_len) else {
+        return -1;
+    };
+    let out_slice = unsafe { core::slice::from_raw_parts_mut(out.cast::<u8>(), out_count) };
+    let date = net_http_gen_date_impl(time);
+    out_slice[..29].copy_from_slice(&date);
+    if out_count > 29 {
+        out_slice[29] = 0;
+    }
+    0
+}
+
+/// Parses legacy HTTP date into unix time.
+///
+/// # Safety
+/// `date_text` must be a valid NUL-terminated C string and `out_time` writable.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_http_gen_time(
+    date_text: *const c_char,
+    out_time: *mut i32,
+) -> i32 {
+    if date_text.is_null() || out_time.is_null() {
+        return -8;
+    }
+    let text = unsafe { CStr::from_ptr(date_text) };
+    let Ok(text) = text.to_str() else {
+        return -8;
+    };
+    match net_http_gen_time_impl(text) {
+        Ok(time) => {
+            let out_ref = unsafe { &mut *out_time };
+            *out_ref = time;
+            0
+        }
+        Err(code) => code,
+    }
 }
 
 /// Selects message-buffer size-class index matching C allocation policy.
