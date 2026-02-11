@@ -808,11 +808,9 @@ struct client_packet_info {
   struct event_timer ev;
   struct raw_message msg;
   connection_job_t conn;
-  int type;
 };
 
-int process_client_packet(struct tl_in_state *tlio_in, int op,
-                          connection_job_t C) {
+int process_client_packet(struct tl_in_state *tlio_in, connection_job_t C) {
   int len = tl_fetch_unread();
   if (len < 0) {
     return 0;
@@ -834,16 +832,8 @@ int process_client_packet(struct tl_in_state *tlio_in, int op,
   if (parse_rc < 0) {
     return 0;
   }
-  if (parsed.op != op) {
-    vkprintf(1,
-             "RPC client packet op mismatch: expected %08x, parsed %08x\n", op,
-             parsed.op);
-    return 0;
-  }
 
   switch (parsed.kind) {
-  case MTPROXY_FFI_MTPROTO_CLIENT_PACKET_KIND_PONG:
-    return 1;
   case MTPROXY_FFI_MTPROTO_CLIENT_PACKET_KIND_PROXY_ANS: {
     if (parsed.payload_offset < 0 || parsed.payload_offset > len) {
       return 0;
@@ -914,9 +904,6 @@ int process_client_packet(struct tl_in_state *tlio_in, int op,
     }
     return 1;
   }
-  case MTPROXY_FFI_MTPROTO_CLIENT_PACKET_KIND_UNKNOWN:
-    vkprintf(1, "unknown RPC operation %08x, ignoring\n", parsed.op);
-    break;
   default:
     break;
   }
@@ -931,7 +918,7 @@ int client_packet_job_run(job_t job, int op, struct job_thread *JT) {
   case JS_RUN: {
     struct tl_in_state *tlio_in = tl_in_state_alloc();
     tlf_init_raw_message(tlio_in, &D->msg, D->msg.total_bytes, 0);
-    process_client_packet(tlio_in, D->type, D->conn);
+    process_client_packet(tlio_in, D->conn);
     tl_in_state_free(tlio_in);
     return JOB_COMPLETED;
   }
@@ -977,7 +964,6 @@ int rpcc_execute(connection_job_t C, int op, struct raw_message *msg) {
         -2, sizeof(struct client_packet_info), JT_HAVE_TIMER, JOB_REF_NULL);
     struct client_packet_info *D = (struct client_packet_info *)(job->j_custom);
     D->msg = *msg;
-    D->type = op;
     D->conn = job_incref(C);
     schedule_job(JOB_REF_PASS(job));
     return 1;
