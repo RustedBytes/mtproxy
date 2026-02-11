@@ -202,15 +202,11 @@ int epoll_sethandler (int fd, int prio, event_handler_t handler, void *data) {
 }
 
 int epoll_conv_flags (int flags) {
-  int32_t converted = mtproxy_ffi_net_epoll_conv_flags (flags);
-  assert (converted >= 0);
-  return converted;
+  return mtproxy_ffi_net_epoll_conv_flags (flags);
 }
 
 int epoll_unconv_flags (int f) {
-  int32_t converted = mtproxy_ffi_net_epoll_unconv_flags (f);
-  assert (converted >= 0);
-  return converted;
+  return mtproxy_ffi_net_epoll_unconv_flags (f);
 }
 
 int epoll_insert (int fd, int flags) {

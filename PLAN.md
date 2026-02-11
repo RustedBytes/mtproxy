@@ -538,6 +538,8 @@
    - [x] 2026-02-11: Removed temporary compatibility targets (`mixed`, `mixed-test`, `c-fallback`, `c-test`) from `Makefile` after fallback-window closure.
    - [x] 2026-02-11: Updated runtime/test docs and harness toggles for post-fallback workflow (`TEST_INCLUDE_RUST_DIFFERENTIAL`).
    - [x] 2026-02-11: Verified post-collapse build/startup plus Step 10/11/13 boundary differential suites.
+   - [x] 2026-02-11: Fixed post-decommission runtime regression in `net/net-events.c` by removing invalid signed-range assertions on epoll flag conversions (`EPOLLET` sets the sign bit in `int32_t`).
+   - [x] 2026-02-11: Re-verified Step 10 network helper semantics with `tests/golden/test_rust_network_boundary_differential.sh` after the epoll assertion fix.
    - Done when: production runs on Rust by default and deprecated C paths are removed.
 
 15. Final Hardening, Security Review, and Release
