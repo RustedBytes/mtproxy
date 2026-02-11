@@ -515,12 +515,18 @@
    - `net/net-tcp-rpc-common.c`, `net/net-tcp-rpc-client.c`, `net/net-tcp-rpc-server.c`: compact header/packet-length helpers now require Rust FFI.
    - `net/net-rpc-targets.c`: PID normalization helper now requires Rust FFI.
    - `engine/engine-rpc.c`, `mtproto/mtproto-proxy.c`: Step 13 helpers now require Rust FFI.
-   - [x] Step 14 decommission batch 2 (remaining migrated paths still keep C fallback or C-default dispatch):
+   - [x] Step 14 decommission batch 2 (remaining migrated paths that previously kept C fallback or C-default dispatch):
    - [x] `common/parse-config.c`, `common/tl-parse.c`: parser helpers now require Rust FFI (weak-symbol/C fallback paths removed).
    - [x] `common/proc-stat.c`, `common/common-stats.c`, `common/kprintf.c`: observability helpers now require Rust FFI (C fallback paths removed).
    - [x] `common/pid.c`, `common/cpuid.c`, `common/md5.c`, `common/sha1.c`, `common/sha256.c`, `common/precise-time.c`: utility/hash/time helpers now require Rust FFI (weak-symbol/C fallback paths removed).
    - [x] `common/mp-queue.c`, `jobs/jobs.c`: decommissioned install/reset dispatch tables; migrated operations now call C implementations directly with no temporary fallback indirection.
    - [x] `net/net-crypto-aes.c`, `net/net-crypto-dh.c`, `crypto/aesni256.c`: crypto helpers now require Rust FFI (fallback branches removed from runtime path).
+   - [x] Step 14 decommission batch 3 (late migration slices reflected in active runtime paths):
+   - [x] `net/net-tcp-rpc-ext-server.c`: TLS transport random-byte and public-key generation now route through Rust FFI exports.
+   - [x] `net/net-crypto-dh.c`: DH params-select plus first/second/third rounds route through Rust FFI exports.
+   - [x] `crypto/aesni256.c`: EVP context init/free and crypt operations route through Rust FFI exports.
+   - [x] `common/sha1.h`, `common/sha1.c`, `common/sha256.h`, `common/sha256.c`, `net/net-msg.c`: legacy SHA incremental context surface removed; active hashing helpers are Rust-backed.
+   - [x] `common/crc32.c`, `common/crc32c.c`: runtime data-path partial functions are Rust-bridged in `mtfront_pre_init` (`rust_ffi_enable_crc32_bridge`, `rust_ffi_enable_crc32c_bridge`) with C retained for differential self-check/combine support.
    - [x] Collapse temporary compatibility targets (`mixed`, `c-fallback`) after fallback window closes.
    - `Makefile`: removed `mixed`, `mixed-test`, `c-fallback`, `c-test`, and compatibility symlink/binary targets.
    - `README.md`, `rust/README.md`, `tests/README.md`: removed fallback-target workflow and documented Rust-default differential toggle (`TEST_INCLUDE_RUST_DIFFERENTIAL=1`).
