@@ -796,11 +796,38 @@ int unlock_job(JOB_REF_ARG(job)) {
                  "%d subclass %d\n",
                  job, job->j_execute, job->j_flags, job->j_refcnt, req_class,
                  cur_subclass);
-        mpq_push_w(JSC->job_queue, PTR_MOVE(job), 0);
+        job_t subclass_job = PTR_MOVE(job);
+        if (jobs_tokio_bridge_enabled) {
+          int32_t rc = mtproxy_ffi_jobs_tokio_enqueue_subclass(
+              req_class, cur_subclass, (void *)subclass_job);
+          if (rc < 0) {
+            vkprintf(
+                JOBS_DEBUG,
+                "RUST TOKIO SUBCLASS JOB QUEUE FAIL (%d), fallback to C queue "
+                "for job %p\n",
+                (int)rc, subclass_job);
+            mpq_push_w(JSC->job_queue, subclass_job, 0);
+          }
+        } else {
+          mpq_push_w(JSC->job_queue, subclass_job, 0);
+        }
 
         struct mp_queue *JQ = JC->job_queue;
         assert(JQ);
-        mpq_push_w(JQ, (void *)(long)(cur_subclass + JOB_SUBCLASS_OFFSET), 0);
+        void *subclass_token = (void *)(long)(cur_subclass + JOB_SUBCLASS_OFFSET);
+        if (jobs_tokio_bridge_enabled) {
+          int32_t rc =
+              mtproxy_ffi_jobs_tokio_enqueue_class(req_class, subclass_token);
+          if (rc < 0) {
+            vkprintf(JOBS_DEBUG,
+                     "RUST TOKIO SUBCLASS QUEUE FAIL (%d), fallback to C queue "
+                     "for token %p\n",
+                     (int)rc, subclass_token);
+            mpq_push_w(JQ, subclass_token, 0);
+          }
+        } else {
+          mpq_push_w(JQ, subclass_token, 0);
+        }
       }
       return 1;
     } else {
@@ -1007,7 +1034,7 @@ void *job_thread_ex(void *arg, void (*work_one)(void *, int)) {
   long long last_rdtsc = 0;
   while (1) {
     void *job = NULL;
-    int use_tokio_queue = jobs_tokio_bridge_enabled && !JT->job_class->subclasses;
+    int use_tokio_queue = jobs_tokio_bridge_enabled;
     if (use_tokio_queue) {
       int32_t rc =
           mtproxy_ffi_jobs_tokio_dequeue_class(thread_class, 0, &job);
@@ -1091,52 +1118,116 @@ static void process_one_sublist(unsigned long id, int class) {
   assert(subclass_id < JC->subclasses->subclass_cnt);
 
   struct job_subclass *J_SC = &J_SCL->subclasses[subclass_id];
+  int use_tokio_subclass_gate = jobs_tokio_bridge_enabled;
+  if (use_tokio_subclass_gate) {
+    int32_t enter_rc =
+        mtproxy_ffi_jobs_tokio_subclass_enter(JT->thread_class, subclass_id);
+    if (enter_rc <= 0) {
+      return;
+    }
+  } else {
+    __sync_fetch_and_add(&J_SC->allowed_to_run_jobs, 1);
 
-  __sync_fetch_and_add(&J_SC->allowed_to_run_jobs, 1);
-
-  if (!__sync_bool_compare_and_swap(&J_SC->locked, 0, 1)) {
-    return;
+    if (!__sync_bool_compare_and_swap(&J_SC->locked, 0, 1)) {
+      return;
+    }
   }
 
-  if (subclass_id != -1) {
-    while (sem_wait(&J_SCL->sem) < 0)
-      ;
-  } else {
-    int i;
-    for (i = 0; i < MAX_SUBCLASS_THREADS; i++) {
-      while (sem_wait(&J_SCL->sem))
+  int use_tokio_subclass_permits = use_tokio_subclass_gate;
+  if (use_tokio_subclass_permits) {
+    int32_t permit_rc = mtproxy_ffi_jobs_tokio_subclass_permit_acquire(
+        JT->thread_class, subclass_id);
+    if (permit_rc != 0) {
+      vkprintf(JOBS_DEBUG,
+               "RUST TOKIO SUBCLASS PERMIT ACQUIRE FAIL (%d), fallback to C "
+               "semaphore for subclass %d\n",
+               permit_rc, subclass_id);
+      use_tokio_subclass_permits = 0;
+    }
+  }
+
+  if (!use_tokio_subclass_permits) {
+    if (subclass_id != -1) {
+      while (sem_wait(&J_SCL->sem) < 0)
         ;
+    } else {
+      int i;
+      for (i = 0; i < MAX_SUBCLASS_THREADS; i++) {
+        while (sem_wait(&J_SCL->sem))
+          ;
+      }
     }
   }
 
   while (1) {
-    while (J_SC->processed_jobs < J_SC->allowed_to_run_jobs) {
-      job_t job = mpq_pop_nw(J_SC->job_queue, 4);
+    while (1) {
+      int has_pending = 0;
+      if (use_tokio_subclass_gate) {
+        int32_t pending_rc =
+            mtproxy_ffi_jobs_tokio_subclass_has_pending(JT->thread_class,
+                                                        subclass_id);
+        has_pending = pending_rc > 0;
+      } else {
+        has_pending = J_SC->processed_jobs < J_SC->allowed_to_run_jobs;
+      }
+      if (!has_pending) {
+        break;
+      }
+      job_t job = NULL;
+      if (jobs_tokio_bridge_enabled) {
+        int32_t rc = mtproxy_ffi_jobs_tokio_dequeue_subclass(
+            JT->thread_class, subclass_id, 0, (void **)&job);
+        if (rc <= 0 || !job) {
+          job = mpq_pop_nw(J_SC->job_queue, 4);
+        }
+      } else {
+        job = mpq_pop_nw(J_SC->job_queue, 4);
+      }
       assert(job);
 
       process_one_job(JOB_REF_PASS(job), JT->thread_class);
-      J_SC->processed_jobs++;
+      if (use_tokio_subclass_gate) {
+        int32_t mark_rc = mtproxy_ffi_jobs_tokio_subclass_mark_processed(
+            JT->thread_class, subclass_id);
+        assert(mark_rc == 0);
+      } else {
+        J_SC->processed_jobs++;
+      }
     }
 
-    J_SC->locked = 0;
+    if (use_tokio_subclass_gate) {
+      int32_t cont_rc = mtproxy_ffi_jobs_tokio_subclass_exit_or_continue(
+          JT->thread_class, subclass_id);
+      if (cont_rc > 0) {
+        continue;
+      }
+    } else {
+      J_SC->locked = 0;
 
-    __sync_synchronize();
+      __sync_synchronize();
 
-    if (J_SC->processed_jobs < J_SC->allowed_to_run_jobs &&
-        __sync_bool_compare_and_swap(&J_SC->locked, 0, 1)) {
-      continue;
+      if (J_SC->processed_jobs < J_SC->allowed_to_run_jobs &&
+          __sync_bool_compare_and_swap(&J_SC->locked, 0, 1)) {
+        continue;
+      }
     }
     break;
   }
 
-  if (subclass_id != -1) {
-    while (sem_post(&J_SCL->sem) < 0)
-      ;
+  if (use_tokio_subclass_permits) {
+    int32_t permit_rc = mtproxy_ffi_jobs_tokio_subclass_permit_release(
+        JT->thread_class, subclass_id);
+    assert(permit_rc == 0);
   } else {
-    int i;
-    for (i = 0; i < MAX_SUBCLASS_THREADS; i++) {
-      while (sem_post(&J_SCL->sem))
+    if (subclass_id != -1) {
+      while (sem_post(&J_SCL->sem) < 0)
         ;
+    } else {
+      int i;
+      for (i = 0; i < MAX_SUBCLASS_THREADS; i++) {
+        while (sem_post(&J_SCL->sem))
+          ;
+      }
     }
   }
 }

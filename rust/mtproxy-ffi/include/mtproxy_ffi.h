@@ -486,6 +486,30 @@ int32_t mtproxy_ffi_jobs_tokio_dequeue_class(
   void **out_job
 );
 
+// jobs helper: enqueue one opaque `job_t` into Rust/Tokio subclass queue.
+int32_t mtproxy_ffi_jobs_tokio_enqueue_subclass(
+  int32_t job_class,
+  int32_t subclass_id,
+  void *job
+);
+
+// jobs helper: dequeue one opaque `job_t` from Rust/Tokio subclass queue.
+// Returns 1 when a job is produced, 0 when queue is empty/disconnected.
+int32_t mtproxy_ffi_jobs_tokio_dequeue_subclass(
+  int32_t job_class,
+  int32_t subclass_id,
+  int32_t blocking,
+  void **out_job
+);
+
+// jobs helper: subclass scheduler gate API (lock + pending counters).
+int32_t mtproxy_ffi_jobs_tokio_subclass_enter(int32_t job_class, int32_t subclass_id);
+int32_t mtproxy_ffi_jobs_tokio_subclass_has_pending(int32_t job_class, int32_t subclass_id);
+int32_t mtproxy_ffi_jobs_tokio_subclass_mark_processed(int32_t job_class, int32_t subclass_id);
+int32_t mtproxy_ffi_jobs_tokio_subclass_exit_or_continue(int32_t job_class, int32_t subclass_id);
+int32_t mtproxy_ffi_jobs_tokio_subclass_permit_acquire(int32_t job_class, int32_t subclass_id);
+int32_t mtproxy_ffi_jobs_tokio_subclass_permit_release(int32_t job_class, int32_t subclass_id);
+
 // jobs helper: enqueue one opaque `job_t` into Rust/Tokio main queue.
 int32_t mtproxy_ffi_jobs_tokio_enqueue_main(void *job);
 
