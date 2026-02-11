@@ -26,6 +26,12 @@ To build, run `make`. The default binary (`objs/bin/mtproto-proxy`) is the Rust-
 make && cd objs/bin
 ```
 
+To link against Cargo release artifacts, run:
+
+```bash
+make release
+```
+
 If the build has failed, you should run `make clean` before building it again.
 
 ## Running

@@ -2,6 +2,7 @@ OBJ	=	objs
 DEP	=	dep
 EXE = ${OBJ}/bin
 RUST_FFI_STATICLIB = target/debug/libmtproxy_ffi.a
+RUST_FFI_STATICLIB_RELEASE = target/release/libmtproxy_ffi.a
 
 COMMIT := $(shell git log -1 --pretty=format:"%H")
 
@@ -28,7 +29,7 @@ DEPDIRS := ${DEP} $(addprefix ${DEP}/,${PROJECTS})
 ALLDIRS := ${DEPDIRS} ${OBJDIRS}
 
 
-.PHONY:	all clean test rust-check rust-fmt rust-fmt-check rust-clippy rust-test rust-ci
+.PHONY:	all clean test release rust-check rust-fmt rust-fmt-check rust-clippy rust-test rust-ci
 
 EXELIST	:= ${EXE}/mtproto-proxy
 RUST_OBJECTS	=	\
@@ -100,6 +101,12 @@ ${EXE}/mtproto-proxy: ${RUST_OBJECTS} ${LIB}/libkdb.a ${RUST_FFI_STATICLIB}
 
 ${RUST_FFI_STATICLIB}: Cargo.toml rust/mtproxy-ffi/Cargo.toml rust/mtproxy-ffi/src/lib.rs rust/mtproxy-core/src/lib.rs
 	cargo build -p mtproxy-ffi
+
+${RUST_FFI_STATICLIB_RELEASE}: Cargo.toml rust/mtproxy-ffi/Cargo.toml rust/mtproxy-ffi/src/lib.rs rust/mtproxy-core/src/lib.rs
+	cargo build --release -p mtproxy-ffi
+
+release: ${ALLDIRS} ${RUST_OBJECTS} ${LIB}/libkdb.a ${RUST_FFI_STATICLIB_RELEASE}
+	${CC} -o ${EXE}/mtproto-proxy ${RUST_OBJECTS} ${LIB}/libkdb.a ${RUST_FFI_STATICLIB_RELEASE} ${LDFLAGS} -ldl
 
 ${LIB}/libkdb.a: ${LIB_OBJS}
 	rm -f $@ && ar rcs $@ $^
