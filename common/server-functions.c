@@ -213,11 +213,6 @@ void ksignal_ex(int sig, void (*handler)(int, siginfo_t *, void *)) {
   }
 }
 
-void queries_log_store(void *N, int limit, int max_size, int max_entry_size,
-                       int plain) __attribute__((weak));
-void queries_log_store(void *N, int limit, int max_size, int max_entry_size,
-                       int plain) {}
-
 void engine_set_terminal_attributes(void) __attribute__((weak));
 void engine_set_terminal_attributes(void) {}
 
@@ -403,25 +398,6 @@ void parse_option_builtin(const char *name, int arg, int *var, int val,
                           unsigned flags, const char *help, ...) {
   parse_option_internal(name, arg, var, val, flags, builtin_parse_option,
                         help ? strdup(help) : NULL);
-}
-
-void remove_parse_option_completely(int val) {
-  int t = find_parse_option(val);
-  assert(t >= 0);
-
-  struct engine_parse_option *P = &engine_parse_options[t];
-
-  assert(P->vals[0] == val);
-  if (P->help) {
-    free(P->help);
-  }
-  free(P->vals);
-  free(P->longopts);
-  memmove(engine_parse_options + t, engine_parse_options + t + 1,
-          (engine_parse_options_num - t - 1) *
-              sizeof(struct engine_parse_option));
-  engine_parse_options_num--;
-  return;
 }
 
 void remove_parse_option(int val) {
@@ -736,20 +712,6 @@ int parse_engine_options_long(int argc, char **argv) {
         usage();
       }
     }
-  }
-  return 0;
-}
-
-int in_keep_options_list(const unsigned *list, unsigned num) {
-  if (!list) {
-    return 0;
-  }
-  const unsigned *a = list;
-  while (*a) {
-    if (*a == num) {
-      return 1;
-    }
-    a++;
   }
   return 0;
 }

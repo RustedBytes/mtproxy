@@ -49,10 +49,6 @@ long long max_queries_allocated_prev_sec;
 
 long long total_vv_tree_nodes;
 
-int tl_rpc_op_stat __attribute__((weak));
-int op_stat_write(stats_buffer_t *sb) __attribute__((weak));
-int op_stat_write(stats_buffer_t *sb) { return 0; }
-
 int my_pid;
 
 int connections_prepare_stat(stats_buffer_t *sb);
