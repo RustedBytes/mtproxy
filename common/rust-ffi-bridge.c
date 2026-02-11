@@ -8,6 +8,7 @@
 #include "common/kprintf.h"
 #include "crypto/crc32.h"
 #include "crypto/crc32c.h"
+#include "jobs/jobs.h"
 #include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 
 #define RUST_FFI_EXPECTED_API_VERSION 1u
@@ -479,8 +480,13 @@ int rust_ffi_enable_concurrency_bridges(void) {
     return -2;
   }
 
-  vkprintf(1, "rust ffi concurrency boundary validated; temporary mpq/jobs "
-              "dispatch adapters are decommissioned\n");
+  if (jobs_enable_tokio_bridge() < 0) {
+    kprintf("fatal: rust ffi tokio jobs bridge enable failed\n");
+    return -3;
+  }
+
+  vkprintf(1, "rust ffi concurrency boundary validated; tokio jobs bridge "
+              "enabled\n");
   return 0;
 }
 

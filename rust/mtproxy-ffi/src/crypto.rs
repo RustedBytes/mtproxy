@@ -78,7 +78,7 @@ fn refresh_aes_nonce_seed(rand_buf: &mut [u8; 64]) -> bool {
     let seed_len = core::mem::size_of::<c_long>();
     unsafe {
         core::ptr::copy_nonoverlapping(rand_buf.as_ptr(), (&raw mut seed).cast::<u8>(), seed_len);
-        seed ^= lrand48_j();
+        seed ^= lrand48();
         core::ptr::copy_nonoverlapping(
             (&raw const seed).cast::<u8>(),
             rand_buf.as_mut_ptr(),
@@ -341,9 +341,9 @@ pub unsafe extern "C" fn mtproxy_ffi_crypto_aes_generate_nonce(out: *mut u8) -> 
         return -1;
     }
 
-    let x = unsafe { lrand48_j() } as i32;
+    let x = unsafe { lrand48() } as i32;
     rand_buf[16..20].copy_from_slice(&x.to_ne_bytes());
-    let y = unsafe { lrand48_j() } as i32;
+    let y = unsafe { lrand48() } as i32;
     rand_buf[20..24].copy_from_slice(&y.to_ne_bytes());
     rand_buf[24..32].copy_from_slice(&rdtsc_now().to_ne_bytes());
 

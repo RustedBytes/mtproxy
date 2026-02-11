@@ -307,6 +307,7 @@ int create_new_job_class(int job_class, int min_threads, int max_threads);
 int create_new_job_class_sub(int job_class, int min_threads, int max_threads,
                              int subclass_cnt);
 void *job_thread_ex(void *arg, void (*work_one)(void *, int));
+int jobs_enable_tokio_bridge(void);
 
 /* creates a new async job as described */
 job_t create_async_job(job_function_t run_job, unsigned long long job_signals,

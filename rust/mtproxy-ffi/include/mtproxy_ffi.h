@@ -443,6 +443,8 @@ typedef struct mtproxy_ffi_application_boundary {
   uint32_t mtproto_proxy_implemented_ops;
 } mtproxy_ffi_application_boundary_t;
 
+typedef int32_t (*mtproxy_ffi_jobs_process_fn)(void *job);
+
 #define MTPROXY_FFI_TCP_RPC_PACKET_LEN_STATE_SKIP    0
 #define MTPROXY_FFI_TCP_RPC_PACKET_LEN_STATE_READY   1
 #define MTPROXY_FFI_TCP_RPC_PACKET_LEN_STATE_INVALID (-1)
@@ -469,6 +471,30 @@ int32_t mtproxy_ffi_get_crypto_boundary(mtproxy_ffi_crypto_boundary_t *out);
 
 // Reports extracted Step 13 boundary contract for engine/mtproto application operations.
 int32_t mtproxy_ffi_get_application_boundary(mtproxy_ffi_application_boundary_t *out);
+
+// jobs helper: initializes Rust/Tokio main-queue bridge.
+int32_t mtproxy_ffi_jobs_tokio_init(void);
+
+// jobs helper: enqueue one opaque `job_t` into Rust/Tokio queue by job class.
+int32_t mtproxy_ffi_jobs_tokio_enqueue_class(int32_t job_class, void *job);
+
+// jobs helper: dequeue one opaque `job_t` from Rust/Tokio class queue.
+// Returns 1 when a job is produced, 0 when queue is empty/disconnected.
+int32_t mtproxy_ffi_jobs_tokio_dequeue_class(
+  int32_t job_class,
+  int32_t blocking,
+  void **out_job
+);
+
+// jobs helper: enqueue one opaque `job_t` into Rust/Tokio main queue.
+int32_t mtproxy_ffi_jobs_tokio_enqueue_main(void *job);
+
+// jobs helper: drain Rust/Tokio main queue via C callback.
+// `max_items == 0` means "drain all currently available jobs".
+int32_t mtproxy_ffi_jobs_tokio_drain_main(
+  mtproxy_ffi_jobs_process_fn process_one_job,
+  int32_t max_items
+);
 
 // net-events helpers for incremental event-loop migration.
 int32_t mtproxy_ffi_net_epoll_conv_flags(int32_t flags);

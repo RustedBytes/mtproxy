@@ -46,6 +46,7 @@
 #include "net/net-connections.h"
 #include "net/net-events.h"
 #include "precise-time.h"
+#include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 #include "server-functions.h"
 
 #define JOB_SUBCLASS_OFFSET 3
@@ -397,6 +398,9 @@ double drand48_j(void) {
 struct mp_queue MainJobQueue __attribute__((aligned(128)));
 
 static struct thread_callback *jobs_cb_list;
+static int jobs_tokio_bridge_enabled;
+
+void process_one_job(JOB_REF_ARG(job), int thread_class);
 
 void init_main_pthread_id(void) {
   pthread_t self = pthread_self();
@@ -551,6 +555,18 @@ int init_async_jobs(void) {
   }*/
 
   return cur_job_threads;
+}
+
+int jobs_enable_tokio_bridge(void) {
+  int32_t rc = mtproxy_ffi_jobs_tokio_init();
+  if (rc < 0) {
+    kprintf("fatal: rust ffi tokio jobs bridge init failed (code %d)\n",
+            (int)rc);
+    return -1;
+  }
+  jobs_tokio_bridge_enabled = 1;
+  vkprintf(1, "rust ffi tokio jobs bridge enabled for class queue routing\n");
+  return 0;
 }
 
 int create_new_job_class(int job_class, int min_threads, int max_threads) {
@@ -746,7 +762,20 @@ int unlock_job(JOB_REF_ARG(job)) {
             "RESCHEDULED JOB %p, type %p, flags %08x, refcnt %d -> Queue %d\n",
             job, job->j_execute, job->j_flags, job->j_refcnt, req_class);
         vkprintf(JOBS_DEBUG, "sub=%p\n", JT->job_class->subclasses);
-        mpq_push_w(JQ, PTR_MOVE(job), 0);
+        job_t queued_job = PTR_MOVE(job);
+        if (jobs_tokio_bridge_enabled) {
+          int32_t rc =
+              mtproxy_ffi_jobs_tokio_enqueue_class(req_class, (void *)queued_job);
+          if (rc < 0) {
+            vkprintf(
+                JOBS_DEBUG,
+                "RUST TOKIO QUEUE FAIL (%d), fallback to C queue for job %p\n",
+                (int)rc, queued_job);
+            mpq_push_w(JQ, queued_job, 0);
+          }
+        } else {
+          mpq_push_w(JQ, queued_job, 0);
+        }
         if (JQ == &MainJobQueue && main_thread_interrupt_status == 1 &&
             __sync_fetch_and_add(&main_thread_interrupt_status, 1) == 1) {
           // pthread_kill (main_pthread_id, SIGRTMAX - 7);
@@ -977,15 +1006,44 @@ void *job_thread_ex(void *arg, void (*work_one)(void *, int)) {
   int prev_now = 0;
   long long last_rdtsc = 0;
   while (1) {
-    void *job = mpq_pop_nw(Q, 4);
-    if (!job) {
-      double wait_start = get_utime_monotonic();
-      MODULE_STAT->locked_since = wait_start;
-      job = mpq_pop_w(Q, 4);
-      double wait_time = get_utime_monotonic() - wait_start;
-      MODULE_STAT->locked_since = 0;
-      MODULE_STAT->tot_idle_time += wait_time;
-      MODULE_STAT->a_idle_time += wait_time;
+    void *job = NULL;
+    int use_tokio_queue = jobs_tokio_bridge_enabled && !JT->job_class->subclasses;
+    if (use_tokio_queue) {
+      int32_t rc =
+          mtproxy_ffi_jobs_tokio_dequeue_class(thread_class, 0, &job);
+      if (rc <= 0 || !job) {
+        double wait_start = get_utime_monotonic();
+        MODULE_STAT->locked_since = wait_start;
+        rc = mtproxy_ffi_jobs_tokio_dequeue_class(thread_class, 1, &job);
+        double wait_time = get_utime_monotonic() - wait_start;
+        MODULE_STAT->locked_since = 0;
+        MODULE_STAT->tot_idle_time += wait_time;
+        MODULE_STAT->a_idle_time += wait_time;
+      }
+      if (!job) {
+        // If Rust queue produced nothing, fall back to legacy C queue path.
+        job = mpq_pop_nw(Q, 4);
+        if (!job) {
+          double wait_start = get_utime_monotonic();
+          MODULE_STAT->locked_since = wait_start;
+          job = mpq_pop_w(Q, 4);
+          double wait_time = get_utime_monotonic() - wait_start;
+          MODULE_STAT->locked_since = 0;
+          MODULE_STAT->tot_idle_time += wait_time;
+          MODULE_STAT->a_idle_time += wait_time;
+        }
+      }
+    } else {
+      job = mpq_pop_nw(Q, 4);
+      if (!job) {
+        double wait_start = get_utime_monotonic();
+        MODULE_STAT->locked_since = wait_start;
+        job = mpq_pop_w(Q, 4);
+        double wait_time = get_utime_monotonic() - wait_start;
+        MODULE_STAT->locked_since = 0;
+        MODULE_STAT->tot_idle_time += wait_time;
+        MODULE_STAT->a_idle_time += wait_time;
+      }
     }
     long long new_rdtsc = rdtsc();
     if (new_rdtsc - last_rdtsc > 1000000) {
@@ -1097,6 +1155,16 @@ void *job_thread_sub(void *arg) {
   return job_thread_ex(arg, process_one_sublist_gw);
 }
 
+static int32_t jobs_process_main_job_from_tokio(void *job_ptr) {
+  job_t job = (job_t)job_ptr;
+  if (!job) {
+    return -1;
+  }
+  vkprintf(JOBS_DEBUG, "MAIN THREAD (TOKIO): got job %p\n", job);
+  process_one_job(JOB_REF_PASS(job), JC_MAIN);
+  return 0;
+}
+
 int run_pending_main_jobs(void) {
   if (!MainJobQueue.mq_magic) {
     return -1;
@@ -1106,6 +1174,13 @@ int run_pending_main_jobs(void) {
   JT->status |= JTS_RUNNING;
 
   int cnt = 0;
+  if (jobs_tokio_bridge_enabled) {
+    int32_t tokio_cnt =
+        mtproxy_ffi_jobs_tokio_drain_main(jobs_process_main_job_from_tokio, 0);
+    if (tokio_cnt > 0) {
+      cnt += tokio_cnt;
+    }
+  }
   while (1) {
     job_t job = mpq_pop_nw(&MainJobQueue, 4);
     if (!job) {

@@ -49,7 +49,8 @@ const MPQ_CONTRACT_OPS: u32 =
 const JOBS_CONTRACT_OPS: u32 =
     (1u32 << 0) | (1u32 << 1) | (1u32 << 2) | (1u32 << 3) | (1u32 << 4) | (1u32 << 5) | (1u32 << 6);
 const MPQ_IMPLEMENTED_OPS: u32 = (1u32 << 0) | (1u32 << 1) | (1u32 << 2);
-const JOBS_IMPLEMENTED_OPS: u32 = (1u32 << 0) | (1u32 << 2) | (1u32 << 3) | (1u32 << 4);
+const JOBS_IMPLEMENTED_OPS: u32 =
+    (1u32 << 0) | (1u32 << 1) | (1u32 << 2) | (1u32 << 3) | (1u32 << 4) | (1u32 << 5);
 const NET_EVENTS_CONTRACT_OPS: u32 = (1u32 << 0) | (1u32 << 1);
 const NET_TIMERS_CONTRACT_OPS: u32 = 1u32 << 0;
 const NET_MSG_BUFFERS_CONTRACT_OPS: u32 = 1u32 << 0;
@@ -777,7 +778,7 @@ unsafe extern "C" {
     fn open(pathname: *const c_char, flags: c_int, ...) -> c_int;
     fn close(fd: c_int) -> c_int;
     fn exit(status: c_int) -> !;
-    fn lrand48_j() -> c_long;
+    fn lrand48() -> c_long;
     fn drand48() -> c_double;
     fn srand48(seedval: c_long);
     fn malloc(size: usize) -> *mut c_void;
@@ -878,11 +879,13 @@ static AES_NONCE_RAND_BUF: Mutex<[u8; 64]> = Mutex::new([0u8; 64]);
 
 mod compat;
 mod crypto;
+mod jobs;
 mod mtproto;
 mod time_cfg_observability;
 
 pub use compat::*;
 pub use crypto::*;
+pub use jobs::*;
 pub use mtproto::*;
 pub use time_cfg_observability::*;
 
