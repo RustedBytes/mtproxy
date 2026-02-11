@@ -37,18 +37,12 @@
 #include <unistd.h>
 #include <sys/mman.h>
 
-#include "crypto/md5.h"
 #include "resolver.h"
-#include "net/net-events.h"
 #include "kprintf.h"
 #include "precise-time.h"
 #include "net/net-connections.h"
-#include "net/net-crypto-aes.h"
-#include "mtproto-common.h"
 #include "mtproto-config.h"
-#include "engine/engine.h"
 #include "common/parse-config.h"
-#include "common/server-functions.h"
 #include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 
 /*

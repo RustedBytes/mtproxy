@@ -26,7 +26,7 @@
 #pragma once
 
 #include "net/net-connections.h"
-//#include "net/net-buffers.h"
+
 #define	MAX_HTTP_HEADER_SIZE	16384
 
 struct http_server_functions {

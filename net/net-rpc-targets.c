@@ -24,22 +24,17 @@
 
 #include <assert.h>
 #include <stdlib.h>
-#include <string.h>
 #include <stdint.h>
 #include <unistd.h>
 #include "net/net-rpc-targets.h"
 #include "vv/vv-tree.h"
-//#include "net/net-rpc-common.h"
-//#include "net/net-rpc-server.h"
-#include "net/net-tcp-rpc-client.h"
+
 #include "net/net-tcp-rpc-common.h"
 #include "kprintf.h"
 #include "net/net-connections.h"
 #include "vv/vv-io.h"
 
 #include "common/common-stats.h"
-#include "common/mp-queue.h"
-#include "common/server-functions.h"
 #include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 
 extern int32_t mtproxy_ffi_rpc_target_normalize_pid (mtproxy_ffi_process_id_t *pid, uint32_t default_ip);

@@ -24,7 +24,6 @@
 */
 
 #include <assert.h>
-#include <stdio.h>
 #include <stdint.h>
 #include <sys/uio.h>
 
@@ -32,7 +31,6 @@
 #include "common/rpc-const.h"
 #include "common/mp-queue.h"
 #include "net/net-msg.h"
-#include "net/net-tcp-connections.h"
 #include "net/net-tcp-rpc-common.h"
 #include "kprintf.h"
 #include "vv/vv-io.h"

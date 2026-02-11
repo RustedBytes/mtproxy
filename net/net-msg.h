@@ -25,11 +25,10 @@
 
 #pragma once
 
-#include <stdlib.h>
+#include <openssl/types.h>
 #include <sys/uio.h>
 #include <assert.h>
 
-#include "crypto/aesni256.h"
 #include "net/net-msg-buffers.h"
 #include "crypto/crc32.h"
 

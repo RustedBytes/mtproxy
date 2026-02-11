@@ -18,23 +18,14 @@
               2014-2016 Nikolai Durov
 */
 
+#include "net/net-crypto-aes.h"
 #define	_FILE_OFFSET_BITS	64
 
 #include <assert.h>
 #include <fcntl.h>
-#include <stdio.h>
-#include <stdlib.h>
 #include <stdarg.h>
 #include <stddef.h>
-#include <string.h>
-#include <time.h>
 #include <unistd.h>
-
-// #include <openssl/aes.h>
-
-#include "kprintf.h"
-#include "precise-time.h"
-#include "net/net-events.h"   // for show_ipv6()
 
 #include "net/net-config.h"
 

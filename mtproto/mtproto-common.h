@@ -24,10 +24,6 @@
 */
 #pragma once
 
-#include <string.h>
-
-#include "rpc-const.h"
-
 #define tls_push()	{ struct tl_out_state *tlio_out = tl_out_state_alloc ();
 #define tls_pop()	tl_out_state_free (tlio_out); }
 #define TLS_START(C)		tls_push(); tls_init_tcp_raw_msg (tlio_out, C, 0);

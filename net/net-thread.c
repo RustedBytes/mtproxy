@@ -22,19 +22,12 @@
 #include <assert.h>
 #include <unistd.h>
 #include <stdlib.h>
-#include <string.h>
 
 #include "net/net-thread.h"
 #include "net/net-connections.h"
-#include "net/net-msg.h"
-#include "net/net-msg-buffers.h"
 #include "net/net-tcp-rpc-client.h"
-#include "net/net-tcp-rpc-common.h"
-#include "net/net-tcp-rpc-server.h"
 
 #include "common/mp-queue.h"
-#include "common/kprintf.h"
-#include "common/server-functions.h"
 
 #define NEV_TCP_CONN_READY 1
 #define NEV_TCP_CONN_CLOSE 2

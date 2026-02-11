@@ -24,6 +24,8 @@
 */
 #pragma once
 
+#include "net/net-connections.h"
+
 #define MAX_CFG_CLUSTERS	1024
 #define	MAX_CFG_TARGETS		4096
 #define MAX_CLUSTER_TARGETS	1024

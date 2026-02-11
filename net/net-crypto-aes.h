@@ -28,7 +28,6 @@
 #pragma once
 
 #include "net/net-connections.h"
-#include "crypto/aesni256.h"
 
 #define	MIN_PWD_LEN 32
 #define MAX_PWD_LEN 256

@@ -20,8 +20,6 @@
 
 #pragma once
 
-#include "net/net-crypto-aes.h"
-
 #define MAX_PWD_CONFIG_LEN	16384
 
 #define RPCF_ALLOW_UNENC        1

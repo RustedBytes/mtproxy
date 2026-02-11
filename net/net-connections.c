@@ -32,7 +32,6 @@
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <math.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <pthread.h>
@@ -43,10 +42,8 @@
 #include <sys/epoll.h>
 #include <sys/socket.h>
 #include <sys/uio.h>
-#include <time.h>
 #include <unistd.h>
 
-#include "crypto/crc32.h"
 #include "jobs/jobs.h"
 #include "net/net-events.h"
 //#include "net/net-buffers.h"
@@ -54,10 +51,7 @@
 #include "precise-time.h"
 #include "server-functions.h"
 #include "net/net-connections.h"
-#include "net/net-config.h"
-#include "vv/vv-io.h"
 #include "vv/vv-tree.h"
-#include "pid.h"
 #include "common/mp-queue.h"
 
 #include "net/net-msg-buffers.h"

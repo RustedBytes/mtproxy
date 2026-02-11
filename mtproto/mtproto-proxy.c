@@ -29,7 +29,6 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <time.h>
 #include <unistd.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
@@ -38,16 +37,12 @@
 #include <sys/wait.h>
 #include <sys/mman.h>
 #include <netdb.h>
-#include <ctype.h>
 
-#include "crypto/crc32.h"
-#include "crypto/md5.h"
 #include "resolver.h"
 #include "net/net-events.h"
 #include "kprintf.h"
 #include "precise-time.h"
 #include "server-functions.h"
-#include "net/net-tcp-connections.h"
 #include "net/net-rpc-targets.h"
 #include "net/net-http-server.h"
 #include "net/net-tcp-rpc-server.h"

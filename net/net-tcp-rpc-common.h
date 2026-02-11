@@ -25,6 +25,7 @@
 
 #pragma once
 
+#include "net/net-connections.h"
 #include "pid.h"
 
 struct tcp_message {

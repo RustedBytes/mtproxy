@@ -36,14 +36,11 @@
 
 #include "crypto/crc32.h"
 #include "crypto/crc32c.h"
-#include "net/net-events.h"
 #include "kprintf.h"
 #include "precise-time.h"
 #include "net/net-tcp-connections.h"
 #include "net/net-tcp-rpc-common.h"
 #include "net/net-tcp-rpc-client.h"
-
-#include "vv/vv-io.h"
 
 #include "rpc-const.h"
 #include "net/net-config.h"

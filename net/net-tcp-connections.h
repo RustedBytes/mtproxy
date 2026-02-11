@@ -26,6 +26,7 @@
 #pragma once
 
 #include "net/net-connections.h"
+
 int cpu_tcp_server_writer (connection_job_t c);
 int cpu_tcp_free_connection_buffers (connection_job_t c);
 int cpu_tcp_server_reader (connection_job_t c);

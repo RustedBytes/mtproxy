@@ -25,6 +25,8 @@
 
 #pragma once
 
+#include "net/net-connections.h"
+
 struct tcp_rpc_client_functions {
   void *info;
   void *rpc_extra;

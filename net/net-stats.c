@@ -22,35 +22,23 @@
 
 #include <arpa/inet.h>
 #include <assert.h>
-#include <errno.h>
 #include <fcntl.h>
-#include <math.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <stddef.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 #include <sys/epoll.h>
 #include <sys/socket.h>
 #include <sys/uio.h>
-#include <time.h>
 #include <unistd.h>
 
-#include "crypto/crc32.h"
 #include "net/net-events.h"
 #include "kprintf.h"
 #include "precise-time.h"
 #include "server-functions.h"
 #include "net/net-connections.h"
-#include "net/net-config.h"
 #include "vv/vv-io.h"
 #include "common/pid.h"
 #include "common/common-stats.h"
-
-#include "net/net-msg-buffers.h"
-
-#include "engine/engine.h"
 
 extern int zheap_debug;
 long long queries_allocated;

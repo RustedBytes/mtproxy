@@ -20,7 +20,6 @@
 */
 #pragma once 
 
-#include "net/net-msg.h"
 #include "net/net-connections.h"
 
 void notification_event_insert_tcp_conn_alarm (connection_job_t C);

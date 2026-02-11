@@ -31,9 +31,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-#include "crypto/crc32.h"
 #include "kprintf.h"
-#include "net/net-events.h"
 #include "precise-time.h"
 #include "net/net-connections.h"
 #include "net/net-http-server.h"

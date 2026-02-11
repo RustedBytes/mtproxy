@@ -45,9 +45,7 @@
 #include "net/net-events.h"
 #include "net/net-tcp-connections.h"
 #include "net/net-tcp-rpc-ext-server.h"
-#include "net/net-thread.h"
-
-#include "vv/vv-io.h"
+#include "net/net-tcp-rpc-server.h"
 
 #include <arpa/inet.h>
 #include <fcntl.h>
@@ -56,6 +54,7 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
+
 
 extern int32_t mtproxy_ffi_crypto_rand_bytes (uint8_t *out, int32_t len);
 extern int32_t mtproxy_ffi_crypto_tls_generate_public_key (uint8_t out[32]);

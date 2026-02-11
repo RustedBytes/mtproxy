@@ -19,12 +19,12 @@
               2014      Andrey Lopatin
 */
 
+#include <asm-generic/errno.h>
 #define	_FILE_OFFSET_BITS        64
 #define _XOPEN_SOURCE 500
 #define _GNU_SOURCE 1
 
 #include <assert.h>
-#include <errno.h>
 #include <pthread.h>
 #include <signal.h>
 #include <stddef.h>
@@ -35,13 +35,10 @@
 #include <unistd.h>
 #include <malloc.h>
 #include <sys/syscall.h>
-#include <math.h>
 #include <linux/futex.h>
 
 #include "common/proc-stat.h"
-#include "crypto/crc32.h"
 #include "net/net-events.h"
-//#include "net/net-buffers.h"
 #include "server-functions.h"
 #include "kprintf.h"
 #include "precise-time.h"
@@ -49,8 +46,6 @@
 #include "net/net-connections.h"
 #include "jobs/jobs.h"
 #include "common/common-stats.h"
-
-//#include "auto/engine/engine.h"
 
 #define JOB_SUBCLASS_OFFSET 3
 

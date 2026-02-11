@@ -23,7 +23,6 @@
 
 #pragma once
 #include "net/net-connections.h"
-#include "net/net-tcp-rpc-common.h"
 
 typedef job_t rpc_target_job_t;
 

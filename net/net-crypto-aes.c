@@ -35,7 +35,7 @@
 #include <time.h>
 #include <unistd.h>
 
-// #include <openssl/aes.h>
+#include "crypto/aesni256.h"
 
 #include "kprintf.h"
 #include "precise-time.h"

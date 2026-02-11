@@ -23,17 +23,13 @@
               2015-2016 Vitaly Valtman     
 */
 
-#include <errno.h>
 #include <sys/uio.h>
 #include <stdlib.h>
 #include <assert.h>
-#include <stdio.h>
 #include <unistd.h>
 
 #include "net/net-connections.h"
 #include "net/net-msg.h"
-#include "net/net-msg-buffers.h"
-#include "crypto/aesni256.h"
 #include "net/net-crypto-aes.h"
 #include "kprintf.h"
 
