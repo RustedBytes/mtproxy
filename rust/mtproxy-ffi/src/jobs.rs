@@ -14,8 +14,13 @@ const JOB_CLASS_MAIN: i32 = 3;
 const JOB_CLASS_COUNT: usize = 16;
 const MAX_SUBCLASS_THREADS: i32 = 16;
 const JF_LOCKED: i32 = 0x1_0000;
+const JF_SIGINT: i32 = 0x2_0000;
 const JFS_SET_RUN: i32 = 0x0100_0000;
 const JTS_RUNNING: i32 = 2;
+const JS_FINISH: i32 = 7;
+const JSP_PARENT_WAKEUP: u64 = 4;
+const JT_HAVE_TIMER: u64 = 1;
+const JT_HAVE_MSG_QUEUE: u64 = 2;
 
 type JobPtr = usize;
 type JobsProcessFn = extern "C" fn(*mut c_void) -> i32;
@@ -50,19 +55,22 @@ pub struct AsyncJob {
 
 unsafe extern "C" {
     fn jobs_get_this_job_thread_c_impl() -> *mut JobThread;
-    fn create_async_job_c_impl(
-        run_job: JobExecuteFn,
-        job_signals: u64,
-        job_subclass: i32,
-        custom_bytes: i32,
-        job_type: u64,
-        parent_job_tag_int: i32,
-        parent_job: JobT,
-    ) -> JobT;
-    fn job_signal_c_impl(job_tag_int: i32, job: JobT, signo: i32);
-    fn job_decref_c_impl(job_tag_int: i32, job: JobT);
-    fn job_incref_c_impl(job: JobT) -> JobT;
+
+    fn jobs_async_job_header_size_c_impl() -> usize;
+    fn jobs_prepare_async_create_c_impl(custom_bytes: i32) -> *mut JobThread;
+    fn jobs_interrupt_thread_c_impl(thread: *mut JobThread) -> i32;
+
+    fn jobs_atomic_fetch_add_c_impl(ptr: *mut i32, delta: i32) -> i32;
+    fn jobs_atomic_fetch_or_c_impl(ptr: *mut i32, mask: i32) -> i32;
+    fn jobs_atomic_load_c_impl(ptr: *const i32) -> i32;
+    fn jobs_atomic_store_c_impl(ptr: *mut i32, value: i32);
+
+    fn malloc(size: usize) -> *mut c_void;
+
+    fn try_lock_job(job: JobT, set_flags: i32, clear_flags: i32) -> i32;
     fn unlock_job(job_tag_int: i32, job: JobT) -> i32;
+    fn job_timer_init(job: JobT);
+    fn job_message_queue_init(job: JobT);
     fn process_one_job(job_tag_int: i32, job: JobT, thread_class: i32);
 }
 
@@ -71,6 +79,11 @@ fn abort_if(condition: bool) {
     if condition {
         std::process::abort();
     }
+}
+
+#[inline]
+const fn jfs_set(signo: i32) -> i32 {
+    (0x0100_0000_u32 << (signo as u32)) as i32
 }
 
 extern "C" fn jobs_process_main_job_from_tokio(job_ptr: *mut c_void) -> i32 {
@@ -125,6 +138,85 @@ pub unsafe extern "C" fn job_change_signals(job: JobT, job_signals: u64) {
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn create_async_job_c_impl(
+    run_job: JobExecuteFn,
+    job_signals: u64,
+    job_subclass: i32,
+    custom_bytes: i32,
+    job_type: u64,
+    parent_job_tag_int: i32,
+    parent_job: JobT,
+) -> JobT {
+    if !parent_job.is_null() && (job_signals & JSP_PARENT_WAKEUP) != 0 {
+        // SAFETY: parent job pointer is validated by caller contract.
+        unsafe {
+            jobs_atomic_fetch_add_c_impl(&raw mut (*parent_job).j_children, 1);
+        }
+    }
+
+    abort_if(custom_bytes < 0);
+    let custom_bytes_usize = custom_bytes as usize;
+
+    // SAFETY: C helper updates job stats and returns current job thread pointer.
+    let thread = unsafe { jobs_prepare_async_create_c_impl(custom_bytes) };
+    abort_if(thread.is_null());
+
+    // SAFETY: returns sizeof(struct async_job) from C side.
+    let header_size = unsafe { jobs_async_job_header_size_c_impl() };
+    let alloc_size = header_size
+        .checked_add(custom_bytes_usize)
+        .and_then(|n| n.checked_add(64))
+        .unwrap_or_else(|| {
+            std::process::abort();
+        });
+
+    // SAFETY: libc allocator called with validated size.
+    let p = unsafe { malloc(alloc_size).cast::<u8>() };
+    abort_if(p.is_null());
+
+    let align = ((64_usize.wrapping_sub((p as usize) & 63)) & 63) as i32;
+    // SAFETY: within allocation bounds by construction.
+    let job = unsafe { p.add(align as usize).cast::<AsyncJob>() };
+    abort_if(((job as usize) & 63) != 0);
+
+    // SAFETY: `job` points to newly allocated writable memory.
+    unsafe {
+        (*job).j_flags = JF_LOCKED;
+        (*job).j_status = (job_signals & 0xffff_001f_u64) as i32;
+        (*job).j_sigclass = (job_signals >> 32) as i32;
+        (*job).j_refcnt = 1;
+        (*job).j_error = 0;
+        (*job).j_children = 0;
+        (*job).j_custom_bytes = custom_bytes;
+        (*job).j_thread = thread;
+        (*job).j_align = align;
+        (*job).j_execute = run_job;
+        (*job).j_parent = parent_job;
+        (*job).j_type = job_type as u32;
+        (*job).j_subclass = job_subclass;
+    }
+
+    // SAFETY: custom tail starts right after struct header.
+    let custom_ptr = unsafe { job.cast::<u8>().add(header_size) };
+    // SAFETY: range is inside the allocated block and uniquely owned here.
+    unsafe {
+        ptr::write_bytes(custom_ptr, 0, custom_bytes_usize);
+    }
+
+    if (job_type & JT_HAVE_TIMER) != 0 {
+        // SAFETY: freshly initialized job has timer payload area.
+        unsafe { job_timer_init(job) };
+    }
+    if (job_type & JT_HAVE_MSG_QUEUE) != 0 {
+        // SAFETY: freshly initialized job has message queue payload area.
+        unsafe { job_message_queue_init(job) };
+    }
+
+    let _ = parent_job_tag_int;
+    job
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn create_async_job(
     run_job: JobExecuteFn,
     job_signals: u64,
@@ -134,7 +226,7 @@ pub unsafe extern "C" fn create_async_job(
     parent_job_tag_int: i32,
     parent_job: JobT,
 ) -> JobT {
-    // SAFETY: forwards arguments to C implementation preserving ABI and ownership.
+    // SAFETY: preserves the legacy C entrypoint ABI.
     unsafe {
         create_async_job_c_impl(
             run_job,
@@ -161,21 +253,112 @@ pub unsafe extern "C" fn schedule_job(job_tag_int: i32, job: JobT) -> i32 {
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn job_signal_c_impl(job_tag_int: i32, job: JobT, signo: i32) {
+    abort_if((signo as u32) > 7);
+    // SAFETY: signal set computed from validated `signo`.
+    unsafe {
+        job_send_signals(job_tag_int, job, jfs_set(signo));
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn job_decref_c_impl(job_tag_int: i32, job: JobT) {
+    abort_if(job.is_null());
+    // SAFETY: load/refcount updates use C atomics.
+    let refcnt = unsafe { jobs_atomic_load_c_impl(&raw const (*job).j_refcnt) };
+    if refcnt >= 2 {
+        // SAFETY: same atomic primitive as C original (`__sync_fetch_and_add`).
+        let prev = unsafe { jobs_atomic_fetch_add_c_impl(&raw mut (*job).j_refcnt, -1) };
+        if prev != 1 {
+            return;
+        }
+        // SAFETY: preserving C logic that restores visible value to 1.
+        unsafe {
+            jobs_atomic_store_c_impl(&raw mut (*job).j_refcnt, 1);
+        }
+    }
+    let final_refcnt = unsafe { jobs_atomic_load_c_impl(&raw const (*job).j_refcnt) };
+    abort_if(final_refcnt != 1);
+    // SAFETY: forwards to normal signal path.
+    unsafe {
+        job_signal(job_tag_int, job, JS_FINISH);
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn job_incref_c_impl(job: JobT) -> JobT {
+    abort_if(job.is_null());
+    // SAFETY: same atomic primitive as C original (`__sync_fetch_and_add`).
+    unsafe {
+        jobs_atomic_fetch_add_c_impl(&raw mut (*job).j_refcnt, 1);
+    }
+    job
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn job_signal(job_tag_int: i32, job: JobT, signo: i32) {
-    // SAFETY: delegates to C signal delivery implementation.
+    // SAFETY: delegates to Rust-migrated core implementation.
     unsafe { job_signal_c_impl(job_tag_int, job, signo) };
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn job_decref(job_tag_int: i32, job: JobT) {
-    // SAFETY: delegates to C refcount implementation.
+    // SAFETY: delegates to Rust-migrated core implementation.
     unsafe { job_decref_c_impl(job_tag_int, job) };
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn job_incref(job: JobT) -> JobT {
-    // SAFETY: delegates to C refcount implementation.
+    // SAFETY: delegates to Rust-migrated core implementation.
     unsafe { job_incref_c_impl(job) }
+}
+
+unsafe fn job_send_signals(job_tag_int: i32, job: JobT, sigset: i32) {
+    abort_if(job.is_null());
+    abort_if((sigset & 0x00ff_ffff) != 0);
+    let refcnt = unsafe { jobs_atomic_load_c_impl(&raw const (*job).j_refcnt) };
+    abort_if(refcnt <= 0);
+
+    let flags = unsafe { jobs_atomic_load_c_impl(&raw const (*job).j_flags) };
+    if (flags & sigset) == sigset {
+        abort_if(refcnt <= 1 && (flags & jfs_set(JS_FINISH)) != 0);
+        // SAFETY: preserves ownership behavior from C path.
+        unsafe {
+            job_decref(job_tag_int, job);
+        }
+        return;
+    }
+    if unsafe { try_lock_job(job, sigset, 0) } != 0 {
+        // SAFETY: lock acquired, must unlock in same ABI path.
+        unsafe {
+            unlock_job(job_tag_int, job);
+        }
+        return;
+    }
+    // SAFETY: atomic OR matches original C semantics.
+    unsafe {
+        jobs_atomic_fetch_or_c_impl(&raw mut (*job).j_flags, sigset);
+    }
+    if unsafe { try_lock_job(job, 0, 0) } != 0 {
+        // SAFETY: lock acquired, must unlock in same ABI path.
+        unsafe {
+            unlock_job(job_tag_int, job);
+        }
+    } else {
+        let flags_after = unsafe { jobs_atomic_load_c_impl(&raw const (*job).j_flags) };
+        if (flags_after & JF_SIGINT) != 0 {
+            let thread = unsafe { (*job).j_thread };
+            abort_if(thread.is_null());
+            // SAFETY: mirrors C `pthread_kill(job->j_thread->pthread_id, SIGRTMAX - 7)`.
+            unsafe {
+                jobs_interrupt_thread_c_impl(thread);
+            }
+        }
+        // SAFETY: no lock and signal still pending -> drop one reference.
+        unsafe {
+            job_decref(job_tag_int, job);
+        }
+    }
 }
 
 struct ClassQueue {

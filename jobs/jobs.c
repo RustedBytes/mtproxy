@@ -369,6 +369,40 @@ struct job_thread *jobs_get_this_job_thread_c_impl(void) {
   return this_job_thread;
 }
 
+size_t jobs_async_job_header_size_c_impl(void) {
+  return sizeof(struct async_job);
+}
+
+struct job_thread *jobs_prepare_async_create_c_impl(int custom_bytes) {
+  MODULE_STAT->jobs_allocated_memory += sizeof(struct async_job) + custom_bytes;
+  struct job_thread *JT = this_job_thread;
+  assert(JT);
+  JT->jobs_created++;
+  JT->jobs_active++;
+  return JT;
+}
+
+int jobs_interrupt_thread_c_impl(struct job_thread *JT) {
+  assert(JT);
+  return pthread_kill(JT->pthread_id, SIGRTMAX - 7);
+}
+
+int jobs_atomic_fetch_add_c_impl(int *ptr, int delta) {
+  return __sync_fetch_and_add(ptr, delta);
+}
+
+int jobs_atomic_fetch_or_c_impl(int *ptr, int mask) {
+  return __sync_fetch_and_or(ptr, mask);
+}
+
+int jobs_atomic_load_c_impl(const int *ptr) {
+  return __atomic_load_n(ptr, __ATOMIC_SEQ_CST);
+}
+
+void jobs_atomic_store_c_impl(int *ptr, int value) {
+  __atomic_store_n(ptr, value, __ATOMIC_SEQ_CST);
+}
+
 long int lrand48_j(void) {
   if (this_job_thread) {
     long int t;
@@ -795,62 +829,6 @@ int unlock_job(JOB_REF_ARG(job)) {
   }
 }
 
-// destroys one reference to job; sends signal signo to it
-void job_send_signals(JOB_REF_ARG(job), int sigset) {
-  vkprintf(JOBS_DEBUG,
-           "SENDING SIGNALS %08x to JOB %p, type %p, flags %08x, refcnt %d\n",
-           sigset, job, job->j_execute, job->j_flags, job->j_refcnt);
-  assert(!(sigset & 0xffffff));
-  assert(job->j_refcnt > 0);
-  if ((job->j_flags & sigset) == sigset) {
-    assert(job->j_refcnt > 1 || !(job->j_flags & JFS_SET(JS_FINISH)));
-    job_decref(JOB_REF_PASS(job));
-    return;
-  }
-  if (try_lock_job(job, sigset, 0)) {
-    unlock_job(JOB_REF_PASS(job));
-    return;
-  }
-  __sync_fetch_and_or(&job->j_flags, sigset);
-  if (try_lock_job(job, 0, 0)) {
-    unlock_job(JOB_REF_PASS(job));
-  } else {
-    if (job->j_flags & JF_SIGINT) {
-      assert(job->j_thread);
-      pthread_kill(job->j_thread->pthread_id, SIGRTMAX - 7);
-    }
-    job_decref(JOB_REF_PASS(job));
-  }
-}
-
-// destroys one reference to job; sends signal signo to it
-void job_signal_c_impl(JOB_REF_ARG(job), int signo) {
-  assert((unsigned)signo <= 7);
-  job_send_signals(JOB_REF_PASS(job), JFS_SET(signo));
-}
-
-// destroys one reference to job
-void job_decref_c_impl(JOB_REF_ARG(job)) {
-  if (job->j_refcnt >= 2) {
-    if (__sync_fetch_and_add(&job->j_refcnt, -1) != 1) {
-      return;
-    }
-    job->j_refcnt = 1;
-  }
-  assert(job->j_refcnt == 1);
-  job_signal(JOB_REF_PASS(job), JS_FINISH);
-}
-
-// creates one reference to job
-job_t job_incref_c_impl(job_t job) {
-  // if (job->j_refcnt == 1) {
-  //   job->j_refcnt = 2;
-  // } else {
-  __sync_fetch_and_add(&job->j_refcnt, 1);
-  //}
-  return job;
-}
-
 void process_one_job(JOB_REF_ARG(job), int thread_class) {
   struct job_thread *JT = this_job_thread;
   assert(JT);
@@ -1127,61 +1105,6 @@ void *job_thread_sub(void *arg) {
 }
 
 /* ------ JOB CREATION/QUEUEING ------ */
-
-/* "destroys" one reference to parent_job */
-job_t create_async_job_c_impl(job_function_t run_job,
-                              unsigned long long job_signals,
-                              int job_subclass, int custom_bytes,
-                              unsigned long long job_type,
-                              JOB_REF_ARG(parent_job)) {
-  if (parent_job) {
-    if (job_signals & JSP_PARENT_WAKEUP) {
-      __sync_fetch_and_add(&parent_job->j_children, 1);
-    }
-  }
-
-  MODULE_STAT->jobs_allocated_memory += sizeof(struct async_job) + custom_bytes;
-  struct job_thread *JT = this_job_thread;
-  assert(JT);
-  void *p = malloc(sizeof(struct async_job) + custom_bytes + 64);
-  assert(p);
-  int align = -((uintptr_t)p) & 63;
-  job_t job = p + align;
-  assert(!(((uintptr_t)job) & 63));
-
-  job->j_flags = JF_LOCKED;
-  job->j_status = job_signals & 0xffff001f;
-  job->j_sigclass = (job_signals >> 32);
-  job->j_refcnt = 1;
-  job->j_error = 0;
-  job->j_children = 0;
-  job->j_custom_bytes = custom_bytes;
-  job->j_thread = JT;
-  job->j_align = align;
-  job->j_execute = run_job;
-  job->j_parent = PTR_MOVE(parent_job);
-  job->j_type = job_type;
-  job->j_subclass = job_subclass;
-  memset(job->j_custom, 0, custom_bytes);
-
-  JT->jobs_created++;
-  JT->jobs_active++;
-
-  if (job_type & JT_HAVE_TIMER) {
-    job_timer_init(job);
-  }
-  if (job_type & JT_HAVE_MSG_QUEUE) {
-    job_message_queue_init(job);
-  }
-
-  vkprintf(JOBS_DEBUG,
-           "CREATING JOB %p, type %p, flags %08x, status %08x, sigclass %08x; "
-           "PARENT %p\n",
-           job, run_job, job->j_flags, job->j_status, job->j_sigclass,
-           job->j_parent);
-
-  return job;
-}
 
 int job_timer_wakeup_gateway(event_timer_t *et) {
   job_t job = (job_t)((char *)et - offsetof(struct async_job, j_custom));
