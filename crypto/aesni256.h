@@ -25,6 +25,12 @@
 
 #include <openssl/evp.h>
 
-EVP_CIPHER_CTX *evp_cipher_ctx_init (const EVP_CIPHER *cipher, unsigned char *key, unsigned char iv[16], int is_encrypt);
+enum evp_cipher_kind {
+  EVP_CIPHER_KIND_AES_256_CBC = 1,
+  EVP_CIPHER_KIND_AES_256_CTR = 2
+};
+
+EVP_CIPHER_CTX *evp_cipher_ctx_init_kind (int cipher_kind, unsigned char *key, unsigned char iv[16], int is_encrypt);
+void evp_cipher_ctx_free (EVP_CIPHER_CTX *evp_ctx);
 
 void evp_crypt (EVP_CIPHER_CTX *evp_ctx, const void *in, void *out, int size);

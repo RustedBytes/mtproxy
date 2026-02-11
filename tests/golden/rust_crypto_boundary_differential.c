@@ -130,8 +130,16 @@ int main (void) {
   assert (boundary.boundary_version == MTPROXY_FFI_CRYPTO_BOUNDARY_VERSION);
 
   const uint32_t expected_aes_ops = MTPROXY_FFI_NET_CRYPTO_AES_OP_CREATE_KEYS;
-  const uint32_t expected_dh_ops = MTPROXY_FFI_NET_CRYPTO_DH_OP_IS_GOOD_RPC_DH_BIN;
-  const uint32_t expected_aesni_ops = MTPROXY_FFI_AESNI_OP_EVP_CRYPT;
+  const uint32_t expected_dh_ops =
+    MTPROXY_FFI_NET_CRYPTO_DH_OP_IS_GOOD_RPC_DH_BIN |
+    MTPROXY_FFI_NET_CRYPTO_DH_OP_GET_PARAMS_SELECT |
+    MTPROXY_FFI_NET_CRYPTO_DH_OP_FIRST_ROUND |
+    MTPROXY_FFI_NET_CRYPTO_DH_OP_SECOND_ROUND |
+    MTPROXY_FFI_NET_CRYPTO_DH_OP_THIRD_ROUND;
+  const uint32_t expected_aesni_ops =
+    MTPROXY_FFI_AESNI_OP_EVP_CRYPT |
+    MTPROXY_FFI_AESNI_OP_CTX_INIT |
+    MTPROXY_FFI_AESNI_OP_CTX_FREE;
 
   assert ((boundary.net_crypto_aes_contract_ops & expected_aes_ops) == expected_aes_ops);
   assert ((boundary.net_crypto_aes_implemented_ops & expected_aes_ops) == expected_aes_ops);
@@ -157,6 +165,14 @@ int main (void) {
     int got = mtproxy_ffi_crypto_dh_is_good_rpc_dh_bin (dh_cases[i], 256, prime_prefix, 8);
     assert (got == expected);
   }
+  assert (mtproxy_ffi_crypto_dh_get_params_select () == 0x00620b93);
+
+  unsigned char dh_g_a[256];
+  unsigned char dh_a[256];
+  unsigned char dh_g_ab[256];
+  assert (mtproxy_ffi_crypto_dh_first_round (dh_g_a, dh_a) == 1);
+  assert (mtproxy_ffi_crypto_dh_third_round (dh_g_ab, dh_g_a, dh_a) == 256);
+  assert (mtproxy_ffi_crypto_dh_second_round (dh_g_ab, dh_g_a, dh_g_a) == 256);
 
   const unsigned char nonce_server[16] = {
     0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
@@ -276,12 +292,12 @@ int main (void) {
   }
 
   EVP_CIPHER_CTX *ctx_ref = EVP_CIPHER_CTX_new ();
-  EVP_CIPHER_CTX *ctx_rust = EVP_CIPHER_CTX_new ();
-  assert (ctx_ref != NULL && ctx_rust != NULL);
+  void *ctx_rust = NULL;
+  assert (ctx_ref != NULL);
   assert (EVP_CipherInit (ctx_ref, EVP_aes_256_ctr (), key, iv, 1) == 1);
-  assert (EVP_CipherInit (ctx_rust, EVP_aes_256_ctr (), key, iv, 1) == 1);
   assert (EVP_CIPHER_CTX_set_padding (ctx_ref, 0) == 1);
-  assert (EVP_CIPHER_CTX_set_padding (ctx_rust, 0) == 1);
+  assert (mtproxy_ffi_aesni_ctx_init (MTPROXY_FFI_AESNI_CIPHER_AES_256_CTR, key, iv, 1, &ctx_rust) == 0);
+  assert (ctx_rust != NULL);
 
   int out_ref_len = 0;
   assert (EVP_CipherUpdate (ctx_ref, out_ref, &out_ref_len, in, 64) == 1);
@@ -292,7 +308,12 @@ int main (void) {
   assert (memcmp (out_ref, out_rust, 64) == 0);
 
   EVP_CIPHER_CTX_free (ctx_ref);
-  EVP_CIPHER_CTX_free (ctx_rust);
+  assert (mtproxy_ffi_aesni_ctx_free (ctx_rust) == 0);
+
+  unsigned char random_block[32] = {0};
+  assert (mtproxy_ffi_crypto_rand_bytes (random_block, 32) == 0);
+  unsigned char tls_public_key[32] = {0};
+  assert (mtproxy_ffi_crypto_tls_generate_public_key (tls_public_key) == 0);
 
   printf ("rust_crypto_boundary_differential: ok\n");
   return 0;

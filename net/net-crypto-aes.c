@@ -105,8 +105,8 @@ int aes_crypto_init (connection_job_t c, void *key_data, int key_data_len) {
 
   MODULE_STAT->allocated_aes_crypto ++;
   
-  T->read_aeskey = evp_cipher_ctx_init (EVP_aes_256_cbc(), D->read_key, D->read_iv, 0);
-  T->write_aeskey = evp_cipher_ctx_init (EVP_aes_256_cbc(), D->write_key, D->write_iv, 1);
+  T->read_aeskey = evp_cipher_ctx_init_kind (EVP_CIPHER_KIND_AES_256_CBC, D->read_key, D->read_iv, 0);
+  T->write_aeskey = evp_cipher_ctx_init_kind (EVP_CIPHER_KIND_AES_256_CBC, D->write_key, D->write_iv, 1);
   CONN_INFO(c)->crypto = T;
   return 0;
 }
@@ -120,8 +120,8 @@ int aes_crypto_ctr128_init (connection_job_t c, void *key_data, int key_data_len
 
   MODULE_STAT->allocated_aes_crypto ++;
   
-  T->read_aeskey = evp_cipher_ctx_init (EVP_aes_256_ctr(), D->read_key, D->read_iv, 1); // NB: is_encrypt == 1 here!
-  T->write_aeskey = evp_cipher_ctx_init (EVP_aes_256_ctr(), D->write_key, D->write_iv, 1);
+  T->read_aeskey = evp_cipher_ctx_init_kind (EVP_CIPHER_KIND_AES_256_CTR, D->read_key, D->read_iv, 1); // NB: is_encrypt == 1 here!
+  T->write_aeskey = evp_cipher_ctx_init_kind (EVP_CIPHER_KIND_AES_256_CTR, D->write_key, D->write_iv, 1);
   CONN_INFO(c)->crypto = T;
   return 0;
 }
@@ -129,8 +129,8 @@ int aes_crypto_ctr128_init (connection_job_t c, void *key_data, int key_data_len
 int aes_crypto_free (connection_job_t c) {
   struct aes_crypto *crypto = CONN_INFO(c)->crypto;
   if (crypto) {
-    EVP_CIPHER_CTX_free (crypto->read_aeskey);
-    EVP_CIPHER_CTX_free (crypto->write_aeskey);
+    evp_cipher_ctx_free (crypto->read_aeskey);
+    evp_cipher_ctx_free (crypto->write_aeskey);
 
     free (crypto);
     CONN_INFO(c)->crypto = 0;
@@ -251,82 +251,6 @@ int aes_generate_nonce (char res[16]) {
 // str := nonce_server.nonce_client.client_timestamp.server_ip.client_port.("SERVER"/"CLIENT").client_ip.server_port.master_key.nonce_server.[client_ipv6.server_ipv6].nonce_client
 // key := SUBSTR(MD5(str+1),0,12).SHA1(str)
 // iv  := MD5(str+2)
-
-static int __attribute__ ((unused)) aes_create_keys_c_impl (struct aes_key_data *R, int am_client, const char nonce_server[16], const char nonce_client[16], int client_timestamp,
-			     unsigned server_ip, unsigned short server_port, const unsigned char server_ipv6[16], 
-			     unsigned client_ip, unsigned short client_port, const unsigned char client_ipv6[16],
-			     const aes_secret_t *key, const unsigned char *temp_key, int temp_key_len) {
-  unsigned char str[16+16+4+4+2+6+4+2+MAX_PWD_LEN+16+16+4+16*2 + 256];
-  int i, str_len;
-
-  if (!key->secret_len) {
-    return -1;
-  }
-
-  assert (key->secret_len >= MIN_PWD_LEN && key->secret_len <= MAX_PWD_LEN);
-
-  memcpy (str, nonce_server, 16);
-  memcpy (str + 16, nonce_client, 16);
-  *((int *) (str + 32)) = client_timestamp;
-  *((unsigned *) (str + 36)) = server_ip;
-  *((unsigned short *) (str + 40)) = client_port;
-  memcpy (str + 42, am_client ? "CLIENT" : "SERVER", 6);
-  *((unsigned *) (str + 48)) = client_ip;
-  *((unsigned short *) (str + 52)) = server_port;
-  memcpy (str + 54, key->secret, key->secret_len);
-  memcpy (str + 54 + key->secret_len, nonce_server, 16);
-  str_len = 70 + key->secret_len;
-
-  if (!server_ip) {
-    assert (!client_ip);
-    memcpy (str + str_len, client_ipv6, 16);
-    memcpy (str + str_len + 16, server_ipv6, 16);
-    str_len += 32;
-  } else {
-    assert (client_ip);
-  }
-
-  memcpy (str + str_len, nonce_client, 16);
-  str_len += 16;
-
-  if (temp_key_len > sizeof (str)) {
-    temp_key_len = sizeof (str);
-  }
-
-  int first_len = str_len < temp_key_len ? str_len : temp_key_len;
-
-  for (i = 0; i < first_len; i++) {
-    str[i] ^= temp_key[i];
-  }
-
-  for (i = first_len; i < temp_key_len; i++) {
-    str[i] = temp_key[i];
-  }
-
-  if (str_len < temp_key_len) {
-    str_len = temp_key_len;
-  }
-
-  md5 (str + 1, str_len - 1, R->write_key);
-  sha1 (str, str_len, R->write_key + 12);
-  md5 (str + 2, str_len - 2, R->write_iv);
-
-  //memcpy (str + 42, !am_client ? "CLIENT" : "SERVER", 6);
-  str[42] ^= 'C' ^ 'S';
-  str[43] ^= 'L' ^ 'E';
-  str[44] ^= 'I' ^ 'R';
-  str[45] ^= 'E' ^ 'V';
-  str[46] ^= 'N' ^ 'E';
-  str[47] ^= 'T' ^ 'R';
-
-  md5 (str + 1, str_len - 1, R->read_key);
-  sha1 (str, str_len, R->read_key + 12);
-  md5 (str + 2, str_len - 2, R->read_iv);
-
-  memset (str, 0, str_len);
-
-  return 1;
-}
 
 int aes_create_keys (struct aes_key_data *R, int am_client, const char nonce_server[16], const char nonce_client[16], int client_timestamp,
 			     unsigned server_ip, unsigned short server_port, const unsigned char server_ipv6[16], 

@@ -330,7 +330,12 @@ int rust_ffi_check_crypto_boundary(void) {
     return -3;
   }
 
-  const uint32_t expected_net_crypto_dh_contract_ops = MTPROXY_FFI_NET_CRYPTO_DH_OP_IS_GOOD_RPC_DH_BIN;
+  const uint32_t expected_net_crypto_dh_contract_ops =
+    MTPROXY_FFI_NET_CRYPTO_DH_OP_IS_GOOD_RPC_DH_BIN |
+    MTPROXY_FFI_NET_CRYPTO_DH_OP_GET_PARAMS_SELECT |
+    MTPROXY_FFI_NET_CRYPTO_DH_OP_FIRST_ROUND |
+    MTPROXY_FFI_NET_CRYPTO_DH_OP_SECOND_ROUND |
+    MTPROXY_FFI_NET_CRYPTO_DH_OP_THIRD_ROUND;
   if ((boundary.net_crypto_dh_contract_ops & expected_net_crypto_dh_contract_ops) != expected_net_crypto_dh_contract_ops) {
     kprintf (
       "fatal: rust ffi net-crypto-dh boundary contract incomplete: expected mask %08x, got %08x\n",
@@ -340,7 +345,10 @@ int rust_ffi_check_crypto_boundary(void) {
     return -4;
   }
 
-  const uint32_t expected_aesni_contract_ops = MTPROXY_FFI_AESNI_OP_EVP_CRYPT;
+  const uint32_t expected_aesni_contract_ops =
+    MTPROXY_FFI_AESNI_OP_EVP_CRYPT |
+    MTPROXY_FFI_AESNI_OP_CTX_INIT |
+    MTPROXY_FFI_AESNI_OP_CTX_FREE;
   if ((boundary.aesni_contract_ops & expected_aesni_contract_ops) != expected_aesni_contract_ops) {
     kprintf (
       "fatal: rust ffi aesni boundary contract incomplete: expected mask %08x, got %08x\n",

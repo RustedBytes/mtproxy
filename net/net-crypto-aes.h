@@ -27,8 +27,6 @@
 
 #pragma once
 
-#include <openssl/aes.h>
-
 #include "net/net-connections.h"
 #include "crypto/aesni256.h"
 #include "pid.h"

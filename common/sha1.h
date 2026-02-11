@@ -17,15 +17,13 @@
     Copyright 2016 Telegram Messenger Inc
               2016 Nikolai Durov
 */
-#include <openssl/evp.h>
-#include <openssl/opensslv.h>
+#include <stddef.h>
 
-#if OPENSSL_VERSION_NUMBER < 0x10100000
-#define EVP_MD_CTX_new EVP_MD_CTX_create
-#define EVP_MD_CTX_free EVP_MD_CTX_destroy
-#endif
-
-typedef EVP_MD_CTX sha1_context;
+typedef struct sha1_context {
+  unsigned char *buf;
+  int len;
+  int cap;
+} sha1_context;
 
 void sha1_starts (sha1_context *ctx);
 void sha1_update (sha1_context *ctx, const unsigned char *input, int ilen);

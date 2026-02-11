@@ -56,8 +56,8 @@ const TCP_RPC_CLIENT_IMPLEMENTED_OPS: u32 = TCP_RPC_CLIENT_CONTRACT_OPS;
 const TCP_RPC_SERVER_IMPLEMENTED_OPS: u32 = TCP_RPC_SERVER_CONTRACT_OPS;
 const RPC_TARGETS_IMPLEMENTED_OPS: u32 = RPC_TARGETS_CONTRACT_OPS;
 const NET_CRYPTO_AES_CONTRACT_OPS: u32 = 1u32 << 0;
-const NET_CRYPTO_DH_CONTRACT_OPS: u32 = 1u32 << 0;
-const AESNI_CONTRACT_OPS: u32 = 1u32 << 0;
+const NET_CRYPTO_DH_CONTRACT_OPS: u32 = (1u32 << 0) | (1u32 << 1) | (1u32 << 2) | (1u32 << 3) | (1u32 << 4);
+const AESNI_CONTRACT_OPS: u32 = (1u32 << 0) | (1u32 << 1) | (1u32 << 2);
 const NET_CRYPTO_AES_IMPLEMENTED_OPS: u32 = NET_CRYPTO_AES_CONTRACT_OPS;
 const NET_CRYPTO_DH_IMPLEMENTED_OPS: u32 = NET_CRYPTO_DH_CONTRACT_OPS;
 const AESNI_IMPLEMENTED_OPS: u32 = AESNI_CONTRACT_OPS;
@@ -85,6 +85,13 @@ const EPOLLRDHUP: u32 = 0x2000;
 const EPOLLET: u32 = 0x8000_0000;
 const AES_CREATE_KEYS_MAX_STR_LEN: usize =
     16 + 16 + 4 + 4 + 2 + 6 + 4 + 2 + MAX_PWD_LEN + 16 + 16 + 4 + (16 * 2) + 256;
+const DH_KEY_BYTES: usize = 256;
+const DH_GOOD_PREFIX_BYTES: usize = 8;
+const DH_PARAMS_SELECT: i32 = 0x0062_0b93;
+const DH_MOD_MIN_LEN: usize = 241;
+const DH_MOD_MAX_LEN: usize = 256;
+const AESNI_CIPHER_AES_256_CBC: i32 = 1;
+const AESNI_CIPHER_AES_256_CTR: i32 = 2;
 const AES_ROLE_XOR_MASK: [u8; 6] = [
     b'C' ^ b'S',
     b'L' ^ b'E',
@@ -95,6 +102,27 @@ const AES_ROLE_XOR_MASK: [u8; 6] = [
 ];
 const MTPROTO_EXT_CONN_HASH_MULT_A: u64 = 11_400_714_819_323_198_485;
 const MTPROTO_EXT_CONN_HASH_MULT_B: u64 = 13_043_817_825_332_782_213;
+const TLS_X25519_MOD_HEX: &[u8] = b"7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed\0";
+const TLS_X25519_POW_HEX: &[u8] = b"3ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff6\0";
+const TLS_REQUEST_PUBLIC_KEY_BYTES: usize = 32;
+const RPC_DH_PRIME_BIN: [u8; DH_KEY_BYTES] = [
+    0x89, 0x52, 0x13, 0x1b, 0x1e, 0x3a, 0x69, 0xba, 0x5f, 0x85, 0xcf, 0x8b, 0xd2, 0x66, 0xc1, 0x2b,
+    0x13, 0x83, 0x16, 0x13, 0xbd, 0x2a, 0x4e, 0xf8, 0x35, 0xa4, 0xd5, 0x3f, 0x9d, 0xbb, 0x42, 0x48,
+    0x2d, 0xbd, 0x46, 0x2b, 0x31, 0xd8, 0x6c, 0x81, 0x6c, 0x59, 0x77, 0x52, 0x0f, 0x11, 0x70, 0x73,
+    0x9e, 0xd2, 0xdd, 0xd6, 0xd8, 0x1b, 0x9e, 0xb6, 0x5f, 0xaa, 0xac, 0x14, 0x87, 0x53, 0xc9, 0xe4,
+    0xf0, 0x72, 0xdc, 0x11, 0xa4, 0x92, 0x73, 0x06, 0x83, 0xfa, 0x00, 0x67, 0x82, 0x6b, 0x18, 0xc5,
+    0x1d, 0x7e, 0xcb, 0xa5, 0x2b, 0x82, 0x60, 0x75, 0xc0, 0xb9, 0x55, 0xe5, 0xac, 0xaf, 0xdd, 0x74,
+    0xc3, 0x79, 0x5f, 0xd9, 0x52, 0x0b, 0x48, 0x0f, 0x3b, 0xe3, 0xba, 0x06, 0x65, 0x33, 0x8a, 0x49,
+    0x8c, 0xa5, 0xda, 0xf1, 0x01, 0x76, 0x05, 0x09, 0xa3, 0x8c, 0x49, 0xe3, 0x00, 0x74, 0x64, 0x08,
+    0x77, 0x4b, 0xb3, 0xed, 0x26, 0x18, 0x1a, 0x64, 0x55, 0x76, 0x6a, 0xe9, 0x49, 0x7b, 0xb9, 0xc3,
+    0xa3, 0xad, 0x5c, 0xba, 0xf7, 0x6b, 0x73, 0x84, 0x5f, 0xbb, 0x96, 0xbb, 0x6d, 0x0f, 0x68, 0x4f,
+    0x95, 0xd2, 0xd3, 0x9c, 0xcb, 0xb4, 0xa9, 0x04, 0xfa, 0xb1, 0xde, 0x43, 0x49, 0xce, 0x1c, 0x20,
+    0x87, 0xb6, 0xc9, 0x51, 0xed, 0x99, 0xf9, 0x52, 0xe3, 0x4f, 0xd1, 0xa3, 0xfd, 0x14, 0x83, 0x35,
+    0x75, 0x41, 0x47, 0x29, 0xa3, 0x8b, 0xe8, 0x68, 0xa4, 0xf9, 0xec, 0x62, 0x3a, 0x5d, 0x24, 0x62,
+    0x1a, 0xba, 0x01, 0xb2, 0x55, 0xc7, 0xe8, 0x38, 0x5d, 0x16, 0xac, 0x93, 0xb0, 0x2d, 0x2a, 0x54,
+    0x0a, 0x76, 0x42, 0x98, 0x2d, 0x22, 0xad, 0xa3, 0xcc, 0xde, 0x5c, 0x8d, 0x26, 0x6f, 0xaa, 0x25,
+    0xdd, 0x2d, 0xe9, 0xf6, 0xd4, 0x91, 0x04, 0x16, 0x2f, 0x68, 0x5c, 0x45, 0xfe, 0x34, 0xdd, 0xab,
+];
 
 #[repr(C)]
 struct OpenSslMd {
@@ -103,6 +131,21 @@ struct OpenSslMd {
 
 #[repr(C)]
 struct OpenSslCipherCtx {
+    _private: [u8; 0],
+}
+
+#[repr(C)]
+struct OpenSslCipher {
+    _private: [u8; 0],
+}
+
+#[repr(C)]
+struct OpenSslBignum {
+    _private: [u8; 0],
+}
+
+#[repr(C)]
+struct OpenSslBnCtx {
     _private: [u8; 0],
 }
 
@@ -388,6 +431,64 @@ unsafe extern "C" {
         in_: *const u8,
         inl: c_int,
     ) -> c_int;
+    fn EVP_CIPHER_CTX_new() -> *mut OpenSslCipherCtx;
+    fn EVP_CIPHER_CTX_free(ctx: *mut OpenSslCipherCtx);
+    fn EVP_CipherInit(
+        ctx: *mut OpenSslCipherCtx,
+        cipher: *const OpenSslCipher,
+        key: *const u8,
+        iv: *const u8,
+        enc: c_int,
+    ) -> c_int;
+    fn EVP_CIPHER_CTX_set_padding(ctx: *mut OpenSslCipherCtx, padding: c_int) -> c_int;
+    fn EVP_aes_256_cbc() -> *const OpenSslCipher;
+    fn EVP_aes_256_ctr() -> *const OpenSslCipher;
+    fn RAND_bytes(buf: *mut u8, num: c_int) -> c_int;
+    fn BN_new() -> *mut OpenSslBignum;
+    fn BN_dup(src: *const OpenSslBignum) -> *mut OpenSslBignum;
+    fn BN_clear_free(a: *mut OpenSslBignum);
+    fn BN_bin2bn(s: *const u8, len: c_int, ret: *mut OpenSslBignum) -> *mut OpenSslBignum;
+    fn BN_bn2bin(a: *const OpenSslBignum, to: *mut u8) -> c_int;
+    fn BN_num_bits(a: *const OpenSslBignum) -> c_int;
+    fn BN_set_word(a: *mut OpenSslBignum, w: c_ulong) -> c_int;
+    fn BN_mod_exp(
+        r: *mut OpenSslBignum,
+        a: *const OpenSslBignum,
+        p: *const OpenSslBignum,
+        m: *const OpenSslBignum,
+        ctx: *mut OpenSslBnCtx,
+    ) -> c_int;
+    fn BN_mod_add(
+        r: *mut OpenSslBignum,
+        a: *const OpenSslBignum,
+        b: *const OpenSslBignum,
+        m: *const OpenSslBignum,
+        ctx: *mut OpenSslBnCtx,
+    ) -> c_int;
+    fn BN_mod_sub(
+        r: *mut OpenSslBignum,
+        a: *const OpenSslBignum,
+        b: *const OpenSslBignum,
+        m: *const OpenSslBignum,
+        ctx: *mut OpenSslBnCtx,
+    ) -> c_int;
+    fn BN_mod_mul(
+        r: *mut OpenSslBignum,
+        a: *const OpenSslBignum,
+        b: *const OpenSslBignum,
+        m: *const OpenSslBignum,
+        ctx: *mut OpenSslBnCtx,
+    ) -> c_int;
+    fn BN_mod_inverse(
+        r: *mut OpenSslBignum,
+        a: *const OpenSslBignum,
+        n: *const OpenSslBignum,
+        ctx: *mut OpenSslBnCtx,
+    ) -> *mut OpenSslBignum;
+    fn BN_hex2bn(a: *mut *mut OpenSslBignum, s: *const c_char) -> c_int;
+    fn BN_cmp(a: *const OpenSslBignum, b: *const OpenSslBignum) -> c_int;
+    fn BN_CTX_new() -> *mut OpenSslBnCtx;
+    fn BN_CTX_free(c: *mut OpenSslBnCtx);
 }
 
 thread_local! {
@@ -1089,6 +1190,614 @@ pub unsafe extern "C" fn mtproxy_ffi_aesni_crypt(
     if rc != 1 || out_len != size {
         return -2;
     }
+    0
+}
+
+struct BnOwned(*mut OpenSslBignum);
+
+impl BnOwned {
+    fn new() -> Option<Self> {
+        let ptr = unsafe { BN_new() };
+        if ptr.is_null() {
+            None
+        } else {
+            Some(Self(ptr))
+        }
+    }
+
+    fn from_bin(bytes: &[u8]) -> Option<Self> {
+        let Ok(len) = c_int::try_from(bytes.len()) else {
+            return None;
+        };
+        let ptr = unsafe { BN_bin2bn(bytes.as_ptr(), len, core::ptr::null_mut()) };
+        if ptr.is_null() {
+            None
+        } else {
+            Some(Self(ptr))
+        }
+    }
+
+    fn from_hex_nul(hex_nul: &[u8]) -> Option<Self> {
+        if hex_nul.is_empty() || *hex_nul.last().unwrap_or(&0) != 0 {
+            return None;
+        }
+        let mut ptr = core::ptr::null_mut();
+        let digits = unsafe { BN_hex2bn(&raw mut ptr, hex_nul.as_ptr().cast::<c_char>()) };
+        if digits <= 0 || ptr.is_null() {
+            if !ptr.is_null() {
+                unsafe { BN_clear_free(ptr) };
+            }
+            None
+        } else {
+            Some(Self(ptr))
+        }
+    }
+
+    fn set_word(&mut self, value: c_ulong) -> bool {
+        unsafe { BN_set_word(self.0, value) == 1 }
+    }
+
+    fn set_one(&mut self) -> bool {
+        self.set_word(1)
+    }
+
+    fn as_ptr(&self) -> *const OpenSslBignum {
+        self.0.cast_const()
+    }
+
+    fn as_mut_ptr(&mut self) -> *mut OpenSslBignum {
+        self.0
+    }
+}
+
+impl Drop for BnOwned {
+    fn drop(&mut self) {
+        if !self.0.is_null() {
+            unsafe { BN_clear_free(self.0) };
+            self.0 = core::ptr::null_mut();
+        }
+    }
+}
+
+struct BnCtxOwned(*mut OpenSslBnCtx);
+
+impl BnCtxOwned {
+    fn new() -> Option<Self> {
+        let ptr = unsafe { BN_CTX_new() };
+        if ptr.is_null() {
+            None
+        } else {
+            Some(Self(ptr))
+        }
+    }
+
+    fn as_mut_ptr(&self) -> *mut OpenSslBnCtx {
+        self.0
+    }
+}
+
+impl Drop for BnCtxOwned {
+    fn drop(&mut self) {
+        if !self.0.is_null() {
+            unsafe { BN_CTX_free(self.0) };
+            self.0 = core::ptr::null_mut();
+        }
+    }
+}
+
+fn bn_num_bytes(value: &BnOwned) -> Option<usize> {
+    let bits = unsafe { BN_num_bits(value.as_ptr()) };
+    if bits < 0 {
+        None
+    } else {
+        let bits_u = usize::try_from(bits).ok()?;
+        Some((bits_u + 7) / 8)
+    }
+}
+
+fn bn_write_be_padded(value: &BnOwned, out: &mut [u8]) -> bool {
+    let Some(num_bytes) = bn_num_bytes(value) else {
+        return false;
+    };
+    let out_len = out.len();
+    if num_bytes > out_len {
+        return false;
+    }
+    let start = out_len - num_bytes;
+    out[..start].fill(0);
+    let written = unsafe { BN_bn2bin(value.as_ptr(), out[start..].as_mut_ptr()) };
+    written == i32::try_from(num_bytes).unwrap_or(-1)
+}
+
+fn crypto_dh_modexp(
+    base_bytes: Option<&[u8; DH_KEY_BYTES]>,
+    exponent: &[u8; DH_KEY_BYTES],
+    out: &mut [u8; DH_KEY_BYTES],
+) -> bool {
+    let Some(modulus) = BnOwned::from_bin(&RPC_DH_PRIME_BIN) else {
+        return false;
+    };
+    let Some(ctx) = BnCtxOwned::new() else {
+        return false;
+    };
+    let base = if let Some(bytes) = base_bytes {
+        BnOwned::from_bin(bytes)
+    } else {
+        let Some(mut generator) = BnOwned::new() else {
+            return false;
+        };
+        if !generator.set_word(3) {
+            return false;
+        }
+        Some(generator)
+    };
+    let Some(base) = base else {
+        return false;
+    };
+    let Some(exponent_bn) = BnOwned::from_bin(exponent) else {
+        return false;
+    };
+    let Some(mut out_bn) = BnOwned::new() else {
+        return false;
+    };
+
+    if unsafe {
+        BN_mod_exp(
+            out_bn.as_mut_ptr(),
+            base.as_ptr(),
+            exponent_bn.as_ptr(),
+            modulus.as_ptr(),
+            ctx.as_mut_ptr(),
+        )
+    } != 1
+    {
+        return false;
+    }
+    let Some(out_len) = bn_num_bytes(&out_bn) else {
+        return false;
+    };
+    if !(DH_MOD_MIN_LEN..=DH_MOD_MAX_LEN).contains(&out_len) {
+        return false;
+    }
+    bn_write_be_padded(&out_bn, out)
+}
+
+fn crypto_rand_fill(out: &mut [u8]) -> bool {
+    if out.is_empty() {
+        return true;
+    }
+    let Ok(len) = c_int::try_from(out.len()) else {
+        return false;
+    };
+    unsafe { RAND_bytes(out.as_mut_ptr(), len) == 1 }
+}
+
+fn crypto_dh_first_round_impl(g_a: &mut [u8; DH_KEY_BYTES], a_out: &mut [u8; DH_KEY_BYTES]) -> i32 {
+    loop {
+        if !crypto_rand_fill(a_out) {
+            return -1;
+        }
+        if !crypto_dh_modexp(None, a_out, g_a) {
+            return -1;
+        }
+        let verdict =
+            crypto_dh_is_good_rpc_dh_bin_impl(g_a, &RPC_DH_PRIME_BIN[..DH_GOOD_PREFIX_BYTES]);
+        if verdict == 1 {
+            return 1;
+        }
+        if verdict < 0 {
+            return -1;
+        }
+    }
+}
+
+fn tls_get_y2(x: &BnOwned, modulus: &BnOwned, ctx: &BnCtxOwned) -> Option<BnOwned> {
+    let y_ptr = unsafe { BN_dup(x.as_ptr()) };
+    if y_ptr.is_null() {
+        return None;
+    }
+    let mut y = BnOwned(y_ptr);
+    let mut coef = BnOwned::new()?;
+    if !coef.set_word(486_662) {
+        return None;
+    }
+    if unsafe {
+        BN_mod_add(
+            y.as_mut_ptr(),
+            y.as_ptr(),
+            coef.as_ptr(),
+            modulus.as_ptr(),
+            ctx.as_mut_ptr(),
+        )
+    } != 1
+    {
+        return None;
+    }
+    if unsafe {
+        BN_mod_mul(
+            y.as_mut_ptr(),
+            y.as_ptr(),
+            x.as_ptr(),
+            modulus.as_ptr(),
+            ctx.as_mut_ptr(),
+        )
+    } != 1
+    {
+        return None;
+    }
+    if !coef.set_one() {
+        return None;
+    }
+    if unsafe {
+        BN_mod_add(
+            y.as_mut_ptr(),
+            y.as_ptr(),
+            coef.as_ptr(),
+            modulus.as_ptr(),
+            ctx.as_mut_ptr(),
+        )
+    } != 1
+    {
+        return None;
+    }
+    if unsafe {
+        BN_mod_mul(
+            y.as_mut_ptr(),
+            y.as_ptr(),
+            x.as_ptr(),
+            modulus.as_ptr(),
+            ctx.as_mut_ptr(),
+        )
+    } != 1
+    {
+        return None;
+    }
+    Some(y)
+}
+
+fn tls_get_double_x(x: &BnOwned, modulus: &BnOwned, ctx: &BnCtxOwned) -> Option<BnOwned> {
+    let mut denominator = tls_get_y2(x, modulus, ctx)?;
+    let mut coef = BnOwned::new()?;
+    if !coef.set_word(4) {
+        return None;
+    }
+    if unsafe {
+        BN_mod_mul(
+            denominator.as_mut_ptr(),
+            denominator.as_ptr(),
+            coef.as_ptr(),
+            modulus.as_ptr(),
+            ctx.as_mut_ptr(),
+        )
+    } != 1
+    {
+        return None;
+    }
+
+    let mut numerator = BnOwned::new()?;
+    if unsafe {
+        BN_mod_mul(
+            numerator.as_mut_ptr(),
+            x.as_ptr(),
+            x.as_ptr(),
+            modulus.as_ptr(),
+            ctx.as_mut_ptr(),
+        )
+    } != 1
+    {
+        return None;
+    }
+    if !coef.set_one() {
+        return None;
+    }
+    if unsafe {
+        BN_mod_sub(
+            numerator.as_mut_ptr(),
+            numerator.as_ptr(),
+            coef.as_ptr(),
+            modulus.as_ptr(),
+            ctx.as_mut_ptr(),
+        )
+    } != 1
+    {
+        return None;
+    }
+    if unsafe {
+        BN_mod_mul(
+            numerator.as_mut_ptr(),
+            numerator.as_ptr(),
+            numerator.as_ptr(),
+            modulus.as_ptr(),
+            ctx.as_mut_ptr(),
+        )
+    } != 1
+    {
+        return None;
+    }
+    let inv_ptr = unsafe {
+        BN_mod_inverse(
+            denominator.as_mut_ptr(),
+            denominator.as_ptr(),
+            modulus.as_ptr(),
+            ctx.as_mut_ptr(),
+        )
+    };
+    if inv_ptr.is_null() {
+        return None;
+    }
+    if unsafe {
+        BN_mod_mul(
+            numerator.as_mut_ptr(),
+            numerator.as_ptr(),
+            denominator.as_ptr(),
+            modulus.as_ptr(),
+            ctx.as_mut_ptr(),
+        )
+    } != 1
+    {
+        return None;
+    }
+    Some(numerator)
+}
+
+fn crypto_tls_generate_public_key_impl(out: &mut [u8; TLS_REQUEST_PUBLIC_KEY_BYTES]) -> i32 {
+    let Some(modulus) = BnOwned::from_hex_nul(TLS_X25519_MOD_HEX) else {
+        return -1;
+    };
+    let Some(pow) = BnOwned::from_hex_nul(TLS_X25519_POW_HEX) else {
+        return -1;
+    };
+    let Some(ctx) = BnCtxOwned::new() else {
+        return -1;
+    };
+    let Some(mut one) = BnOwned::new() else {
+        return -1;
+    };
+    if !one.set_one() {
+        return -1;
+    }
+    let Some(mut x) = BnOwned::new() else {
+        return -1;
+    };
+
+    loop {
+        if !crypto_rand_fill(out) {
+            return -1;
+        }
+        out[31] &= 127;
+        let Ok(key_len) = c_int::try_from(out.len()) else {
+            return -1;
+        };
+        if unsafe { BN_bin2bn(out.as_ptr(), key_len, x.as_mut_ptr()) }.is_null() {
+            return -1;
+        }
+        if unsafe {
+            BN_mod_mul(
+                x.as_mut_ptr(),
+                x.as_ptr(),
+                x.as_ptr(),
+                modulus.as_ptr(),
+                ctx.as_mut_ptr(),
+            )
+        } != 1
+        {
+            return -1;
+        }
+        let Some(y) = tls_get_y2(&x, &modulus, &ctx) else {
+            return -1;
+        };
+        let Some(mut r) = BnOwned::new() else {
+            return -1;
+        };
+        if unsafe {
+            BN_mod_exp(
+                r.as_mut_ptr(),
+                y.as_ptr(),
+                pow.as_ptr(),
+                modulus.as_ptr(),
+                ctx.as_mut_ptr(),
+            )
+        } != 1
+        {
+            return -1;
+        }
+        if unsafe { BN_cmp(r.as_ptr(), one.as_ptr()) } == 0 {
+            break;
+        }
+    }
+
+    for _ in 0..3 {
+        let Some(next_x) = tls_get_double_x(&x, &modulus, &ctx) else {
+            return -1;
+        };
+        x = next_x;
+    }
+
+    let Some(num_size) = bn_num_bytes(&x) else {
+        return -1;
+    };
+    if num_size > TLS_REQUEST_PUBLIC_KEY_BYTES {
+        return -1;
+    }
+    out[..TLS_REQUEST_PUBLIC_KEY_BYTES - num_size].fill(0);
+    let written = unsafe {
+        BN_bn2bin(
+            x.as_ptr(),
+            out[TLS_REQUEST_PUBLIC_KEY_BYTES - num_size..].as_mut_ptr(),
+        )
+    };
+    if written != i32::try_from(num_size).unwrap_or(-1) {
+        return -1;
+    }
+    for i in 0..(TLS_REQUEST_PUBLIC_KEY_BYTES / 2) {
+        out.swap(i, TLS_REQUEST_PUBLIC_KEY_BYTES - 1 - i);
+    }
+    0
+}
+
+/// Fills output with OpenSSL RAND bytes.
+///
+/// # Safety
+/// `out` must point to writable memory for `len` bytes when `len > 0`.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_crypto_rand_bytes(out: *mut u8, len: i32) -> i32 {
+    if len < 0 {
+        return -1;
+    }
+    let Ok(size) = usize::try_from(len) else {
+        return -1;
+    };
+    if size > 0 && out.is_null() {
+        return -1;
+    }
+    let out_ref = if size == 0 {
+        &mut []
+    } else {
+        unsafe { core::slice::from_raw_parts_mut(out, size) }
+    };
+    if crypto_rand_fill(out_ref) { 0 } else { -1 }
+}
+
+/// Generates a 32-byte public key used by TLS-obfuscated transport setup.
+///
+/// # Safety
+/// `out` must point to at least 32 writable bytes.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_crypto_tls_generate_public_key(out: *mut u8) -> i32 {
+    if out.is_null() {
+        return -1;
+    }
+    let out_ref = unsafe { &mut *out.cast::<[u8; TLS_REQUEST_PUBLIC_KEY_BYTES]>() };
+    crypto_tls_generate_public_key_impl(out_ref)
+}
+
+/// Returns current DH params selector hash used by C runtime checks.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_crypto_dh_get_params_select() -> i32 {
+    DH_PARAMS_SELECT
+}
+
+/// Performs DH first round: generates random exponent `a_out` and `g_a = g^a mod p`.
+///
+/// # Safety
+/// `g_a` and `a_out` must point to writable 256-byte buffers.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_crypto_dh_first_round(g_a: *mut u8, a_out: *mut u8) -> i32 {
+    if g_a.is_null() || a_out.is_null() {
+        return -1;
+    }
+    let g_a_ref = unsafe { &mut *g_a.cast::<[u8; DH_KEY_BYTES]>() };
+    let a_out_ref = unsafe { &mut *a_out.cast::<[u8; DH_KEY_BYTES]>() };
+    crypto_dh_first_round_impl(g_a_ref, a_out_ref)
+}
+
+/// Performs DH second round for server mode.
+///
+/// # Safety
+/// `g_ab`, `g_a`, `g_b` must point to 256-byte buffers.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_crypto_dh_second_round(
+    g_ab: *mut u8,
+    g_a: *mut u8,
+    g_b: *const u8,
+) -> i32 {
+    if g_ab.is_null() || g_a.is_null() || g_b.is_null() {
+        return -1;
+    }
+    let g_ab_ref = unsafe { &mut *g_ab.cast::<[u8; DH_KEY_BYTES]>() };
+    let g_a_ref = unsafe { &mut *g_a.cast::<[u8; DH_KEY_BYTES]>() };
+    let g_b_ref = unsafe { &*g_b.cast::<[u8; DH_KEY_BYTES]>() };
+    let verdict =
+        crypto_dh_is_good_rpc_dh_bin_impl(g_b_ref, &RPC_DH_PRIME_BIN[..DH_GOOD_PREFIX_BYTES]);
+    if verdict <= 0 {
+        return if verdict == 0 { 0 } else { -1 };
+    }
+    let mut a = [0u8; DH_KEY_BYTES];
+    if crypto_dh_first_round_impl(g_a_ref, &mut a) < 0 {
+        return -1;
+    }
+    let ok = crypto_dh_modexp(Some(g_b_ref), &a, g_ab_ref);
+    a.fill(0);
+    if ok { DH_KEY_BYTES as i32 } else { -1 }
+}
+
+/// Performs DH third round for client mode.
+///
+/// # Safety
+/// `g_ab`, `g_b`, `a` must point to 256-byte buffers.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_crypto_dh_third_round(
+    g_ab: *mut u8,
+    g_b: *const u8,
+    a: *const u8,
+) -> i32 {
+    if g_ab.is_null() || g_b.is_null() || a.is_null() {
+        return -1;
+    }
+    let g_ab_ref = unsafe { &mut *g_ab.cast::<[u8; DH_KEY_BYTES]>() };
+    let g_b_ref = unsafe { &*g_b.cast::<[u8; DH_KEY_BYTES]>() };
+    let a_ref = unsafe { &*a.cast::<[u8; DH_KEY_BYTES]>() };
+    let verdict =
+        crypto_dh_is_good_rpc_dh_bin_impl(g_b_ref, &RPC_DH_PRIME_BIN[..DH_GOOD_PREFIX_BYTES]);
+    if verdict <= 0 {
+        return if verdict == 0 { 0 } else { -1 };
+    }
+    if crypto_dh_modexp(Some(g_b_ref), a_ref, g_ab_ref) {
+        DH_KEY_BYTES as i32
+    } else {
+        -1
+    }
+}
+
+/// Initializes OpenSSL EVP context for AES-256-CBC/CTR with disabled padding.
+///
+/// # Safety
+/// `key`, `iv`, and `out_ctx` must be valid pointers.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_aesni_ctx_init(
+    cipher_kind: i32,
+    key: *const u8,
+    iv: *const u8,
+    is_encrypt: i32,
+    out_ctx: *mut *mut c_void,
+) -> i32 {
+    if key.is_null() || iv.is_null() || out_ctx.is_null() {
+        return -1;
+    }
+    let cipher = match cipher_kind {
+        AESNI_CIPHER_AES_256_CBC => unsafe { EVP_aes_256_cbc() },
+        AESNI_CIPHER_AES_256_CTR => unsafe { EVP_aes_256_ctr() },
+        _ => return -2,
+    };
+    if cipher.is_null() {
+        return -3;
+    }
+    let ctx = unsafe { EVP_CIPHER_CTX_new() };
+    if ctx.is_null() {
+        return -4;
+    }
+    if unsafe { EVP_CipherInit(ctx, cipher, key, iv, is_encrypt) } != 1 {
+        unsafe { EVP_CIPHER_CTX_free(ctx) };
+        return -5;
+    }
+    if unsafe { EVP_CIPHER_CTX_set_padding(ctx, 0) } != 1 {
+        unsafe { EVP_CIPHER_CTX_free(ctx) };
+        return -6;
+    }
+    unsafe { *out_ctx = ctx.cast::<c_void>() };
+    0
+}
+
+/// Frees OpenSSL EVP context allocated by `mtproxy_ffi_aesni_ctx_init`.
+///
+/// # Safety
+/// `evp_ctx` must be either null or a pointer returned by `mtproxy_ffi_aesni_ctx_init`.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_aesni_ctx_free(evp_ctx: *mut c_void) -> i32 {
+    if evp_ctx.is_null() {
+        return 0;
+    }
+    unsafe { EVP_CIPHER_CTX_free(evp_ctx.cast::<OpenSslCipherCtx>()) };
     0
 }
 
@@ -2544,10 +3253,14 @@ pub unsafe extern "C" fn mtproxy_ffi_format_log_prefix(
 #[cfg(test)]
 mod tests {
     use super::{
-        ffi_api_version, mtproxy_ffi_aesni_crypt, mtproxy_ffi_api_version,
+        ffi_api_version, mtproxy_ffi_aesni_crypt, mtproxy_ffi_aesni_ctx_free,
+        mtproxy_ffi_aesni_ctx_init, mtproxy_ffi_api_version,
         mtproxy_ffi_cfg_getint_signed_zero, mtproxy_ffi_cfg_getword_len, mtproxy_ffi_cfg_skipspc,
         mtproxy_ffi_cpuid_fill, mtproxy_ffi_crc32_partial, mtproxy_ffi_crc32c_partial,
         mtproxy_ffi_crypto_aes_create_keys, mtproxy_ffi_crypto_dh_is_good_rpc_dh_bin,
+        mtproxy_ffi_crypto_dh_first_round, mtproxy_ffi_crypto_dh_get_params_select,
+        mtproxy_ffi_crypto_dh_second_round, mtproxy_ffi_crypto_dh_third_round,
+        mtproxy_ffi_crypto_rand_bytes, mtproxy_ffi_crypto_tls_generate_public_key,
         mtproxy_ffi_engine_rpc_result_header_len, mtproxy_ffi_engine_rpc_result_new_flags,
         mtproxy_ffi_get_application_boundary, mtproxy_ffi_get_concurrency_boundary,
         mtproxy_ffi_get_crypto_boundary, mtproxy_ffi_get_network_boundary,
@@ -2569,21 +3282,22 @@ mod tests {
         MtproxyCfgIntResult, MtproxyCfgScanResult, MtproxyConcurrencyBoundary, MtproxyCpuid,
         MtproxyCryptoBoundary, MtproxyMeminfoSummary, MtproxyNetworkBoundary, MtproxyProcStats,
         MtproxyProcessId, MtproxyRpcBoundary, MtproxyTlHeaderParseResult, AESNI_CONTRACT_OPS,
-        AESNI_IMPLEMENTED_OPS, APPLICATION_BOUNDARY_VERSION, CONCURRENCY_BOUNDARY_VERSION,
-        CPUID_MAGIC, CRYPTO_BOUNDARY_VERSION, ENGINE_RPC_CONTRACT_OPS, ENGINE_RPC_IMPLEMENTED_OPS,
-        EPOLLERR, EPOLLET, EPOLLIN, EPOLLOUT, EPOLLPRI, EPOLLRDHUP, EVT_FROM_EPOLL, EVT_LEVEL,
-        EVT_READ, EVT_SPEC, EVT_WRITE, FFI_API_VERSION, JOBS_CONTRACT_OPS, JOBS_IMPLEMENTED_OPS,
-        MPQ_CONTRACT_OPS, MPQ_IMPLEMENTED_OPS, MTPROTO_PROXY_CONTRACT_OPS,
-        MTPROTO_PROXY_IMPLEMENTED_OPS, NETWORK_BOUNDARY_VERSION, NET_CRYPTO_AES_CONTRACT_OPS,
-        NET_CRYPTO_AES_IMPLEMENTED_OPS, NET_CRYPTO_DH_CONTRACT_OPS, NET_CRYPTO_DH_IMPLEMENTED_OPS,
-        NET_EVENTS_CONTRACT_OPS, NET_EVENTS_IMPLEMENTED_OPS, NET_MSG_BUFFERS_CONTRACT_OPS,
-        NET_MSG_BUFFERS_IMPLEMENTED_OPS, NET_TIMERS_CONTRACT_OPS, NET_TIMERS_IMPLEMENTED_OPS,
-        RPC_BOUNDARY_VERSION, RPC_INVOKE_REQ, RPC_REQ_RESULT, RPC_TARGETS_CONTRACT_OPS,
-        RPC_TARGETS_IMPLEMENTED_OPS, TCP_RPC_CLIENT_CONTRACT_OPS, TCP_RPC_CLIENT_IMPLEMENTED_OPS,
-        TCP_RPC_COMMON_CONTRACT_OPS, TCP_RPC_COMMON_IMPLEMENTED_OPS,
-        TCP_RPC_PACKET_LEN_STATE_INVALID, TCP_RPC_PACKET_LEN_STATE_READY,
-        TCP_RPC_PACKET_LEN_STATE_SHORT, TCP_RPC_PACKET_LEN_STATE_SKIP, TCP_RPC_SERVER_CONTRACT_OPS,
-        TCP_RPC_SERVER_IMPLEMENTED_OPS,
+        AESNI_CIPHER_AES_256_CTR, AESNI_IMPLEMENTED_OPS, APPLICATION_BOUNDARY_VERSION,
+        CONCURRENCY_BOUNDARY_VERSION, CPUID_MAGIC, CRYPTO_BOUNDARY_VERSION, DH_KEY_BYTES,
+        DH_PARAMS_SELECT, ENGINE_RPC_CONTRACT_OPS, ENGINE_RPC_IMPLEMENTED_OPS, EPOLLERR, EPOLLET,
+        EPOLLIN, EPOLLOUT, EPOLLPRI, EPOLLRDHUP, EVT_FROM_EPOLL, EVT_LEVEL, EVT_READ, EVT_SPEC,
+        EVT_WRITE, FFI_API_VERSION, JOBS_CONTRACT_OPS, JOBS_IMPLEMENTED_OPS, MPQ_CONTRACT_OPS,
+        MPQ_IMPLEMENTED_OPS, MTPROTO_PROXY_CONTRACT_OPS, MTPROTO_PROXY_IMPLEMENTED_OPS,
+        NETWORK_BOUNDARY_VERSION, NET_CRYPTO_AES_CONTRACT_OPS, NET_CRYPTO_AES_IMPLEMENTED_OPS,
+        NET_CRYPTO_DH_CONTRACT_OPS, NET_CRYPTO_DH_IMPLEMENTED_OPS, NET_EVENTS_CONTRACT_OPS,
+        NET_EVENTS_IMPLEMENTED_OPS, NET_MSG_BUFFERS_CONTRACT_OPS, NET_MSG_BUFFERS_IMPLEMENTED_OPS,
+        NET_TIMERS_CONTRACT_OPS, NET_TIMERS_IMPLEMENTED_OPS, RPC_BOUNDARY_VERSION, RPC_INVOKE_REQ,
+        RPC_REQ_RESULT, RPC_TARGETS_CONTRACT_OPS, RPC_TARGETS_IMPLEMENTED_OPS,
+        TCP_RPC_CLIENT_CONTRACT_OPS, TCP_RPC_CLIENT_IMPLEMENTED_OPS, TCP_RPC_COMMON_CONTRACT_OPS,
+        TCP_RPC_COMMON_IMPLEMENTED_OPS, TCP_RPC_PACKET_LEN_STATE_INVALID,
+        TCP_RPC_PACKET_LEN_STATE_READY, TCP_RPC_PACKET_LEN_STATE_SHORT,
+        TCP_RPC_PACKET_LEN_STATE_SKIP, TCP_RPC_SERVER_CONTRACT_OPS, TCP_RPC_SERVER_IMPLEMENTED_OPS,
+        TLS_REQUEST_PUBLIC_KEY_BYTES,
     };
 
     #[test]
@@ -2901,6 +3615,104 @@ mod tests {
             },
             -1
         );
+    }
+
+    #[test]
+    fn crypto_dh_roundtrip_exports_work() {
+        assert_eq!(mtproxy_ffi_crypto_dh_get_params_select(), DH_PARAMS_SELECT);
+
+        let mut g_a = [0u8; DH_KEY_BYTES];
+        let mut a = [0u8; DH_KEY_BYTES];
+        assert_eq!(
+            unsafe { mtproxy_ffi_crypto_dh_first_round(g_a.as_mut_ptr(), a.as_mut_ptr()) },
+            1
+        );
+        assert_ne!(g_a, [0u8; DH_KEY_BYTES]);
+        assert_ne!(a, [0u8; DH_KEY_BYTES]);
+
+        let mut g_ab = [0u8; DH_KEY_BYTES];
+        assert_eq!(
+            unsafe {
+                mtproxy_ffi_crypto_dh_third_round(g_ab.as_mut_ptr(), g_a.as_ptr(), a.as_ptr())
+            },
+            i32::try_from(DH_KEY_BYTES).unwrap_or(i32::MAX)
+        );
+        assert_ne!(g_ab, [0u8; DH_KEY_BYTES]);
+
+        let mut g_a_srv = [0u8; DH_KEY_BYTES];
+        let mut g_ab_srv = [0u8; DH_KEY_BYTES];
+        assert_eq!(
+            unsafe {
+                mtproxy_ffi_crypto_dh_second_round(
+                    g_ab_srv.as_mut_ptr(),
+                    g_a_srv.as_mut_ptr(),
+                    g_a.as_ptr(),
+                )
+            },
+            i32::try_from(DH_KEY_BYTES).unwrap_or(i32::MAX)
+        );
+        assert_ne!(g_a_srv, [0u8; DH_KEY_BYTES]);
+        assert_ne!(g_ab_srv, [0u8; DH_KEY_BYTES]);
+    }
+
+    #[test]
+    fn aesni_context_lifecycle_is_exported() {
+        let mut key = [0u8; 32];
+        let mut iv = [0u8; 16];
+        let mut input = [0u8; 64];
+        for (i, b) in key.iter_mut().enumerate() {
+            *b = u8::try_from(0x80 + i).unwrap_or(0);
+        }
+        for (i, b) in iv.iter_mut().enumerate() {
+            *b = u8::try_from(0x90 + i).unwrap_or(0);
+        }
+        for (i, b) in input.iter_mut().enumerate() {
+            *b = u8::try_from(i).unwrap_or(0);
+        }
+
+        let mut ctx: *mut core::ffi::c_void = core::ptr::null_mut();
+        assert_eq!(
+            unsafe {
+                mtproxy_ffi_aesni_ctx_init(
+                    AESNI_CIPHER_AES_256_CTR,
+                    key.as_ptr(),
+                    iv.as_ptr(),
+                    1,
+                    &raw mut ctx,
+                )
+            },
+            0
+        );
+        assert!(!ctx.is_null());
+        let mut output = [0u8; 64];
+        assert_eq!(
+            unsafe { mtproxy_ffi_aesni_crypt(ctx, input.as_ptr(), output.as_mut_ptr(), 64) },
+            0
+        );
+        assert_ne!(output, [0u8; 64]);
+        assert_eq!(unsafe { mtproxy_ffi_aesni_ctx_free(ctx) }, 0);
+    }
+
+    #[test]
+    fn tls_public_key_and_rand_exports_work() {
+        let mut random = [0u8; 7];
+        assert_eq!(
+            unsafe {
+                mtproxy_ffi_crypto_rand_bytes(
+                    random.as_mut_ptr(),
+                    i32::try_from(random.len()).unwrap_or(i32::MAX),
+                )
+            },
+            0
+        );
+        assert_ne!(random, [0u8; 7]);
+
+        let mut public_key = [0u8; TLS_REQUEST_PUBLIC_KEY_BYTES];
+        assert_eq!(
+            unsafe { mtproxy_ffi_crypto_tls_generate_public_key(public_key.as_mut_ptr()) },
+            0
+        );
+        assert_ne!(public_key, [0u8; TLS_REQUEST_PUBLIC_KEY_BYTES]);
     }
 
     #[test]

@@ -551,6 +551,7 @@
    - [x] 2026-02-11: Decommissioned utility/hash/time C fallbacks (`common/pid.c`, `common/cpuid.c`, `common/md5.c`, `common/sha1.c`, `common/sha256.c`, `common/precise-time.c`) and re-verified hash/precise-time differential coverage plus Rust unit tests.
    - [x] 2026-02-11: Decommissioned crypto helper C fallbacks (`net/net-crypto-aes.c`, `net/net-crypto-dh.c`, `crypto/aesni256.c`) and re-verified Step 12 crypto boundary differential coverage.
    - [x] 2026-02-11: Decommissioned temporary `mp-queue`/`jobs` dispatch adapter layer (`common/mp-queue.c`, `common/mp-queue.h`, `jobs/jobs.c`, `jobs/jobs.h`, `common/rust-ffi-bridge.c`) by removing install/reset/default ops surfaces and routing migrated operations directly to C implementations; re-verified Step 9 concurrency boundary differential plus Rust FFI tests.
+   - [x] 2026-02-11: Migrated remaining active C crypto execution paths into Rust FFI exports: DH first/second/third rounds and params-select (`net/net-crypto-dh.c`), AES EVP context init/free lifecycle (`crypto/aesni256.c`, `net/net-crypto-aes.c`), TLS transport random/public-key generation (`net/net-tcp-rpc-ext-server.c`), and legacy SHA context wrappers (`common/sha1.c`, `common/sha256.c`, `net/net-msg.c`); verified with `make all`, `cargo test -p mtproxy-ffi`, and golden crypto/hash/concurrency differential suites.
    - Done when: production runs on Rust by default and deprecated C paths are removed.
 
 15. Final Hardening, Security Review, and Release

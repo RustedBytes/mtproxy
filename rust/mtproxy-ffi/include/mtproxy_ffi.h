@@ -177,8 +177,17 @@ typedef struct mtproxy_ffi_rpc_boundary {
 #define MTPROXY_FFI_NET_CRYPTO_AES_OP_CREATE_KEYS         (1u << 0)
 
 #define MTPROXY_FFI_NET_CRYPTO_DH_OP_IS_GOOD_RPC_DH_BIN   (1u << 0)
+#define MTPROXY_FFI_NET_CRYPTO_DH_OP_GET_PARAMS_SELECT    (1u << 1)
+#define MTPROXY_FFI_NET_CRYPTO_DH_OP_FIRST_ROUND          (1u << 2)
+#define MTPROXY_FFI_NET_CRYPTO_DH_OP_SECOND_ROUND         (1u << 3)
+#define MTPROXY_FFI_NET_CRYPTO_DH_OP_THIRD_ROUND          (1u << 4)
 
 #define MTPROXY_FFI_AESNI_OP_EVP_CRYPT                    (1u << 0)
+#define MTPROXY_FFI_AESNI_OP_CTX_INIT                     (1u << 1)
+#define MTPROXY_FFI_AESNI_OP_CTX_FREE                     (1u << 2)
+
+#define MTPROXY_FFI_AESNI_CIPHER_AES_256_CBC              1
+#define MTPROXY_FFI_AESNI_CIPHER_AES_256_CTR              2
 
 typedef struct mtproxy_ffi_crypto_boundary {
   uint32_t boundary_version;
@@ -292,8 +301,26 @@ int32_t mtproxy_ffi_crypto_dh_is_good_rpc_dh_bin(
   size_t prime_prefix_len
 );
 
+// net-crypto-dh helpers for full DH round migration.
+int32_t mtproxy_ffi_crypto_dh_get_params_select(void);
+int32_t mtproxy_ffi_crypto_dh_first_round(uint8_t g_a[256], uint8_t a_out[256]);
+int32_t mtproxy_ffi_crypto_dh_second_round(uint8_t g_ab[256], uint8_t g_a[256], const uint8_t g_b[256]);
+int32_t mtproxy_ffi_crypto_dh_third_round(uint8_t g_ab[256], const uint8_t g_b[256], const uint8_t a[256]);
+
+// generic crypto helpers for TLS-obfuscated transport paths.
+int32_t mtproxy_ffi_crypto_rand_bytes(uint8_t *out, int32_t len);
+int32_t mtproxy_ffi_crypto_tls_generate_public_key(uint8_t out[32]);
+
 // crypto/aesni helper: OpenSSL-backed EVP_CipherUpdate glue.
 int32_t mtproxy_ffi_aesni_crypt(void *evp_ctx, const uint8_t *in, uint8_t *out, int32_t size);
+int32_t mtproxy_ffi_aesni_ctx_init(
+  int32_t cipher_kind,
+  const uint8_t key[32],
+  const uint8_t iv[16],
+  int32_t is_encrypt,
+  void **out_ctx
+);
+int32_t mtproxy_ffi_aesni_ctx_free(void *evp_ctx);
 
 // engine-rpc helpers for TL result header normalization.
 int32_t mtproxy_ffi_engine_rpc_result_new_flags(int32_t old_flags);

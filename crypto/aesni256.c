@@ -27,14 +27,20 @@
 #include <stdint.h>
 
 extern int32_t mtproxy_ffi_aesni_crypt (void *evp_ctx, const uint8_t *in, uint8_t *out, int32_t size);
+extern int32_t mtproxy_ffi_aesni_ctx_init (int32_t cipher_kind, const uint8_t key[32], const uint8_t iv[16], int32_t is_encrypt, void **out_ctx);
+extern int32_t mtproxy_ffi_aesni_ctx_free (void *evp_ctx);
 
-EVP_CIPHER_CTX *evp_cipher_ctx_init (const EVP_CIPHER *cipher, unsigned char *key, unsigned char iv[16], int is_encrypt) {
-  EVP_CIPHER_CTX *evp_ctx = EVP_CIPHER_CTX_new();
-  assert(evp_ctx);
-
-  assert(EVP_CipherInit(evp_ctx, cipher, key, iv, is_encrypt) == 1);
-  assert(EVP_CIPHER_CTX_set_padding(evp_ctx, 0) == 1);
+EVP_CIPHER_CTX *evp_cipher_ctx_init_kind (int cipher_kind, unsigned char *key, unsigned char iv[16], int is_encrypt) {
+  void *evp_ctx = NULL;
+  int32_t rc = mtproxy_ffi_aesni_ctx_init (cipher_kind, key, iv, is_encrypt, &evp_ctx);
+  assert (rc == 0);
+  assert (evp_ctx != NULL);
   return evp_ctx;
+}
+
+void evp_cipher_ctx_free (EVP_CIPHER_CTX *evp_ctx) {
+  int32_t rc = mtproxy_ffi_aesni_ctx_free (evp_ctx);
+  assert (rc == 0);
 }
 
 void evp_crypt (EVP_CIPHER_CTX *evp_ctx, const void *in, void *out, int size) {

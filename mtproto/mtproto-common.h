@@ -25,9 +25,6 @@
 #pragma once
 
 #include <string.h>
-#include <openssl/rsa.h>
-#include <openssl/bn.h>
-#include <openssl/aes.h>
 
 #include "rpc-const.h"
 

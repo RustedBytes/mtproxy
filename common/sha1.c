@@ -21,25 +21,63 @@
 #include <assert.h>
 #include "sha1.h"
 #include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 
 extern int32_t mtproxy_ffi_sha1 (const uint8_t *input, size_t len, uint8_t output[20]);
 extern int32_t mtproxy_ffi_sha1_two_chunks (const uint8_t *input1, size_t len1, const uint8_t *input2, size_t len2, uint8_t output[20]);
 
+static void sha1_reserve (sha1_context *ctx, int need) {
+  assert (ctx && need >= 0);
+  if (need <= ctx->cap) {
+    return;
+  }
+  int new_cap = ctx->cap ? ctx->cap : 64;
+  while (new_cap < need) {
+    if (new_cap > (1 << 29)) {
+      new_cap = need;
+      break;
+    }
+    new_cap <<= 1;
+  }
+  unsigned char *new_buf = realloc (ctx->buf, new_cap);
+  assert (new_buf);
+  ctx->buf = new_buf;
+  ctx->cap = new_cap;
+}
+
 void sha1_starts (sha1_context *ctx) {
-  EVP_MD_CTX_init (ctx);
-  EVP_DigestInit_ex (ctx, EVP_sha1(), NULL); 
+  assert (ctx);
+  ctx->buf = NULL;
+  ctx->len = 0;
+  ctx->cap = 0;
 }
 
 void sha1_update (sha1_context *ctx, const unsigned char *input, int ilen) {
-  EVP_DigestUpdate (ctx, input, ilen);
+  assert (ctx);
+  if (ilen <= 0) {
+    return;
+  }
+  assert (input);
+  int new_len = ctx->len + ilen;
+  assert (new_len >= ctx->len);
+  sha1_reserve (ctx, new_len);
+  memcpy (ctx->buf + ctx->len, input, ilen);
+  ctx->len = new_len;
 }
 
 void sha1_finish (sha1_context *ctx, unsigned char output[20]) {
-  unsigned olen = 0;
-  EVP_DigestFinal_ex (ctx, output, &olen);
-  assert (olen == 20);
+  assert (ctx && output);
+  sha1 (ctx->buf ? ctx->buf : (const unsigned char *)"", ctx->len, output);
+  if (ctx->buf) {
+    memset (ctx->buf, 0, ctx->len);
+    free (ctx->buf);
+    ctx->buf = NULL;
+  }
+  ctx->len = 0;
+  ctx->cap = 0;
 }
 
 void sha1 (const unsigned char *input, int ilen, unsigned char output[20]) {

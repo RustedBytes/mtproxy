@@ -39,9 +39,6 @@
 #include <sys/mman.h>
 #include <netdb.h>
 #include <ctype.h>
-#include <openssl/rand.h>
-#include <openssl/rsa.h>
-#include <openssl/pem.h>
 
 #include "crc32.h"
 #include "md5.h"

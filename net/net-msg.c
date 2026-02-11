@@ -1059,18 +1059,39 @@ int rwm_transform_from_offset (struct raw_message *raw, int bytes, int offset, i
 /* }}} */
 
 /* rwm_sha1 {{{ */
-int sha1_wrap (void *extra, const void *data, int len) {
-  sha1_update (extra, (void *)data, len);
+struct sha1_copy_state {
+  unsigned char *buf;
+  int offset;
+};
+
+static int sha1_copy_block (void *extra, const void *data, int len) {
+  struct sha1_copy_state *S = extra;
+  assert (S);
+  assert (S->buf);
+  assert (len >= 0);
+  memcpy (S->buf + S->offset, data, len);
+  S->offset += len;
   return 0;
 }
 
 int rwm_sha1 (struct raw_message *raw, int bytes, unsigned char output[20]) {
-  sha1_context *ctx = EVP_MD_CTX_new();
+  assert (bytes >= 0 && raw->total_bytes >= bytes);
+  unsigned char *tmp = bytes ? malloc (bytes) : NULL;
+  assert (bytes == 0 || tmp != NULL);
 
-  sha1_starts (ctx);
-  int res = rwm_process (raw, bytes, sha1_wrap, ctx);
-  sha1_finish (ctx, output);
-  EVP_MD_CTX_free(ctx);
+  struct sha1_copy_state S = {
+    .buf = tmp,
+    .offset = 0
+  };
+  int res = rwm_process (raw, bytes, sha1_copy_block, &S);
+  assert (S.offset == res);
+  if (res == bytes) {
+    sha1 (tmp ? tmp : (unsigned char *)"", bytes, output);
+  }
+  if (tmp) {
+    memset (tmp, 0, bytes);
+    free (tmp);
+  }
 
   return res;
 }
