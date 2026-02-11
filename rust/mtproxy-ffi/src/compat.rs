@@ -1,4 +1,5 @@
 use super::*;
+use std::os::unix::fs::MetadataExt;
 
 /// Mirrors core API version for Rust callers.
 #[must_use]
@@ -484,10 +485,107 @@ fn mtproto_ext_conn_hash_impl(in_fd: i32, in_conn_id: i64, hash_shift: i32) -> i
     mtproxy_core::runtime::mtproto::proxy::mtproto_ext_conn_hash(in_fd, in_conn_id, hash_shift)
 }
 
+const RESOLVER_LOOKUP_SYSTEM_DNS: i32 = 0;
+const RESOLVER_LOOKUP_NOT_FOUND: i32 = 1;
+const RESOLVER_LOOKUP_HOSTS_IPV4: i32 = 2;
+
+static RESOLVER_STATE: Mutex<mtproxy_core::runtime::net::resolver::ResolverState> =
+    Mutex::new(mtproxy_core::runtime::net::resolver::ResolverState::new());
+
+fn resolver_reload_hosts_from_system(
+    state: &mut mtproxy_core::runtime::net::resolver::ResolverState,
+) -> i32 {
+    let Ok(metadata) = fs::metadata(mtproxy_core::runtime::net::resolver::HOSTS_FILE) else {
+        return state.kdb_load_hosts(mtproxy_core::runtime::net::resolver::HostsLoadInput::Error);
+    };
+    if !metadata.is_file() {
+        return state.kdb_load_hosts(mtproxy_core::runtime::net::resolver::HostsLoadInput::Error);
+    }
+
+    let Ok(size) = i64::try_from(metadata.len()) else {
+        return state.kdb_load_hosts(mtproxy_core::runtime::net::resolver::HostsLoadInput::Error);
+    };
+    let Ok(contents) = fs::read(mtproxy_core::runtime::net::resolver::HOSTS_FILE) else {
+        return state.kdb_load_hosts(mtproxy_core::runtime::net::resolver::HostsLoadInput::Error);
+    };
+    let Ok(mtime) = i32::try_from(metadata.mtime()) else {
+        return state.kdb_load_hosts(mtproxy_core::runtime::net::resolver::HostsLoadInput::Error);
+    };
+    let meta = mtproxy_core::runtime::net::resolver::HostsFileMetadata { size, mtime };
+    state.kdb_load_hosts(mtproxy_core::runtime::net::resolver::HostsLoadInput::Data {
+        metadata: meta,
+        contents: &contents,
+    })
+}
+
+fn resolver_kdb_load_hosts_impl() -> i32 {
+    let mut state = RESOLVER_STATE.lock().unwrap_or_else(|poison| poison.into_inner());
+    resolver_reload_hosts_from_system(&mut state)
+}
+
+fn resolver_kdb_hosts_loaded_impl() -> i32 {
+    let state = RESOLVER_STATE.lock().unwrap_or_else(|poison| poison.into_inner());
+    state.kdb_hosts_loaded()
+}
+
+fn resolver_gethostbyname_plan_impl(name: &[u8]) -> (i32, u32) {
+    let mut state = RESOLVER_STATE.lock().unwrap_or_else(|poison| poison.into_inner());
+    let plan = state.kdb_gethostbyname_plan_with_lazy_load(name, |resolver| {
+        let _ = resolver_reload_hosts_from_system(resolver);
+    });
+    match plan {
+        mtproxy_core::runtime::net::resolver::HostLookupPlan::SystemDns(_)
+        | mtproxy_core::runtime::net::resolver::HostLookupPlan::Ipv6Literal(_) => {
+            (RESOLVER_LOOKUP_SYSTEM_DNS, 0)
+        }
+        mtproxy_core::runtime::net::resolver::HostLookupPlan::NotFound => {
+            (RESOLVER_LOOKUP_NOT_FOUND, 0)
+        }
+        mtproxy_core::runtime::net::resolver::HostLookupPlan::HostsIpv4(ip) => {
+            (RESOLVER_LOOKUP_HOSTS_IPV4, ip)
+        }
+    }
+}
+
 /// Converts net event flags into Linux epoll flags.
 #[no_mangle]
 pub extern "C" fn mtproxy_ffi_net_epoll_conv_flags(flags: i32) -> i32 {
     net_epoll_conv_flags_impl(flags)
+}
+
+/// Reloads `/etc/hosts` into resolver cache and mirrors `kdb_load_hosts()`.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_resolver_kdb_load_hosts() -> i32 {
+    resolver_kdb_load_hosts_impl()
+}
+
+/// Returns current resolver cache load state (`kdb_hosts_loaded`).
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_resolver_kdb_hosts_loaded() -> i32 {
+    resolver_kdb_hosts_loaded_impl()
+}
+
+/// Returns lookup plan for `kdb_gethostbyname()`.
+///
+/// # Safety
+/// `name` must be a NUL-terminated C string. `out_kind` and `out_ipv4` must
+/// be valid writable pointers.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_resolver_gethostbyname_plan(
+    name: *const c_char,
+    out_kind: *mut i32,
+    out_ipv4: *mut u32,
+) -> i32 {
+    if name.is_null() || out_kind.is_null() || out_ipv4.is_null() {
+        return -1;
+    }
+    let name = unsafe { CStr::from_ptr(name) };
+    let (kind, ip) = resolver_gethostbyname_plan_impl(name.to_bytes());
+    let kind_ref = unsafe { &mut *out_kind };
+    let ip_ref = unsafe { &mut *out_ipv4 };
+    *kind_ref = kind;
+    *ip_ref = ip;
+    0
 }
 
 /// Converts Linux epoll flags into net event flags.

@@ -507,6 +507,18 @@ int32_t mtproxy_ffi_net_thread_run_notification_event(
   void (*event_free)(void *event)
 );
 
+// common/resolver helpers: kdb state reload and gethostbyname planning.
+#define MTPROXY_FFI_RESOLVER_LOOKUP_SYSTEM_DNS 0
+#define MTPROXY_FFI_RESOLVER_LOOKUP_NOT_FOUND  1
+#define MTPROXY_FFI_RESOLVER_LOOKUP_HOSTS_IPV4 2
+int32_t mtproxy_ffi_resolver_kdb_load_hosts(void);
+int32_t mtproxy_ffi_resolver_kdb_hosts_loaded(void);
+int32_t mtproxy_ffi_resolver_gethostbyname_plan(
+  const char *name,
+  int32_t *out_kind,
+  uint32_t *out_ipv4
+);
+
 // net-stats helpers: idle percentage math extracted from net-stats.c.
 double mtproxy_ffi_net_stats_recent_idle_percent(double a_idle_time, double a_idle_quotient);
 double mtproxy_ffi_net_stats_average_idle_percent(double tot_idle_time, int32_t uptime);

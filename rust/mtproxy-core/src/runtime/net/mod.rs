@@ -7,6 +7,7 @@ pub mod http_server;
 pub mod msg;
 pub mod msg_buffers;
 pub mod rpc_targets;
+pub mod resolver;
 pub mod stats;
 pub mod tcp_connections;
 pub mod tcp_rpc_client;
