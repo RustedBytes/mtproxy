@@ -2,6 +2,9 @@
 
 //! Core Rust components for the `MTProxy` migration.
 
+pub mod runtime;
+pub mod step15;
+
 /// Placeholder API version for cross-crate compatibility checks.
 pub const CORE_API_VERSION: u32 = 1;
 

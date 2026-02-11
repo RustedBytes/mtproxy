@@ -566,8 +566,8 @@
    - Make `rust/mtproxy-bin` the authoritative runtime crate that uses only Rust code created from C counterparts.
    - Remove C runtime linkage from the default production artifact once parity is proven.
    - Step 15 kickoff checklist (`rust/mtproxy-bin` Rust-only runtime cutover):
-   - [ ] Inventory every remaining C translation unit still linked into the runtime path.
-   - [ ] Create a one-to-one ownership map from each remaining C unit to a Rust module/crate target.
+   - [x] Inventory every remaining C translation unit still linked into the runtime path.
+   - [x] Create a one-to-one ownership map from each remaining C unit to a Rust module/crate target.
    - [ ] Port remaining C runtime logic into `rust/mtproxy-core` and `rust/mtproxy-bin` with parity tests.
    - [ ] Replace remaining FFI runtime call sites with direct Rust module calls in `rust/mtproxy-bin`.
    - [ ] Switch default runtime/deploy artifact generation to `cargo build -p mtproxy-bin` with no C object linkage.
@@ -579,7 +579,15 @@
    - [ ] `make test` (PASS with `rust/mtproxy-bin` artifact)
    - [ ] Link verification confirms no project C runtime objects are linked into released `mtproxy-bin`.
    - Operation log:
-   - [ ] 2026-02-11: Added Step 15 plan for Rust-only runtime cutover in `rust/mtproxy-bin`.
+   - [x] 2026-02-11: Added Step 15 plan for Rust-only runtime cutover in `rust/mtproxy-bin`.
+   - [x] 2026-02-11: Added deterministic Step 15 inventory generator (`scripts/step15_inventory.sh`) and captured current runtime-linked C units in `rust/mtproxy-bin/STEP15_REMAINING_C_UNITS.txt` (43 translation units).
+   - [x] 2026-02-11: Added one-to-one Step 15 ownership map in `rust/mtproxy-core/src/step15.rs` with sort/uniqueness tests.
+   - [x] 2026-02-11: Verified kickoff artifacts with `make step15-inventory`, `cargo build -p mtproxy-bin`, and `cargo test --workspace`.
+   - [x] 2026-02-11: Ported first concrete Step 15 runtime helper slices into `rust/mtproxy-core`: `parse_memory_limit` from `common/server-functions.c` (`runtime::bootstrap::server_functions`) and `cfg_getlex_ext` token matcher from `mtproto/mtproto-config.c` (`runtime::mtproto::config`) with parity-focused Rust unit coverage.
+   - [x] 2026-02-11: Ported next `mtproto-config.c` Step 15 slice into `runtime::mtproto::config`: `preinit_config` state reset and directive-block parser (`t`/`D`/`Y`/`y`/`X`/`x`, semicolon enforcement, proxy/cluster limits, and terminal consistency checks) with unit coverage for success and error parity paths.
+   - [x] 2026-02-11: Ported `mtproto-config.c` target/cluster apply path into `runtime::mtproto::config`: `cfg_parse_server_port` target parse/apply helper, parsed-target metadata capture (host-len/port/min/max connections), and cluster mutation helpers mirroring `init_old_mf_cluster`/`extend_old_mf_cluster` contiguity invariants.
+   - [x] 2026-02-11: Wired Step 15 `mtproto-config.c` runtime call sites to Rust FFI exports for target/cluster apply flow: `cfg_parse_server_port` now uses Rust parser preview (`mtproxy_ffi_mtproto_cfg_parse_server_port`) and old-cluster mutation now uses Rust helpers (`mtproxy_ffi_mtproto_init_old_cluster`, `mtproxy_ffi_mtproto_extend_old_cluster`) while preserving C-side target resolution/creation semantics.
+   - [x] 2026-02-11: Wired `cfg_getlex_ext` and directive-loop token parsing in `mtproto/mtproto-config.c` to Rust FFI (`mtproxy_ffi_mtproto_cfg_getlex_ext`, `mtproxy_ffi_mtproto_cfg_scan_directive_token`), removed local C token-matching/scalar-parse branches, and kept C-side proxy target apply/cluster mutation paths intact.
    - Done when: `rust/mtproxy-bin` runs MTProxy using only Rust code migrated from C counterparts.
 
 16. Final Hardening, Security Review, and Release

@@ -76,6 +76,31 @@ const ENGINE_RPC_CONTRACT_OPS: u32 = (1u32 << 0) | (1u32 << 1);
 const ENGINE_RPC_IMPLEMENTED_OPS: u32 = ENGINE_RPC_CONTRACT_OPS;
 const MTPROTO_PROXY_CONTRACT_OPS: u32 = (1u32 << 0) | (1u32 << 1);
 const MTPROTO_PROXY_IMPLEMENTED_OPS: u32 = MTPROTO_PROXY_CONTRACT_OPS;
+const MTPROTO_CFG_GETLEX_EXT_OK: i32 = 0;
+const MTPROTO_CFG_GETLEX_EXT_ERR_INVALID_ARGS: i32 = -1;
+const MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_OK: i32 = 0;
+const MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_INVALID_ARGS: i32 = -1;
+const MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_INVALID_TIMEOUT: i32 = -2;
+const MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_INVALID_MAX_CONNECTIONS: i32 = -3;
+const MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_INVALID_MIN_CONNECTIONS: i32 = -4;
+const MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_INVALID_TARGET_ID: i32 = -5;
+const MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_TARGET_ID_SPACE: i32 = -6;
+const MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_PROXY_EXPECTED: i32 = -7;
+const MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_INTERNAL: i32 = -8;
+const MTPROTO_DIRECTIVE_TOKEN_KIND_EOF: i32 = 0;
+const MTPROTO_DIRECTIVE_TOKEN_KIND_TIMEOUT: i32 = 1;
+const MTPROTO_DIRECTIVE_TOKEN_KIND_DEFAULT_CLUSTER: i32 = 2;
+const MTPROTO_DIRECTIVE_TOKEN_KIND_PROXY_FOR: i32 = 3;
+const MTPROTO_DIRECTIVE_TOKEN_KIND_PROXY: i32 = 4;
+const MTPROTO_DIRECTIVE_TOKEN_KIND_MAX_CONNECTIONS: i32 = 5;
+const MTPROTO_DIRECTIVE_TOKEN_KIND_MIN_CONNECTIONS: i32 = 6;
+const MTPROTO_CFG_PARSE_SERVER_PORT_OK: i32 = 0;
+const MTPROTO_CFG_PARSE_SERVER_PORT_ERR_INVALID_ARGS: i32 = -1;
+const MTPROTO_CFG_PARSE_SERVER_PORT_ERR_TOO_MANY_TARGETS: i32 = -2;
+const MTPROTO_CFG_PARSE_SERVER_PORT_ERR_HOSTNAME_EXPECTED: i32 = -3;
+const MTPROTO_CFG_PARSE_SERVER_PORT_ERR_PORT_EXPECTED: i32 = -4;
+const MTPROTO_CFG_PARSE_SERVER_PORT_ERR_PORT_RANGE: i32 = -5;
+const MTPROTO_CFG_PARSE_SERVER_PORT_ERR_INTERNAL: i32 = -6;
 
 const TCP_RPC_PACKET_LEN_STATE_SKIP: i32 = 0;
 const TCP_RPC_PACKET_LEN_STATE_READY: i32 = 1;
@@ -191,6 +216,43 @@ pub struct MtproxyCfgScanResult {
 pub struct MtproxyCfgIntResult {
     pub value: i64,
     pub consumed: usize,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct MtproxyMtprotoCfgParseServerPortResult {
+    pub advance: usize,
+    pub target_index: u32,
+    pub host_len: u8,
+    pub port: u16,
+    pub min_connections: i64,
+    pub max_connections: i64,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct MtproxyMtprotoCfgGetlexExtResult {
+    pub advance: usize,
+    pub lex: i32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct MtproxyMtprotoCfgDirectiveTokenResult {
+    pub kind: i32,
+    pub advance: usize,
+    pub value: i64,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct MtproxyMtprotoOldClusterState {
+    pub cluster_id: i32,
+    pub targets_num: u32,
+    pub write_targets_num: u32,
+    pub flags: u32,
+    pub first_target_index: u32,
+    pub has_first_target_index: i32,
 }
 
 #[repr(C)]
@@ -865,6 +927,294 @@ pub extern "C" fn mtproxy_ffi_mtproto_ext_conn_hash(
 #[no_mangle]
 pub extern "C" fn mtproxy_ffi_mtproto_conn_tag(generation: i32) -> i32 {
     mtproto_conn_tag_impl(generation)
+}
+
+fn mtproto_cfg_parse_server_port_err_to_code(
+    err: mtproxy_core::runtime::mtproto::config::MtprotoDirectiveParseError,
+) -> i32 {
+    use mtproxy_core::runtime::mtproto::config::MtprotoDirectiveParseError;
+    match err {
+        MtprotoDirectiveParseError::TooManyTargets(_) => {
+            MTPROTO_CFG_PARSE_SERVER_PORT_ERR_TOO_MANY_TARGETS
+        }
+        MtprotoDirectiveParseError::HostnameExpected => {
+            MTPROTO_CFG_PARSE_SERVER_PORT_ERR_HOSTNAME_EXPECTED
+        }
+        MtprotoDirectiveParseError::PortNumberExpected => {
+            MTPROTO_CFG_PARSE_SERVER_PORT_ERR_PORT_EXPECTED
+        }
+        MtprotoDirectiveParseError::PortOutOfRange(_) => {
+            MTPROTO_CFG_PARSE_SERVER_PORT_ERR_PORT_RANGE
+        }
+        _ => MTPROTO_CFG_PARSE_SERVER_PORT_ERR_INTERNAL,
+    }
+}
+
+fn mtproto_directive_token_kind_to_ffi(
+    kind: mtproxy_core::runtime::mtproto::config::MtprotoDirectiveTokenKind,
+) -> i32 {
+    use mtproxy_core::runtime::mtproto::config::MtprotoDirectiveTokenKind;
+    match kind {
+        MtprotoDirectiveTokenKind::Eof => MTPROTO_DIRECTIVE_TOKEN_KIND_EOF,
+        MtprotoDirectiveTokenKind::Timeout => MTPROTO_DIRECTIVE_TOKEN_KIND_TIMEOUT,
+        MtprotoDirectiveTokenKind::DefaultCluster => MTPROTO_DIRECTIVE_TOKEN_KIND_DEFAULT_CLUSTER,
+        MtprotoDirectiveTokenKind::ProxyFor => MTPROTO_DIRECTIVE_TOKEN_KIND_PROXY_FOR,
+        MtprotoDirectiveTokenKind::Proxy => MTPROTO_DIRECTIVE_TOKEN_KIND_PROXY,
+        MtprotoDirectiveTokenKind::MaxConnections => MTPROTO_DIRECTIVE_TOKEN_KIND_MAX_CONNECTIONS,
+        MtprotoDirectiveTokenKind::MinConnections => MTPROTO_DIRECTIVE_TOKEN_KIND_MIN_CONNECTIONS,
+    }
+}
+
+fn mtproto_cfg_scan_directive_token_err_to_code(
+    err: mtproxy_core::runtime::mtproto::config::MtprotoDirectiveParseError,
+) -> i32 {
+    use mtproxy_core::runtime::mtproto::config::MtprotoDirectiveParseError;
+    match err {
+        MtprotoDirectiveParseError::InvalidTimeout(_) => {
+            MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_INVALID_TIMEOUT
+        }
+        MtprotoDirectiveParseError::InvalidMaxConnections(_) => {
+            MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_INVALID_MAX_CONNECTIONS
+        }
+        MtprotoDirectiveParseError::InvalidMinConnections(_) => {
+            MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_INVALID_MIN_CONNECTIONS
+        }
+        MtprotoDirectiveParseError::InvalidTargetId(_) => {
+            MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_INVALID_TARGET_ID
+        }
+        MtprotoDirectiveParseError::SpaceExpectedAfterTargetId => {
+            MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_TARGET_ID_SPACE
+        }
+        MtprotoDirectiveParseError::ProxyDirectiveExpected => {
+            MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_PROXY_EXPECTED
+        }
+        _ => MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_INTERNAL,
+    }
+}
+
+fn mtproto_old_cluster_from_ffi(
+    state: &MtproxyMtprotoOldClusterState,
+) -> Option<mtproxy_core::runtime::mtproto::config::MtprotoClusterState> {
+    let first_target_index = if state.has_first_target_index != 0 {
+        Some(usize::try_from(state.first_target_index).ok()?)
+    } else {
+        None
+    };
+    Some(
+        mtproxy_core::runtime::mtproto::config::MtprotoClusterState {
+            cluster_id: state.cluster_id,
+            targets_num: state.targets_num,
+            write_targets_num: state.write_targets_num,
+            flags: state.flags,
+            first_target_index,
+        },
+    )
+}
+
+fn mtproto_old_cluster_to_ffi(
+    state: &mtproxy_core::runtime::mtproto::config::MtprotoClusterState,
+) -> Option<MtproxyMtprotoOldClusterState> {
+    let (has_first_target_index, first_target_index) = if let Some(first) = state.first_target_index
+    {
+        (1, u32::try_from(first).ok()?)
+    } else {
+        (0, 0)
+    };
+    Some(MtproxyMtprotoOldClusterState {
+        cluster_id: state.cluster_id,
+        targets_num: state.targets_num,
+        write_targets_num: state.write_targets_num,
+        flags: state.flags,
+        first_target_index,
+        has_first_target_index,
+    })
+}
+
+/// Parses one extended lexer token from `mtproto-config`.
+///
+/// # Safety
+/// `cur` must be readable for `len` bytes when `len > 0`; `out` must be writable.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_getlex_ext(
+    cur: *const c_char,
+    len: usize,
+    out: *mut MtproxyMtprotoCfgGetlexExtResult,
+) -> i32 {
+    if out.is_null() {
+        return MTPROTO_CFG_GETLEX_EXT_ERR_INVALID_ARGS;
+    }
+    let Some(bytes) = cfg_bytes_from_cstr(cur, len) else {
+        return MTPROTO_CFG_GETLEX_EXT_ERR_INVALID_ARGS;
+    };
+    let mut cursor = 0usize;
+    let lex = mtproxy_core::runtime::mtproto::config::cfg_getlex_ext(bytes, &mut cursor);
+    let out_ref = unsafe { &mut *out };
+    *out_ref = MtproxyMtprotoCfgGetlexExtResult {
+        advance: cursor,
+        lex,
+    };
+    MTPROTO_CFG_GETLEX_EXT_OK
+}
+
+/// Parses one directive token and scalar argument from `mtproto-config`.
+///
+/// # Safety
+/// `cur` must be readable for `len` bytes when `len > 0`; `out` must be writable.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_scan_directive_token(
+    cur: *const c_char,
+    len: usize,
+    min_connections: i64,
+    max_connections: i64,
+    out: *mut MtproxyMtprotoCfgDirectiveTokenResult,
+) -> i32 {
+    if out.is_null() {
+        return MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_INVALID_ARGS;
+    }
+    let Some(bytes) = cfg_bytes_from_cstr(cur, len) else {
+        return MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_INVALID_ARGS;
+    };
+    match mtproxy_core::runtime::mtproto::config::cfg_scan_directive_token(
+        bytes,
+        min_connections,
+        max_connections,
+    ) {
+        Ok(preview) => {
+            let out_ref = unsafe { &mut *out };
+            *out_ref = MtproxyMtprotoCfgDirectiveTokenResult {
+                kind: mtproto_directive_token_kind_to_ffi(preview.kind),
+                advance: preview.advance,
+                value: preview.value,
+            };
+            MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_OK
+        }
+        Err(err) => mtproto_cfg_scan_directive_token_err_to_code(err),
+    }
+}
+
+/// Parses `host:port` target syntax used by `cfg_parse_server_port`.
+///
+/// # Safety
+/// `cur` must be readable for `len` bytes when `len > 0`; `out` must be writable.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_parse_server_port(
+    cur: *const c_char,
+    len: usize,
+    current_targets: u32,
+    max_targets: u32,
+    min_connections: i64,
+    max_connections: i64,
+    out: *mut MtproxyMtprotoCfgParseServerPortResult,
+) -> i32 {
+    if out.is_null() {
+        return MTPROTO_CFG_PARSE_SERVER_PORT_ERR_INVALID_ARGS;
+    }
+    let Some(bytes) = cfg_bytes_from_cstr(cur, len) else {
+        return MTPROTO_CFG_PARSE_SERVER_PORT_ERR_INVALID_ARGS;
+    };
+    let Ok(current_targets_usize) = usize::try_from(current_targets) else {
+        return MTPROTO_CFG_PARSE_SERVER_PORT_ERR_INVALID_ARGS;
+    };
+    let Ok(max_targets_usize) = usize::try_from(max_targets) else {
+        return MTPROTO_CFG_PARSE_SERVER_PORT_ERR_INVALID_ARGS;
+    };
+
+    let mut cursor = 0usize;
+    match mtproxy_core::runtime::mtproto::config::cfg_parse_server_port_preview(
+        bytes,
+        &mut cursor,
+        current_targets_usize,
+        max_targets_usize,
+        min_connections,
+        max_connections,
+    ) {
+        Ok(preview) => {
+            let Ok(target_index) = u32::try_from(preview.target_index) else {
+                return MTPROTO_CFG_PARSE_SERVER_PORT_ERR_INTERNAL;
+            };
+            let out_ref = unsafe { &mut *out };
+            *out_ref = MtproxyMtprotoCfgParseServerPortResult {
+                advance: preview.advance,
+                target_index,
+                host_len: preview.target.host_len,
+                port: preview.target.port,
+                min_connections: preview.target.min_connections,
+                max_connections: preview.target.max_connections,
+            };
+            MTPROTO_CFG_PARSE_SERVER_PORT_OK
+        }
+        Err(err) => mtproto_cfg_parse_server_port_err_to_code(err),
+    }
+}
+
+/// Initializes old-cluster apply state like `init_old_mf_cluster`.
+///
+/// # Safety
+/// `out` must be writable.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_init_old_cluster(
+    first_target_index: u32,
+    cluster_id: i32,
+    flags: u32,
+    out: *mut MtproxyMtprotoOldClusterState,
+) -> i32 {
+    if out.is_null() {
+        return -1;
+    }
+    let Ok(first_target_index_usize) = usize::try_from(first_target_index) else {
+        return -1;
+    };
+    let mut cluster = mtproxy_core::runtime::mtproto::config::MtprotoClusterState {
+        cluster_id: 0,
+        targets_num: 0,
+        write_targets_num: 0,
+        flags: 0,
+        first_target_index: None,
+    };
+    mtproxy_core::runtime::mtproto::config::init_old_mf_cluster(
+        &mut cluster,
+        first_target_index_usize,
+        flags,
+        cluster_id,
+    );
+    let Some(cluster_ffi) = mtproto_old_cluster_to_ffi(&cluster) else {
+        return -1;
+    };
+    let out_ref = unsafe { &mut *out };
+    *out_ref = cluster_ffi;
+    0
+}
+
+/// Extends old-cluster apply state like `extend_old_mf_cluster`.
+///
+/// # Safety
+/// `state` must be writable.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_extend_old_cluster(
+    state: *mut MtproxyMtprotoOldClusterState,
+    target_index: u32,
+    cluster_id: i32,
+) -> i32 {
+    if state.is_null() {
+        return -1;
+    }
+    let Ok(target_index_usize) = usize::try_from(target_index) else {
+        return -1;
+    };
+    let state_ref = unsafe { &mut *state };
+    let Some(mut cluster) = mtproto_old_cluster_from_ffi(state_ref) else {
+        return -1;
+    };
+    let extended = mtproxy_core::runtime::mtproto::config::extend_old_mf_cluster(
+        &mut cluster,
+        target_index_usize,
+        cluster_id,
+    );
+    let Some(updated) = mtproto_old_cluster_to_ffi(&cluster) else {
+        return -1;
+    };
+    *state_ref = updated;
+    i32::from(extended)
 }
 
 fn md5_digest_impl(input: &[u8], out: &mut [u8; DIGEST_MD5_LEN]) -> bool {
@@ -2954,38 +3304,54 @@ mod tests {
         mtproxy_ffi_get_network_boundary, mtproxy_ffi_get_precise_time,
         mtproxy_ffi_get_rpc_boundary, mtproxy_ffi_get_utime_monotonic, mtproxy_ffi_matches_pid,
         mtproxy_ffi_md5, mtproxy_ffi_md5_hex, mtproxy_ffi_msg_buffers_pick_size_index,
-        mtproxy_ffi_mtproto_conn_tag, mtproxy_ffi_mtproto_ext_conn_hash,
-        mtproxy_ffi_net_epoll_conv_flags, mtproxy_ffi_net_epoll_unconv_flags,
-        mtproxy_ffi_net_timers_wait_msec, mtproxy_ffi_parse_meminfo_summary,
-        mtproxy_ffi_parse_proc_stat_line, mtproxy_ffi_parse_statm, mtproxy_ffi_pid_init_common,
-        mtproxy_ffi_precise_now_rdtsc_value, mtproxy_ffi_precise_now_value,
-        mtproxy_ffi_process_id_is_newer, mtproxy_ffi_read_proc_stat_file,
-        mtproxy_ffi_rpc_target_normalize_pid, mtproxy_ffi_sha1, mtproxy_ffi_sha1_two_chunks,
-        mtproxy_ffi_sha256, mtproxy_ffi_sha256_hmac, mtproxy_ffi_sha256_two_chunks,
-        mtproxy_ffi_startup_handshake, mtproxy_ffi_tcp_rpc_client_packet_len_state,
-        mtproxy_ffi_tcp_rpc_encode_compact_header,
+        mtproxy_ffi_mtproto_cfg_getlex_ext, mtproxy_ffi_mtproto_cfg_parse_server_port,
+        mtproxy_ffi_mtproto_cfg_scan_directive_token, mtproxy_ffi_mtproto_conn_tag,
+        mtproxy_ffi_mtproto_ext_conn_hash, mtproxy_ffi_mtproto_extend_old_cluster,
+        mtproxy_ffi_mtproto_init_old_cluster, mtproxy_ffi_net_epoll_conv_flags,
+        mtproxy_ffi_net_epoll_unconv_flags, mtproxy_ffi_net_timers_wait_msec,
+        mtproxy_ffi_parse_meminfo_summary, mtproxy_ffi_parse_proc_stat_line,
+        mtproxy_ffi_parse_statm, mtproxy_ffi_pid_init_common, mtproxy_ffi_precise_now_rdtsc_value,
+        mtproxy_ffi_precise_now_value, mtproxy_ffi_process_id_is_newer,
+        mtproxy_ffi_read_proc_stat_file, mtproxy_ffi_rpc_target_normalize_pid, mtproxy_ffi_sha1,
+        mtproxy_ffi_sha1_two_chunks, mtproxy_ffi_sha256, mtproxy_ffi_sha256_hmac,
+        mtproxy_ffi_sha256_two_chunks, mtproxy_ffi_startup_handshake,
+        mtproxy_ffi_tcp_rpc_client_packet_len_state, mtproxy_ffi_tcp_rpc_encode_compact_header,
         mtproxy_ffi_tcp_rpc_server_packet_header_malformed,
         mtproxy_ffi_tcp_rpc_server_packet_len_state, mtproxy_ffi_tl_parse_answer_header,
         mtproxy_ffi_tl_parse_query_header, MtproxyAesKeyData, MtproxyApplicationBoundary,
         MtproxyCfgIntResult, MtproxyCfgScanResult, MtproxyConcurrencyBoundary, MtproxyCpuid,
-        MtproxyCryptoBoundary, MtproxyMeminfoSummary, MtproxyNetworkBoundary, MtproxyProcStats,
-        MtproxyProcessId, MtproxyRpcBoundary, MtproxyTlHeaderParseResult, AESNI_CIPHER_AES_256_CTR,
+        MtproxyCryptoBoundary, MtproxyMeminfoSummary, MtproxyMtprotoCfgDirectiveTokenResult,
+        MtproxyMtprotoCfgGetlexExtResult, MtproxyMtprotoCfgParseServerPortResult,
+        MtproxyMtprotoOldClusterState, MtproxyNetworkBoundary, MtproxyProcStats, MtproxyProcessId,
+        MtproxyRpcBoundary, MtproxyTlHeaderParseResult, AESNI_CIPHER_AES_256_CTR,
         AESNI_CONTRACT_OPS, AESNI_IMPLEMENTED_OPS, APPLICATION_BOUNDARY_VERSION,
         CONCURRENCY_BOUNDARY_VERSION, CPUID_MAGIC, CRYPTO_BOUNDARY_VERSION, DH_KEY_BYTES,
         DH_PARAMS_SELECT, ENGINE_RPC_CONTRACT_OPS, ENGINE_RPC_IMPLEMENTED_OPS, EPOLLERR, EPOLLET,
         EPOLLIN, EPOLLOUT, EPOLLPRI, EPOLLRDHUP, EVT_FROM_EPOLL, EVT_LEVEL, EVT_READ, EVT_SPEC,
         EVT_WRITE, FFI_API_VERSION, JOBS_CONTRACT_OPS, JOBS_IMPLEMENTED_OPS, MPQ_CONTRACT_OPS,
-        MPQ_IMPLEMENTED_OPS, MTPROTO_PROXY_CONTRACT_OPS, MTPROTO_PROXY_IMPLEMENTED_OPS,
-        NETWORK_BOUNDARY_VERSION, NET_CRYPTO_AES_CONTRACT_OPS, NET_CRYPTO_AES_IMPLEMENTED_OPS,
-        NET_CRYPTO_DH_CONTRACT_OPS, NET_CRYPTO_DH_IMPLEMENTED_OPS, NET_EVENTS_CONTRACT_OPS,
-        NET_EVENTS_IMPLEMENTED_OPS, NET_MSG_BUFFERS_CONTRACT_OPS, NET_MSG_BUFFERS_IMPLEMENTED_OPS,
-        NET_TIMERS_CONTRACT_OPS, NET_TIMERS_IMPLEMENTED_OPS, RPC_BOUNDARY_VERSION, RPC_INVOKE_REQ,
-        RPC_REQ_RESULT, RPC_TARGETS_CONTRACT_OPS, RPC_TARGETS_IMPLEMENTED_OPS,
-        TCP_RPC_CLIENT_CONTRACT_OPS, TCP_RPC_CLIENT_IMPLEMENTED_OPS, TCP_RPC_COMMON_CONTRACT_OPS,
-        TCP_RPC_COMMON_IMPLEMENTED_OPS, TCP_RPC_PACKET_LEN_STATE_INVALID,
-        TCP_RPC_PACKET_LEN_STATE_READY, TCP_RPC_PACKET_LEN_STATE_SHORT,
-        TCP_RPC_PACKET_LEN_STATE_SKIP, TCP_RPC_SERVER_CONTRACT_OPS, TCP_RPC_SERVER_IMPLEMENTED_OPS,
-        TLS_REQUEST_PUBLIC_KEY_BYTES,
+        MPQ_IMPLEMENTED_OPS, MTPROTO_CFG_GETLEX_EXT_OK,
+        MTPROTO_CFG_PARSE_SERVER_PORT_ERR_HOSTNAME_EXPECTED,
+        MTPROTO_CFG_PARSE_SERVER_PORT_ERR_PORT_EXPECTED,
+        MTPROTO_CFG_PARSE_SERVER_PORT_ERR_PORT_RANGE,
+        MTPROTO_CFG_PARSE_SERVER_PORT_ERR_TOO_MANY_TARGETS, MTPROTO_CFG_PARSE_SERVER_PORT_OK,
+        MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_INVALID_MAX_CONNECTIONS,
+        MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_INVALID_MIN_CONNECTIONS,
+        MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_INVALID_TARGET_ID,
+        MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_INVALID_TIMEOUT,
+        MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_TARGET_ID_SPACE, MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_OK,
+        MTPROTO_DIRECTIVE_TOKEN_KIND_DEFAULT_CLUSTER, MTPROTO_DIRECTIVE_TOKEN_KIND_MAX_CONNECTIONS,
+        MTPROTO_DIRECTIVE_TOKEN_KIND_MIN_CONNECTIONS, MTPROTO_DIRECTIVE_TOKEN_KIND_PROXY_FOR,
+        MTPROTO_DIRECTIVE_TOKEN_KIND_TIMEOUT, MTPROTO_PROXY_CONTRACT_OPS,
+        MTPROTO_PROXY_IMPLEMENTED_OPS, NETWORK_BOUNDARY_VERSION, NET_CRYPTO_AES_CONTRACT_OPS,
+        NET_CRYPTO_AES_IMPLEMENTED_OPS, NET_CRYPTO_DH_CONTRACT_OPS, NET_CRYPTO_DH_IMPLEMENTED_OPS,
+        NET_EVENTS_CONTRACT_OPS, NET_EVENTS_IMPLEMENTED_OPS, NET_MSG_BUFFERS_CONTRACT_OPS,
+        NET_MSG_BUFFERS_IMPLEMENTED_OPS, NET_TIMERS_CONTRACT_OPS, NET_TIMERS_IMPLEMENTED_OPS,
+        RPC_BOUNDARY_VERSION, RPC_INVOKE_REQ, RPC_REQ_RESULT, RPC_TARGETS_CONTRACT_OPS,
+        RPC_TARGETS_IMPLEMENTED_OPS, TCP_RPC_CLIENT_CONTRACT_OPS, TCP_RPC_CLIENT_IMPLEMENTED_OPS,
+        TCP_RPC_COMMON_CONTRACT_OPS, TCP_RPC_COMMON_IMPLEMENTED_OPS,
+        TCP_RPC_PACKET_LEN_STATE_INVALID, TCP_RPC_PACKET_LEN_STATE_READY,
+        TCP_RPC_PACKET_LEN_STATE_SHORT, TCP_RPC_PACKET_LEN_STATE_SKIP, TCP_RPC_SERVER_CONTRACT_OPS,
+        TCP_RPC_SERVER_IMPLEMENTED_OPS, TLS_REQUEST_PUBLIC_KEY_BYTES,
     };
 
     #[test]
@@ -3143,6 +3509,274 @@ mod tests {
             c_hash(-1, -17, 20)
         );
         assert_eq!(mtproxy_ffi_mtproto_ext_conn_hash(1, 2, 0), -1);
+    }
+
+    #[test]
+    fn mtproto_config_server_port_helper_matches_preview_expectations() {
+        let input = b" host-01:8443";
+        let mut out = MtproxyMtprotoCfgParseServerPortResult::default();
+        let rc = unsafe {
+            mtproxy_ffi_mtproto_cfg_parse_server_port(
+                input.as_ptr().cast(),
+                input.len(),
+                7,
+                16,
+                2,
+                64,
+                &raw mut out,
+            )
+        };
+        assert_eq!(rc, MTPROTO_CFG_PARSE_SERVER_PORT_OK);
+        assert_eq!(out.advance, input.len());
+        assert_eq!(out.target_index, 7);
+        assert_eq!(out.host_len, 7);
+        assert_eq!(out.port, 8443);
+        assert_eq!(out.min_connections, 2);
+        assert_eq!(out.max_connections, 64);
+    }
+
+    #[test]
+    fn mtproto_config_server_port_helper_reports_expected_errors() {
+        let mut out = MtproxyMtprotoCfgParseServerPortResult::default();
+        let rc = unsafe {
+            mtproxy_ffi_mtproto_cfg_parse_server_port(
+                b"h:70000".as_ptr().cast(),
+                7,
+                0,
+                16,
+                2,
+                64,
+                &raw mut out,
+            )
+        };
+        assert_eq!(rc, MTPROTO_CFG_PARSE_SERVER_PORT_ERR_PORT_RANGE);
+
+        let rc = unsafe {
+            mtproxy_ffi_mtproto_cfg_parse_server_port(
+                b"h".as_ptr().cast(),
+                1,
+                0,
+                16,
+                2,
+                64,
+                &raw mut out,
+            )
+        };
+        assert_eq!(rc, MTPROTO_CFG_PARSE_SERVER_PORT_ERR_PORT_EXPECTED);
+
+        let rc = unsafe {
+            mtproxy_ffi_mtproto_cfg_parse_server_port(
+                b"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:1"
+                    .as_ptr()
+                    .cast(),
+                66,
+                0,
+                16,
+                2,
+                64,
+                &raw mut out,
+            )
+        };
+        assert_eq!(rc, MTPROTO_CFG_PARSE_SERVER_PORT_ERR_HOSTNAME_EXPECTED);
+
+        let rc = unsafe {
+            mtproxy_ffi_mtproto_cfg_parse_server_port(
+                b"h:1".as_ptr().cast(),
+                3,
+                4,
+                4,
+                2,
+                64,
+                &raw mut out,
+            )
+        };
+        assert_eq!(rc, MTPROTO_CFG_PARSE_SERVER_PORT_ERR_TOO_MANY_TARGETS);
+    }
+
+    #[test]
+    fn mtproto_config_getlex_helper_returns_lexeme_and_advance() {
+        let input = b"  proxy_for";
+        let mut out = MtproxyMtprotoCfgGetlexExtResult::default();
+        let rc = unsafe {
+            mtproxy_ffi_mtproto_cfg_getlex_ext(input.as_ptr().cast(), input.len(), &raw mut out)
+        };
+        assert_eq!(rc, MTPROTO_CFG_GETLEX_EXT_OK);
+        assert_eq!(out.lex, i32::from(b'Y'));
+        assert_eq!(out.advance, input.len());
+    }
+
+    #[test]
+    fn mtproto_config_directive_token_helper_matches_parser_rules() {
+        let mut out = MtproxyMtprotoCfgDirectiveTokenResult::default();
+
+        let timeout = b"timeout 250";
+        let rc = unsafe {
+            mtproxy_ffi_mtproto_cfg_scan_directive_token(
+                timeout.as_ptr().cast(),
+                timeout.len(),
+                2,
+                64,
+                &raw mut out,
+            )
+        };
+        assert_eq!(rc, MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_OK);
+        assert_eq!(out.kind, MTPROTO_DIRECTIVE_TOKEN_KIND_TIMEOUT);
+        assert_eq!(out.value, 250);
+        assert_eq!(out.advance, timeout.len());
+
+        let default_cluster = b"default -2";
+        let rc = unsafe {
+            mtproxy_ffi_mtproto_cfg_scan_directive_token(
+                default_cluster.as_ptr().cast(),
+                default_cluster.len(),
+                2,
+                64,
+                &raw mut out,
+            )
+        };
+        assert_eq!(rc, MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_OK);
+        assert_eq!(out.kind, MTPROTO_DIRECTIVE_TOKEN_KIND_DEFAULT_CLUSTER);
+        assert_eq!(out.value, -2);
+
+        let proxy_for = b"proxy_for -2   dc1:443";
+        let rc = unsafe {
+            mtproxy_ffi_mtproto_cfg_scan_directive_token(
+                proxy_for.as_ptr().cast(),
+                proxy_for.len(),
+                2,
+                64,
+                &raw mut out,
+            )
+        };
+        assert_eq!(rc, MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_OK);
+        assert_eq!(out.kind, MTPROTO_DIRECTIVE_TOKEN_KIND_PROXY_FOR);
+        assert_eq!(out.value, -2);
+        assert_eq!(out.advance, 15);
+
+        let max_invalid = b"max_connections 1";
+        let rc = unsafe {
+            mtproxy_ffi_mtproto_cfg_scan_directive_token(
+                max_invalid.as_ptr().cast(),
+                max_invalid.len(),
+                2,
+                64,
+                &raw mut out,
+            )
+        };
+        assert_eq!(
+            rc,
+            MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_INVALID_MAX_CONNECTIONS
+        );
+
+        let min_invalid = b"min_connections 100";
+        let rc = unsafe {
+            mtproxy_ffi_mtproto_cfg_scan_directive_token(
+                min_invalid.as_ptr().cast(),
+                min_invalid.len(),
+                2,
+                64,
+                &raw mut out,
+            )
+        };
+        assert_eq!(
+            rc,
+            MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_INVALID_MIN_CONNECTIONS
+        );
+
+        let timeout_invalid = b"timeout 1";
+        let rc = unsafe {
+            mtproxy_ffi_mtproto_cfg_scan_directive_token(
+                timeout_invalid.as_ptr().cast(),
+                timeout_invalid.len(),
+                2,
+                64,
+                &raw mut out,
+            )
+        };
+        assert_eq!(rc, MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_INVALID_TIMEOUT);
+
+        let target_id_invalid = b"default 40000";
+        let rc = unsafe {
+            mtproxy_ffi_mtproto_cfg_scan_directive_token(
+                target_id_invalid.as_ptr().cast(),
+                target_id_invalid.len(),
+                2,
+                64,
+                &raw mut out,
+            )
+        };
+        assert_eq!(rc, MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_INVALID_TARGET_ID);
+
+        let target_space_missing = b"proxy_for 1dc1:443";
+        let rc = unsafe {
+            mtproxy_ffi_mtproto_cfg_scan_directive_token(
+                target_space_missing.as_ptr().cast(),
+                target_space_missing.len(),
+                2,
+                64,
+                &raw mut out,
+            )
+        };
+        assert_eq!(rc, MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_TARGET_ID_SPACE);
+
+        let min_ok = b"min_connections 5";
+        let rc = unsafe {
+            mtproxy_ffi_mtproto_cfg_scan_directive_token(
+                min_ok.as_ptr().cast(),
+                min_ok.len(),
+                2,
+                64,
+                &raw mut out,
+            )
+        };
+        assert_eq!(rc, MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_OK);
+        assert_eq!(out.kind, MTPROTO_DIRECTIVE_TOKEN_KIND_MIN_CONNECTIONS);
+        assert_eq!(out.value, 5);
+
+        let max_ok = b"max_connections 64";
+        let rc = unsafe {
+            mtproxy_ffi_mtproto_cfg_scan_directive_token(
+                max_ok.as_ptr().cast(),
+                max_ok.len(),
+                2,
+                64,
+                &raw mut out,
+            )
+        };
+        assert_eq!(rc, MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_OK);
+        assert_eq!(out.kind, MTPROTO_DIRECTIVE_TOKEN_KIND_MAX_CONNECTIONS);
+        assert_eq!(out.value, 64);
+    }
+
+    #[test]
+    fn mtproto_old_cluster_helpers_follow_c_contiguity_rules() {
+        let mut state = MtproxyMtprotoOldClusterState::default();
+        assert_eq!(
+            unsafe { mtproxy_ffi_mtproto_init_old_cluster(3, -2, 1, &raw mut state) },
+            0
+        );
+        assert_eq!(state.cluster_id, -2);
+        assert_eq!(state.flags, 1);
+        assert_eq!(state.targets_num, 1);
+        assert_eq!(state.write_targets_num, 1);
+        assert_eq!(state.has_first_target_index, 1);
+        assert_eq!(state.first_target_index, 3);
+
+        assert_eq!(
+            unsafe { mtproxy_ffi_mtproto_extend_old_cluster(&raw mut state, 4, -2) },
+            1
+        );
+        assert_eq!(state.targets_num, 2);
+        assert_eq!(state.write_targets_num, 2);
+
+        assert_eq!(
+            unsafe { mtproxy_ffi_mtproto_extend_old_cluster(&raw mut state, 6, -2) },
+            0
+        );
+        assert_eq!(
+            unsafe { mtproxy_ffi_mtproto_extend_old_cluster(&raw mut state, 5, -3) },
+            0
+        );
     }
 
     #[test]

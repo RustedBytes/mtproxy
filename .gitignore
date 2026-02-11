@@ -2,3 +2,6 @@ objs
 dep
 tests/.tmp
 target
+
+proxy-multi.conf
+proxy-secret

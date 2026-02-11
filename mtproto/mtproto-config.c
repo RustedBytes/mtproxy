@@ -25,6 +25,7 @@
 #define        _FILE_OFFSET_BITS        64
 
 #include <assert.h>
+#include <stddef.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -48,6 +49,7 @@
 #include "engine/engine.h"
 #include "common/parse-config.h"
 #include "common/server-functions.h"
+#include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 
 /*
  *
@@ -66,47 +68,20 @@ struct mf_config Config[2], *CurConf = Config, *NextConf = Config + 1;
 char *config_filename;
 
 static int cfg_getlex_ext (void) {
-  switch (cfg_skipspc()) {
-  case ';':
-  case ':':
-  case '{':
-  case '}':
-    return cfg_lex = *cfg_cur++;
-  case 'm':
-    if (!memcmp (cfg_cur, "min_connections", 15)) {
-      cfg_cur += 15;
-      return cfg_lex = 'x';
-    }
-    if (!memcmp (cfg_cur, "max_connections", 15)) {
-      cfg_cur += 15;
-      return cfg_lex = 'X';
-    }
-    break;
-  case 'p':
-    if (!memcmp (cfg_cur, "proxy_for", 9)) {
-      cfg_cur += 9;
-      return cfg_lex = 'Y';
-    } else if (!memcmp (cfg_cur, "proxy", 5)) {
-      cfg_cur += 5;
-      return cfg_lex = 'y';
-    }
-    break;
-  case 't':
-    if (!memcmp (cfg_cur, "timeout", 7)) {
-      cfg_cur += 7;
-      return cfg_lex = 't';
-    }
-    break;
-  case 'd':
-    if (!memcmp (cfg_cur, "default", 7)) {
-      cfg_cur += 7;
-      return cfg_lex = 'D';
-    }
-    break;
-  case 0:
-    return cfg_lex = 0;
+  if (cfg_cur > cfg_end) {
+    return cfg_lex = -1;
   }
-  return cfg_lex = -1;
+  mtproxy_ffi_mtproto_cfg_getlex_ext_result_t token = {0};
+  int32_t rc = mtproxy_ffi_mtproto_cfg_getlex_ext (
+    cfg_cur,
+    (size_t) (cfg_end - cfg_cur),
+    &token
+  );
+  if (rc != MTPROXY_FFI_MTPROTO_CFG_GETLEX_EXT_OK) {
+    return cfg_lex = -1;
+  }
+  cfg_cur += token.advance;
+  return cfg_lex = token.lex;
 }
 
 
@@ -142,11 +117,43 @@ void clear_config (struct mf_config *MC, int do_destroy_targets) {
 }
 
 conn_target_job_t *cfg_parse_server_port (struct mf_config *MC, int flags) {
-  if (MC->tot_targets >= MAX_CFG_TARGETS) {
-    syntax ("too many targets (%d)", MC->tot_targets);
+  if (cfg_cur > cfg_end) {
+    syntax ("hostname expected");
     return 0;
   }
 
+  mtproxy_ffi_mtproto_cfg_parse_server_port_result_t parsed = {0};
+  int32_t parse_rc = mtproxy_ffi_mtproto_cfg_parse_server_port (
+    cfg_cur,
+    (size_t) (cfg_end - cfg_cur),
+    (uint32_t) MC->tot_targets,
+    (uint32_t) MAX_CFG_TARGETS,
+    MC->min_connections,
+    MC->max_connections,
+    &parsed
+  );
+  if (parse_rc != MTPROXY_FFI_MTPROTO_CFG_PARSE_SERVER_PORT_OK) {
+    switch (parse_rc) {
+      case MTPROXY_FFI_MTPROTO_CFG_PARSE_SERVER_PORT_ERR_TOO_MANY_TARGETS:
+        syntax ("too many targets (%d)", MC->tot_targets);
+        break;
+      case MTPROXY_FFI_MTPROTO_CFG_PARSE_SERVER_PORT_ERR_HOSTNAME_EXPECTED:
+        syntax ("hostname expected");
+        break;
+      case MTPROXY_FFI_MTPROTO_CFG_PARSE_SERVER_PORT_ERR_PORT_EXPECTED:
+        syntax ("port number expected");
+        break;
+      case MTPROXY_FFI_MTPROTO_CFG_PARSE_SERVER_PORT_ERR_PORT_RANGE:
+        syntax ("port number out of range");
+        break;
+      default:
+        syntax ("invalid proxy target specification");
+        break;
+    }
+    return 0;
+  }
+
+  const char *parse_start = cfg_cur;
   struct hostent *h = cfg_gethost ();
   if (!h) {
     return 0;
@@ -163,24 +170,16 @@ conn_target_job_t *cfg_parse_server_port (struct mf_config *MC, int flags) {
     return 0;
   }
 
-  //*(cfg_cur += l) = c;
-  cfg_getlex_ext ();
-  if (expect_lexem (':') < 0) {
+  if (parsed.target_index != (uint32_t) MC->tot_targets) {
+    syntax ("internal parser target index mismatch");
     return 0;
   }
-  default_cfg_ct.port = cfg_getint();
-  if (!default_cfg_ct.port) {
-    syntax ("port number expected");
-    return 0;
-  }
-        
-  if (default_cfg_ct.port <= 0 || default_cfg_ct.port >= 0x10000) {
-    syntax ("port number %d out of range", default_cfg_ct.port);
-    return 0;
-  }
+  cfg_cur = (char *) parse_start + parsed.advance;
 
-  default_cfg_ct.min_connections = MC->min_connections;
-  default_cfg_ct.max_connections = MC->max_connections;
+  default_cfg_ct.port = parsed.port;
+
+  default_cfg_ct.min_connections = parsed.min_connections;
+  default_cfg_ct.max_connections = parsed.max_connections;
   default_cfg_ct.reconnect_timeout = 1.0 + 0.1 * drand48 ();
 
   if ((flags & 1)) {
@@ -193,24 +192,66 @@ conn_target_job_t *cfg_parse_server_port (struct mf_config *MC, int flags) {
 }
 
 
-static void init_old_mf_cluster (struct mf_group_stats *GS, struct mf_cluster *MFC, conn_target_job_t *targets, int targets_num, int flags, int cluster_id) {
-  MFC->flags = flags;
-  MFC->targets_num = targets_num;
-  MFC->write_targets_num = targets_num;
+static void init_old_mf_cluster (struct mf_config *MC, struct mf_group_stats *GS, struct mf_cluster *MFC, conn_target_job_t *targets, int targets_num, int flags, int cluster_id) {
+  assert (targets_num == 1);
+  assert (targets >= MC->targets);
+  ptrdiff_t first_target_index = targets - MC->targets;
+  assert (first_target_index >= 0 && first_target_index < MAX_CFG_TARGETS);
+
+  mtproxy_ffi_mtproto_old_cluster_state_t rust_cluster = {0};
+  int32_t rc = mtproxy_ffi_mtproto_init_old_cluster (
+    (uint32_t) first_target_index,
+    cluster_id,
+    (uint32_t) flags,
+    &rust_cluster
+  );
+  assert (rc == 0);
+
+  MFC->flags = (int) rust_cluster.flags;
+  MFC->targets_num = (int) rust_cluster.targets_num;
+  MFC->write_targets_num = (int) rust_cluster.write_targets_num;
   MFC->targets_allocated = 0;
   MFC->cluster_targets = targets;
-  MFC->cluster_id = cluster_id;
+  MFC->cluster_id = rust_cluster.cluster_id;
   GS->tot_clusters ++;
 }
 
-static int extend_old_mf_cluster (struct mf_cluster *MFC, conn_target_job_t *target, int cluster_id) {
-  if (MFC->cluster_targets + MFC->targets_num != target) {
+static int extend_old_mf_cluster (struct mf_config *MC, struct mf_cluster *MFC, conn_target_job_t *target, int cluster_id) {
+  if (!MFC->cluster_targets || !target) {
     return 0;
   }
-  if (MFC->cluster_id != cluster_id) {
+  if (MFC->cluster_targets < MC->targets || target < MC->targets) {
     return 0;
   }
-  MFC->write_targets_num = ++(MFC->targets_num);
+  ptrdiff_t first_target_index = MFC->cluster_targets - MC->targets;
+  ptrdiff_t target_index = target - MC->targets;
+  if (first_target_index < 0 || first_target_index >= MAX_CFG_TARGETS) {
+    return 0;
+  }
+  if (target_index < 0 || target_index >= MAX_CFG_TARGETS) {
+    return 0;
+  }
+
+  mtproxy_ffi_mtproto_old_cluster_state_t rust_cluster = {
+    .cluster_id = MFC->cluster_id,
+    .targets_num = (uint32_t) MFC->targets_num,
+    .write_targets_num = (uint32_t) MFC->write_targets_num,
+    .flags = (uint32_t) MFC->flags,
+    .first_target_index = (uint32_t) first_target_index,
+    .has_first_target_index = 1,
+  };
+  int32_t rc = mtproxy_ffi_mtproto_extend_old_cluster (
+    &rust_cluster,
+    (uint32_t) target_index,
+    cluster_id
+  );
+  if (rc != 1) {
+    return 0;
+  }
+  MFC->flags = (int) rust_cluster.flags;
+  MFC->targets_num = (int) rust_cluster.targets_num;
+  MFC->write_targets_num = (int) rust_cluster.write_targets_num;
+  MFC->cluster_id = rust_cluster.cluster_id;
   return 1;
 }
 
@@ -261,79 +302,93 @@ int parse_config (struct mf_config *MC, int flags, int config_fd) {
   preinit_config (MC);
   
   while (cfg_skipspc ()) {
-    int t, target_dc = 0;
-    switch (t = cfg_getlex_ext ()) {
-    case 't':
-      MC->timeout = cfg_getint ();
-      if (MC->timeout < 10 || MC->timeout > 30000) {
-        Syntax ("invalid timeout");
+    int target_dc = 0;
+    mtproxy_ffi_mtproto_cfg_directive_token_result_t token = {0};
+    int32_t token_rc = mtproxy_ffi_mtproto_cfg_scan_directive_token (
+      cfg_cur,
+      (size_t) (cfg_end - cfg_cur),
+      MC->min_connections,
+      MC->max_connections,
+      &token
+    );
+    if (token_rc != MTPROXY_FFI_MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_OK) {
+      switch (token_rc) {
+        case MTPROXY_FFI_MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_INVALID_TIMEOUT:
+          Syntax ("invalid timeout");
+          break;
+        case MTPROXY_FFI_MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_INVALID_MAX_CONNECTIONS:
+          Syntax ("invalid max connections");
+          break;
+        case MTPROXY_FFI_MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_INVALID_MIN_CONNECTIONS:
+          Syntax ("invalid min connections");
+          break;
+        case MTPROXY_FFI_MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_INVALID_TARGET_ID:
+          Syntax ("invalid target id (integer -32768..32767 expected)");
+          break;
+        case MTPROXY_FFI_MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_TARGET_ID_SPACE:
+          Syntax ("space expected after target id");
+          break;
+        case MTPROXY_FFI_MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_PROXY_EXPECTED:
+          Syntax ("'proxy <ip>:<port>;' expected");
+          break;
+        default:
+          Syntax ("'proxy <ip>:<port>;' expected");
       }
-      MC->timeout /= 1000;
-      break;
-    case 'D':
-    case 'Y': {
-      long long targ_dc = cfg_getint_signed_zero();
-      if (targ_dc < -0x8000 || targ_dc >= 0x8000) {
-	Syntax ("invalid target id (integer -32768..32767 expected)", targ_dc);
-      }
-      if (t == 'D') {
-	MC->default_cluster_id = targ_dc;
-	break;
-      }
-      if (*cfg_cur != ' ' && *cfg_cur != 9) {
-	Syntax ("space expected after target id");
-      }
-      cfg_skspc ();
-      target_dc = targ_dc;
     }
-    case 'y': {
-      have_proxy |= 1;
-      if (MC->auth_clusters >= MAX_CFG_CLUSTERS) {
-        Syntax ("too many auth clusters", MC->auth_clusters);
-      }
-      targ_ptr = cfg_parse_server_port (MC, flags);
-      if (!targ_ptr) {
-        return -1;
-      }
-      struct mf_cluster *MFC = mf_cluster_lookup (MC, target_dc, 0);
-      if (!MFC) {
-	vkprintf (3, "-> added target to new auth_cluster #%d\n", MC->auth_clusters);
-	if (flags & 1) {
-	  init_old_mf_cluster (&MC->auth_stats, &MC->auth_cluster[MC->auth_clusters], targ_ptr, 1, 1, target_dc);
-	} else {
-	  MC->auth_cluster[MC->auth_clusters].cluster_id = target_dc;
-	}
-	MC->auth_clusters ++;
-      } else if (MFC == &MC->auth_cluster[MC->auth_clusters - 1]) {
-	vkprintf (3, "-> added target to old auth_cluster #%d\n", MC->auth_clusters - 1);
-	if (flags & 1) {
-	  if (!extend_old_mf_cluster (MFC, targ_ptr, target_dc)) {
-	    Syntax ("IMPOSSIBLE");
+    cfg_cur += token.advance;
+
+    switch (token.kind) {
+      case MTPROXY_FFI_MTPROTO_DIRECTIVE_TOKEN_KIND_TIMEOUT:
+        MC->timeout = ((double) token.value) / 1000.0;
+        break;
+      case MTPROXY_FFI_MTPROTO_DIRECTIVE_TOKEN_KIND_DEFAULT_CLUSTER:
+        MC->default_cluster_id = (int) token.value;
+        break;
+      case MTPROXY_FFI_MTPROTO_DIRECTIVE_TOKEN_KIND_PROXY_FOR:
+        target_dc = (int) token.value;
+        /* fall through: proxy_for shares target apply path with proxy */
+      case MTPROXY_FFI_MTPROTO_DIRECTIVE_TOKEN_KIND_PROXY: {
+        have_proxy |= 1;
+        if (MC->auth_clusters >= MAX_CFG_CLUSTERS) {
+          Syntax ("too many auth clusters", MC->auth_clusters);
+        }
+        targ_ptr = cfg_parse_server_port (MC, flags);
+        if (!targ_ptr) {
+          return -1;
+        }
+        struct mf_cluster *MFC = mf_cluster_lookup (MC, target_dc, 0);
+        if (!MFC) {
+	  vkprintf (3, "-> added target to new auth_cluster #%d\n", MC->auth_clusters);
+	  if (flags & 1) {
+	    init_old_mf_cluster (MC, &MC->auth_stats, &MC->auth_cluster[MC->auth_clusters], targ_ptr, 1, 1, target_dc);
+	  } else {
+	    MC->auth_cluster[MC->auth_clusters].cluster_id = target_dc;
 	  }
-	}
-      } else {
-	Syntax ("proxies for dc %d intermixed", target_dc);
+	  MC->auth_clusters ++;
+        } else if (MFC == &MC->auth_cluster[MC->auth_clusters - 1]) {
+	  vkprintf (3, "-> added target to old auth_cluster #%d\n", MC->auth_clusters - 1);
+	  if (flags & 1) {
+	    if (!extend_old_mf_cluster (MC, MFC, targ_ptr, target_dc)) {
+	      Syntax ("IMPOSSIBLE");
+	    }
+	  }
+        } else {
+	  Syntax ("proxies for dc %d intermixed", target_dc);
+        }
+        break;
       }
-      break;
+      case MTPROXY_FFI_MTPROTO_DIRECTIVE_TOKEN_KIND_MAX_CONNECTIONS:
+        MC->max_connections = (int) token.value;
+        break;
+      case MTPROXY_FFI_MTPROTO_DIRECTIVE_TOKEN_KIND_MIN_CONNECTIONS:
+        MC->min_connections = (int) token.value;
+        break;
+      case MTPROXY_FFI_MTPROTO_DIRECTIVE_TOKEN_KIND_EOF:
+        break;
+      default:
+        Syntax ("'proxy <ip>:<port>;' expected");
     }
-    case 'X':
-      MC->max_connections = cfg_getint ();
-      if (MC->max_connections < MC->min_connections || MC->max_connections > 1000) {
-        Syntax ("invalid max connections");
-      }
-      break;
-    case 'x':
-      MC->min_connections = cfg_getint ();
-      if (MC->min_connections < 1 || MC->min_connections > MC->max_connections) {
-        Syntax ("invalid min connections");
-      }
-      break;
-    case 0:
-      break;
-    default:
-      Syntax ("'proxy <ip>:<port>;' expected");
-    }
-    if (!t) {
+    if (token.kind == MTPROXY_FFI_MTPROTO_DIRECTIVE_TOKEN_KIND_EOF) {
       break;
     }
     cfg_getlex_ext ();
@@ -421,4 +476,3 @@ int do_reload_config (int flags) {
 
   return 0;
 }
-

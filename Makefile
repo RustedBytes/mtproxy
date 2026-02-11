@@ -29,7 +29,7 @@ DEPDIRS := ${DEP} $(addprefix ${DEP}/,${PROJECTS})
 ALLDIRS := ${DEPDIRS} ${OBJDIRS}
 
 
-.PHONY:	all clean test release rust-check rust-fmt rust-fmt-check rust-clippy rust-test rust-ci
+.PHONY:	all clean test release rust-check rust-fmt rust-fmt-check rust-clippy rust-test rust-ci step15-inventory
 
 EXELIST	:= ${EXE}/mtproto-proxy
 RUST_OBJECTS	=	\
@@ -136,3 +136,6 @@ rust-test:
 
 rust-ci:
 	./scripts/rust_tooling.sh ci
+
+step15-inventory:
+	./scripts/step15_inventory.sh

@@ -39,6 +39,64 @@ typedef struct mtproxy_ffi_cfg_int_result {
   size_t consumed;
 } mtproxy_ffi_cfg_int_result_t;
 
+typedef struct mtproxy_ffi_mtproto_cfg_parse_server_port_result {
+  size_t advance;
+  uint32_t target_index;
+  uint8_t host_len;
+  uint16_t port;
+  int64_t min_connections;
+  int64_t max_connections;
+} mtproxy_ffi_mtproto_cfg_parse_server_port_result_t;
+
+typedef struct mtproxy_ffi_mtproto_cfg_getlex_ext_result {
+  size_t advance;
+  int32_t lex;
+} mtproxy_ffi_mtproto_cfg_getlex_ext_result_t;
+
+typedef struct mtproxy_ffi_mtproto_cfg_directive_token_result {
+  int32_t kind;
+  size_t advance;
+  int64_t value;
+} mtproxy_ffi_mtproto_cfg_directive_token_result_t;
+
+typedef struct mtproxy_ffi_mtproto_old_cluster_state {
+  int32_t cluster_id;
+  uint32_t targets_num;
+  uint32_t write_targets_num;
+  uint32_t flags;
+  uint32_t first_target_index;
+  int32_t has_first_target_index;
+} mtproxy_ffi_mtproto_old_cluster_state_t;
+
+#define MTPROXY_FFI_MTPROTO_CFG_PARSE_SERVER_PORT_OK                     0
+#define MTPROXY_FFI_MTPROTO_CFG_PARSE_SERVER_PORT_ERR_INVALID_ARGS      (-1)
+#define MTPROXY_FFI_MTPROTO_CFG_PARSE_SERVER_PORT_ERR_TOO_MANY_TARGETS  (-2)
+#define MTPROXY_FFI_MTPROTO_CFG_PARSE_SERVER_PORT_ERR_HOSTNAME_EXPECTED (-3)
+#define MTPROXY_FFI_MTPROTO_CFG_PARSE_SERVER_PORT_ERR_PORT_EXPECTED     (-4)
+#define MTPROXY_FFI_MTPROTO_CFG_PARSE_SERVER_PORT_ERR_PORT_RANGE        (-5)
+#define MTPROXY_FFI_MTPROTO_CFG_PARSE_SERVER_PORT_ERR_INTERNAL          (-6)
+
+#define MTPROXY_FFI_MTPROTO_CFG_GETLEX_EXT_OK                     0
+#define MTPROXY_FFI_MTPROTO_CFG_GETLEX_EXT_ERR_INVALID_ARGS      (-1)
+
+#define MTPROXY_FFI_MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_OK                            0
+#define MTPROXY_FFI_MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_INVALID_ARGS             (-1)
+#define MTPROXY_FFI_MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_INVALID_TIMEOUT          (-2)
+#define MTPROXY_FFI_MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_INVALID_MAX_CONNECTIONS  (-3)
+#define MTPROXY_FFI_MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_INVALID_MIN_CONNECTIONS  (-4)
+#define MTPROXY_FFI_MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_INVALID_TARGET_ID        (-5)
+#define MTPROXY_FFI_MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_TARGET_ID_SPACE          (-6)
+#define MTPROXY_FFI_MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_PROXY_EXPECTED           (-7)
+#define MTPROXY_FFI_MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_INTERNAL                 (-8)
+
+#define MTPROXY_FFI_MTPROTO_DIRECTIVE_TOKEN_KIND_EOF              0
+#define MTPROXY_FFI_MTPROTO_DIRECTIVE_TOKEN_KIND_TIMEOUT          1
+#define MTPROXY_FFI_MTPROTO_DIRECTIVE_TOKEN_KIND_DEFAULT_CLUSTER  2
+#define MTPROXY_FFI_MTPROTO_DIRECTIVE_TOKEN_KIND_PROXY_FOR        3
+#define MTPROXY_FFI_MTPROTO_DIRECTIVE_TOKEN_KIND_PROXY            4
+#define MTPROXY_FFI_MTPROTO_DIRECTIVE_TOKEN_KIND_MAX_CONNECTIONS  5
+#define MTPROXY_FFI_MTPROTO_DIRECTIVE_TOKEN_KIND_MIN_CONNECTIONS  6
+
 typedef struct mtproxy_ffi_tl_header_parse_result {
   int32_t status;
   int32_t consumed;
@@ -329,6 +387,40 @@ int32_t mtproxy_ffi_engine_rpc_result_header_len(int32_t flags);
 // mtproto-proxy helpers for external-connection hashing/tagging.
 int32_t mtproxy_ffi_mtproto_ext_conn_hash(int32_t in_fd, int64_t in_conn_id, int32_t hash_shift);
 int32_t mtproxy_ffi_mtproto_conn_tag(int32_t generation);
+
+// mtproto-config helpers for Step 15 parser/apply runtime migration.
+int32_t mtproxy_ffi_mtproto_cfg_getlex_ext(
+  const char *cur,
+  size_t len,
+  mtproxy_ffi_mtproto_cfg_getlex_ext_result_t *out
+);
+int32_t mtproxy_ffi_mtproto_cfg_scan_directive_token(
+  const char *cur,
+  size_t len,
+  int64_t min_connections,
+  int64_t max_connections,
+  mtproxy_ffi_mtproto_cfg_directive_token_result_t *out
+);
+int32_t mtproxy_ffi_mtproto_cfg_parse_server_port(
+  const char *cur,
+  size_t len,
+  uint32_t current_targets,
+  uint32_t max_targets,
+  int64_t min_connections,
+  int64_t max_connections,
+  mtproxy_ffi_mtproto_cfg_parse_server_port_result_t *out
+);
+int32_t mtproxy_ffi_mtproto_init_old_cluster(
+  uint32_t first_target_index,
+  int32_t cluster_id,
+  uint32_t flags,
+  mtproxy_ffi_mtproto_old_cluster_state_t *out
+);
+int32_t mtproxy_ffi_mtproto_extend_old_cluster(
+  mtproxy_ffi_mtproto_old_cluster_state_t *state,
+  uint32_t target_index,
+  int32_t cluster_id
+);
 
 // CRC32 (IEEE, reflected polynomial 0xEDB88320) partial update.
 // Semantics match C `crc32_partial` function.

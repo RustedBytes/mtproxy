@@ -23,3 +23,18 @@ The Rust-enabled binary is now default (`make`, `make test`) at `objs/bin/mtprot
 
 Boundary contract documentation:
 - `rust/mtproxy-ffi/BOUNDARY.md`
+
+## Step 15 Kickoff Artifacts
+
+- Runtime C-unit inventory generator: `scripts/step15_inventory.sh`
+- Generated inventory: `rust/mtproxy-bin/STEP15_REMAINING_C_UNITS.txt`
+- Ownership map source of truth: `rust/mtproxy-core/src/step15.rs`
+- First runtime ports in `mtproxy-core`:
+- `runtime::bootstrap::server_functions` (`parse_memory_limit` from `common/server-functions.c`)
+- `runtime::mtproto::config` (`cfg_getlex_ext`, `preinit_config`, directive-block parser, `cfg_parse_server_port`, and cluster-apply helpers from `mtproto/mtproto-config.c`)
+- Runtime wiring landed in C call sites for this slice:
+- `mtproto/mtproto-config.c` now calls Rust FFI for `cfg_parse_server_port` preview and old-cluster init/extend mutation semantics.
+
+Refresh the inventory with:
+
+- `make step15-inventory`
