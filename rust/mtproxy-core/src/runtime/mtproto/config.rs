@@ -362,6 +362,61 @@ pub struct MtprotoProxyTargetStepPreview {
     pub auth_tot_clusters_after: usize,
 }
 
+/// One proxy side-effect action produced by full config-pass planning.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct MtprotoProxyTargetPassAction {
+    /// Offset (from parser input start) at which `host:port` payload begins.
+    pub host_offset: usize,
+    /// Parsed/apply metadata for this proxy directive.
+    pub step: MtprotoProxyTargetStepPreview,
+}
+
+impl MtprotoProxyTargetPassAction {
+    const EMPTY: Self = Self {
+        host_offset: 0,
+        step: MtprotoProxyTargetStepPreview {
+            advance: 0,
+            target_index: 0,
+            target: MtprotoParsedTarget {
+                host_len: 0,
+                port: 0,
+                min_connections: 0,
+                max_connections: 0,
+            },
+            tot_targets_after: 0,
+            cluster_apply_decision: MtprotoClusterApplyDecision {
+                kind: MtprotoClusterApplyDecisionKind::CreateNew,
+                cluster_index: 0,
+            },
+            cluster_state_after: MtprotoClusterState::EMPTY,
+            cluster_targets_action: MtprotoClusterTargetsAction::KeepExisting,
+            auth_clusters_after: 0,
+            auth_tot_clusters_after: 0,
+        },
+    };
+}
+
+impl Default for MtprotoProxyTargetPassAction {
+    fn default() -> Self {
+        Self::EMPTY
+    }
+}
+
+/// Terminal parser snapshot for one full `parse_config()` pass.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MtprotoParseConfigPassResult {
+    pub tot_targets: usize,
+    pub auth_clusters: usize,
+    pub auth_tot_clusters: usize,
+    pub min_connections: i64,
+    pub max_connections: i64,
+    pub timeout_seconds: f64,
+    pub default_cluster_id: i32,
+    pub have_proxy: bool,
+    pub default_cluster_index: Option<usize>,
+    pub actions_len: usize,
+}
+
 fn parse_unsigned_from(input: &[u8], cursor: &mut usize) -> i64 {
     cfg_skspc_in_place(input, cursor);
     let mut value = 0i64;
@@ -641,6 +696,132 @@ pub fn cfg_parse_proxy_target_step(
         cluster_targets_action,
         auth_clusters_after,
         auth_tot_clusters_after,
+    })
+}
+
+/// Full parse pass for `mtproto-config` directive flow with side-effect planning.
+///
+/// This owns directive iteration, scalar state updates, cluster/apply decisions,
+/// and finalization/default-cluster resolution. Proxy host resolution and target
+/// creation side effects are left to the caller via returned `actions`.
+pub fn cfg_parse_config_full_pass<const MAX_CLUSTERS: usize>(
+    input: &[u8],
+    defaults: MtprotoConfigDefaults,
+    create_targets: bool,
+    max_clusters: usize,
+    max_targets: usize,
+    actions: &mut [MtprotoProxyTargetPassAction],
+) -> Result<MtprotoParseConfigPassResult, MtprotoDirectiveParseError> {
+    if max_clusters == 0 || max_clusters > MAX_CLUSTERS {
+        return Err(MtprotoDirectiveParseError::TooManyAuthClusters(0));
+    }
+
+    let preinit = preinit_config_snapshot(defaults);
+    let mut min_connections = preinit.min_connections;
+    let mut max_connections_state = preinit.max_connections;
+    let mut timeout_seconds = preinit.timeout_seconds;
+    let mut default_cluster_id = preinit.default_cluster_id;
+
+    let mut tot_targets = preinit.tot_targets;
+    let mut auth_clusters = preinit.auth_clusters;
+    let mut auth_tot_clusters = 0usize;
+    let mut have_proxy = false;
+    let mut actions_len = 0usize;
+
+    let mut cluster_ids = [0i32; MAX_CLUSTERS];
+    let mut cluster_states = [MtprotoClusterState::EMPTY; MAX_CLUSTERS];
+    let mut cursor = 0usize;
+
+    loop {
+        let step = cfg_parse_directive_step(
+            &input[cursor..],
+            min_connections,
+            max_connections_state,
+            &cluster_ids[..auth_clusters],
+            max_clusters,
+        )?;
+        cursor = cursor.saturating_add(step.advance);
+
+        match step.kind {
+            MtprotoDirectiveTokenKind::Eof => break,
+            MtprotoDirectiveTokenKind::Timeout => {
+                let timeout_ms_i32 = i32::try_from(step.value)
+                    .map_err(|_| MtprotoDirectiveParseError::InvalidTimeout(step.value))?;
+                timeout_seconds = f64::from(timeout_ms_i32) / 1000.0;
+            }
+            MtprotoDirectiveTokenKind::DefaultCluster => {
+                default_cluster_id = i32::try_from(step.value)
+                    .map_err(|_| MtprotoDirectiveParseError::InvalidTargetId(step.value))?;
+            }
+            MtprotoDirectiveTokenKind::MaxConnections => {
+                max_connections_state = step.value;
+            }
+            MtprotoDirectiveTokenKind::MinConnections => {
+                min_connections = step.value;
+            }
+            MtprotoDirectiveTokenKind::Proxy | MtprotoDirectiveTokenKind::ProxyFor => {
+                if actions_len >= actions.len() {
+                    return Err(MtprotoDirectiveParseError::TooManyTargets(actions_len));
+                }
+                have_proxy = true;
+                let target_dc = if step.kind == MtprotoDirectiveTokenKind::ProxyFor {
+                    i32::try_from(step.value)
+                        .map_err(|_| MtprotoDirectiveParseError::InvalidTargetId(step.value))?
+                } else {
+                    0
+                };
+                let last_cluster_state = if auth_clusters > 0 {
+                    Some(cluster_states[auth_clusters - 1])
+                } else {
+                    None
+                };
+                let proxy_step = cfg_parse_proxy_target_step(
+                    &input[cursor..],
+                    tot_targets,
+                    max_targets,
+                    min_connections,
+                    max_connections_state,
+                    &cluster_ids[..auth_clusters],
+                    target_dc,
+                    max_clusters,
+                    create_targets,
+                    auth_tot_clusters,
+                    last_cluster_state,
+                )?;
+                actions[actions_len] = MtprotoProxyTargetPassAction {
+                    host_offset: cursor,
+                    step: proxy_step,
+                };
+                actions_len = actions_len.saturating_add(1);
+                cursor = cursor.saturating_add(proxy_step.advance);
+
+                tot_targets = proxy_step.tot_targets_after;
+                auth_clusters = proxy_step.auth_clusters_after;
+                auth_tot_clusters = proxy_step.auth_tot_clusters_after;
+                if proxy_step.cluster_apply_decision.cluster_index >= MAX_CLUSTERS {
+                    return Err(MtprotoDirectiveParseError::InternalClusterExtendInvariant);
+                }
+                cluster_ids[proxy_step.cluster_apply_decision.cluster_index] =
+                    proxy_step.cluster_state_after.cluster_id;
+                cluster_states[proxy_step.cluster_apply_decision.cluster_index] =
+                    proxy_step.cluster_state_after;
+            }
+        }
+    }
+
+    let default_cluster_index =
+        finalize_parse_config_state(have_proxy, &cluster_ids[..auth_clusters], default_cluster_id)?;
+    Ok(MtprotoParseConfigPassResult {
+        tot_targets,
+        auth_clusters,
+        auth_tot_clusters,
+        min_connections,
+        max_connections: max_connections_state,
+        timeout_seconds,
+        default_cluster_id,
+        have_proxy,
+        default_cluster_index,
+        actions_len,
     })
 }
 
@@ -1024,7 +1205,7 @@ pub fn parse_config_directive_blocks<const MAX_CLUSTERS: usize, const MAX_TARGET
 #[cfg(test)]
 mod tests {
     use super::{
-        cfg_expect_semicolon, cfg_getlex_ext, cfg_parse_directive_step, cfg_parse_server_port,
+        cfg_expect_semicolon, cfg_getlex_ext, cfg_parse_config_full_pass, cfg_parse_directive_step, cfg_parse_server_port,
         cfg_parse_server_port_preview,
         cfg_parse_proxy_target_step,
         decide_proxy_cluster_apply,
@@ -1032,7 +1213,7 @@ mod tests {
         mf_cluster_lookup_index, parse_config_directive_blocks, preinit_config,
         preinit_config_snapshot,
         MtprotoClusterState, MtprotoConfigDefaults, MtprotoConfigState, MtprotoDirectiveParseError,
-        MtprotoDirectiveParseOptions, MtprotoClusterApplyDecision,
+        MtprotoDirectiveParseOptions, MtprotoClusterApplyDecision, MtprotoProxyTargetPassAction,
         MtprotoClusterTargetsAction,
         MtprotoClusterApplyDecisionKind, CFG_LEX_EOF, CFG_LEX_INVALID,
     };
@@ -1447,6 +1628,117 @@ mod tests {
         .expect_err("broken contiguity should fail");
 
         assert_eq!(err, MtprotoDirectiveParseError::InternalClusterExtendInvariant);
+    }
+
+    #[test]
+    fn cfg_parse_config_full_pass_plans_proxy_side_effects_and_finalizes_state() {
+        let input = b"min_connections 5; max_connections 10; timeout 250; default -2; proxy_for -2 dc1:443; proxy_for -2 dc2:444;";
+        let mut actions = [MtprotoProxyTargetPassAction::EMPTY; 4];
+        let out = cfg_parse_config_full_pass::<8>(
+            input,
+            MtprotoConfigDefaults {
+                min_connections: 2,
+                max_connections: 64,
+            },
+            true,
+            8,
+            16,
+            &mut actions,
+        )
+        .expect("full pass should parse");
+
+        assert_eq!(out.actions_len, 2);
+        assert_eq!(out.tot_targets, 2);
+        assert_eq!(out.auth_clusters, 1);
+        assert_eq!(out.auth_tot_clusters, 1);
+        assert_eq!(out.min_connections, 5);
+        assert_eq!(out.max_connections, 10);
+        assert!((out.timeout_seconds - 0.25).abs() < 1e-9);
+        assert_eq!(out.default_cluster_id, -2);
+        assert!(out.have_proxy);
+        assert_eq!(out.default_cluster_index, Some(0));
+
+        assert!(input[actions[0].host_offset..].starts_with(b"dc1:443;"));
+        assert_eq!(actions[0].step.target.port, 443);
+        assert_eq!(actions[0].step.target_index, 0);
+        assert_eq!(
+            actions[0].step.cluster_targets_action,
+            MtprotoClusterTargetsAction::SetToTargetIndex
+        );
+
+        assert!(input[actions[1].host_offset..].starts_with(b"dc2:444;"));
+        assert_eq!(actions[1].step.target.port, 444);
+        assert_eq!(actions[1].step.target_index, 1);
+        assert_eq!(
+            actions[1].step.cluster_targets_action,
+            MtprotoClusterTargetsAction::KeepExisting
+        );
+    }
+
+    #[test]
+    fn cfg_parse_config_full_pass_keeps_create_side_effects_out_of_syntax_mode() {
+        let input = b"proxy_for 7 dc1:443;";
+        let mut actions = [MtprotoProxyTargetPassAction::EMPTY; 2];
+        let out = cfg_parse_config_full_pass::<8>(
+            input,
+            MtprotoConfigDefaults {
+                min_connections: 2,
+                max_connections: 64,
+            },
+            false,
+            8,
+            16,
+            &mut actions,
+        )
+        .expect("syntax pass should parse");
+
+        assert_eq!(out.actions_len, 1);
+        assert_eq!(out.auth_clusters, 1);
+        assert_eq!(out.auth_tot_clusters, 0);
+        assert_eq!(actions[0].step.cluster_state_after.cluster_id, 7);
+        assert_eq!(
+            actions[0].step.cluster_targets_action,
+            MtprotoClusterTargetsAction::Clear
+        );
+    }
+
+    #[test]
+    fn cfg_parse_config_full_pass_enforces_proxy_action_capacity() {
+        let input = b"proxy dc1:443; proxy dc2:444;";
+        let mut actions = [MtprotoProxyTargetPassAction::EMPTY; 1];
+        let err = cfg_parse_config_full_pass::<8>(
+            input,
+            MtprotoConfigDefaults {
+                min_connections: 2,
+                max_connections: 64,
+            },
+            false,
+            8,
+            16,
+            &mut actions,
+        )
+        .expect_err("capacity must be enforced");
+
+        assert_eq!(err, MtprotoDirectiveParseError::TooManyTargets(1));
+    }
+
+    #[test]
+    fn cfg_parse_config_full_pass_preserves_terminal_checks() {
+        let mut actions = [MtprotoProxyTargetPassAction::EMPTY; 1];
+        let err = cfg_parse_config_full_pass::<8>(
+            b"timeout 100;",
+            MtprotoConfigDefaults {
+                min_connections: 2,
+                max_connections: 64,
+            },
+            false,
+            8,
+            16,
+            &mut actions,
+        )
+        .expect_err("missing proxies should fail");
+
+        assert_eq!(err, MtprotoDirectiveParseError::MissingProxyDirectives);
     }
 
     #[test]

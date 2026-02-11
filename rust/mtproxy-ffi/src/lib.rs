@@ -110,6 +110,26 @@ const MTPROTO_CFG_PARSE_PROXY_TARGET_STEP_ERR_PORT_RANGE: i32 = -7;
 const MTPROTO_CFG_PARSE_PROXY_TARGET_STEP_ERR_EXPECTED_SEMICOLON: i32 = -8;
 const MTPROTO_CFG_PARSE_PROXY_TARGET_STEP_ERR_CLUSTER_EXTEND_INVARIANT: i32 = -9;
 const MTPROTO_CFG_PARSE_PROXY_TARGET_STEP_ERR_INTERNAL: i32 = -10;
+const MTPROTO_CFG_PARSE_FULL_PASS_OK: i32 = 0;
+const MTPROTO_CFG_PARSE_FULL_PASS_ERR_INVALID_ARGS: i32 = -1;
+const MTPROTO_CFG_PARSE_FULL_PASS_ERR_INVALID_TIMEOUT: i32 = -2;
+const MTPROTO_CFG_PARSE_FULL_PASS_ERR_INVALID_MAX_CONNECTIONS: i32 = -3;
+const MTPROTO_CFG_PARSE_FULL_PASS_ERR_INVALID_MIN_CONNECTIONS: i32 = -4;
+const MTPROTO_CFG_PARSE_FULL_PASS_ERR_INVALID_TARGET_ID: i32 = -5;
+const MTPROTO_CFG_PARSE_FULL_PASS_ERR_TARGET_ID_SPACE: i32 = -6;
+const MTPROTO_CFG_PARSE_FULL_PASS_ERR_PROXY_EXPECTED: i32 = -7;
+const MTPROTO_CFG_PARSE_FULL_PASS_ERR_TOO_MANY_AUTH_CLUSTERS: i32 = -8;
+const MTPROTO_CFG_PARSE_FULL_PASS_ERR_PROXIES_INTERMIXED: i32 = -9;
+const MTPROTO_CFG_PARSE_FULL_PASS_ERR_EXPECTED_SEMICOLON: i32 = -10;
+const MTPROTO_CFG_PARSE_FULL_PASS_ERR_TOO_MANY_TARGETS: i32 = -11;
+const MTPROTO_CFG_PARSE_FULL_PASS_ERR_HOSTNAME_EXPECTED: i32 = -12;
+const MTPROTO_CFG_PARSE_FULL_PASS_ERR_PORT_EXPECTED: i32 = -13;
+const MTPROTO_CFG_PARSE_FULL_PASS_ERR_PORT_RANGE: i32 = -14;
+const MTPROTO_CFG_PARSE_FULL_PASS_ERR_CLUSTER_EXTEND_INVARIANT: i32 = -15;
+const MTPROTO_CFG_PARSE_FULL_PASS_ERR_MISSING_PROXY_DIRECTIVES: i32 = -16;
+const MTPROTO_CFG_PARSE_FULL_PASS_ERR_NO_PROXY_SERVERS_DEFINED: i32 = -17;
+const MTPROTO_CFG_PARSE_FULL_PASS_ERR_INTERNAL: i32 = -18;
+const MTPROTO_CFG_FULL_PASS_MAX_CLUSTERS: usize = 1024;
 const MTPROTO_CFG_EXPECT_SEMICOLON_OK: i32 = 0;
 const MTPROTO_CFG_EXPECT_SEMICOLON_ERR_INVALID_ARGS: i32 = -1;
 const MTPROTO_CFG_EXPECT_SEMICOLON_ERR_EXPECTED: i32 = -2;
@@ -300,6 +320,29 @@ pub struct MtproxyMtprotoCfgParseProxyTargetStepResult {
     pub cluster_state_after: MtproxyMtprotoOldClusterState,
     pub cluster_targets_action: i32,
     pub cluster_targets_index: u32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct MtproxyMtprotoCfgProxyAction {
+    pub host_offset: usize,
+    pub step: MtproxyMtprotoCfgParseProxyTargetStepResult,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct MtproxyMtprotoCfgParseFullResult {
+    pub tot_targets: u32,
+    pub auth_clusters: u32,
+    pub auth_tot_clusters: u32,
+    pub min_connections: i64,
+    pub max_connections: i64,
+    pub timeout_seconds: f64,
+    pub default_cluster_id: i32,
+    pub have_proxy: i32,
+    pub default_cluster_index: u32,
+    pub has_default_cluster_index: i32,
+    pub actions_len: u32,
 }
 
 #[repr(C)]
@@ -1176,6 +1219,60 @@ fn mtproto_cfg_parse_proxy_target_step_err_to_code(
     }
 }
 
+fn mtproto_cfg_parse_full_pass_err_to_code(
+    err: mtproxy_core::runtime::mtproto::config::MtprotoDirectiveParseError,
+) -> i32 {
+    use mtproxy_core::runtime::mtproto::config::MtprotoDirectiveParseError;
+    match err {
+        MtprotoDirectiveParseError::InvalidTimeout(_) => MTPROTO_CFG_PARSE_FULL_PASS_ERR_INVALID_TIMEOUT,
+        MtprotoDirectiveParseError::InvalidMaxConnections(_) => {
+            MTPROTO_CFG_PARSE_FULL_PASS_ERR_INVALID_MAX_CONNECTIONS
+        }
+        MtprotoDirectiveParseError::InvalidMinConnections(_) => {
+            MTPROTO_CFG_PARSE_FULL_PASS_ERR_INVALID_MIN_CONNECTIONS
+        }
+        MtprotoDirectiveParseError::InvalidTargetId(_) => {
+            MTPROTO_CFG_PARSE_FULL_PASS_ERR_INVALID_TARGET_ID
+        }
+        MtprotoDirectiveParseError::SpaceExpectedAfterTargetId => {
+            MTPROTO_CFG_PARSE_FULL_PASS_ERR_TARGET_ID_SPACE
+        }
+        MtprotoDirectiveParseError::TooManyAuthClusters(_) => {
+            MTPROTO_CFG_PARSE_FULL_PASS_ERR_TOO_MANY_AUTH_CLUSTERS
+        }
+        MtprotoDirectiveParseError::TooManyTargets(_) => {
+            MTPROTO_CFG_PARSE_FULL_PASS_ERR_TOO_MANY_TARGETS
+        }
+        MtprotoDirectiveParseError::HostnameExpected => {
+            MTPROTO_CFG_PARSE_FULL_PASS_ERR_HOSTNAME_EXPECTED
+        }
+        MtprotoDirectiveParseError::PortNumberExpected => {
+            MTPROTO_CFG_PARSE_FULL_PASS_ERR_PORT_EXPECTED
+        }
+        MtprotoDirectiveParseError::PortOutOfRange(_) => {
+            MTPROTO_CFG_PARSE_FULL_PASS_ERR_PORT_RANGE
+        }
+        MtprotoDirectiveParseError::ProxiesIntermixed(_) => {
+            MTPROTO_CFG_PARSE_FULL_PASS_ERR_PROXIES_INTERMIXED
+        }
+        MtprotoDirectiveParseError::ProxyDirectiveExpected => {
+            MTPROTO_CFG_PARSE_FULL_PASS_ERR_PROXY_EXPECTED
+        }
+        MtprotoDirectiveParseError::ExpectedSemicolon(_) => {
+            MTPROTO_CFG_PARSE_FULL_PASS_ERR_EXPECTED_SEMICOLON
+        }
+        MtprotoDirectiveParseError::MissingProxyDirectives => {
+            MTPROTO_CFG_PARSE_FULL_PASS_ERR_MISSING_PROXY_DIRECTIVES
+        }
+        MtprotoDirectiveParseError::NoProxyServersDefined => {
+            MTPROTO_CFG_PARSE_FULL_PASS_ERR_NO_PROXY_SERVERS_DEFINED
+        }
+        MtprotoDirectiveParseError::InternalClusterExtendInvariant => {
+            MTPROTO_CFG_PARSE_FULL_PASS_ERR_CLUSTER_EXTEND_INVARIANT
+        }
+    }
+}
+
 fn mtproto_directive_token_kind_to_ffi(
     kind: mtproxy_core::runtime::mtproto::config::MtprotoDirectiveTokenKind,
 ) -> i32 {
@@ -1579,6 +1676,177 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_parse_proxy_target_step(
             MTPROTO_CFG_PARSE_PROXY_TARGET_STEP_OK
         }
         Err(err) => mtproto_cfg_parse_proxy_target_step_err_to_code(err),
+    }
+}
+
+/// Executes one full `parse_config()` directive pass and returns proxy side-effect plan.
+///
+/// # Safety
+/// `cur` must be readable for `len` bytes when `len > 0`;
+/// `actions` must be writable for `actions_capacity` entries when `actions_capacity > 0`;
+/// `out` must be writable.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_parse_full_pass(
+    cur: *const c_char,
+    len: usize,
+    default_min_connections: i64,
+    default_max_connections: i64,
+    create_targets: i32,
+    max_clusters: u32,
+    max_targets: u32,
+    actions: *mut MtproxyMtprotoCfgProxyAction,
+    actions_capacity: u32,
+    out: *mut MtproxyMtprotoCfgParseFullResult,
+) -> i32 {
+    if out.is_null() {
+        return MTPROTO_CFG_PARSE_FULL_PASS_ERR_INVALID_ARGS;
+    }
+    let Some(bytes) = cfg_bytes_from_cstr(cur, len) else {
+        return MTPROTO_CFG_PARSE_FULL_PASS_ERR_INVALID_ARGS;
+    };
+    let Ok(max_clusters_usize) = usize::try_from(max_clusters) else {
+        return MTPROTO_CFG_PARSE_FULL_PASS_ERR_INVALID_ARGS;
+    };
+    let Ok(max_targets_usize) = usize::try_from(max_targets) else {
+        return MTPROTO_CFG_PARSE_FULL_PASS_ERR_INVALID_ARGS;
+    };
+    let Ok(actions_capacity_usize) = usize::try_from(actions_capacity) else {
+        return MTPROTO_CFG_PARSE_FULL_PASS_ERR_INVALID_ARGS;
+    };
+    if max_clusters_usize == 0 || max_clusters_usize > MTPROTO_CFG_FULL_PASS_MAX_CLUSTERS {
+        return MTPROTO_CFG_PARSE_FULL_PASS_ERR_INVALID_ARGS;
+    }
+    if actions_capacity_usize > 0 && actions.is_null() {
+        return MTPROTO_CFG_PARSE_FULL_PASS_ERR_INVALID_ARGS;
+    }
+
+    let mut planned_actions = vec![
+        mtproxy_core::runtime::mtproto::config::MtprotoProxyTargetPassAction::default();
+        actions_capacity_usize
+    ];
+    let defaults = mtproxy_core::runtime::mtproto::config::MtprotoConfigDefaults {
+        min_connections: default_min_connections,
+        max_connections: default_max_connections,
+    };
+    match mtproxy_core::runtime::mtproto::config::cfg_parse_config_full_pass::<
+        MTPROTO_CFG_FULL_PASS_MAX_CLUSTERS,
+    >(
+        bytes,
+        defaults,
+        create_targets != 0,
+        max_clusters_usize,
+        max_targets_usize,
+        &mut planned_actions,
+    ) {
+        Ok(result) => {
+            if result.actions_len > actions_capacity_usize {
+                return MTPROTO_CFG_PARSE_FULL_PASS_ERR_INTERNAL;
+            }
+            if result.actions_len > 0 {
+                let out_actions =
+                    unsafe { core::slice::from_raw_parts_mut(actions, actions_capacity_usize) };
+                for idx in 0..result.actions_len {
+                    let action = planned_actions[idx];
+                    let step = action.step;
+                    let Ok(target_index) = u32::try_from(step.target_index) else {
+                        return MTPROTO_CFG_PARSE_FULL_PASS_ERR_INTERNAL;
+                    };
+                    let Ok(tot_targets_after) = u32::try_from(step.tot_targets_after) else {
+                        return MTPROTO_CFG_PARSE_FULL_PASS_ERR_INTERNAL;
+                    };
+                    let Ok(cluster_index) =
+                        i32::try_from(step.cluster_apply_decision.cluster_index)
+                    else {
+                        return MTPROTO_CFG_PARSE_FULL_PASS_ERR_INTERNAL;
+                    };
+                    let Ok(auth_clusters_after) = u32::try_from(step.auth_clusters_after) else {
+                        return MTPROTO_CFG_PARSE_FULL_PASS_ERR_INTERNAL;
+                    };
+                    let Ok(auth_tot_clusters_after) = u32::try_from(step.auth_tot_clusters_after)
+                    else {
+                        return MTPROTO_CFG_PARSE_FULL_PASS_ERR_INTERNAL;
+                    };
+                    let Some(cluster_state_after) = mtproto_old_cluster_to_ffi(&step.cluster_state_after)
+                    else {
+                        return MTPROTO_CFG_PARSE_FULL_PASS_ERR_INTERNAL;
+                    };
+                    let cluster_targets_action =
+                        mtproto_cfg_cluster_targets_action_to_ffi(step.cluster_targets_action);
+                    let cluster_targets_index = if step.cluster_targets_action
+                        == mtproxy_core::runtime::mtproto::config::MtprotoClusterTargetsAction::SetToTargetIndex
+                    {
+                        let Some(first) = step.cluster_state_after.first_target_index else {
+                            return MTPROTO_CFG_PARSE_FULL_PASS_ERR_INTERNAL;
+                        };
+                        let Ok(idx) = u32::try_from(first) else {
+                            return MTPROTO_CFG_PARSE_FULL_PASS_ERR_INTERNAL;
+                        };
+                        idx
+                    } else {
+                        0
+                    };
+                    out_actions[idx] = MtproxyMtprotoCfgProxyAction {
+                        host_offset: action.host_offset,
+                        step: MtproxyMtprotoCfgParseProxyTargetStepResult {
+                            advance: step.advance,
+                            target_index,
+                            host_len: step.target.host_len,
+                            port: step.target.port,
+                            min_connections: step.target.min_connections,
+                            max_connections: step.target.max_connections,
+                            tot_targets_after,
+                            cluster_decision_kind: mtproto_cfg_cluster_apply_decision_kind_to_ffi(
+                                step.cluster_apply_decision.kind,
+                            ),
+                            cluster_index,
+                            auth_clusters_after,
+                            auth_tot_clusters_after,
+                            cluster_state_after,
+                            cluster_targets_action,
+                            cluster_targets_index,
+                        },
+                    };
+                }
+            }
+
+            let Ok(tot_targets) = u32::try_from(result.tot_targets) else {
+                return MTPROTO_CFG_PARSE_FULL_PASS_ERR_INTERNAL;
+            };
+            let Ok(auth_clusters) = u32::try_from(result.auth_clusters) else {
+                return MTPROTO_CFG_PARSE_FULL_PASS_ERR_INTERNAL;
+            };
+            let Ok(auth_tot_clusters) = u32::try_from(result.auth_tot_clusters) else {
+                return MTPROTO_CFG_PARSE_FULL_PASS_ERR_INTERNAL;
+            };
+            let Ok(actions_len) = u32::try_from(result.actions_len) else {
+                return MTPROTO_CFG_PARSE_FULL_PASS_ERR_INTERNAL;
+            };
+            let (has_default_cluster_index, default_cluster_index) =
+                if let Some(idx) = result.default_cluster_index {
+                    let Ok(idx_u32) = u32::try_from(idx) else {
+                        return MTPROTO_CFG_PARSE_FULL_PASS_ERR_INTERNAL;
+                    };
+                    (1, idx_u32)
+                } else {
+                    (0, 0)
+                };
+            let out_ref = unsafe { &mut *out };
+            *out_ref = MtproxyMtprotoCfgParseFullResult {
+                tot_targets,
+                auth_clusters,
+                auth_tot_clusters,
+                min_connections: result.min_connections,
+                max_connections: result.max_connections,
+                timeout_seconds: result.timeout_seconds,
+                default_cluster_id: result.default_cluster_id,
+                have_proxy: i32::from(result.have_proxy),
+                default_cluster_index,
+                has_default_cluster_index,
+                actions_len,
+            };
+            MTPROTO_CFG_PARSE_FULL_PASS_OK
+        }
+        Err(err) => mtproto_cfg_parse_full_pass_err_to_code(err),
     }
 }
 
@@ -3811,7 +4079,7 @@ mod tests {
         mtproxy_ffi_md5, mtproxy_ffi_md5_hex, mtproxy_ffi_msg_buffers_pick_size_index,
         mtproxy_ffi_mtproto_cfg_decide_cluster_apply, mtproxy_ffi_mtproto_cfg_finalize,
         mtproxy_ffi_mtproto_cfg_expect_semicolon, mtproxy_ffi_mtproto_cfg_parse_directive_step,
-        mtproxy_ffi_mtproto_cfg_getlex_ext, mtproxy_ffi_mtproto_cfg_lookup_cluster_index,
+        mtproxy_ffi_mtproto_cfg_getlex_ext, mtproxy_ffi_mtproto_cfg_lookup_cluster_index, mtproxy_ffi_mtproto_cfg_parse_full_pass,
         mtproxy_ffi_mtproto_cfg_parse_proxy_target_step, mtproxy_ffi_mtproto_cfg_preinit,
         mtproxy_ffi_mtproto_cfg_scan_directive_token,
         mtproxy_ffi_mtproto_conn_tag,
@@ -3832,6 +4100,8 @@ mod tests {
         MtproxyMtprotoCfgClusterApplyDecisionResult, MtproxyMtprotoCfgDirectiveStepResult,
         MtproxyMtprotoCfgDirectiveTokenResult, MtproxyMtprotoCfgFinalizeResult,
         MtproxyMtprotoCfgGetlexExtResult,
+        MtproxyMtprotoCfgParseFullResult,
+        MtproxyMtprotoCfgProxyAction,
         MtproxyMtprotoCfgParseProxyTargetStepResult,
         MtproxyMtprotoCfgPreinitResult,
         MtproxyMtprotoOldClusterState,
@@ -3849,6 +4119,9 @@ mod tests {
         MTPROTO_CFG_PARSE_PROXY_TARGET_STEP_ERR_CLUSTER_EXTEND_INVARIANT,
         MTPROTO_CFG_PARSE_PROXY_TARGET_STEP_ERR_EXPECTED_SEMICOLON,
         MTPROTO_CFG_PARSE_PROXY_TARGET_STEP_ERR_PROXIES_INTERMIXED,
+        MTPROTO_CFG_PARSE_FULL_PASS_ERR_EXPECTED_SEMICOLON,
+        MTPROTO_CFG_PARSE_FULL_PASS_ERR_MISSING_PROXY_DIRECTIVES,
+        MTPROTO_CFG_PARSE_FULL_PASS_OK,
         MTPROTO_CFG_PARSE_PROXY_TARGET_STEP_OK,
         MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_EXPECTED_SEMICOLON,
         MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_PROXIES_INTERMIXED,
@@ -4529,6 +4802,81 @@ mod tests {
         assert_eq!(out.cluster_targets_index, out.target_index);
         assert_eq!(out.auth_clusters_after, 2);
         assert_eq!(out.auth_tot_clusters_after, 2);
+    }
+
+    #[test]
+    fn mtproto_config_parse_full_pass_helper_returns_action_plan_and_final_state() {
+        let input = b"min_connections 5; max_connections 10; timeout 250; default -2; proxy_for -2 dc1:443; proxy_for -2 dc2:444;";
+        let mut actions = [MtproxyMtprotoCfgProxyAction::default(); 4];
+        let mut out = MtproxyMtprotoCfgParseFullResult::default();
+        let rc = unsafe {
+            mtproxy_ffi_mtproto_cfg_parse_full_pass(
+                input.as_ptr().cast(),
+                input.len(),
+                2,
+                64,
+                1,
+                8,
+                16,
+                actions.as_mut_ptr(),
+                u32::try_from(actions.len()).expect("len fits"),
+                &raw mut out,
+            )
+        };
+        assert_eq!(rc, MTPROTO_CFG_PARSE_FULL_PASS_OK);
+        assert_eq!(out.min_connections, 5);
+        assert_eq!(out.max_connections, 10);
+        assert!((out.timeout_seconds - 0.25).abs() < 1e-9);
+        assert_eq!(out.default_cluster_id, -2);
+        assert_eq!(out.have_proxy, 1);
+        assert_eq!(out.tot_targets, 2);
+        assert_eq!(out.auth_clusters, 1);
+        assert_eq!(out.auth_tot_clusters, 1);
+        assert_eq!(out.actions_len, 2);
+        assert_eq!(out.has_default_cluster_index, 1);
+        assert_eq!(out.default_cluster_index, 0);
+        assert_eq!(actions[0].step.target_index, 0);
+        assert_eq!(actions[0].step.port, 443);
+        assert_eq!(actions[1].step.target_index, 1);
+        assert_eq!(actions[1].step.port, 444);
+    }
+
+    #[test]
+    fn mtproto_config_parse_full_pass_helper_reports_terminal_and_syntax_errors() {
+        let mut actions = [MtproxyMtprotoCfgProxyAction::default(); 2];
+        let mut out = MtproxyMtprotoCfgParseFullResult::default();
+
+        let rc = unsafe {
+            mtproxy_ffi_mtproto_cfg_parse_full_pass(
+                b"timeout 100;".as_ptr().cast(),
+                12,
+                2,
+                64,
+                0,
+                8,
+                16,
+                actions.as_mut_ptr(),
+                u32::try_from(actions.len()).expect("len fits"),
+                &raw mut out,
+            )
+        };
+        assert_eq!(rc, MTPROTO_CFG_PARSE_FULL_PASS_ERR_MISSING_PROXY_DIRECTIVES);
+
+        let rc = unsafe {
+            mtproxy_ffi_mtproto_cfg_parse_full_pass(
+                b"proxy dc1:443".as_ptr().cast(),
+                13,
+                2,
+                64,
+                0,
+                8,
+                16,
+                actions.as_mut_ptr(),
+                u32::try_from(actions.len()).expect("len fits"),
+                &raw mut out,
+            )
+        };
+        assert_eq!(rc, MTPROTO_CFG_PARSE_FULL_PASS_ERR_EXPECTED_SEMICOLON);
     }
 
     #[test]

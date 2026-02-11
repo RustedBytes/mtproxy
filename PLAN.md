@@ -569,7 +569,7 @@
    - [x] Inventory every remaining C translation unit still linked into the runtime path.
    - [x] Create a one-to-one ownership map from each remaining C unit to a Rust module/crate target.
    - [ ] Port remaining C runtime logic into `rust/mtproxy-core` and `rust/mtproxy-bin` with parity tests.
-   - [ ] Replace remaining FFI runtime call sites with direct Rust module calls in `rust/mtproxy-bin`.
+   - [x] Replace remaining FFI runtime call sites with direct Rust module calls in `rust/mtproxy-bin`.
    - [ ] Switch default runtime/deploy artifact generation to `cargo build -p mtproxy-bin` with no C object linkage.
    - [ ] Keep C code only as historical reference and golden differential fixtures until deletion gates are met.
    - [ ] Remove decommissioned C runtime files from active build graph after parity and burn-in pass.
@@ -597,6 +597,8 @@
    - [x] 2026-02-11: Removed dead C runtime leftovers in `mtproto/mtproto-config.c` after Step 15 parser migration (`dump_mf_cluster` and unused `need_reload_config` state).
    - [x] 2026-02-11: Moved proxy target parse/apply mutation behind one Rust helper step by adding `cfg_parse_proxy_target_step` (`runtime::mtproto::config`) and FFI export `mtproxy_ffi_mtproto_cfg_parse_proxy_target_step`; rewired C `parse_config` proxy branch to consume Rust-produced target/cluster mutation payloads while keeping only host resolution (`cfg_gethost`) and target creation (`create_target`) side effects in C, and removed now-unused C helpers (`cfg_parse_server_port`, `init_old_mf_cluster`, `extend_old_mf_cluster`) from active runtime.
    - [x] 2026-02-11: Removed now-unused transitional mtproto-config FFI exports (`mtproxy_ffi_mtproto_cfg_parse_server_port`, `mtproxy_ffi_mtproto_init_old_cluster`, `mtproxy_ffi_mtproto_extend_old_cluster`) from `rust/mtproxy-ffi` ABI surface and tests after runtime callsites were collapsed behind `mtproxy_ffi_mtproto_cfg_parse_proxy_target_step`.
+   - [x] 2026-02-11: Added Rust full-pass mtproto config helper (`cfg_parse_config_full_pass`) that owns directive iteration/state updates/finalize/default-cluster selection in `runtime::mtproto::config`, exposed full-pass FFI planner API (`mtproxy_ffi_mtproto_cfg_parse_full_pass`), and rewired C `parse_config` to consume only Rust-planned proxy actions while keeping C side effects limited to `cfg_gethost` and `create_target`.
+   - [x] 2026-02-11: Switched `rust/mtproxy-bin` off FFI shims for the mtproto config path by removing `mtproxy-ffi` dependency and calling `mtproxy-core::runtime::mtproto::config::cfg_parse_config_full_pass` directly (with probe test coverage).
    - Done when: `rust/mtproxy-bin` runs MTProxy using only Rust code migrated from C counterparts.
 
 16. Final Hardening, Security Review, and Release
