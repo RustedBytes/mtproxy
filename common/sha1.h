@@ -17,16 +17,5 @@
     Copyright 2016 Telegram Messenger Inc
               2016 Nikolai Durov
 */
-#include <stddef.h>
-
-typedef struct sha1_context {
-  unsigned char *buf;
-  int len;
-  int cap;
-} sha1_context;
-
-void sha1_starts (sha1_context *ctx);
-void sha1_update (sha1_context *ctx, const unsigned char *input, int ilen);
-void sha1_finish (sha1_context *ctx, unsigned char output[20]);
 void sha1 (const unsigned char *input, int ilen, unsigned char output[20]);
 void sha1_two_chunks (const unsigned char *input1, int ilen1, const unsigned char *input2, int ilen2, unsigned char output[20]);
