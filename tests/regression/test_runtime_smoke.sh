@@ -23,6 +23,20 @@ if [ -z "$HTTP_PORT" ]; then
   exit 0
 fi
 
+PROXY_PORT="$(pick_unused_port 20000 45000 || true)"
+if [ -z "$PROXY_PORT" ]; then
+  log_skip "Runtime smoke skipped: could not find an available proxy TCP port"
+  exit 0
+fi
+
+if [ "$PROXY_PORT" = "$HTTP_PORT" ]; then
+  PROXY_PORT="$(pick_unused_port 20000 45000 || true)"
+  if [ -z "$PROXY_PORT" ] || [ "$PROXY_PORT" = "$HTTP_PORT" ]; then
+    log_skip "Runtime smoke skipped: could not allocate distinct proxy/http ports"
+    exit 0
+  fi
+fi
+
 CFG_FILE="$OUT_DIR/runtime-valid.conf"
 cp "$ROOT_DIR/tests/fixtures/config-valid-minimal.conf" "$CFG_FILE"
 
@@ -35,8 +49,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
-log_info "Regression runtime smoke: starting mtproxy on HTTP port $HTTP_PORT"
-"$BIN" -H "$HTTP_PORT" --http-stats "$CFG_FILE" >"$LOG_FILE" 2>&1 &
+log_info "Regression runtime smoke: starting mtproxy on proxy port $PROXY_PORT and HTTP port $HTTP_PORT"
+"$BIN" -p "$PROXY_PORT" -H "$HTTP_PORT" --http-stats "$CFG_FILE" >"$LOG_FILE" 2>&1 &
 PID=$!
 
 ready=0

@@ -505,6 +505,8 @@
    - `Makefile`: `make mixed` continues to produce `objs/bin/mtproto-proxy-mixed` as a symlink alias to default `mtproto-proxy`.
    - [x] Updated migration/docs references for new default and fallback workflow:
    - `README.md`, `rust/README.md`, `rust/mtproxy-ffi/BOUNDARY.md`, `tests/README.md`, `scripts/baseline_capture.sh`.
+   - [x] Fixed fallback/runtime smoke harness boot arguments for `--http-stats` mode:
+   - `tests/regression/test_runtime_smoke.sh`: now allocates a distinct proxy port and passes `-p <proxy-port>` in addition to `-H <http-port>`.
    - [ ] Decommission migrated C modules in batches after burn-in evidence is collected.
    - [ ] Collapse temporary compatibility targets (`mixed`, `c-fallback`) after fallback window closes.
    - Verification:
@@ -514,6 +516,7 @@
    - `make c-fallback` (PASS: builds `objs/bin/mtproto-proxy-c`, 2026-02-11)
    - `./objs/bin/mtproto-proxy -v /tmp/definitely-missing-mtproxy-config.conf` (PASS: startup handshake + Step 9/10/11/12/13 boundary logs observed; expected config-check failure path; exit code 1, 2026-02-11)
    - `./objs/bin/mtproto-proxy-c -v /tmp/definitely-missing-mtproxy-config.conf` (PASS: fallback startup path without Rust boundary logs; expected config-check failure path; exit code 1, 2026-02-11)
+   - `bash -n tests/regression/test_runtime_smoke.sh` (PASS, 2026-02-11)
    - `make test` (FAIL in this sandbox due environment restrictions: netlink/socket operations are not permitted, 2026-02-11)
    - `make c-test` (FAIL in this sandbox due environment restrictions: netlink/socket operations are not permitted, 2026-02-11)
    - Operation log:
@@ -522,6 +525,7 @@
    - [x] 2026-02-11: Preserved `make mixed` compatibility via symlink alias `objs/bin/mtproto-proxy-mixed -> mtproto-proxy`.
    - [x] 2026-02-11: Added `MTPROXY_BIN` override in test harness for fallback binary selection.
    - [x] 2026-02-11: Updated root/Rust/FFI-boundary/test docs and baseline script summary to reflect Rust-default cutover.
+   - [x] 2026-02-11: Resolved fallback `c-test` runtime smoke boot failure (`fatal: port isn't defined`) by passing explicit `-p` proxy port in `tests/regression/test_runtime_smoke.sh`.
    - Done when: production runs on Rust by default and deprecated C paths are removed.
 
 15. Final Hardening, Security Review, and Release
