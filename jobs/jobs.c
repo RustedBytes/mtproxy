@@ -1590,37 +1590,6 @@ void job_message_send(JOB_REF_ARG(job), JOB_REF_ARG(src), unsigned int type,
   job_signal(JOB_REF_PASS(job), JS_MSG);
 }
 
-void job_message_send_fake(
-    JOB_REF_ARG(job),
-    int (*receive_message)(job_t job, struct job_message *M, void *extra),
-    void *extra, JOB_REF_ARG(src), unsigned int type, struct raw_message *raw,
-    int dup, int payload_ints, const unsigned int *payload, unsigned int flags,
-    void (*destroy)(struct job_message *)) {
-  assert(job->j_type & JT_HAVE_MSG_QUEUE);
-  struct job_message *M = malloc(sizeof(*M) + payload_ints * 4);
-  M->type = type;
-  M->flags = 0;
-  M->src = PTR_MOVE(src);
-  M->payload_ints = payload_ints;
-  M->next = NULL;
-  M->flags = flags;
-  M->destructor = destroy;
-  memcpy(M->payload, payload, payload_ints * 4);
-  (dup ? rwm_clone : rwm_move)(&M->message, raw);
-
-  int r = receive_message(job, M, extra);
-  if (r == 1) {
-    job_message_free_default(M);
-  } else if (r == 2) {
-    if (M->destructor) {
-      M->destructor(M);
-    } else {
-      job_message_free_default(M);
-    }
-  }
-  job_decref(JOB_REF_PASS(job));
-}
-
 void job_message_queue_work(job_t job,
                             int (*receive_message)(job_t job,
                                                    struct job_message *M,
@@ -1748,7 +1717,7 @@ static int notify_job_receive_message(job_t NJ, struct job_message *M,
   }
 }
 
-static int notify_job_run(job_t NJ, int op, struct job_thread *JT) {
+int notify_job_run(job_t NJ, int op, struct job_thread *JT) {
   if (op == JS_MSG) {
     job_message_queue_work(NJ, notify_job_receive_message, NULL, 0xffffff);
     return 0;
@@ -1774,10 +1743,6 @@ static int notify_job_run(job_t NJ, int op, struct job_thread *JT) {
   return JOB_ERROR;
 }
 
-job_t notify_job_create(int sig_class) {
-  return create_async_job(
-      notify_job_run,
-      JSC_ALLOW(sig_class, JS_RUN) | JSC_ALLOW(sig_class, JS_ABORT) |
-          JSC_ALLOW(sig_class, JS_MSG) | JSC_ALLOW(sig_class, JS_FINISH),
-      0, sizeof(struct notify_job_extra), JT_HAVE_MSG_QUEUE, JOB_REF_NULL);
+int jobs_notify_job_extra_size_c_impl(void) {
+  return (int)sizeof(struct notify_job_extra);
 }

@@ -50,7 +50,7 @@ const JOBS_CONTRACT_OPS: u32 =
     (1u32 << 0) | (1u32 << 1) | (1u32 << 2) | (1u32 << 3) | (1u32 << 4) | (1u32 << 5) | (1u32 << 6);
 const MPQ_IMPLEMENTED_OPS: u32 = (1u32 << 0) | (1u32 << 1) | (1u32 << 2);
 const JOBS_IMPLEMENTED_OPS: u32 =
-    (1u32 << 0) | (1u32 << 1) | (1u32 << 2) | (1u32 << 3) | (1u32 << 4) | (1u32 << 5);
+    (1u32 << 0) | (1u32 << 1) | (1u32 << 2) | (1u32 << 3) | (1u32 << 4) | (1u32 << 5) | (1u32 << 6);
 const NET_EVENTS_CONTRACT_OPS: u32 = (1u32 << 0) | (1u32 << 1);
 const NET_TIMERS_CONTRACT_OPS: u32 = 1u32 << 0;
 const NET_MSG_BUFFERS_CONTRACT_OPS: u32 = 1u32 << 0;

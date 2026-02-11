@@ -1,4 +1,0 @@
-build_elapsed_sec=3.88
-build_user_sec=3.45
-build_sys_sec=0.30
-build_maxrss_kb=62204

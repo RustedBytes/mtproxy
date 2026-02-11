@@ -34,8 +34,6 @@
 
 #define MAX_SUBCLASS_THREADS 16
 
-// #include "net/net-connections.h"
-
 // verbosity level for jobs
 #define JOBS_DEBUG 3
 
@@ -381,14 +379,6 @@ job_t create_job_list(void);
 int insert_job_into_job_list(job_t list_job, JOB_REF_ARG(job), int mode);
 void update_all_thread_stats(void);
 
-/* adds job to the list of jobs awaited by connection */
-// int conn_wait_job (job_t job, connection_job_t c, double timeout, struct
-// conn_query_functions *cq);
-/* increases connection's generation (effectively clearing list of awaited
- * jobs), then adds given job */
-// int conn_wait_only_job (job_t job, connection_job_t c, double timeout, struct
-// conn_query_functions *cq);
-
 extern int max_job_thread_id;
 
 void check_main_thread(void);
@@ -411,12 +401,7 @@ void job_message_send(JOB_REF_ARG(job), JOB_REF_ARG(src), unsigned int type,
                       struct raw_message *raw, int dup, int payload_ints,
                       const unsigned int *payload, unsigned int flags,
                       void (*destructor)(struct job_message *M));
-void job_message_send_fake(
-    JOB_REF_ARG(job),
-    int (*receive_message)(job_t job, struct job_message *M, void *extra),
-    void *extra, JOB_REF_ARG(src), unsigned int type, struct raw_message *raw,
-    int dup, int payload_ints, const unsigned int *payload, unsigned int flags,
-    void (*destructor)(struct job_message *M));
+
 static inline void job_message_send_empty(JOB_REF_ARG(job), JOB_REF_ARG(src),
                                           unsigned int type,
                                           unsigned int flags) {

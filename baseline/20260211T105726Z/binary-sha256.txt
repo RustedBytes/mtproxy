@@ -1,1 +1,0 @@
-6a1d5a61c7ccb1ea7e6f2473b31a9cc125f1114598b04a2ad96a4f17d2f80008  /home/yehor/Work/RustedBytes/MTProxy/objs/bin/mtproto-proxy

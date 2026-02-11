@@ -1,3 +1,0 @@
-startup_smoke_command=mtproto-proxy -u nobody -p 8888 -H 443 -S <secret> --aes-pwd missing-secret missing-config -M 1
-startup_smoke_expected=non_zero_due_to_missing_inputs
-startup_smoke_exit_code=1

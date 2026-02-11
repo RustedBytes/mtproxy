@@ -17,6 +17,9 @@ const JF_LOCKED: i32 = 0x1_0000;
 const JF_SIGINT: i32 = 0x2_0000;
 const JFS_SET_RUN: i32 = 0x0100_0000;
 const JTS_RUNNING: i32 = 2;
+const JS_RUN: i32 = 0;
+const JS_MSG: i32 = 2;
+const JS_ABORT: i32 = 5;
 const JS_FINISH: i32 = 7;
 const JSP_PARENT_WAKEUP: u64 = 4;
 const JT_HAVE_TIMER: u64 = 1;
@@ -64,6 +67,7 @@ unsafe extern "C" {
     fn jobs_atomic_fetch_or_c_impl(ptr: *mut i32, mask: i32) -> i32;
     fn jobs_atomic_load_c_impl(ptr: *const i32) -> i32;
     fn jobs_atomic_store_c_impl(ptr: *mut i32, value: i32);
+    fn jobs_notify_job_extra_size_c_impl() -> i32;
 
     fn malloc(size: usize) -> *mut c_void;
 
@@ -71,6 +75,7 @@ unsafe extern "C" {
     fn unlock_job(job_tag_int: i32, job: JobT) -> i32;
     fn job_timer_init(job: JobT);
     fn job_message_queue_init(job: JobT);
+    fn notify_job_run(job: JobT, op: i32, thread: *mut JobThread) -> i32;
     fn process_one_job(job_tag_int: i32, job: JobT, thread_class: i32);
 }
 
@@ -84,6 +89,21 @@ fn abort_if(condition: bool) {
 #[inline]
 const fn jfs_set(signo: i32) -> i32 {
     (0x0100_0000_u32 << (signo as u32)) as i32
+}
+
+#[inline]
+const fn jss_allow(signo: i32) -> u64 {
+    0x0100_0000_u64 << (signo as u32)
+}
+
+#[inline]
+const fn jsc_type(class: i32, signo: i32) -> u64 {
+    (class as u64) << ((signo as u32 * 4) + 32)
+}
+
+#[inline]
+const fn jsc_allow(class: i32, signo: i32) -> u64 {
+    jsc_type(class, signo) | jss_allow(signo)
 }
 
 extern "C" fn jobs_process_main_job_from_tokio(job_ptr: *mut c_void) -> i32 {
@@ -236,6 +256,27 @@ pub unsafe extern "C" fn create_async_job(
             job_type,
             parent_job_tag_int,
             parent_job,
+        )
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn notify_job_create(sig_class: i32) -> JobT {
+    let custom_bytes = unsafe { jobs_notify_job_extra_size_c_impl() };
+    abort_if(custom_bytes < 0);
+    let signals = jsc_allow(sig_class, JS_RUN)
+        | jsc_allow(sig_class, JS_ABORT)
+        | jsc_allow(sig_class, JS_MSG)
+        | jsc_allow(sig_class, JS_FINISH);
+    unsafe {
+        create_async_job(
+            Some(notify_job_run),
+            signals,
+            0,
+            custom_bytes,
+            JT_HAVE_MSG_QUEUE,
+            1,
+            ptr::null_mut(),
         )
     }
 }
