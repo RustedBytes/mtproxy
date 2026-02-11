@@ -814,87 +814,111 @@ struct client_packet_info {
 int process_client_packet(struct tl_in_state *tlio_in, int op,
                           connection_job_t C) {
   int len = tl_fetch_unread();
-  assert(op == tl_fetch_int());
+  if (len < 0) {
+    return 0;
+  }
 
-  switch (op) {
-  case RPC_PONG:
+  unsigned char *buf = len > 0 ? malloc((size_t)len) : 0;
+  if (len > 0 && !buf) {
+    return 0;
+  }
+  if (len > 0 && tl_fetch_lookup_data(buf, len) != len) {
+    free(buf);
+    return 0;
+  }
+
+  mtproxy_ffi_mtproto_client_packet_parse_result_t parsed = {0};
+  int32_t parse_rc =
+      mtproxy_ffi_mtproto_parse_client_packet(buf, (size_t)len, &parsed);
+  free(buf);
+  if (parse_rc < 0) {
+    return 0;
+  }
+  if (parsed.op != op) {
+    vkprintf(1,
+             "RPC client packet op mismatch: expected %08x, parsed %08x\n", op,
+             parsed.op);
+    return 0;
+  }
+
+  switch (parsed.kind) {
+  case MTPROXY_FFI_MTPROTO_CLIENT_PACKET_KIND_PONG:
     return 1;
-  case RPC_PROXY_ANS:
-    if (len >= 16) {
-      int flags = tl_fetch_int();
-      long long out_conn_id = tl_fetch_long();
-      assert(tl_fetch_unread() == len - 16);
-      vkprintf(2,
-               "got RPC_PROXY_ANS from connection %d:%llx, data size = %d, "
-               "flags = %d\n",
-               CONN_INFO(C)->fd, out_conn_id, tl_fetch_unread(), flags);
-      struct ext_connection *Ex =
-          find_ext_connection_by_out_conn_id(out_conn_id);
-      connection_job_t D = 0;
-      if (Ex && Ex->out_fd == CONN_INFO(C)->fd &&
-          Ex->out_gen == CONN_INFO(C)->generation) {
-        D = connection_get_by_fd_generation(Ex->in_fd, Ex->in_gen);
-      }
-      if (D) {
-        vkprintf(2, "proxying answer into connection %d:%llx\n", Ex->in_fd,
-                 Ex->in_conn_id);
-        tot_forwarded_responses++;
-        client_send_message(JOB_REF_PASS(D), Ex->in_conn_id, tlio_in, flags);
-      } else {
-        vkprintf(2, "external connection not found, dropping proxied answer\n");
-        dropped_responses++;
-        _notify_remote_closed(JOB_REF_CREATE_PASS(C), out_conn_id);
-      }
-      return 1;
+  case MTPROXY_FFI_MTPROTO_CLIENT_PACKET_KIND_PROXY_ANS: {
+    if (parsed.payload_offset < 0 || parsed.payload_offset > len) {
+      return 0;
     }
-    break;
-  case RPC_SIMPLE_ACK:
-    if (len == 16) {
-      long long out_conn_id = tl_fetch_long();
-      int confirm = tl_fetch_int();
-      vkprintf(2, "got RPC_SIMPLE_ACK for connection = %llx, value %08x\n",
-               out_conn_id, confirm);
-      struct ext_connection *Ex =
-          find_ext_connection_by_out_conn_id(out_conn_id);
-      connection_job_t D = 0;
-      if (Ex && Ex->out_fd == CONN_INFO(C)->fd &&
-          Ex->out_gen == CONN_INFO(C)->generation) {
-        D = connection_get_by_fd_generation(Ex->in_fd, Ex->in_gen);
-      }
-      if (D) {
-        vkprintf(2, "proxying simple ack %08x into connection %d:%llx\n",
-                 confirm, Ex->in_fd, Ex->in_conn_id);
-        if (Ex->in_conn_id) {
-          assert(0);
-        } else {
-          if (TCP_RPC_DATA(D)->flags & RPC_F_COMPACT) {
-            confirm = __builtin_bswap32(confirm);
-          }
-          push_rpc_confirmation(JOB_REF_PASS(D), confirm);
+    int payload_offset = parsed.payload_offset;
+    tl_fetch_skip(payload_offset);
+    int flags = parsed.flags;
+    long long out_conn_id = parsed.out_conn_id;
+    assert(tl_fetch_unread() == len - payload_offset);
+    vkprintf(2,
+             "got RPC_PROXY_ANS from connection %d:%llx, data size = %d, "
+             "flags = %d\n",
+             CONN_INFO(C)->fd, out_conn_id, tl_fetch_unread(), flags);
+    struct ext_connection *Ex = find_ext_connection_by_out_conn_id(out_conn_id);
+    connection_job_t D = 0;
+    if (Ex && Ex->out_fd == CONN_INFO(C)->fd &&
+        Ex->out_gen == CONN_INFO(C)->generation) {
+      D = connection_get_by_fd_generation(Ex->in_fd, Ex->in_gen);
+    }
+    if (D) {
+      vkprintf(2, "proxying answer into connection %d:%llx\n", Ex->in_fd,
+               Ex->in_conn_id);
+      tot_forwarded_responses++;
+      client_send_message(JOB_REF_PASS(D), Ex->in_conn_id, tlio_in, flags);
+    } else {
+      vkprintf(2, "external connection not found, dropping proxied answer\n");
+      dropped_responses++;
+      _notify_remote_closed(JOB_REF_CREATE_PASS(C), out_conn_id);
+    }
+    return 1;
+  }
+  case MTPROXY_FFI_MTPROTO_CLIENT_PACKET_KIND_SIMPLE_ACK: {
+    long long out_conn_id = parsed.out_conn_id;
+    int confirm = parsed.confirm;
+    vkprintf(2, "got RPC_SIMPLE_ACK for connection = %llx, value %08x\n",
+             out_conn_id, confirm);
+    struct ext_connection *Ex = find_ext_connection_by_out_conn_id(out_conn_id);
+    connection_job_t D = 0;
+    if (Ex && Ex->out_fd == CONN_INFO(C)->fd &&
+        Ex->out_gen == CONN_INFO(C)->generation) {
+      D = connection_get_by_fd_generation(Ex->in_fd, Ex->in_gen);
+    }
+    if (D) {
+      vkprintf(2, "proxying simple ack %08x into connection %d:%llx\n", confirm,
+               Ex->in_fd, Ex->in_conn_id);
+      if (Ex->in_conn_id) {
+        assert(0);
+      } else {
+        if (TCP_RPC_DATA(D)->flags & RPC_F_COMPACT) {
+          confirm = __builtin_bswap32(confirm);
         }
-        tot_forwarded_simple_acks++;
-      } else {
-        vkprintf(2, "external connection not found, dropping simple ack\n");
-        dropped_simple_acks++;
-        _notify_remote_closed(JOB_REF_CREATE_PASS(C), out_conn_id);
+        push_rpc_confirmation(JOB_REF_PASS(D), confirm);
       }
-      return 1;
+      tot_forwarded_simple_acks++;
+    } else {
+      vkprintf(2, "external connection not found, dropping simple ack\n");
+      dropped_simple_acks++;
+      _notify_remote_closed(JOB_REF_CREATE_PASS(C), out_conn_id);
     }
-    break;
-  case RPC_CLOSE_EXT:
-    if (len == 12) {
-      long long out_conn_id = tl_fetch_long();
-      vkprintf(2, "got RPC_CLOSE_EXT for connection = %llx\n", out_conn_id);
-      struct ext_connection *Ex =
-          find_ext_connection_by_out_conn_id(out_conn_id);
-      if (Ex) {
-        remove_ext_connection(Ex, 2);
-      }
-      return 1;
+    return 1;
+  }
+  case MTPROXY_FFI_MTPROTO_CLIENT_PACKET_KIND_CLOSE_EXT: {
+    long long out_conn_id = parsed.out_conn_id;
+    vkprintf(2, "got RPC_CLOSE_EXT for connection = %llx\n", out_conn_id);
+    struct ext_connection *Ex = find_ext_connection_by_out_conn_id(out_conn_id);
+    if (Ex) {
+      remove_ext_connection(Ex, 2);
     }
+    return 1;
+  }
+  case MTPROXY_FFI_MTPROTO_CLIENT_PACKET_KIND_UNKNOWN:
+    vkprintf(1, "unknown RPC operation %08x, ignoring\n", parsed.op);
     break;
   default:
-    vkprintf(1, "unknown RPC operation %08x, ignoring\n", op);
+    break;
   }
 
   return 0;

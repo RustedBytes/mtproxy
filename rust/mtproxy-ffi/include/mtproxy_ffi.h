@@ -149,6 +149,15 @@ typedef struct mtproxy_ffi_mtproto_parse_function_result {
   char error[192];
 } mtproxy_ffi_mtproto_parse_function_result_t;
 
+typedef struct mtproxy_ffi_mtproto_client_packet_parse_result {
+  int32_t kind;
+  int32_t op;
+  int32_t flags;
+  int64_t out_conn_id;
+  int32_t confirm;
+  int32_t payload_offset;
+} mtproxy_ffi_mtproto_client_packet_parse_result_t;
+
 #define MTPROXY_FFI_MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_OK                  0
 #define MTPROXY_FFI_MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_NOT_FOUND           1
 #define MTPROXY_FFI_MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_ERR_INVALID_ARGS   (-1)
@@ -249,6 +258,14 @@ typedef struct mtproxy_ffi_mtproto_parse_function_result {
 #define MTPROXY_FFI_MTPROTO_PACKET_KIND_INVALID        0
 #define MTPROXY_FFI_MTPROTO_PACKET_KIND_ENCRYPTED      1
 #define MTPROXY_FFI_MTPROTO_PACKET_KIND_UNENCRYPTED_DH 2
+
+#define MTPROXY_FFI_MTPROTO_CLIENT_PACKET_KIND_INVALID    0
+#define MTPROXY_FFI_MTPROTO_CLIENT_PACKET_KIND_PONG       1
+#define MTPROXY_FFI_MTPROTO_CLIENT_PACKET_KIND_PROXY_ANS  2
+#define MTPROXY_FFI_MTPROTO_CLIENT_PACKET_KIND_SIMPLE_ACK 3
+#define MTPROXY_FFI_MTPROTO_CLIENT_PACKET_KIND_CLOSE_EXT  4
+#define MTPROXY_FFI_MTPROTO_CLIENT_PACKET_KIND_UNKNOWN    5
+#define MTPROXY_FFI_MTPROTO_CLIENT_PACKET_KIND_MALFORMED  6
 
 typedef struct mtproxy_ffi_tl_header_parse_result {
   int32_t status;
@@ -601,6 +618,11 @@ int32_t mtproxy_ffi_mtproto_parse_function(
   size_t len,
   int64_t actor_id,
   mtproxy_ffi_mtproto_parse_function_result_t *out
+);
+int32_t mtproxy_ffi_mtproto_parse_client_packet(
+  const uint8_t *data,
+  size_t len,
+  mtproxy_ffi_mtproto_client_packet_parse_result_t *out
 );
 
 // mtproto-config helpers for Step 15 parser/apply runtime migration.

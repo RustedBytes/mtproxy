@@ -163,6 +163,13 @@ const MTPROTO_CFG_CLUSTER_APPLY_DECISION_KIND_APPEND_LAST: i32 = 2;
 const MTPROTO_PACKET_KIND_INVALID: i32 = 0;
 const MTPROTO_PACKET_KIND_ENCRYPTED: i32 = 1;
 const MTPROTO_PACKET_KIND_UNENCRYPTED_DH: i32 = 2;
+const MTPROTO_CLIENT_PACKET_KIND_INVALID: i32 = 0;
+const MTPROTO_CLIENT_PACKET_KIND_PONG: i32 = 1;
+const MTPROTO_CLIENT_PACKET_KIND_PROXY_ANS: i32 = 2;
+const MTPROTO_CLIENT_PACKET_KIND_SIMPLE_ACK: i32 = 3;
+const MTPROTO_CLIENT_PACKET_KIND_CLOSE_EXT: i32 = 4;
+const MTPROTO_CLIENT_PACKET_KIND_UNKNOWN: i32 = 5;
+const MTPROTO_CLIENT_PACKET_KIND_MALFORMED: i32 = 6;
 const CRYPTO_TEMP_DH_PARAMS_MAGIC: i32 = i32::from_ne_bytes(0xab45_ccd3_u32.to_ne_bytes());
 
 const TCP_RPC_PACKET_LEN_STATE_SKIP: i32 = 0;
@@ -414,6 +421,17 @@ pub struct MtproxyMtprotoPacketInspectResult {
     pub auth_key_id: i64,
     pub inner_len: i32,
     pub function_id: i32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct MtproxyMtprotoClientPacketParseResult {
+    pub kind: i32,
+    pub op: i32,
+    pub flags: i32,
+    pub out_conn_id: i64,
+    pub confirm: i32,
+    pub payload_offset: i32,
 }
 
 #[repr(C)]
@@ -1213,6 +1231,76 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_inspect_packet_header(
             out_ref.kind = MTPROTO_PACKET_KIND_INVALID;
         }
     }
+    0
+}
+
+fn mtproto_parse_client_packet_impl(data: &[u8], out: &mut MtproxyMtprotoClientPacketParseResult) {
+    use mtproxy_core::runtime::mtproto::proxy::RpcClientPacket;
+
+    match mtproxy_core::runtime::mtproto::proxy::parse_client_packet(data) {
+        RpcClientPacket::Pong => {
+            out.kind = MTPROTO_CLIENT_PACKET_KIND_PONG;
+            out.op = mtproxy_core::runtime::mtproto::proxy::RPC_PONG;
+        }
+        RpcClientPacket::ProxyAns {
+            flags,
+            out_conn_id,
+            payload,
+        } => {
+            out.kind = MTPROTO_CLIENT_PACKET_KIND_PROXY_ANS;
+            out.op = mtproxy_core::runtime::mtproto::proxy::RPC_PROXY_ANS;
+            out.flags = flags;
+            out.out_conn_id = out_conn_id;
+            let payload_offset = data.len().saturating_sub(payload.len());
+            out.payload_offset = saturating_i32_from_usize(payload_offset);
+        }
+        RpcClientPacket::SimpleAck {
+            out_conn_id,
+            confirm,
+        } => {
+            out.kind = MTPROTO_CLIENT_PACKET_KIND_SIMPLE_ACK;
+            out.op = mtproxy_core::runtime::mtproto::proxy::RPC_SIMPLE_ACK;
+            out.out_conn_id = out_conn_id;
+            out.confirm = confirm;
+        }
+        RpcClientPacket::CloseExt { out_conn_id } => {
+            out.kind = MTPROTO_CLIENT_PACKET_KIND_CLOSE_EXT;
+            out.op = mtproxy_core::runtime::mtproto::proxy::RPC_CLOSE_EXT;
+            out.out_conn_id = out_conn_id;
+        }
+        RpcClientPacket::Unknown { op } => {
+            out.kind = MTPROTO_CLIENT_PACKET_KIND_UNKNOWN;
+            out.op = op;
+        }
+        RpcClientPacket::Malformed { op } => {
+            out.kind = MTPROTO_CLIENT_PACKET_KIND_MALFORMED;
+            out.op = op;
+        }
+    }
+}
+
+/// Parses RPC client packet TL envelope for `mtproto-proxy` dispatch.
+///
+/// # Safety
+/// `data` must point to `len` readable bytes when `len > 0`, `out` must be writable.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_parse_client_packet(
+    data: *const u8,
+    len: usize,
+    out: *mut MtproxyMtprotoClientPacketParseResult,
+) -> i32 {
+    if out.is_null() {
+        return -1;
+    }
+    let Some(bytes) = slice_from_ptr(data, len) else {
+        return -1;
+    };
+    let out_ref = unsafe { &mut *out };
+    *out_ref = MtproxyMtprotoClientPacketParseResult {
+        kind: MTPROTO_CLIENT_PACKET_KIND_INVALID,
+        ..MtproxyMtprotoClientPacketParseResult::default()
+    };
+    mtproto_parse_client_packet_impl(bytes, out_ref);
     0
 }
 
@@ -5252,17 +5340,17 @@ mod tests {
         mtproxy_ffi_mtproto_cfg_parse_full_pass, mtproxy_ffi_mtproto_cfg_parse_proxy_target_step,
         mtproxy_ffi_mtproto_cfg_preinit, mtproxy_ffi_mtproto_cfg_scan_directive_token,
         mtproxy_ffi_mtproto_conn_tag, mtproxy_ffi_mtproto_ext_conn_hash,
-        mtproxy_ffi_mtproto_inspect_packet_header, mtproxy_ffi_mtproto_parse_function,
-        mtproxy_ffi_mtproto_parse_text_ipv4, mtproxy_ffi_mtproto_parse_text_ipv6,
-        mtproxy_ffi_net_epoll_conv_flags, mtproxy_ffi_net_epoll_unconv_flags,
-        mtproxy_ffi_net_timers_wait_msec, mtproxy_ffi_parse_meminfo_summary,
-        mtproxy_ffi_parse_proc_stat_line, mtproxy_ffi_parse_statm, mtproxy_ffi_pid_init_common,
-        mtproxy_ffi_precise_now_rdtsc_value, mtproxy_ffi_precise_now_value,
-        mtproxy_ffi_process_id_is_newer, mtproxy_ffi_read_proc_stat_file,
-        mtproxy_ffi_rpc_target_normalize_pid, mtproxy_ffi_sha1, mtproxy_ffi_sha1_two_chunks,
-        mtproxy_ffi_sha256, mtproxy_ffi_sha256_hmac, mtproxy_ffi_sha256_two_chunks,
-        mtproxy_ffi_startup_handshake, mtproxy_ffi_tcp_rpc_client_packet_len_state,
-        mtproxy_ffi_tcp_rpc_encode_compact_header,
+        mtproxy_ffi_mtproto_inspect_packet_header, mtproxy_ffi_mtproto_parse_client_packet,
+        mtproxy_ffi_mtproto_parse_function, mtproxy_ffi_mtproto_parse_text_ipv4,
+        mtproxy_ffi_mtproto_parse_text_ipv6, mtproxy_ffi_net_epoll_conv_flags,
+        mtproxy_ffi_net_epoll_unconv_flags, mtproxy_ffi_net_timers_wait_msec,
+        mtproxy_ffi_parse_meminfo_summary, mtproxy_ffi_parse_proc_stat_line,
+        mtproxy_ffi_parse_statm, mtproxy_ffi_pid_init_common, mtproxy_ffi_precise_now_rdtsc_value,
+        mtproxy_ffi_precise_now_value, mtproxy_ffi_process_id_is_newer,
+        mtproxy_ffi_read_proc_stat_file, mtproxy_ffi_rpc_target_normalize_pid, mtproxy_ffi_sha1,
+        mtproxy_ffi_sha1_two_chunks, mtproxy_ffi_sha256, mtproxy_ffi_sha256_hmac,
+        mtproxy_ffi_sha256_two_chunks, mtproxy_ffi_startup_handshake,
+        mtproxy_ffi_tcp_rpc_client_packet_len_state, mtproxy_ffi_tcp_rpc_encode_compact_header,
         mtproxy_ffi_tcp_rpc_server_packet_header_malformed,
         mtproxy_ffi_tcp_rpc_server_packet_len_state, mtproxy_ffi_tl_parse_answer_header,
         mtproxy_ffi_tl_parse_query_header, MtproxyAesKeyData, MtproxyApplicationBoundary,
@@ -5272,15 +5360,16 @@ mod tests {
         MtproxyMtprotoCfgFinalizeResult, MtproxyMtprotoCfgGetlexExtResult,
         MtproxyMtprotoCfgParseFullResult, MtproxyMtprotoCfgParseProxyTargetStepResult,
         MtproxyMtprotoCfgPreinitResult, MtproxyMtprotoCfgProxyAction,
-        MtproxyMtprotoOldClusterState, MtproxyMtprotoPacketInspectResult,
-        MtproxyMtprotoParseFunctionResult, MtproxyNetworkBoundary, MtproxyProcStats,
-        MtproxyProcessId, MtproxyRpcBoundary, MtproxyTlHeaderParseResult, AESNI_CIPHER_AES_256_CTR,
-        AESNI_CONTRACT_OPS, AESNI_IMPLEMENTED_OPS, APPLICATION_BOUNDARY_VERSION,
-        CONCURRENCY_BOUNDARY_VERSION, CPUID_MAGIC, CRC32_REFLECTED_POLY, CRYPTO_BOUNDARY_VERSION,
-        DH_KEY_BYTES, DH_PARAMS_SELECT, ENGINE_RPC_CONTRACT_OPS, ENGINE_RPC_IMPLEMENTED_OPS,
-        EPOLLERR, EPOLLET, EPOLLIN, EPOLLOUT, EPOLLPRI, EPOLLRDHUP, EVT_FROM_EPOLL, EVT_LEVEL,
-        EVT_READ, EVT_SPEC, EVT_WRITE, FFI_API_VERSION, GF32_CLMUL_POWERS_LEN, JOBS_CONTRACT_OPS,
-        JOBS_IMPLEMENTED_OPS, MPQ_CONTRACT_OPS, MPQ_IMPLEMENTED_OPS,
+        MtproxyMtprotoClientPacketParseResult, MtproxyMtprotoOldClusterState,
+        MtproxyMtprotoPacketInspectResult, MtproxyMtprotoParseFunctionResult,
+        MtproxyNetworkBoundary, MtproxyProcStats, MtproxyProcessId, MtproxyRpcBoundary,
+        MtproxyTlHeaderParseResult, AESNI_CIPHER_AES_256_CTR, AESNI_CONTRACT_OPS,
+        AESNI_IMPLEMENTED_OPS, APPLICATION_BOUNDARY_VERSION, CONCURRENCY_BOUNDARY_VERSION,
+        CPUID_MAGIC, CRC32_REFLECTED_POLY, CRYPTO_BOUNDARY_VERSION, DH_KEY_BYTES, DH_PARAMS_SELECT,
+        ENGINE_RPC_CONTRACT_OPS, ENGINE_RPC_IMPLEMENTED_OPS, EPOLLERR, EPOLLET, EPOLLIN, EPOLLOUT,
+        EPOLLPRI, EPOLLRDHUP, EVT_FROM_EPOLL, EVT_LEVEL, EVT_READ, EVT_SPEC, EVT_WRITE,
+        FFI_API_VERSION, GF32_CLMUL_POWERS_LEN, JOBS_CONTRACT_OPS, JOBS_IMPLEMENTED_OPS,
+        MPQ_CONTRACT_OPS, MPQ_IMPLEMENTED_OPS,
         MTPROTO_CFG_CLUSTER_APPLY_DECISION_ERR_PROXIES_INTERMIXED,
         MTPROTO_CFG_CLUSTER_APPLY_DECISION_ERR_TOO_MANY_AUTH_CLUSTERS,
         MTPROTO_CFG_CLUSTER_APPLY_DECISION_KIND_APPEND_LAST,
@@ -5304,6 +5393,9 @@ mod tests {
         MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_INVALID_TARGET_ID,
         MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_INVALID_TIMEOUT,
         MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_TARGET_ID_SPACE, MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_OK,
+        MTPROTO_CLIENT_PACKET_KIND_CLOSE_EXT, MTPROTO_CLIENT_PACKET_KIND_MALFORMED,
+        MTPROTO_CLIENT_PACKET_KIND_PONG, MTPROTO_CLIENT_PACKET_KIND_PROXY_ANS,
+        MTPROTO_CLIENT_PACKET_KIND_SIMPLE_ACK, MTPROTO_CLIENT_PACKET_KIND_UNKNOWN,
         MTPROTO_DIRECTIVE_TOKEN_KIND_DEFAULT_CLUSTER, MTPROTO_DIRECTIVE_TOKEN_KIND_MAX_CONNECTIONS,
         MTPROTO_DIRECTIVE_TOKEN_KIND_MIN_CONNECTIONS, MTPROTO_DIRECTIVE_TOKEN_KIND_PROXY_FOR,
         MTPROTO_DIRECTIVE_TOKEN_KIND_TIMEOUT, MTPROTO_PACKET_KIND_ENCRYPTED,
@@ -5556,6 +5648,106 @@ mod tests {
             0
         );
         assert_eq!(out.kind, MTPROTO_PACKET_KIND_INVALID);
+    }
+
+    #[test]
+    fn mtproto_client_packet_parser_bridge_parses_supported_shapes() {
+        let mut out = MtproxyMtprotoClientPacketParseResult::default();
+
+        let pong = 0x8430_eaa7_u32.to_le_bytes();
+        assert_eq!(
+            unsafe {
+                mtproxy_ffi_mtproto_parse_client_packet(pong.as_ptr(), pong.len(), &raw mut out)
+            },
+            0
+        );
+        assert_eq!(out.kind, MTPROTO_CLIENT_PACKET_KIND_PONG);
+        assert_eq!(out.op, i32::from_ne_bytes(0x8430_eaa7_u32.to_ne_bytes()));
+
+        let mut proxy_ans = [0u8; 24];
+        proxy_ans[0..4].copy_from_slice(&0x4403_da0d_i32.to_le_bytes());
+        proxy_ans[4..8].copy_from_slice(&7_i32.to_le_bytes());
+        proxy_ans[8..16].copy_from_slice(&0x0102_0304_0506_0708_i64.to_le_bytes());
+        proxy_ans[16..24].copy_from_slice(&0x1122_3344_5566_7788_i64.to_le_bytes());
+        assert_eq!(
+            unsafe {
+                mtproxy_ffi_mtproto_parse_client_packet(
+                    proxy_ans.as_ptr(),
+                    proxy_ans.len(),
+                    &raw mut out,
+                )
+            },
+            0
+        );
+        assert_eq!(out.kind, MTPROTO_CLIENT_PACKET_KIND_PROXY_ANS);
+        assert_eq!(out.flags, 7);
+        assert_eq!(out.out_conn_id, 0x0102_0304_0506_0708_i64);
+        assert_eq!(out.payload_offset, 16);
+
+        let mut ack = [0u8; 16];
+        ack[0..4].copy_from_slice(&0x3bac_409b_i32.to_le_bytes());
+        ack[4..12].copy_from_slice(&0x1111_2222_3333_4444_i64.to_le_bytes());
+        ack[12..16].copy_from_slice(&0xaabb_ccdd_u32.to_le_bytes());
+        assert_eq!(
+            unsafe {
+                mtproxy_ffi_mtproto_parse_client_packet(ack.as_ptr(), ack.len(), &raw mut out)
+            },
+            0
+        );
+        assert_eq!(out.kind, MTPROTO_CLIENT_PACKET_KIND_SIMPLE_ACK);
+        assert_eq!(out.out_conn_id, 0x1111_2222_3333_4444_i64);
+        assert_eq!(
+            u32::from_ne_bytes(out.confirm.to_ne_bytes()),
+            0xaabb_ccdd_u32
+        );
+
+        let mut close_ext = [0u8; 12];
+        close_ext[0..4].copy_from_slice(&0x5eb6_34a2_i32.to_le_bytes());
+        close_ext[4..12].copy_from_slice(&0x9999_8888_7777_6666_u64.to_le_bytes());
+        assert_eq!(
+            unsafe {
+                mtproxy_ffi_mtproto_parse_client_packet(
+                    close_ext.as_ptr(),
+                    close_ext.len(),
+                    &raw mut out,
+                )
+            },
+            0
+        );
+        assert_eq!(out.kind, MTPROTO_CLIENT_PACKET_KIND_CLOSE_EXT);
+        assert_eq!(
+            out.out_conn_id,
+            i64::from_ne_bytes(0x9999_8888_7777_6666_u64.to_ne_bytes())
+        );
+
+        let mut malformed = [0u8; 15];
+        malformed[0..4].copy_from_slice(&0x3bac_409b_i32.to_le_bytes());
+        assert_eq!(
+            unsafe {
+                mtproxy_ffi_mtproto_parse_client_packet(
+                    malformed.as_ptr(),
+                    malformed.len(),
+                    &raw mut out,
+                )
+            },
+            0
+        );
+        assert_eq!(out.kind, MTPROTO_CLIENT_PACKET_KIND_MALFORMED);
+        assert_eq!(out.op, 0x3bac_409b_i32);
+
+        let unknown = 0x1234_5678_i32.to_le_bytes();
+        assert_eq!(
+            unsafe {
+                mtproxy_ffi_mtproto_parse_client_packet(
+                    unknown.as_ptr(),
+                    unknown.len(),
+                    &raw mut out,
+                )
+            },
+            0
+        );
+        assert_eq!(out.kind, MTPROTO_CLIENT_PACKET_KIND_UNKNOWN);
+        assert_eq!(out.op, 0x1234_5678_i32);
     }
 
     #[test]
