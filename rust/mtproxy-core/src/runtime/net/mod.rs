@@ -66,7 +66,7 @@ pub const NET_MODULE_PLAN: [NetModulePlanEntry; 15] = [
     NetModulePlanEntry {
         c_translation_unit: "net/net-msg.c",
         rust_module: "runtime::net::msg",
-        state: NetMigrationState::Planned,
+        state: NetMigrationState::HelperExtracted,
     },
     NetModulePlanEntry {
         c_translation_unit: "net/net-rpc-targets.c",
@@ -76,12 +76,12 @@ pub const NET_MODULE_PLAN: [NetModulePlanEntry; 15] = [
     NetModulePlanEntry {
         c_translation_unit: "net/net-stats.c",
         rust_module: "runtime::net::stats",
-        state: NetMigrationState::Planned,
+        state: NetMigrationState::HelperExtracted,
     },
     NetModulePlanEntry {
         c_translation_unit: "net/net-tcp-connections.c",
         rust_module: "runtime::net::tcp_connections",
-        state: NetMigrationState::Planned,
+        state: NetMigrationState::HelperExtracted,
     },
     NetModulePlanEntry {
         c_translation_unit: "net/net-tcp-rpc-client.c",
@@ -96,7 +96,7 @@ pub const NET_MODULE_PLAN: [NetModulePlanEntry; 15] = [
     NetModulePlanEntry {
         c_translation_unit: "net/net-tcp-rpc-ext-server.c",
         rust_module: "runtime::net::tcp_rpc_ext_server",
-        state: NetMigrationState::Planned,
+        state: NetMigrationState::HelperExtracted,
     },
     NetModulePlanEntry {
         c_translation_unit: "net/net-tcp-rpc-server.c",

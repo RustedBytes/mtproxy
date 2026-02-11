@@ -58,6 +58,13 @@
 
 extern int32_t mtproxy_ffi_crypto_rand_bytes(uint8_t *out, int32_t len);
 extern int32_t mtproxy_ffi_crypto_tls_generate_public_key(uint8_t out[32]);
+extern int32_t mtproxy_ffi_net_tcp_rpc_ext_domain_bucket_index(
+    const uint8_t *domain, int32_t len);
+extern int32_t mtproxy_ffi_net_tcp_rpc_ext_client_random_bucket_index(
+    const uint8_t random[16]);
+extern int32_t mtproxy_ffi_net_tcp_rpc_ext_select_server_hello_profile(
+    int32_t min_len, int32_t max_len, int32_t sum_len, int32_t sample_count,
+    int32_t *out_size, int32_t *out_profile);
 
 /*
  *
@@ -176,14 +183,22 @@ static struct domain_info *default_domain_info;
 #define DOMAIN_HASH_MOD 257
 static struct domain_info *domains[DOMAIN_HASH_MOD];
 
+#define SERVER_HELLO_PROFILE_FIXED 0
+#define SERVER_HELLO_PROFILE_RANDOM_NEAR 1
+#define SERVER_HELLO_PROFILE_RANDOM_AVG 2
+
+static inline int domain_bucket_index(const char *domain, size_t len) {
+  assert(domain != NULL);
+  assert(len <= (size_t)INT32_MAX);
+  int32_t index = mtproxy_ffi_net_tcp_rpc_ext_domain_bucket_index(
+      (const uint8_t *)domain, (int32_t)len);
+  assert(0 <= index && index < DOMAIN_HASH_MOD);
+  return (int)index;
+}
+
 static struct domain_info **get_domain_info_bucket(const char *domain,
                                                    size_t len) {
-  size_t i;
-  unsigned hash = 0;
-  for (i = 0; i < len; i++) {
-    hash = hash * 239017 + (unsigned char)domain[i];
-  }
-  return domains + hash % DOMAIN_HASH_MOD;
+  return domains + domain_bucket_index(domain, len);
 }
 
 static const struct domain_info *get_domain_info(const char *domain,
@@ -683,26 +698,26 @@ static int update_domain_info(struct domain_info *info) {
 
   info->is_reversed_extension_order = (char)is_reversed_extension_order_min;
 
-  if (encrypted_application_data_length_min ==
-      encrypted_application_data_length_max) {
-    info->server_hello_encrypted_size = encrypted_application_data_length_min;
-    info->use_random_encrypted_size = 0;
-  } else if (encrypted_application_data_length_max -
-                 encrypted_application_data_length_min <=
-             3) {
-    info->server_hello_encrypted_size =
-        encrypted_application_data_length_max - 1;
-    info->use_random_encrypted_size = 1;
-  } else {
+  int32_t selected_server_hello_size = 0;
+  int32_t selected_server_hello_profile = -1;
+  assert(mtproxy_ffi_net_tcp_rpc_ext_select_server_hello_profile(
+             encrypted_application_data_length_min,
+             encrypted_application_data_length_max,
+             encrypted_application_data_length_sum, TRIES,
+             &selected_server_hello_size, &selected_server_hello_profile) == 0);
+  if (selected_server_hello_profile == SERVER_HELLO_PROFILE_RANDOM_AVG) {
     kprintf("Unrecognized encrypted application data length pattern with min = "
             "%d, max = %d, mean = %.3lf\n",
             encrypted_application_data_length_min,
             encrypted_application_data_length_max,
             encrypted_application_data_length_sum * 1.0 / TRIES);
-    info->server_hello_encrypted_size =
-        (int)(encrypted_application_data_length_sum * 1.0 / TRIES + 0.5);
-    info->use_random_encrypted_size = 1;
+  } else {
+    assert(selected_server_hello_profile == SERVER_HELLO_PROFILE_FIXED ||
+           selected_server_hello_profile == SERVER_HELLO_PROFILE_RANDOM_NEAR);
   }
+  info->server_hello_encrypted_size = (short)selected_server_hello_size;
+  info->use_random_encrypted_size =
+      selected_server_hello_profile == SERVER_HELLO_PROFILE_FIXED ? 0 : 1;
 
   vkprintf(0,
            "Successfully checked domain %s in %.3lf seconds: "
@@ -827,14 +842,7 @@ static struct client_random *last_client_random;
 
 static struct client_random **
 get_client_random_bucket(unsigned char random[16]) {
-  int i = RANDOM_HASH_BITS;
-  int pos = 0;
-  int id = 0;
-  while (i > 0) {
-    int bits = i < 8 ? i : 8;
-    id = (id << bits) | (random[pos++] & ((1 << bits) - 1));
-    i -= bits;
-  }
+  int32_t id = mtproxy_ffi_net_tcp_rpc_ext_client_random_bucket_index(random);
   assert(0 <= id && id < (1 << RANDOM_HASH_BITS));
   return client_randoms + id;
 }

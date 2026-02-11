@@ -63,12 +63,16 @@ int aio_prepare_stat(stats_buffer_t *sb);
 int mp_queue_prepare_stat(stats_buffer_t *sb);
 int timers_prepare_stat(stats_buffer_t *sb);
 int rpc_targets_prepare_stat(stats_buffer_t *sb);
+extern double mtproxy_ffi_net_stats_recent_idle_percent(double a_idle_time,
+                                                        double a_idle_quotient);
+extern double mtproxy_ffi_net_stats_average_idle_percent(double tot_idle_time,
+                                                         int uptime);
 
 // static double safe_div (double x, double y) { return y > 0 ? x/y : 0; }
 
 int recent_idle_percent(void) {
-  return a_idle_quotient > 0 ? a_idle_time / a_idle_quotient * 100
-                             : a_idle_time;
+  return (int)mtproxy_ffi_net_stats_recent_idle_percent(a_idle_time,
+                                                        a_idle_quotient);
 }
 
 extern long long epoll_calls;
@@ -93,6 +97,10 @@ int prepare_stats(char *buff, int buff_size) {
     my_pid = getpid();
   }
   int uptime = now - start_time;
+  double average_idle_percent =
+      mtproxy_ffi_net_stats_average_idle_percent(tot_idle_time, uptime);
+  double recent_idle_percent_value =
+      mtproxy_ffi_net_stats_recent_idle_percent(a_idle_time, a_idle_quotient);
 
   sb_printf(&sb,
             "pid\t%d\n"
@@ -108,9 +116,7 @@ int prepare_stats(char *buff, int buff_size) {
             "epoll_intr\t%lld\n"
             "PID\t" PID_PRINT_STR "\n",
             my_pid, start_time, now, uptime, tot_idle_time,
-            uptime > 0 ? tot_idle_time / uptime * 100 : 0,
-            a_idle_quotient > 0 ? a_idle_time / a_idle_quotient * 100
-                                : a_idle_time,
+            average_idle_percent, recent_idle_percent_value,
             ev_heap_size, get_utime(CLOCK_MONOTONIC) - last_epoll_wait_at,
             epoll_calls, epoll_intr, PID_TO_PRINT(&PID));
 

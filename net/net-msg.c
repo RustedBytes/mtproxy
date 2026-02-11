@@ -27,6 +27,7 @@
 #define _FILE_OFFSET_BITS 64
 
 #include <assert.h>
+#include <stdint.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -46,6 +47,11 @@
 #include "common/common-stats.h"
 #include "common/server-functions.h"
 #include "jobs/jobs.h"
+
+extern int32_t mtproxy_ffi_net_msg_tl_marker_kind(int32_t marker);
+extern int32_t mtproxy_ffi_net_msg_tl_padding(int32_t total_bytes);
+extern int32_t mtproxy_ffi_net_msg_encrypt_decrypt_effective_bytes(
+    int32_t requested_bytes, int32_t total_bytes, int32_t block_size);
 
 struct raw_message empty_rwm = {.first = NULL,
                                 .last = NULL,
@@ -1336,7 +1342,7 @@ void rwm_to_tl_string(struct raw_message *raw) {
     assert(rwm_push_data_front(raw, &b, 1) == 1);
   }
 
-  int pad = (-raw->total_bytes) & 3;
+  int pad = mtproxy_ffi_net_msg_tl_padding(raw->total_bytes);
   if (pad) {
     int zero = 0;
     assert(rwm_push_data(raw, &zero, pad) == pad);
@@ -1348,8 +1354,9 @@ void rwm_from_tl_string(struct raw_message *raw) {
   int x = 0;
   assert(raw->total_bytes > 0);
   assert(rwm_fetch_data(raw, &x, 1) == 1);
-  assert(x != 0xff);
-  if (x == 0xfe) {
+  int marker_kind = mtproxy_ffi_net_msg_tl_marker_kind(x);
+  assert(marker_kind != -1);
+  if (marker_kind == 1) {
     assert(raw->total_bytes >= 3);
     assert(rwm_fetch_data(raw, &x, 3) == 3);
   }
@@ -1480,10 +1487,8 @@ int rwm_encrypt_decrypt_to(struct raw_message *raw, struct raw_message *res,
                            int bytes, EVP_CIPHER_CTX *evp_ctx, int block_size) {
   assert(bytes >= 0);
   assert(block_size && !(block_size & (block_size - 1)));
-  if (bytes > raw->total_bytes) {
-    bytes = raw->total_bytes;
-  }
-  bytes &= -block_size;
+  bytes = mtproxy_ffi_net_msg_encrypt_decrypt_effective_bytes(
+      bytes, raw->total_bytes, block_size);
   if (!bytes) {
     return 0;
   }

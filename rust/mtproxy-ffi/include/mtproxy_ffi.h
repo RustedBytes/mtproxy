@@ -484,6 +484,68 @@ int32_t mtproxy_ffi_msg_buffers_pick_size_index(
   int32_t size_hint
 );
 
+// net-msg helpers: TL-string marker/padding and encrypt/decrypt byte clamp.
+int32_t mtproxy_ffi_net_msg_tl_marker_kind(int32_t marker);
+int32_t mtproxy_ffi_net_msg_tl_padding(int32_t total_bytes);
+int32_t mtproxy_ffi_net_msg_encrypt_decrypt_effective_bytes(
+  int32_t requested_bytes,
+  int32_t total_bytes,
+  int32_t block_size
+);
+
+// net-thread helper: runs one notification event via callback bridge.
+int32_t mtproxy_ffi_net_thread_run_notification_event(
+  int32_t event_type,
+  void *who,
+  void *event,
+  int32_t (*rpc_ready)(void *who),
+  void (*rpc_close)(void *who),
+  void (*rpc_alarm)(void *who),
+  void (*rpc_wakeup)(void *who),
+  void (*fail_connection)(void *who, int32_t code),
+  void (*job_decref)(void *who),
+  void (*event_free)(void *event)
+);
+
+// net-stats helpers: idle percentage math extracted from net-stats.c.
+double mtproxy_ffi_net_stats_recent_idle_percent(double a_idle_time, double a_idle_quotient);
+double mtproxy_ffi_net_stats_average_idle_percent(double tot_idle_time, int32_t uptime);
+
+// net-tcp-connections helpers: AES/TLS framing length helpers.
+int32_t mtproxy_ffi_net_tcp_aes_aligned_len(int32_t total_bytes);
+int32_t mtproxy_ffi_net_tcp_aes_needed_output_bytes(int32_t total_bytes);
+int32_t mtproxy_ffi_net_tcp_tls_encrypt_chunk_len(int32_t total_bytes, int32_t is_tls);
+int32_t mtproxy_ffi_net_tcp_tls_header_needed_bytes(int32_t available);
+int32_t mtproxy_ffi_net_tcp_tls_parse_header(const uint8_t header[5], int32_t *out_payload_len);
+int32_t mtproxy_ffi_net_tcp_tls_decrypt_chunk_len(int32_t available, int32_t left_tls_packet_length);
+int32_t mtproxy_ffi_net_tcp_reader_negative_skip_take(int32_t skip_bytes, int32_t available_bytes);
+int32_t mtproxy_ffi_net_tcp_reader_negative_skip_next(int32_t skip_bytes, int32_t taken_bytes);
+int32_t mtproxy_ffi_net_tcp_reader_positive_skip_next(int32_t skip_bytes, int32_t available_bytes);
+int32_t mtproxy_ffi_net_tcp_reader_skip_from_parse_result(
+  int32_t parse_res,
+  int32_t buffered_bytes,
+  int32_t need_more_bytes,
+  int32_t *out_skip_bytes
+);
+int32_t mtproxy_ffi_net_tcp_reader_precheck_result(int32_t flags);
+int32_t mtproxy_ffi_net_tcp_reader_should_continue(
+  int32_t skip_bytes,
+  int32_t flags,
+  int32_t status_is_conn_error
+);
+
+// net-tcp-rpc-ext-server helpers: domain/random bucket hashes and hello-size profile.
+int32_t mtproxy_ffi_net_tcp_rpc_ext_domain_bucket_index(const uint8_t *domain, int32_t len);
+int32_t mtproxy_ffi_net_tcp_rpc_ext_client_random_bucket_index(const uint8_t random[16]);
+int32_t mtproxy_ffi_net_tcp_rpc_ext_select_server_hello_profile(
+  int32_t min_len,
+  int32_t max_len,
+  int32_t sum_len,
+  int32_t sample_count,
+  int32_t *out_size,
+  int32_t *out_profile
+);
+
 // net-tcp-rpc-common helper: computes compact/medium packet length prefix.
 int32_t mtproxy_ffi_tcp_rpc_encode_compact_header(
   int32_t payload_len,

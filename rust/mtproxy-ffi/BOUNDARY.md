@@ -31,7 +31,27 @@ Current exported API:
 - `mtproxy_ffi_net_epoll_unconv_flags(...)`
 - `mtproxy_ffi_net_timers_wait_msec(...)`
 - `mtproxy_ffi_msg_buffers_pick_size_index(...)`
+- `mtproxy_ffi_net_msg_tl_marker_kind(...)`
+- `mtproxy_ffi_net_msg_tl_padding(...)`
+- `mtproxy_ffi_net_msg_encrypt_decrypt_effective_bytes(...)`
 - `mtproxy_ffi_net_thread_run_notification_event(...)`
+- `mtproxy_ffi_net_stats_recent_idle_percent(...)`
+- `mtproxy_ffi_net_stats_average_idle_percent(...)`
+- `mtproxy_ffi_net_tcp_aes_aligned_len(...)`
+- `mtproxy_ffi_net_tcp_aes_needed_output_bytes(...)`
+- `mtproxy_ffi_net_tcp_tls_encrypt_chunk_len(...)`
+- `mtproxy_ffi_net_tcp_tls_header_needed_bytes(...)`
+- `mtproxy_ffi_net_tcp_tls_parse_header(...)`
+- `mtproxy_ffi_net_tcp_tls_decrypt_chunk_len(...)`
+- `mtproxy_ffi_net_tcp_reader_negative_skip_take(...)`
+- `mtproxy_ffi_net_tcp_reader_negative_skip_next(...)`
+- `mtproxy_ffi_net_tcp_reader_positive_skip_next(...)`
+- `mtproxy_ffi_net_tcp_reader_skip_from_parse_result(...)`
+- `mtproxy_ffi_net_tcp_reader_precheck_result(...)`
+- `mtproxy_ffi_net_tcp_reader_should_continue(...)`
+- `mtproxy_ffi_net_tcp_rpc_ext_domain_bucket_index(...)`
+- `mtproxy_ffi_net_tcp_rpc_ext_client_random_bucket_index(...)`
+- `mtproxy_ffi_net_tcp_rpc_ext_select_server_hello_profile(...)`
 - Step 11 boundary contract probe:
 - `mtproxy_ffi_get_rpc_boundary(...)` (reports tcp-rpc/rpc-target operation contract vs implemented subsets)
 - Step 11 rpc/tcp helpers:
@@ -92,11 +112,17 @@ Current exported API:
 - `net/net-events.c` delegates epoll flag conversion helpers to Rust (Step 14 decommission batch removed C fallback path).
 - `net/net-timers.c` delegates timer wait-ms conversion helper to Rust (Step 14 decommission batch removed C fallback path).
 - `net/net-msg-buffers.c` delegates size-class index selection helper to Rust (Step 14 decommission batch removed C fallback path).
+- `net/net-msg.c` delegates TL-string marker/padding and encrypt/decrypt byte-clamp helpers to Rust.
 - `net/net-tcp-rpc-common.c` delegates compact/medium packet-length prefix encoding helper to Rust (Step 14 decommission batch removed C fallback path).
 - `net/net-tcp-rpc-client.c` delegates non-compact packet-length classification helper to Rust (Step 14 decommission batch removed C fallback path).
 - `net/net-tcp-rpc-server.c` delegates packet-header malformed check and packet-length classification helpers to Rust (Step 14 decommission batch removed C fallback path).
 - `net/net-rpc-targets.c` delegates zero-ip PID normalization helper to Rust (Step 14 decommission batch removed C fallback path).
 - `net/net-thread.c` delegates notification event dispatch branch logic to Rust via callback bridge.
+- `net/net-stats.c` delegates idle-percent math helpers to Rust.
+- `net/net-tcp-connections.c` delegates AES/TLS framing length helpers to Rust.
+- `net/net-tcp-connections.c` also delegates reader skip-state transition helpers to Rust.
+- `net/net-tcp-connections.c` also delegates reader precheck and loop guard evaluation to Rust.
+- `net/net-tcp-rpc-ext-server.c` delegates domain hash bucket, client-random bucket index, and server-hello encrypted-size profile helpers to Rust.
 - `net/net-crypto-aes.c` delegates key derivation, connection AES lifecycle, secret-file load, nonce generation, and temp-buffer management to Rust.
 - `net/net-crypto-dh.c` delegates DH params init and all DH rounds/stat counters to Rust.
 - `crypto/aesni256.c` can delegate `EVP_CipherUpdate` wrapper helper to Rust when symbols are linked.
@@ -121,7 +147,7 @@ Current exported API:
 - For rpc boundary probe, C passes writable POD `mtproxy_ffi_rpc_boundary_t` and Rust fills version/op masks.
 - For crypto boundary probe, C passes writable POD `mtproxy_ffi_crypto_boundary_t` and Rust fills version/op masks.
 - For application boundary probe, C passes writable POD `mtproxy_ffi_application_boundary_t` and Rust fills version/op masks.
-- For net-core helpers, C passes plain integers and borrowed POD arrays (`buffer_sizes`) with no ownership transfer.
+- For net-core helpers, C passes plain integers, borrowed byte/POD arrays (`buffer_sizes`, domain/client-random slices), and writable scalar outputs with no ownership transfer.
 - For rpc/tcp helpers, C passes plain integers and POD struct pointers (`process_id`) with no ownership transfer.
 - For crypto helpers, C passes borrowed byte buffers (`nonce`, `secret`, `temp_key`) plus POD key/EVP context pointers; no ownership transfer.
 - For Step 13 application helpers, C passes plain scalar values (`flags`, `in_fd`, `in_conn_id`, `hash_shift`, `generation`) with no ownership transfer.

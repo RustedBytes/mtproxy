@@ -34,6 +34,28 @@
 #include "net/net-crypto-aes.h"
 #include "net/net-msg.h"
 
+extern int32_t mtproxy_ffi_net_tcp_aes_aligned_len(int32_t total_bytes);
+extern int32_t mtproxy_ffi_net_tcp_aes_needed_output_bytes(int32_t total_bytes);
+extern int32_t mtproxy_ffi_net_tcp_tls_encrypt_chunk_len(int32_t total_bytes,
+                                                         int32_t is_tls);
+extern int32_t mtproxy_ffi_net_tcp_tls_header_needed_bytes(int32_t available);
+extern int32_t mtproxy_ffi_net_tcp_tls_parse_header(const uint8_t header[5],
+                                                    int32_t *out_payload_len);
+extern int32_t mtproxy_ffi_net_tcp_tls_decrypt_chunk_len(
+    int32_t available, int32_t left_tls_packet_length);
+extern int32_t mtproxy_ffi_net_tcp_reader_negative_skip_take(
+    int32_t skip_bytes, int32_t available_bytes);
+extern int32_t mtproxy_ffi_net_tcp_reader_negative_skip_next(
+    int32_t skip_bytes, int32_t taken_bytes);
+extern int32_t mtproxy_ffi_net_tcp_reader_positive_skip_next(
+    int32_t skip_bytes, int32_t available_bytes);
+extern int32_t mtproxy_ffi_net_tcp_reader_skip_from_parse_result(
+    int32_t parse_res, int32_t buffered_bytes, int32_t need_more_bytes,
+    int32_t *out_skip_bytes);
+extern int32_t mtproxy_ffi_net_tcp_reader_precheck_result(int32_t flags);
+extern int32_t mtproxy_ffi_net_tcp_reader_should_continue(
+    int32_t skip_bytes, int32_t flags, int32_t status_is_conn_error);
+
 int cpu_tcp_free_connection_buffers(connection_job_t C) /* {{{ */ {
   struct connection_info *c = CONN_INFO(C);
   assert_net_cpu_thread();
@@ -123,10 +145,11 @@ int cpu_tcp_server_reader(connection_job_t C) /* {{{ */ {
     c->type->data_received(C, r);
   }
 
-  if (c->flags & (C_FAILED | C_ERROR | C_NET_FAILED)) {
+  int32_t precheck = mtproxy_ffi_net_tcp_reader_precheck_result(c->flags);
+  if (precheck < 0) {
     return -1;
   }
-  if (c->flags & C_STOPREAD) {
+  if (precheck > 0) {
     return 0;
   }
 
@@ -134,11 +157,9 @@ int cpu_tcp_server_reader(connection_job_t C) /* {{{ */ {
 
   if (s < 0) {
     // have to skip s more bytes
-    if (r1 > -s) {
-      r1 = -s;
-    }
+    r1 = mtproxy_ffi_net_tcp_reader_negative_skip_take(s, r1);
     rwm_skip_data(&c->in, r1);
-    c->skip_bytes = s += r1;
+    c->skip_bytes = s = mtproxy_ffi_net_tcp_reader_negative_skip_next(s, r1);
 
     vkprintf(2, "skipped %d bytes, %d more to skip\n", r1, -s);
 
@@ -149,9 +170,7 @@ int cpu_tcp_server_reader(connection_job_t C) /* {{{ */ {
 
   if (s > 0) {
     // need to read s more bytes before invoking parse_execute()
-    if (r1 >= s) {
-      c->skip_bytes = s = 0;
-    }
+    c->skip_bytes = s = mtproxy_ffi_net_tcp_reader_positive_skip_next(s, r1);
 
     vkprintf(1, "fetched %d bytes, %d available bytes, %d more to load\n", r,
              r1, s ? s - r1 : 0);
@@ -160,9 +179,8 @@ int cpu_tcp_server_reader(connection_job_t C) /* {{{ */ {
     }
   }
 
-  while (!c->skip_bytes &&
-         !(c->flags & (C_ERROR | C_FAILED | C_NET_FAILED | C_STOPREAD)) &&
-         c->status != conn_error) {
+  while (mtproxy_ffi_net_tcp_reader_should_continue(
+             c->skip_bytes, c->flags, c->status == conn_error ? 1 : 0)) {
     int bytes = c->in.total_bytes;
     if (!bytes) {
       break;
@@ -173,17 +191,15 @@ int cpu_tcp_server_reader(connection_job_t C) /* {{{ */ {
     // 0 - ok/done, >0 - need that much bytes, <0 - skip bytes, or
     // NEED_MORE_BYTES
     if (!res) {
-    } else if (res != NEED_MORE_BYTES) {
-      bytes = (c->crypto ? c->in.total_bytes : c->in_u.total_bytes);
-      // have to load or skip abs(res) bytes before invoking parse_execute
-      if (res < 0) {
-        res -= bytes;
-      } else {
-        res += bytes;
-      }
-      c->skip_bytes = res;
-      break;
     } else {
+      int32_t new_skip = 0;
+      int32_t rc = mtproxy_ffi_net_tcp_reader_skip_from_parse_result(
+          res, (c->crypto ? c->in.total_bytes : c->in_u.total_bytes),
+          NEED_MORE_BYTES, &new_skip);
+      assert(rc >= 0);
+      if (rc == 1) {
+        c->skip_bytes = new_skip;
+      }
       break;
     }
   }
@@ -200,14 +216,13 @@ int cpu_tcp_aes_crypto_encrypt_output(connection_job_t C) /* {{{ */ {
   assert(c->crypto);
   struct raw_message *out = &c->out;
 
-  int l = out->total_bytes;
-  l &= ~15;
+  int l = mtproxy_ffi_net_tcp_aes_aligned_len(out->total_bytes);
   if (l) {
     assert(rwm_encrypt_decrypt_to(&c->out, &c->out_p, l, T->write_aeskey, 16) ==
            l);
   }
 
-  return (-out->total_bytes) & 15;
+  return mtproxy_ffi_net_tcp_aes_needed_output_bytes(out->total_bytes);
 }
 /* }}} */
 
@@ -218,21 +233,20 @@ int cpu_tcp_aes_crypto_decrypt_input(connection_job_t C) /* {{{ */ {
   assert(c->crypto);
   struct raw_message *in = &c->in_u;
 
-  int l = in->total_bytes;
-  l &= ~15;
+  int l = mtproxy_ffi_net_tcp_aes_aligned_len(in->total_bytes);
   if (l) {
     assert(rwm_encrypt_decrypt_to(&c->in_u, &c->in, l, T->read_aeskey, 16) ==
            l);
   }
 
-  return (-in->total_bytes) & 15;
+  return mtproxy_ffi_net_tcp_aes_needed_output_bytes(in->total_bytes);
 }
 /* }}} */
 
 int cpu_tcp_aes_crypto_needed_output_bytes(connection_job_t C) /* {{{ */ {
   struct connection_info *c = CONN_INFO(C);
   assert(c->crypto);
-  return -c->out.total_bytes & 15;
+  return mtproxy_ffi_net_tcp_aes_needed_output_bytes(c->out.total_bytes);
 }
 /* }}} */
 
@@ -244,13 +258,10 @@ int cpu_tcp_aes_crypto_ctr128_encrypt_output(connection_job_t C) /* {{{ */ {
   assert(c->crypto);
 
   while (c->out.total_bytes) {
-    int len = c->out.total_bytes;
+    int len = mtproxy_ffi_net_tcp_tls_encrypt_chunk_len(
+        c->out.total_bytes, (c->flags & C_IS_TLS) ? 1 : 0);
     if (c->flags & C_IS_TLS) {
       assert(c->left_tls_packet_length >= 0);
-      const int MAX_PACKET_LENGTH = 1425;
-      if (MAX_PACKET_LENGTH < len) {
-        len = MAX_PACKET_LENGTH;
-      }
 
       unsigned char header[5] = {0x17, 0x03, 0x03, len >> 8, len & 255};
       rwm_push_data(&c->out_p, header, 5);
@@ -276,28 +287,29 @@ int cpu_tcp_aes_crypto_ctr128_decrypt_input(connection_job_t C) /* {{{ */ {
     if (c->flags & C_IS_TLS) {
       assert(c->left_tls_packet_length >= 0);
       if (c->left_tls_packet_length == 0) {
-        if (len < 5) {
-          vkprintf(2, "Need %d more bytes to parse TLS header\n", 5 - len);
-          return 5 - len;
+        int need = mtproxy_ffi_net_tcp_tls_header_needed_bytes(len);
+        if (need > 0) {
+          vkprintf(2, "Need %d more bytes to parse TLS header\n", need);
+          return need;
         }
 
         unsigned char header[5];
         assert(rwm_fetch_lookup(&c->in_u, header, 5) == 5);
-        if (memcmp(header, "\x17\x03\x03", 3) != 0) {
+        int32_t payload_len = 0;
+        if (mtproxy_ffi_net_tcp_tls_parse_header(header, &payload_len) != 0) {
           vkprintf(1, "error while parsing packet: expect TLS header\n");
           fail_connection(C, -1);
           return 0;
         }
-        c->left_tls_packet_length = 256 * header[3] + header[4];
+        c->left_tls_packet_length = payload_len;
         vkprintf(2, "Receive TLS-packet of length %d\n",
                  c->left_tls_packet_length);
         assert(rwm_skip_data(&c->in_u, 5) == 5);
         len -= 5;
       }
 
-      if (c->left_tls_packet_length < len) {
-        len = c->left_tls_packet_length;
-      }
+      len = mtproxy_ffi_net_tcp_tls_decrypt_chunk_len(
+          len, c->left_tls_packet_length);
       c->left_tls_packet_length -= len;
     }
     vkprintf(2, "Read %d bytes out of %d available\n", len,

@@ -205,6 +205,129 @@ fn net_translate_ip_impl(local_ip: u32) -> u32 {
     mtproxy_core::runtime::net::connections::nat_translate_ip(local_ip)
 }
 
+fn net_msg_tl_marker_kind_impl(marker: i32) -> i32 {
+    mtproxy_core::runtime::net::msg::tl_string_marker_kind(marker)
+}
+
+fn net_msg_tl_padding_impl(total_bytes: i32) -> i32 {
+    mtproxy_core::runtime::net::msg::tl_string_padding(total_bytes)
+}
+
+fn net_msg_encrypt_decrypt_effective_bytes_impl(
+    requested_bytes: i32,
+    total_bytes: i32,
+    block_size: i32,
+) -> i32 {
+    mtproxy_core::runtime::net::msg::encrypt_decrypt_effective_bytes(
+        requested_bytes,
+        total_bytes,
+        block_size,
+    )
+}
+
+fn net_tcp_aes_aligned_len_impl(total_bytes: i32) -> i32 {
+    mtproxy_core::runtime::net::tcp_connections::aes_aligned_len(total_bytes)
+}
+
+fn net_tcp_aes_needed_output_bytes_impl(total_bytes: i32) -> i32 {
+    mtproxy_core::runtime::net::tcp_connections::aes_needed_output_bytes(total_bytes)
+}
+
+fn net_tcp_tls_encrypt_chunk_len_impl(total_bytes: i32, is_tls: i32) -> i32 {
+    mtproxy_core::runtime::net::tcp_connections::tls_encrypt_chunk_len(total_bytes, is_tls != 0)
+}
+
+fn net_tcp_tls_header_needed_bytes_impl(available: i32) -> i32 {
+    mtproxy_core::runtime::net::tcp_connections::tls_header_needed_bytes(available)
+}
+
+fn net_tcp_tls_parse_header_impl(header: &[u8; 5]) -> Result<i32, ()> {
+    mtproxy_core::runtime::net::tcp_connections::tls_header_payload_len(header).ok_or(())
+}
+
+fn net_tcp_tls_decrypt_chunk_len_impl(available: i32, left_tls_packet_length: i32) -> i32 {
+    mtproxy_core::runtime::net::tcp_connections::tls_decrypt_chunk_len(
+        available,
+        left_tls_packet_length,
+    )
+}
+
+fn net_tcp_reader_negative_skip_take_impl(skip_bytes: i32, available_bytes: i32) -> i32 {
+    mtproxy_core::runtime::net::tcp_connections::reader_negative_skip_take(
+        skip_bytes,
+        available_bytes,
+    )
+}
+
+fn net_tcp_reader_negative_skip_next_impl(skip_bytes: i32, taken_bytes: i32) -> i32 {
+    mtproxy_core::runtime::net::tcp_connections::reader_negative_skip_next(skip_bytes, taken_bytes)
+}
+
+fn net_tcp_reader_positive_skip_next_impl(skip_bytes: i32, available_bytes: i32) -> i32 {
+    mtproxy_core::runtime::net::tcp_connections::reader_positive_skip_next(
+        skip_bytes,
+        available_bytes,
+    )
+}
+
+fn net_tcp_reader_skip_from_parse_result_impl(
+    parse_res: i32,
+    buffered_bytes: i32,
+    need_more_bytes: i32,
+) -> Option<i32> {
+    mtproxy_core::runtime::net::tcp_connections::reader_skip_from_parse_result(
+        parse_res,
+        buffered_bytes,
+        need_more_bytes,
+    )
+}
+
+fn net_tcp_reader_precheck_result_impl(flags: i32) -> i32 {
+    mtproxy_core::runtime::net::tcp_connections::reader_precheck_result(flags)
+}
+
+fn net_tcp_reader_should_continue_impl(
+    skip_bytes: i32,
+    flags: i32,
+    status_is_conn_error: i32,
+) -> i32 {
+    mtproxy_core::runtime::net::tcp_connections::reader_should_continue(
+        skip_bytes,
+        flags,
+        status_is_conn_error,
+    )
+}
+
+fn net_tcp_rpc_ext_domain_bucket_index_impl(domain: &[u8]) -> i32 {
+    mtproxy_core::runtime::net::tcp_rpc_ext_server::domain_bucket_index(domain)
+}
+
+fn net_tcp_rpc_ext_client_random_bucket_index_impl(random: &[u8; 16]) -> i32 {
+    mtproxy_core::runtime::net::tcp_rpc_ext_server::client_random_bucket_index(random)
+}
+
+fn net_tcp_rpc_ext_select_server_hello_profile_impl(
+    min_len: i32,
+    max_len: i32,
+    sum_len: i32,
+    sample_count: i32,
+) -> Option<(i32, i32)> {
+    mtproxy_core::runtime::net::tcp_rpc_ext_server::select_server_hello_profile(
+        min_len,
+        max_len,
+        sum_len,
+        sample_count,
+    )
+}
+
+fn net_stats_recent_idle_percent_impl(a_idle_time: f64, a_idle_quotient: f64) -> f64 {
+    mtproxy_core::runtime::net::stats::recent_idle_percent(a_idle_time, a_idle_quotient)
+}
+
+fn net_stats_average_idle_percent_impl(tot_idle_time: f64, uptime: i32) -> f64 {
+    mtproxy_core::runtime::net::stats::average_idle_percent(tot_idle_time, uptime)
+}
+
 type NetThreadRpcReadyFn = unsafe extern "C" fn(*mut c_void) -> i32;
 type NetThreadRpcFn = unsafe extern "C" fn(*mut c_void);
 type NetThreadFailConnectionFn = unsafe extern "C" fn(*mut c_void, i32);
@@ -444,6 +567,240 @@ pub unsafe extern "C" fn mtproxy_ffi_net_add_nat_info(rule_text: *const c_char) 
 #[no_mangle]
 pub extern "C" fn mtproxy_ffi_net_translate_ip(local_ip: u32) -> u32 {
     net_translate_ip_impl(local_ip)
+}
+
+/// Classifies first TL-string marker byte from `net-msg.c`.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_msg_tl_marker_kind(marker: i32) -> i32 {
+    net_msg_tl_marker_kind_impl(marker)
+}
+
+/// Computes TL-string padding bytes (`(-len) & 3`).
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_msg_tl_padding(total_bytes: i32) -> i32 {
+    net_msg_tl_padding_impl(total_bytes)
+}
+
+/// Computes effective byte count for `rwm_encrypt_decrypt_to`.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_msg_encrypt_decrypt_effective_bytes(
+    requested_bytes: i32,
+    total_bytes: i32,
+    block_size: i32,
+) -> i32 {
+    net_msg_encrypt_decrypt_effective_bytes_impl(requested_bytes, total_bytes, block_size)
+}
+
+/// Computes net-stats recent idle percent helper.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_stats_recent_idle_percent(
+    a_idle_time: c_double,
+    a_idle_quotient: c_double,
+) -> c_double {
+    net_stats_recent_idle_percent_impl(a_idle_time, a_idle_quotient)
+}
+
+/// Computes net-stats average idle percent helper.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_stats_average_idle_percent(
+    tot_idle_time: c_double,
+    uptime: i32,
+) -> c_double {
+    net_stats_average_idle_percent_impl(tot_idle_time, uptime)
+}
+
+/// Returns AES-aligned byte count for `net-tcp-connections` block ciphers.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_tcp_aes_aligned_len(total_bytes: i32) -> i32 {
+    net_tcp_aes_aligned_len_impl(total_bytes)
+}
+
+/// Returns pending AES block padding bytes for `net-tcp-connections`.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_tcp_aes_needed_output_bytes(total_bytes: i32) -> i32 {
+    net_tcp_aes_needed_output_bytes_impl(total_bytes)
+}
+
+/// Computes CTR encrypt chunk length (TLS-aware cap at 1425).
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_tcp_tls_encrypt_chunk_len(total_bytes: i32, is_tls: i32) -> i32 {
+    net_tcp_tls_encrypt_chunk_len_impl(total_bytes, is_tls)
+}
+
+/// Returns bytes still required to parse a TLS record header.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_tcp_tls_header_needed_bytes(available: i32) -> i32 {
+    net_tcp_tls_header_needed_bytes_impl(available)
+}
+
+/// Parses TLS record header (`17 03 03 xx xx`) and outputs payload length.
+///
+/// # Safety
+/// `header` must point to at least 5 readable bytes, `out_payload_len` writable.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_tcp_tls_parse_header(
+    header: *const u8,
+    out_payload_len: *mut i32,
+) -> i32 {
+    if header.is_null() || out_payload_len.is_null() {
+        return -1;
+    }
+    let mut h = [0u8; 5];
+    let header_slice = unsafe { core::slice::from_raw_parts(header, 5) };
+    h.copy_from_slice(header_slice);
+    match net_tcp_tls_parse_header_impl(&h) {
+        Ok(payload_len) => {
+            let out_ref = unsafe { &mut *out_payload_len };
+            *out_ref = payload_len;
+            0
+        }
+        Err(()) => -1,
+    }
+}
+
+/// Clamps decrypt chunk length to remaining TLS payload bytes.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_tcp_tls_decrypt_chunk_len(
+    available: i32,
+    left_tls_packet_length: i32,
+) -> i32 {
+    net_tcp_tls_decrypt_chunk_len_impl(available, left_tls_packet_length)
+}
+
+/// Computes byte count to consume when `skip_bytes < 0`.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_tcp_reader_negative_skip_take(
+    skip_bytes: i32,
+    available_bytes: i32,
+) -> i32 {
+    net_tcp_reader_negative_skip_take_impl(skip_bytes, available_bytes)
+}
+
+/// Computes next negative skip state after consuming bytes.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_tcp_reader_negative_skip_next(
+    skip_bytes: i32,
+    taken_bytes: i32,
+) -> i32 {
+    net_tcp_reader_negative_skip_next_impl(skip_bytes, taken_bytes)
+}
+
+/// Computes next positive skip state after receiving bytes.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_tcp_reader_positive_skip_next(
+    skip_bytes: i32,
+    available_bytes: i32,
+) -> i32 {
+    net_tcp_reader_positive_skip_next_impl(skip_bytes, available_bytes)
+}
+
+/// Converts `parse_execute` result into updated `skip_bytes` when required.
+///
+/// Returns:
+/// - `1` when `out_skip_bytes` is written
+/// - `0` when no update is needed (`res == 0 || res == need_more_bytes`)
+/// - `-1` on invalid args
+///
+/// # Safety
+/// `out_skip_bytes` must be writable.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_tcp_reader_skip_from_parse_result(
+    parse_res: i32,
+    buffered_bytes: i32,
+    need_more_bytes: i32,
+    out_skip_bytes: *mut i32,
+) -> i32 {
+    if out_skip_bytes.is_null() {
+        return -1;
+    }
+    match net_tcp_reader_skip_from_parse_result_impl(parse_res, buffered_bytes, need_more_bytes) {
+        Some(skip) => {
+            let out_ref = unsafe { &mut *out_skip_bytes };
+            *out_ref = skip;
+            1
+        }
+        None => 0,
+    }
+}
+
+/// Classifies reader precheck outcome from connection flags.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_tcp_reader_precheck_result(flags: i32) -> i32 {
+    net_tcp_reader_precheck_result_impl(flags)
+}
+
+/// Evaluates the main reader-loop continuation guard.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_tcp_reader_should_continue(
+    skip_bytes: i32,
+    flags: i32,
+    status_is_conn_error: i32,
+) -> i32 {
+    net_tcp_reader_should_continue_impl(skip_bytes, flags, status_is_conn_error)
+}
+
+/// Computes proxy-domain hash bucket index (`mod 257`).
+///
+/// # Safety
+/// `domain` must point to `len` readable bytes.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_domain_bucket_index(
+    domain: *const u8,
+    len: i32,
+) -> i32 {
+    if domain.is_null() || len < 0 {
+        return -1;
+    }
+    let Ok(len) = usize::try_from(len) else {
+        return -1;
+    };
+    let domain = unsafe { core::slice::from_raw_parts(domain, len) };
+    net_tcp_rpc_ext_domain_bucket_index_impl(domain)
+}
+
+/// Computes 16-byte client-random cache hash bucket index (`14` bits).
+///
+/// # Safety
+/// `random` must point to at least `16` readable bytes.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_client_random_bucket_index(
+    random: *const u8,
+) -> i32 {
+    if random.is_null() {
+        return -1;
+    }
+    let random_slice = unsafe { core::slice::from_raw_parts(random, 16) };
+    let mut random_buf = [0_u8; 16];
+    random_buf.copy_from_slice(random_slice);
+    net_tcp_rpc_ext_client_random_bucket_index_impl(&random_buf)
+}
+
+/// Selects server-hello encrypted-size profile from probe stats.
+///
+/// # Safety
+/// `out_size` and `out_profile` must be valid writable pointers.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_select_server_hello_profile(
+    min_len: i32,
+    max_len: i32,
+    sum_len: i32,
+    sample_count: i32,
+    out_size: *mut i32,
+    out_profile: *mut i32,
+) -> i32 {
+    if out_size.is_null() || out_profile.is_null() {
+        return -1;
+    }
+    let Some((size, profile)) =
+        net_tcp_rpc_ext_select_server_hello_profile_impl(min_len, max_len, sum_len, sample_count)
+    else {
+        return -1;
+    };
+    let out_size_ref = unsafe { &mut *out_size };
+    let out_profile_ref = unsafe { &mut *out_profile };
+    *out_size_ref = size;
+    *out_profile_ref = profile;
+    0
 }
 
 /// Runs one net-thread notification event via Rust dispatcher.
