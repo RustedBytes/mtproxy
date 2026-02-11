@@ -22,7 +22,6 @@
 
 #pragma once
 
-#include "net/net-events.h"
 #include "net/net-msg.h"
 #include "net/net-timers.h"
 #include <pthread.h>

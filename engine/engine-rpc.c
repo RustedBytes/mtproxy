@@ -36,9 +36,7 @@
 #include <string.h>
 #include <sys/time.h>
 
-// #include "net/net-buffers.h"
 #include "net/net-msg.h"
-// #include "net/net-rpc-server.h"
 #include "net/net-rpc-targets.h"
 #include "net/net-tcp-rpc-common.h"
 
@@ -50,9 +48,6 @@
 #include "vv/vv-io.h"
 #include "vv/vv-tree.h"
 
-// #include "auto/TL/tl-names.h"
-
-#include "common/common-stats.h"
 #include "engine/engine.h"
 
 double tl_aio_timeout;
