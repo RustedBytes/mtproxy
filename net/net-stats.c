@@ -34,18 +34,11 @@
 
 #include "common/common-stats.h"
 #include "common/pid.h"
-#include "kprintf.h"
 #include "net/net-connections.h"
 #include "net/net-events.h"
 #include "precise-time.h"
 #include "server-functions.h"
 #include "vv/vv-io.h"
-
-extern int zheap_debug;
-long long queries_allocated;
-long long max_queries_allocated;
-long long max_queries_allocated_sec;
-long long max_queries_allocated_prev_sec;
 
 long long total_vv_tree_nodes;
 
@@ -68,20 +61,8 @@ extern double mtproxy_ffi_net_stats_recent_idle_percent(double a_idle_time,
 extern double mtproxy_ffi_net_stats_average_idle_percent(double tot_idle_time,
                                                          int uptime);
 
-// static double safe_div (double x, double y) { return y > 0 ? x/y : 0; }
-
-int recent_idle_percent(void) {
-  return (int)mtproxy_ffi_net_stats_recent_idle_percent(a_idle_time,
-                                                        a_idle_quotient);
-}
-
 extern long long epoll_calls;
 extern long long epoll_intr;
-extern long long event_timer_insert_ops;
-extern long long event_timer_remove_ops;
-
-extern long long long_queries_cnt;
-extern long long long_cpu_queries_cnt;
 
 int prepare_stats(char *buff, int buff_size) {
   if (buff_size <= 0) {
@@ -133,14 +114,4 @@ int prepare_stats(char *buff, int buff_size) {
 
   sb_printf(&sb, "stats_generate_time\t%.6f\n", get_utime_monotonic() - um);
   return sb.pos;
-}
-
-void output_std_stats(void) {
-  static char debug_stats[1 << 20];
-  int len = prepare_stats(debug_stats, sizeof(debug_stats) - 1);
-  if (len > 0) {
-    kprintf("-------------- network statistics "
-            "------------\n%s\n-------------------------------------\n",
-            debug_stats);
-  }
 }

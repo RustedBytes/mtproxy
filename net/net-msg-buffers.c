@@ -77,7 +77,6 @@ void fetch_buffers_stat(struct buffers_stat *bs) {
 }
 
 int buffer_size_values;
-int rwm_peak_recovery;
 struct msg_buffers_chunk ChunkHeaders[MAX_BUFFER_SIZE_VALUES];
 static int32_t ChunkBufferSizes[MAX_BUFFER_SIZE_VALUES];
 __thread struct msg_buffers_chunk *ChunkSave[MAX_BUFFER_SIZE_VALUES];
@@ -86,7 +85,6 @@ extern int32_t mtproxy_ffi_msg_buffers_pick_size_index(
     const int32_t *buffer_sizes, int32_t buffer_size_values, int32_t size_hint);
 
 int default_buffer_sizes[] = {48, 512, 2048, 16384, 262144};
-int default_buffer_sizes_cnt = sizeof(default_buffer_sizes) / 4;
 
 int free_std_msg_buffer(struct msg_buffers_chunk *C, struct msg_buffer *X);
 
@@ -273,15 +271,6 @@ alloc_new_msg_buffers_chunk(struct msg_buffers_chunk *CH) {
       // max_buffer_chunks);
     }
   }
-  /*if (rwm_peak_recovery) {
-    if (allocated_buffer_chunks > (max_buffer_chunks >> 2)) {
-      do_udp_wait (1, 1.0);
-    }
-    if (allocated_buffer_chunks > (max_buffer_chunks >> 1)) {
-      do_udp_wait (2, 1.0);
-    }
-  }*/
-
   prepare_bs_inv(C);
 
   int i;
