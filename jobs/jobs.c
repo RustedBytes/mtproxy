@@ -365,6 +365,10 @@ struct job_thread *main_job_thread;
 __thread struct job_thread *this_job_thread;
 __thread job_t this_job;
 
+struct job_thread *jobs_get_this_job_thread_c_impl(void) {
+  return this_job_thread;
+}
+
 long int lrand48_j(void) {
   if (this_job_thread) {
     long int t;
@@ -418,14 +422,14 @@ void check_main_thread(void) {
 
 static void set_job_interrupt_signal_handler(void);
 
-static job_t create_async_job_c_impl(job_function_t run_job,
-                                     unsigned long long job_signals,
-                                     int job_subclass, int custom_bytes,
-                                     unsigned long long job_type,
-                                     JOB_REF_ARG(parent_job));
-static void job_signal_c_impl(JOB_REF_ARG(job), int signo);
-static job_t job_incref_c_impl(job_t job);
-static void job_decref_c_impl(JOB_REF_ARG(job));
+job_t create_async_job_c_impl(job_function_t run_job,
+                              unsigned long long job_signals,
+                              int job_subclass, int custom_bytes,
+                              unsigned long long job_type,
+                              JOB_REF_ARG(parent_job));
+void job_signal_c_impl(JOB_REF_ARG(job), int signo);
+job_t job_incref_c_impl(job_t job);
+void job_decref_c_impl(JOB_REF_ARG(job));
 
 void *job_thread(void *arg);
 void *job_thread_sub(void *arg);
@@ -544,17 +548,6 @@ int init_async_jobs(void) {
   }
 
   return cur_job_threads;
-}
-
-int jobs_enable_tokio_bridge(void) {
-  int32_t rc = mtproxy_ffi_jobs_tokio_init();
-  if (rc < 0) {
-    kprintf("fatal: rust ffi tokio jobs bridge init failed (code %d)\n",
-            (int)rc);
-    return -1;
-  }
-  vkprintf(1, "rust ffi tokio jobs bridge enabled for class queue routing\n");
-  return 0;
 }
 
 int create_new_job_class(int job_class, int min_threads, int max_threads) {
@@ -831,13 +824,13 @@ void job_send_signals(JOB_REF_ARG(job), int sigset) {
 }
 
 // destroys one reference to job; sends signal signo to it
-static void job_signal_c_impl(JOB_REF_ARG(job), int signo) {
+void job_signal_c_impl(JOB_REF_ARG(job), int signo) {
   assert((unsigned)signo <= 7);
   job_send_signals(JOB_REF_PASS(job), JFS_SET(signo));
 }
 
 // destroys one reference to job
-static void job_decref_c_impl(JOB_REF_ARG(job)) {
+void job_decref_c_impl(JOB_REF_ARG(job)) {
   if (job->j_refcnt >= 2) {
     if (__sync_fetch_and_add(&job->j_refcnt, -1) != 1) {
       return;
@@ -849,7 +842,7 @@ static void job_decref_c_impl(JOB_REF_ARG(job)) {
 }
 
 // creates one reference to job
-static job_t job_incref_c_impl(job_t job) {
+job_t job_incref_c_impl(job_t job) {
   // if (job->j_refcnt == 1) {
   //   job->j_refcnt = 2;
   // } else {
@@ -857,14 +850,6 @@ static job_t job_incref_c_impl(job_t job) {
   //}
   return job;
 }
-
-void job_signal(JOB_REF_ARG(job), int signo) {
-  job_signal_c_impl(JOB_REF_PASS(job), signo);
-}
-
-void job_decref(JOB_REF_ARG(job)) { job_decref_c_impl(JOB_REF_PASS(job)); }
-
-job_t job_incref(job_t job) { return job_incref_c_impl(job); }
 
 void process_one_job(JOB_REF_ARG(job), int thread_class) {
   struct job_thread *JT = this_job_thread;
@@ -1141,48 +1126,14 @@ void *job_thread_sub(void *arg) {
   return job_thread_ex(arg, process_one_sublist_gw);
 }
 
-static int32_t jobs_process_main_job_from_tokio(void *job_ptr) {
-  job_t job = (job_t)job_ptr;
-  if (!job) {
-    return -1;
-  }
-  vkprintf(JOBS_DEBUG, "MAIN THREAD (TOKIO): got job %p\n", job);
-  process_one_job(JOB_REF_PASS(job), JC_MAIN);
-  return 0;
-}
-
-int run_pending_main_jobs(void) {
-  struct job_thread *JT = this_job_thread;
-  assert(JT && JT->thread_class == JC_MAIN);
-  JT->status |= JTS_RUNNING;
-
-  int32_t tokio_cnt =
-      mtproxy_ffi_jobs_tokio_drain_main(jobs_process_main_job_from_tokio, 0);
-  if (tokio_cnt < 0) {
-    kprintf("fatal: rust tokio main queue drain failed (rc=%d)\n",
-            (int)tokio_cnt);
-    assert(0);
-  }
-
-  JT->status &= ~JTS_RUNNING;
-  return tokio_cnt;
-}
-
 /* ------ JOB CREATION/QUEUEING ------ */
 
-void job_change_signals(job_t job, unsigned long long job_signals) {
-  assert(job->j_flags & JF_LOCKED);
-
-  job->j_status = job_signals & 0xffff001f;
-  job->j_sigclass = (job_signals >> 32);
-}
-
 /* "destroys" one reference to parent_job */
-static job_t create_async_job_c_impl(job_function_t run_job,
-                                     unsigned long long job_signals,
-                                     int job_subclass, int custom_bytes,
-                                     unsigned long long job_type,
-                                     JOB_REF_ARG(parent_job)) {
+job_t create_async_job_c_impl(job_function_t run_job,
+                              unsigned long long job_signals,
+                              int job_subclass, int custom_bytes,
+                              unsigned long long job_type,
+                              JOB_REF_ARG(parent_job)) {
   if (parent_job) {
     if (job_signals & JSP_PARENT_WAKEUP) {
       __sync_fetch_and_add(&parent_job->j_children, 1);
@@ -1230,20 +1181,6 @@ static job_t create_async_job_c_impl(job_function_t run_job,
            job->j_parent);
 
   return job;
-}
-
-job_t create_async_job(job_function_t run_job, unsigned long long job_signals,
-                       int job_subclass, int custom_bytes,
-                       unsigned long long job_type, JOB_REF_ARG(parent_job)) {
-  return create_async_job_c_impl(run_job, job_signals, job_subclass,
-                                 custom_bytes, job_type,
-                                 JOB_REF_PASS(parent_job));
-}
-
-int schedule_job(JOB_REF_ARG(job)) {
-  assert(job->j_flags & JF_LOCKED);
-  job->j_flags |= JFS_SET(JS_RUN);
-  return unlock_job(JOB_REF_PASS(job));
 }
 
 int job_timer_wakeup_gateway(event_timer_t *et) {

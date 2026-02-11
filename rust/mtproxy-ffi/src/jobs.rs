@@ -13,9 +13,170 @@ const JOBS_DRAIN_UNLIMITED: i32 = 0;
 const JOB_CLASS_MAIN: i32 = 3;
 const JOB_CLASS_COUNT: usize = 16;
 const MAX_SUBCLASS_THREADS: i32 = 16;
+const JF_LOCKED: i32 = 0x1_0000;
+const JFS_SET_RUN: i32 = 0x0100_0000;
+const JTS_RUNNING: i32 = 2;
 
 type JobPtr = usize;
 type JobsProcessFn = extern "C" fn(*mut c_void) -> i32;
+type JobT = *mut AsyncJob;
+type JobExecuteFn = Option<unsafe extern "C" fn(JobT, i32, *mut JobThread) -> i32>;
+
+#[repr(C)]
+pub struct JobThread {
+    pthread_id: usize,
+    id: i32,
+    thread_class: i32,
+    job_class_mask: i32,
+    status: i32,
+}
+
+#[repr(C, align(64))]
+pub struct AsyncJob {
+    j_flags: i32,
+    j_status: i32,
+    j_sigclass: i32,
+    j_refcnt: i32,
+    j_error: i32,
+    j_children: i32,
+    j_align: i32,
+    j_custom_bytes: i32,
+    j_type: u32,
+    j_subclass: i32,
+    j_thread: *mut JobThread,
+    j_execute: JobExecuteFn,
+    j_parent: JobT,
+}
+
+unsafe extern "C" {
+    fn jobs_get_this_job_thread_c_impl() -> *mut JobThread;
+    fn create_async_job_c_impl(
+        run_job: JobExecuteFn,
+        job_signals: u64,
+        job_subclass: i32,
+        custom_bytes: i32,
+        job_type: u64,
+        parent_job_tag_int: i32,
+        parent_job: JobT,
+    ) -> JobT;
+    fn job_signal_c_impl(job_tag_int: i32, job: JobT, signo: i32);
+    fn job_decref_c_impl(job_tag_int: i32, job: JobT);
+    fn job_incref_c_impl(job: JobT) -> JobT;
+    fn unlock_job(job_tag_int: i32, job: JobT) -> i32;
+    fn process_one_job(job_tag_int: i32, job: JobT, thread_class: i32);
+}
+
+#[inline]
+fn abort_if(condition: bool) {
+    if condition {
+        std::process::abort();
+    }
+}
+
+extern "C" fn jobs_process_main_job_from_tokio(job_ptr: *mut c_void) -> i32 {
+    if job_ptr.is_null() {
+        return -1;
+    }
+    // SAFETY: callback receives opaque `job_t` pointers previously enqueued by C runtime.
+    unsafe {
+        process_one_job(1, job_ptr.cast::<AsyncJob>(), JOB_CLASS_MAIN);
+    }
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn jobs_enable_tokio_bridge() -> i32 {
+    let rc = mtproxy_ffi_jobs_tokio_init();
+    if rc < 0 {
+        -1
+    } else {
+        0
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn run_pending_main_jobs() -> i32 {
+    // SAFETY: C runtime maintains per-thread job context.
+    let thread = unsafe { jobs_get_this_job_thread_c_impl() };
+    abort_if(thread.is_null());
+    // SAFETY: checked above.
+    let jt = unsafe { &mut *thread };
+    abort_if(jt.thread_class != JOB_CLASS_MAIN);
+
+    jt.status |= JTS_RUNNING;
+    let drained = mtproxy_ffi_jobs_tokio_drain_main(
+        Some(jobs_process_main_job_from_tokio),
+        JOBS_DRAIN_UNLIMITED,
+    );
+    abort_if(drained < 0);
+    jt.status &= !JTS_RUNNING;
+    drained
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn job_change_signals(job: JobT, job_signals: u64) {
+    abort_if(job.is_null());
+    // SAFETY: checked above.
+    let job_ref = unsafe { &mut *job };
+    abort_if((job_ref.j_flags & JF_LOCKED) == 0);
+
+    job_ref.j_status = (job_signals & 0xffff_001f_u64) as i32;
+    job_ref.j_sigclass = (job_signals >> 32) as i32;
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn create_async_job(
+    run_job: JobExecuteFn,
+    job_signals: u64,
+    job_subclass: i32,
+    custom_bytes: i32,
+    job_type: u64,
+    parent_job_tag_int: i32,
+    parent_job: JobT,
+) -> JobT {
+    // SAFETY: forwards arguments to C implementation preserving ABI and ownership.
+    unsafe {
+        create_async_job_c_impl(
+            run_job,
+            job_signals,
+            job_subclass,
+            custom_bytes,
+            job_type,
+            parent_job_tag_int,
+            parent_job,
+        )
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn schedule_job(job_tag_int: i32, job: JobT) -> i32 {
+    abort_if(job.is_null());
+    // SAFETY: checked above.
+    let job_ref = unsafe { &mut *job };
+    abort_if((job_ref.j_flags & JF_LOCKED) == 0);
+
+    job_ref.j_flags |= JFS_SET_RUN;
+    // SAFETY: mirrors C implementation; caller owns one job reference.
+    unsafe { unlock_job(job_tag_int, job) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn job_signal(job_tag_int: i32, job: JobT, signo: i32) {
+    // SAFETY: delegates to C signal delivery implementation.
+    unsafe { job_signal_c_impl(job_tag_int, job, signo) };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn job_decref(job_tag_int: i32, job: JobT) {
+    // SAFETY: delegates to C refcount implementation.
+    unsafe { job_decref_c_impl(job_tag_int, job) };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn job_incref(job: JobT) -> JobT {
+    // SAFETY: delegates to C refcount implementation.
+    unsafe { job_incref_c_impl(job) }
+}
 
 struct ClassQueue {
     tx: UnboundedSender<JobPtr>,
@@ -697,10 +858,7 @@ pub extern "C" fn mtproxy_ffi_jobs_tokio_timer_queue_destroy(queue_id: i32) -> i
 /// - `-3`: invalid queue id
 /// - `-4`: queue closed
 #[no_mangle]
-pub extern "C" fn mtproxy_ffi_jobs_tokio_timer_queue_push(
-    queue_id: i32,
-    ptr: *mut c_void,
-) -> i32 {
+pub extern "C" fn mtproxy_ffi_jobs_tokio_timer_queue_push(queue_id: i32, ptr: *mut c_void) -> i32 {
     if ptr.is_null() {
         return -1;
     }
@@ -830,17 +988,14 @@ mod tests {
         mtproxy_ffi_jobs_tokio_dequeue_class, mtproxy_ffi_jobs_tokio_dequeue_subclass,
         mtproxy_ffi_jobs_tokio_drain_main, mtproxy_ffi_jobs_tokio_enqueue_class,
         mtproxy_ffi_jobs_tokio_enqueue_main, mtproxy_ffi_jobs_tokio_enqueue_subclass,
-        mtproxy_ffi_jobs_tokio_init, mtproxy_ffi_jobs_tokio_subclass_enter,
+        mtproxy_ffi_jobs_tokio_init, mtproxy_ffi_jobs_tokio_message_queue_create,
+        mtproxy_ffi_jobs_tokio_message_queue_destroy, mtproxy_ffi_jobs_tokio_message_queue_pop,
+        mtproxy_ffi_jobs_tokio_message_queue_push, mtproxy_ffi_jobs_tokio_subclass_enter,
         mtproxy_ffi_jobs_tokio_subclass_exit_or_continue,
         mtproxy_ffi_jobs_tokio_subclass_has_pending,
         mtproxy_ffi_jobs_tokio_subclass_mark_processed,
         mtproxy_ffi_jobs_tokio_subclass_permit_acquire,
-        mtproxy_ffi_jobs_tokio_subclass_permit_release,
-        mtproxy_ffi_jobs_tokio_message_queue_create,
-        mtproxy_ffi_jobs_tokio_message_queue_destroy,
-        mtproxy_ffi_jobs_tokio_message_queue_pop,
-        mtproxy_ffi_jobs_tokio_message_queue_push,
-        mtproxy_ffi_jobs_tokio_timer_queue_create,
+        mtproxy_ffi_jobs_tokio_subclass_permit_release, mtproxy_ffi_jobs_tokio_timer_queue_create,
         mtproxy_ffi_jobs_tokio_timer_queue_destroy, mtproxy_ffi_jobs_tokio_timer_queue_pop,
         mtproxy_ffi_jobs_tokio_timer_queue_push, JOB_CLASS_MAIN,
     };
