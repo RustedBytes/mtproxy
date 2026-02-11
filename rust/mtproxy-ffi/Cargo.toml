@@ -10,7 +10,17 @@ path = "src/lib.rs"
 crate-type = ["staticlib", "rlib"]
 
 [dependencies]
+aes = "0.8"
+cbc = "0.1"
+ctr = "0.9"
+hmac = "0.12"
+md-5 = "0.10"
 mtproxy-core = { path = "../mtproxy-core" }
+num-bigint = "0.4"
+num-traits = "0.2"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+sha1 = "0.10"
+sha2 = "0.10"
 
 [lints.rust]
 unsafe_code = "allow"
