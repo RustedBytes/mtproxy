@@ -46,7 +46,7 @@
 #include <time.h>
 #include <unistd.h>
 
-#include "crc32.h"
+#include "crypto/crc32.h"
 #include "jobs/jobs.h"
 #include "net/net-events.h"
 //#include "net/net-buffers.h"

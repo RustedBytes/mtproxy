@@ -25,7 +25,7 @@
 
 #pragma once
 
-#include "common/crc32.h"
+#include "crc32.h"
 
 #ifdef __cplusplus
 extern "C" {

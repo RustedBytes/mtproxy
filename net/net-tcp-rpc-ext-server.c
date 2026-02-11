@@ -39,7 +39,7 @@
 #include "common/precise-time.h"
 #include "common/resolver.h"
 #include "common/rpc-const.h"
-#include "common/sha256.h"
+#include "crypto/sha256.h"
 #include "net/net-connections.h"
 #include "net/net-crypto-aes.h"
 #include "net/net-events.h"

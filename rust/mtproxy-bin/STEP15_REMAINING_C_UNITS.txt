@@ -4,10 +4,7 @@
 
 common/common-stats.c
 common/cpuid.c
-common/crc32.c
-common/crc32c.c
 common/kprintf.c
-common/md5.c
 common/mp-queue.c
 common/parse-config.c
 common/pid.c
@@ -16,10 +13,13 @@ common/proc-stat.c
 common/resolver.c
 common/rust-ffi-bridge.c
 common/server-functions.c
-common/sha1.c
-common/sha256.c
 common/tl-parse.c
 crypto/aesni256.c
+crypto/crc32.c
+crypto/crc32c.c
+crypto/md5.c
+crypto/sha1.c
+crypto/sha256.c
 engine/engine-net.c
 engine/engine-rpc-common.c
 engine/engine-rpc.c

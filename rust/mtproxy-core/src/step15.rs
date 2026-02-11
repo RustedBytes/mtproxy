@@ -24,24 +24,9 @@ pub const STEP15_OWNERSHIP_MAP: [Step15OwnershipEntry; 43] = [
         rust_module: "runtime::common::cpuid",
     },
     Step15OwnershipEntry {
-        c_translation_unit: "common/crc32.c",
-        rust_crate: "mtproxy-core",
-        rust_module: "runtime::common::crc32",
-    },
-    Step15OwnershipEntry {
-        c_translation_unit: "common/crc32c.c",
-        rust_crate: "mtproxy-core",
-        rust_module: "runtime::common::crc32c",
-    },
-    Step15OwnershipEntry {
         c_translation_unit: "common/kprintf.c",
         rust_crate: "mtproxy-core",
         rust_module: "runtime::common::kprintf",
-    },
-    Step15OwnershipEntry {
-        c_translation_unit: "common/md5.c",
-        rust_crate: "mtproxy-core",
-        rust_module: "runtime::common::md5",
     },
     Step15OwnershipEntry {
         c_translation_unit: "common/mp-queue.c",
@@ -84,16 +69,6 @@ pub const STEP15_OWNERSHIP_MAP: [Step15OwnershipEntry; 43] = [
         rust_module: "runtime::bootstrap::server_functions",
     },
     Step15OwnershipEntry {
-        c_translation_unit: "common/sha1.c",
-        rust_crate: "mtproxy-core",
-        rust_module: "runtime::common::sha1",
-    },
-    Step15OwnershipEntry {
-        c_translation_unit: "common/sha256.c",
-        rust_crate: "mtproxy-core",
-        rust_module: "runtime::common::sha256",
-    },
-    Step15OwnershipEntry {
         c_translation_unit: "common/tl-parse.c",
         rust_crate: "mtproxy-core",
         rust_module: "runtime::config::tl_parse",
@@ -102,6 +77,31 @@ pub const STEP15_OWNERSHIP_MAP: [Step15OwnershipEntry; 43] = [
         c_translation_unit: "crypto/aesni256.c",
         rust_crate: "mtproxy-core",
         rust_module: "runtime::crypto::aesni256",
+    },
+    Step15OwnershipEntry {
+        c_translation_unit: "crypto/crc32.c",
+        rust_crate: "mtproxy-core",
+        rust_module: "runtime::common::crc32",
+    },
+    Step15OwnershipEntry {
+        c_translation_unit: "crypto/crc32c.c",
+        rust_crate: "mtproxy-core",
+        rust_module: "runtime::common::crc32c",
+    },
+    Step15OwnershipEntry {
+        c_translation_unit: "crypto/md5.c",
+        rust_crate: "mtproxy-core",
+        rust_module: "runtime::common::md5",
+    },
+    Step15OwnershipEntry {
+        c_translation_unit: "crypto/sha1.c",
+        rust_crate: "mtproxy-core",
+        rust_module: "runtime::common::sha1",
+    },
+    Step15OwnershipEntry {
+        c_translation_unit: "crypto/sha256.c",
+        rust_crate: "mtproxy-core",
+        rust_module: "runtime::common::sha256",
     },
     Step15OwnershipEntry {
         c_translation_unit: "engine/engine-net.c",

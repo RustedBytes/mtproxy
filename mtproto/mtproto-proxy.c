@@ -40,8 +40,8 @@
 #include <netdb.h>
 #include <ctype.h>
 
-#include "crc32.h"
-#include "md5.h"
+#include "crypto/crc32.h"
+#include "crypto/md5.h"
 #include "resolver.h"
 #include "net/net-events.h"
 #include "kprintf.h"

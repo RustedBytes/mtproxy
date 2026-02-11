@@ -37,7 +37,7 @@
 #include <time.h>
 #include <unistd.h>
 
-#include "crc32.h"
+#include "crypto/crc32.h"
 #include "net/net-events.h"
 #include "kprintf.h"
 #include "precise-time.h"

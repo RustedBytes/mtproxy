@@ -5,8 +5,8 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "common/crc32.h"
-#include "common/crc32c.h"
+#include "crypto/crc32.h"
+#include "crypto/crc32c.h"
 #include "common/kprintf.h"
 #include "common/mp-queue.h"
 #include "jobs/jobs.h"

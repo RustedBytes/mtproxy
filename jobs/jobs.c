@@ -39,7 +39,7 @@
 #include <linux/futex.h>
 
 #include "common/proc-stat.h"
-#include "crc32.h"
+#include "crypto/crc32.h"
 #include "net/net-events.h"
 //#include "net/net-buffers.h"
 #include "server-functions.h"

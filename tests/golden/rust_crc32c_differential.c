@@ -1,7 +1,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#include "common/crc32c.h"
+#include "crypto/crc32c.h"
 #include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 
 static uint8_t deterministic_byte(uint32_t *state) {

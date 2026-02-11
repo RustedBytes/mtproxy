@@ -37,7 +37,7 @@
 #include <unistd.h>
 #include <sys/mman.h>
 
-#include "md5.h"
+#include "crypto/md5.h"
 #include "resolver.h"
 #include "net/net-events.h"
 #include "kprintf.h"

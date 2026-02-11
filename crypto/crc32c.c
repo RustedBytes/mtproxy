@@ -29,8 +29,8 @@
 #include <stdint.h>
 
 #include "crc32c.h"
-#include "kprintf.h"
-#include "cpuid.h"
+#include "common/kprintf.h"
+#include "common/cpuid.h"
 
 static unsigned crc32c_table[256] = {
 0x00000000, 0xf26b8303, 0xe13b70f7, 0x1350f3f4,
@@ -659,4 +659,3 @@ void crc32c_init (void) {
 
 crc32_partial_func_t crc32c_partial;
 crc32_combine_func_t compute_crc32c_combine;
-

@@ -44,7 +44,7 @@
 #include "net/net-config.h"
 
 #include "net/net-connections.h"
-#include "md5.h"
+#include "crypto/md5.h"
 
 #include "jobs/jobs.h"
 #include "common/common-stats.h"

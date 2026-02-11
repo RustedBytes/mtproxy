@@ -47,7 +47,7 @@
 #include "net/net-tcp-rpc-server.h"
 
 #include "common/cpuid.h"
-#include "common/crc32.h"
+#include "crypto/crc32.h"
 #include "common/kprintf.h"
 #include "common/server-functions.h"
 

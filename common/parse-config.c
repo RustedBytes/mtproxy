@@ -29,7 +29,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
-#include "md5.h"
+#include "crypto/md5.h"
 #include "common/parse-config.h"
 #include "resolver.h"
 #include "kprintf.h"

@@ -33,13 +33,13 @@
 #include <unistd.h>
 #include <sys/uio.h>
 
-#include "sha1.h"
+#include "crypto/sha1.h"
 #include "kprintf.h"
 
 #include "net/net-msg.h"
 #include "net/net-msg-buffers.h"
-#include "crc32c.h"
-#include "crc32.h"
+#include "crypto/crc32c.h"
+#include "crypto/crc32.h"
 #include "crypto/aesni256.h"
 
 #include "jobs/jobs.h"
