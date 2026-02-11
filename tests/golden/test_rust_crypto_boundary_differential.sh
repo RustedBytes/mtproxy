@@ -24,6 +24,19 @@ if [ ! -f "$ROOT_DIR/target/debug/libmtproxy_ffi.a" ]; then
   exit 1
 fi
 
+if [ ! -f "$ROOT_DIR/objs/lib/libkdb.a" ]; then
+  log_info "Golden: building C static library"
+  (
+    cd "$ROOT_DIR"
+    make all >/dev/null
+  )
+fi
+
+if [ ! -f "$ROOT_DIR/objs/lib/libkdb.a" ]; then
+  log_fail "Missing C static library objs/lib/libkdb.a"
+  exit 1
+fi
+
 BIN="$OUT_DIR/rust_crypto_boundary_differential"
 
 log_info "Golden: compiling Rust crypto boundary differential test"
@@ -31,7 +44,8 @@ gcc -std=gnu11 -O2 \
   -I"$ROOT_DIR" -I"$ROOT_DIR/common" \
   "$ROOT_DIR/tests/golden/rust_crypto_boundary_differential.c" \
   "$ROOT_DIR/target/debug/libmtproxy_ffi.a" \
-  -lm -lrt -lcrypto -lz -lpthread -ldl \
+  "$ROOT_DIR/objs/lib/libkdb.a" \
+  -lm -lrt -lz -lpthread -ldl \
   -o "$BIN"
 
 log_info "Golden: executing Rust crypto boundary differential test"

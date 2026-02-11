@@ -24,15 +24,15 @@
 
 #pragma once
 
-#include <openssl/evp.h>
+typedef struct mtproxy_aesni_ctx mtproxy_aesni_ctx_t;
 
-enum evp_cipher_kind {
-  EVP_CIPHER_KIND_AES_256_CBC = 1,
-  EVP_CIPHER_KIND_AES_256_CTR = 2
+enum aesni_cipher_kind {
+  AESNI_CIPHER_KIND_AES_256_CBC = 1,
+  AESNI_CIPHER_KIND_AES_256_CTR = 2
 };
 
-EVP_CIPHER_CTX *evp_cipher_ctx_init_kind(int cipher_kind, unsigned char *key,
+mtproxy_aesni_ctx_t *aesni_ctx_init_kind(int cipher_kind, unsigned char *key,
                                          unsigned char iv[16], int is_encrypt);
-void evp_cipher_ctx_free(EVP_CIPHER_CTX *evp_ctx);
+void aesni_ctx_free(mtproxy_aesni_ctx_t *ctx);
 
-void evp_crypt(EVP_CIPHER_CTX *evp_ctx, const void *in, void *out, int size);
+void aesni_crypt(mtproxy_aesni_ctx_t *ctx, const void *in, void *out, int size);

@@ -27,9 +27,9 @@
 #pragma once
 
 #include <assert.h>
-#include <openssl/types.h>
 #include <sys/uio.h>
 
+#include "crypto/aesni256.h"
 #include "crypto/crc32.h"
 #include "net/net-msg-buffers.h"
 
@@ -168,7 +168,8 @@ int rwm_process_and_advance(struct raw_message *raw, int bytes,
                             void *extra);
 int rwm_sha1(struct raw_message *raw, int bytes, unsigned char output[20]);
 int rwm_encrypt_decrypt_to(struct raw_message *raw, struct raw_message *res,
-                           int bytes, EVP_CIPHER_CTX *evp_ctx, int block_size);
+                           int bytes, mtproxy_aesni_ctx_t *ctx,
+                           int block_size);
 
 void *rwm_get_block_ptr(struct raw_message *raw);
 int rwm_get_block_ptr_bytes(struct raw_message *raw);

@@ -28,6 +28,7 @@
 
 #pragma once
 
+#include "crypto/aesni256.h"
 #include "net/net-connections.h"
 
 #define MIN_PWD_LEN 32
@@ -67,8 +68,8 @@ struct aes_key_data {
 
 /* for c->crypto */
 struct aes_crypto {
-  EVP_CIPHER_CTX *read_aeskey;
-  EVP_CIPHER_CTX *write_aeskey;
+  mtproxy_aesni_ctx_t *read_aeskey;
+  mtproxy_aesni_ctx_t *write_aeskey;
 };
 
 extern int aes_initialized;

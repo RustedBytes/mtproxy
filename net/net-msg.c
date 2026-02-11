@@ -1371,7 +1371,7 @@ struct rwm_encrypt_decrypt_tmp {
   int left;
   int block_size;
   struct raw_message *raw;
-  EVP_CIPHER_CTX *evp_ctx;
+  mtproxy_aesni_ctx_t *ctx;
   char buf[16] __attribute__((aligned(16)));
 };
 
@@ -1401,13 +1401,13 @@ int rwm_process_encrypt_decrypt(struct rwm_encrypt_decrypt_tmp *x,
       data += to_fill;
       x->bp = 0;
       if (x->buf_left >= bsize) {
-        evp_crypt(x->evp_ctx, x->buf, res->last->part->data + res->last_offset,
-                  bsize);
+        aesni_crypt(x->ctx, x->buf, res->last->part->data + res->last_offset,
+                    bsize);
         res->last->data_end += bsize;
         res->last_offset += bsize;
         x->buf_left -= bsize;
       } else {
-        evp_crypt(x->evp_ctx, x->buf, x->buf, bsize);
+        aesni_crypt(x->ctx, x->buf, x->buf, bsize);
         memcpy(res->last->part->data + res->last_offset, x->buf, x->buf_left);
         int t = x->buf_left;
         res->last->data_end += t;
@@ -1463,8 +1463,8 @@ int rwm_process_encrypt_decrypt(struct rwm_encrypt_decrypt_tmp *x,
            res->last->part->chunk->buffer_size);
     if (len <= x->buf_left) {
       assert(!(len & (bsize - 1)));
-      evp_crypt(x->evp_ctx, data, (res->last->part->data + res->last_offset),
-                len);
+      aesni_crypt(x->ctx, data, (res->last->part->data + res->last_offset),
+                  len);
       res->last->data_end += len;
       res->last_offset += len;
       res->total_bytes += len;
@@ -1472,7 +1472,7 @@ int rwm_process_encrypt_decrypt(struct rwm_encrypt_decrypt_tmp *x,
       return 0;
     } else {
       int t = x->buf_left & -bsize;
-      evp_crypt(x->evp_ctx, data, res->last->part->data + res->last_offset, t);
+      aesni_crypt(x->ctx, data, res->last->part->data + res->last_offset, t);
       res->last->data_end += t;
       res->last_offset += t;
       res->total_bytes += t;
@@ -1484,7 +1484,8 @@ int rwm_process_encrypt_decrypt(struct rwm_encrypt_decrypt_tmp *x,
 }
 
 int rwm_encrypt_decrypt_to(struct raw_message *raw, struct raw_message *res,
-                           int bytes, EVP_CIPHER_CTX *evp_ctx, int block_size) {
+                           int bytes, mtproxy_aesni_ctx_t *ctx,
+                           int block_size) {
   assert(bytes >= 0);
   assert(block_size && !(block_size & (block_size - 1)));
   bytes = mtproxy_ffi_net_msg_encrypt_decrypt_effective_bytes(
@@ -1520,7 +1521,7 @@ int rwm_encrypt_decrypt_to(struct raw_message *raw, struct raw_message *res,
     t.buf_left = 0;
   }
   t.raw = res;
-  t.evp_ctx = evp_ctx;
+  t.ctx = ctx;
   t.left = bytes;
   t.block_size = block_size;
   int r = rwm_process_and_advance(raw, bytes,

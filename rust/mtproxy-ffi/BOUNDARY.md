@@ -125,7 +125,7 @@ Current exported API:
 - `net/net-tcp-rpc-ext-server.c` delegates domain hash bucket, client-random bucket index, and server-hello encrypted-size profile helpers to Rust.
 - `net/net-crypto-aes.c` delegates key derivation, connection AES lifecycle, secret-file load, nonce generation, and temp-buffer management to Rust.
 - `net/net-crypto-dh.c` delegates DH params init and all DH rounds/stat counters to Rust.
-- `crypto/aesni256.c` can delegate `EVP_CipherUpdate` wrapper helper to Rust when symbols are linked.
+- `crypto/aesni256.c` delegates AES context init/free and encrypt/decrypt helpers to Rust.
 - `engine/engine-rpc.c` delegates TL result header helpers (`tl_result_new_flags`, `tl_result_get_header_len`) to Rust (Step 14 decommission batch removed C fallback path).
 - `mtproto/mtproto-proxy.c` delegates ext-connection hash bucket and connection-tag helpers to Rust (Step 14 decommission batch removed C fallback path).
 - `mtproto/mtproto-proxy.c` also delegates textual IP parsing, MTProto packet shape inspection, and `mtfront_parse_function` envelope/error mapping to Rust.
@@ -149,7 +149,7 @@ Current exported API:
 - For application boundary probe, C passes writable POD `mtproxy_ffi_application_boundary_t` and Rust fills version/op masks.
 - For net-core helpers, C passes plain integers, borrowed byte/POD arrays (`buffer_sizes`, domain/client-random slices), and writable scalar outputs with no ownership transfer.
 - For rpc/tcp helpers, C passes plain integers and POD struct pointers (`process_id`) with no ownership transfer.
-- For crypto helpers, C passes borrowed byte buffers (`nonce`, `secret`, `temp_key`) plus POD key/EVP context pointers; no ownership transfer.
+- For crypto helpers, C passes borrowed byte buffers (`nonce`, `secret`, `temp_key`) plus POD key/context pointers; no ownership transfer.
 - For Step 13 application helpers, C passes plain scalar values (`flags`, `in_fd`, `in_conn_id`, `hash_shift`, `generation`) with no ownership transfer.
 - Boundary `*_implemented_ops` currently advertises routed Step 9, Step 10, Step 11, Step 12, and Step 13 slices listed above.
 - No heap ownership is transferred between C and Rust.

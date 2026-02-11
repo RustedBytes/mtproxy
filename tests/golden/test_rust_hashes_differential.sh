@@ -43,13 +43,13 @@ log_info "Golden: compiling Rust hash differential test"
 gcc -std=gnu11 -O2 \
   -I"$ROOT_DIR" -I"$ROOT_DIR/common" \
   "$ROOT_DIR/tests/golden/rust_hashes_differential.c" \
-  "$ROOT_DIR/objs/lib/libkdb.a" \
   "$ROOT_DIR/target/debug/libmtproxy_ffi.a" \
-  -lm -lrt -lcrypto -lz -lpthread -ldl \
+  "$ROOT_DIR/objs/lib/libkdb.a" \
+  -lm -lrt -lz -lpthread -ldl \
   -o "$BIN"
 
 log_info "Golden: executing Rust hash differential test"
 "$BIN" > "$OUT_DIR/rust_hashes_differential.log" 2>&1
 
 assert_contains "$OUT_DIR/rust_hashes_differential.log" "rust_hashes_differential: ok"
-log_pass "Rust hash vectors match OpenSSL reference output"
+log_pass "Rust hash vectors match legacy C reference output"

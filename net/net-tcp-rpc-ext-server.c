@@ -1351,7 +1351,7 @@ int tcp_rpcs_compact_parse_execute(connection_job_t C) {
         assert(c->crypto);
         struct aes_crypto *T = c->crypto;
 
-        evp_crypt(T->read_aeskey, random_header, random_header, 64);
+        aesni_crypt(T->read_aeskey, random_header, random_header, 64);
         unsigned tag = *(unsigned *)(random_header + 56);
 
         if (tag == 0xdddddddd || tag == 0xeeeeeeee || tag == 0xefefefef) {

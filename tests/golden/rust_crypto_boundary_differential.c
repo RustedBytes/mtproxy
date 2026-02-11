@@ -3,9 +3,8 @@
 #include <stdio.h>
 #include <string.h>
 
-#include <openssl/evp.h>
-#include <openssl/md5.h>
-#include <openssl/sha.h>
+#include "crypto/md5.h"
+#include "crypto/sha1.h"
 
 #include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 
@@ -99,9 +98,9 @@ static int c_aes_create_keys(mtproxy_ffi_aes_key_data_t *R, int am_client,
     str_len = temp_key_len;
   }
 
-  MD5(str + 1, str_len - 1, R->write_key);
-  SHA1(str, str_len, R->write_key + 12);
-  MD5(str + 2, str_len - 2, R->write_iv);
+  md5(str + 1, str_len - 1, R->write_key);
+  sha1(str, str_len, R->write_key + 12);
+  md5(str + 2, str_len - 2, R->write_iv);
 
   str[42] ^= 'C' ^ 'S';
   str[43] ^= 'L' ^ 'E';
@@ -110,9 +109,9 @@ static int c_aes_create_keys(mtproxy_ffi_aes_key_data_t *R, int am_client,
   str[46] ^= 'N' ^ 'E';
   str[47] ^= 'T' ^ 'R';
 
-  MD5(str + 1, str_len - 1, R->read_key);
-  SHA1(str, str_len, R->read_key + 12);
-  MD5(str + 2, str_len - 2, R->read_iv);
+  md5(str + 1, str_len - 1, R->read_key);
+  sha1(str, str_len, R->read_key + 12);
+  md5(str + 2, str_len - 2, R->read_iv);
 
   memset(str, 0, str_len);
   return 1;
@@ -220,39 +219,37 @@ int main(void) {
                            32, temp_key, 64) == 1);
   assert(memcmp(&rust_keys, &c_keys, sizeof(rust_keys)) == 0);
 
-  unsigned char key[32];
-  unsigned char iv[16];
-  unsigned char in[64];
-  unsigned char out_ref[64];
+  const unsigned char key[32] = {
+      0x60, 0x3d, 0xeb, 0x10, 0x15, 0xca, 0x71, 0xbe, 0x2b, 0x73, 0xae,
+      0xf0, 0x85, 0x7d, 0x77, 0x81, 0x1f, 0x35, 0x2c, 0x07, 0x3b, 0x61,
+      0x08, 0xd7, 0x2d, 0x98, 0x10, 0xa3, 0x09, 0x14, 0xdf, 0xf4};
+  const unsigned char iv[16] = {
+      0xf0, 0xf1, 0xf2, 0xf3, 0xf4, 0xf5, 0xf6, 0xf7,
+      0xf8, 0xf9, 0xfa, 0xfb, 0xfc, 0xfd, 0xfe, 0xff};
+  const unsigned char in[64] = {
+      0x6b, 0xc1, 0xbe, 0xe2, 0x2e, 0x40, 0x9f, 0x96, 0xe9, 0x3d, 0x7e,
+      0x11, 0x73, 0x93, 0x17, 0x2a, 0xae, 0x2d, 0x8a, 0x57, 0x1e, 0x03,
+      0xac, 0x9c, 0x9e, 0xb7, 0x6f, 0xac, 0x45, 0xaf, 0x8e, 0x51, 0x30,
+      0xc8, 0x1c, 0x46, 0xa3, 0x5c, 0xe4, 0x11, 0xe5, 0xfb, 0xc1, 0x19,
+      0x1a, 0x0a, 0x52, 0xef, 0xf6, 0x9f, 0x24, 0x45, 0xdf, 0x4f, 0x9b,
+      0x17, 0xad, 0x2b, 0x41, 0x7b, 0xe6, 0x6c, 0x37, 0x10};
+  const unsigned char out_expected[64] = {
+      0x60, 0x1e, 0xc3, 0x13, 0x77, 0x57, 0x89, 0xa5, 0xb7, 0xa7, 0xf5,
+      0x04, 0xbb, 0xf3, 0xd2, 0x28, 0xf4, 0x43, 0xe3, 0xca, 0x4d, 0x62,
+      0xb5, 0x9a, 0xca, 0x84, 0xe9, 0x90, 0xca, 0xca, 0xf5, 0xc5, 0x2b,
+      0x09, 0x30, 0xda, 0xa2, 0x3d, 0xe9, 0x4c, 0xe8, 0x70, 0x17, 0xba,
+      0x2d, 0x84, 0x98, 0x8d, 0xdf, 0xc9, 0xc5, 0x8d, 0xb6, 0x7a, 0xad,
+      0xa6, 0x13, 0xc2, 0xdd, 0x08, 0x45, 0x79, 0x41, 0xa6};
   unsigned char out_rust[64];
-  for (int i = 0; i < 32; i++) {
-    key[i] = (unsigned char)(0x80 + i);
-  }
-  for (int i = 0; i < 16; i++) {
-    iv[i] = (unsigned char)(0x90 + i);
-  }
-  for (int i = 0; i < 64; i++) {
-    in[i] = (unsigned char)i;
-  }
-
-  EVP_CIPHER_CTX *ctx_ref = EVP_CIPHER_CTX_new();
   void *ctx_rust = NULL;
-  assert(ctx_ref != NULL);
-  assert(EVP_CipherInit(ctx_ref, EVP_aes_256_ctr(), key, iv, 1) == 1);
-  assert(EVP_CIPHER_CTX_set_padding(ctx_ref, 0) == 1);
   assert(mtproxy_ffi_aesni_ctx_init(MTPROXY_FFI_AESNI_CIPHER_AES_256_CTR, key,
                                     iv, 1, &ctx_rust) == 0);
   assert(ctx_rust != NULL);
 
-  int out_ref_len = 0;
-  assert(EVP_CipherUpdate(ctx_ref, out_ref, &out_ref_len, in, 64) == 1);
-  assert(out_ref_len == 64);
-
   rc = mtproxy_ffi_aesni_crypt(ctx_rust, in, out_rust, 64);
   assert(rc == 0);
-  assert(memcmp(out_ref, out_rust, 64) == 0);
+  assert(memcmp(out_expected, out_rust, 64) == 0);
 
-  EVP_CIPHER_CTX_free(ctx_ref);
   assert(mtproxy_ffi_aesni_ctx_free(ctx_rust) == 0);
 
   unsigned char random_block[32] = {0};

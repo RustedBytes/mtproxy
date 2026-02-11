@@ -7,12 +7,12 @@ Install the usual C build tools plus Rust tooling (`cargo` is required by `make`
 
 Debian/Ubuntu:
 ```bash
-apt install git curl build-essential libssl-dev zlib1g-dev rustc cargo
+apt install git curl build-essential zlib1g-dev rustc cargo
 ```
 
 CentOS/RHEL:
 ```bash
-yum install openssl-devel zlib-devel rust cargo
+yum install zlib-devel rust cargo
 yum groupinstall "Development Tools"
 ```
 

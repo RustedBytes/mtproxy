@@ -24,7 +24,7 @@ This harness provides migration safety checks before porting C modules to Rust.
 - `golden/test_rust_observability_differential.sh`
   - Optional Rust-differential check for Rust observability helpers (`proc-stat`, `statm`/`meminfo` parsing, log-prefix formatting).
 - `golden/test_rust_hashes_differential.sh`
-  - Optional Rust-differential check for Rust hash helpers (`md5`, `sha1`, `sha256`, `sha256_hmac`) vs OpenSSL reference routines.
+  - Optional Rust-differential check for Rust hash helpers (`md5`, `sha1`, `sha256`, `sha256_hmac`) vs legacy C reference routines.
 - `golden/test_rust_precise_time_smoke.sh`
   - Optional Rust-differential smoke check for Rust precise-time helpers (`get_utime_monotonic`, `get_double_time`, `get_utime`, `get_precise_time`).
 - `golden/test_rust_concurrency_boundary_differential.sh`
@@ -34,7 +34,7 @@ This harness provides migration safety checks before porting C modules to Rust.
 - `golden/test_rust_rpc_boundary_differential.sh`
   - Optional Rust-differential check for Step 11 rpc/tcp boundary extraction and helper semantics (`net-tcp-rpc-common` compact header encoding, client/server packet-length classification, `net-rpc-targets` PID normalization).
 - `golden/test_rust_crypto_boundary_differential.sh`
-  - Optional Rust-differential check for Step 12 crypto boundary extraction and helper semantics (`net-crypto-aes` key derivation glue, `net-crypto-dh` peer-value check, `crypto/aesni` EVP update wrapper).
+  - Optional Rust-differential check for Step 12 crypto boundary extraction and helper semantics (`net-crypto-aes` key derivation glue, `net-crypto-dh` peer-value check, `crypto/aesni` context/crypt wrappers).
 - `golden/test_rust_application_boundary_differential.sh`
   - Optional Rust-differential check for Step 13 application boundary extraction and helper semantics (`engine-rpc` TL result flags/header-len helpers, `mtproto-proxy` ext-connection hash + connection-tag helpers).
 

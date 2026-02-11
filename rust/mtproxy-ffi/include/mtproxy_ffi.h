@@ -657,8 +657,8 @@ int32_t mtproxy_ffi_crypto_dh_third_round_stateful(
 int32_t mtproxy_ffi_crypto_rand_bytes(uint8_t *out, int32_t len);
 int32_t mtproxy_ffi_crypto_tls_generate_public_key(uint8_t out[32]);
 
-// crypto/aesni helper: OpenSSL-backed EVP_CipherUpdate glue.
-int32_t mtproxy_ffi_aesni_crypt(void *evp_ctx, const uint8_t *in, uint8_t *out, int32_t size);
+// crypto/aesni helper: Rust-backed AES block/stream transform.
+int32_t mtproxy_ffi_aesni_crypt(void *ctx, const uint8_t *in, uint8_t *out, int32_t size);
 int32_t mtproxy_ffi_aesni_ctx_init(
   int32_t cipher_kind,
   const uint8_t key[32],
@@ -666,7 +666,7 @@ int32_t mtproxy_ffi_aesni_ctx_init(
   int32_t is_encrypt,
   void **out_ctx
 );
-int32_t mtproxy_ffi_aesni_ctx_free(void *evp_ctx);
+int32_t mtproxy_ffi_aesni_ctx_free(void *ctx);
 
 // engine-rpc helpers for TL result header normalization.
 int32_t mtproxy_ffi_engine_rpc_result_new_flags(int32_t old_flags);
