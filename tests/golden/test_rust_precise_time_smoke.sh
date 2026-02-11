@@ -31,7 +31,7 @@ gcc -std=gnu11 -O2 \
   -I"$ROOT_DIR" \
   "$ROOT_DIR/tests/golden/rust_precise_time_smoke.c" \
   "$ROOT_DIR/target/debug/libmtproxy_ffi.a" \
-  -lm -lrt -lcrypto -lz -lpthread -ldl \
+  -lm -lrt -lz -lpthread -ldl \
   -o "$BIN"
 
 log_info "Golden: executing Rust precise-time smoke test"

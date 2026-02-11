@@ -31,7 +31,7 @@ gcc -std=gnu11 -O2 \
   -I"$ROOT_DIR" -I"$ROOT_DIR/common" \
   "$ROOT_DIR/tests/golden/rust_concurrency_boundary_differential.c" \
   "$ROOT_DIR/target/debug/libmtproxy_ffi.a" \
-  -lm -lrt -lcrypto -lz -lpthread -ldl \
+  -lm -lrt -lz -lpthread -ldl \
   -o "$BIN"
 
 log_info "Golden: executing Rust concurrency boundary differential test"

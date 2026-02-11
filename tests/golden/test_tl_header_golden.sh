@@ -14,6 +14,10 @@ if [ ! -f "$ROOT_DIR/objs/lib/libkdb.a" ]; then
   log_fail "Missing static library objs/lib/libkdb.a. Run 'make' first."
   exit 1
 fi
+if [ ! -f "$ROOT_DIR/target/debug/libmtproxy_ffi.a" ]; then
+  log_fail "Missing Rust static library target/debug/libmtproxy_ffi.a. Run 'make' first."
+  exit 1
+fi
 
 GOLDEN_BIN="$OUT_DIR/tl_header_golden"
 
@@ -22,7 +26,8 @@ gcc -std=gnu11 -O2 \
   -I"$ROOT_DIR" -I"$ROOT_DIR/common" \
   "$ROOT_DIR/tests/golden/tl_header_golden.c" \
   "$ROOT_DIR/objs/lib/libkdb.a" \
-  -lm -lrt -lcrypto -lz -lpthread \
+  "$ROOT_DIR/target/debug/libmtproxy_ffi.a" \
+  -lm -lrt -lz -lpthread -ldl \
   -o "$GOLDEN_BIN"
 
 log_info "Golden: executing TL header vector tests"

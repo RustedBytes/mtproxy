@@ -45,7 +45,7 @@ gcc -std=gnu11 -O2 \
   "$ROOT_DIR/tests/golden/rust_crc32c_differential.c" \
   "$ROOT_DIR/objs/lib/libkdb.a" \
   "$ROOT_DIR/target/debug/libmtproxy_ffi.a" \
-  -lm -lrt -lcrypto -lz -lpthread -ldl \
+  -lm -lrt -lz -lpthread -ldl \
   -o "$BIN"
 
 log_info "Golden: executing C-vs-Rust CRC32C differential test"
