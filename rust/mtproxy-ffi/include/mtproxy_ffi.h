@@ -39,15 +39,6 @@ typedef struct mtproxy_ffi_cfg_int_result {
   size_t consumed;
 } mtproxy_ffi_cfg_int_result_t;
 
-typedef struct mtproxy_ffi_mtproto_cfg_parse_server_port_result {
-  size_t advance;
-  uint32_t target_index;
-  uint8_t host_len;
-  uint16_t port;
-  int64_t min_connections;
-  int64_t max_connections;
-} mtproxy_ffi_mtproto_cfg_parse_server_port_result_t;
-
 typedef struct mtproxy_ffi_mtproto_cfg_getlex_ext_result {
   size_t advance;
   int32_t lex;
@@ -111,14 +102,6 @@ typedef struct mtproxy_ffi_mtproto_cfg_parse_proxy_target_step_result {
   int32_t cluster_targets_action;
   uint32_t cluster_targets_index;
 } mtproxy_ffi_mtproto_cfg_parse_proxy_target_step_result_t;
-
-#define MTPROXY_FFI_MTPROTO_CFG_PARSE_SERVER_PORT_OK                     0
-#define MTPROXY_FFI_MTPROTO_CFG_PARSE_SERVER_PORT_ERR_INVALID_ARGS      (-1)
-#define MTPROXY_FFI_MTPROTO_CFG_PARSE_SERVER_PORT_ERR_TOO_MANY_TARGETS  (-2)
-#define MTPROXY_FFI_MTPROTO_CFG_PARSE_SERVER_PORT_ERR_HOSTNAME_EXPECTED (-3)
-#define MTPROXY_FFI_MTPROTO_CFG_PARSE_SERVER_PORT_ERR_PORT_EXPECTED     (-4)
-#define MTPROXY_FFI_MTPROTO_CFG_PARSE_SERVER_PORT_ERR_PORT_RANGE        (-5)
-#define MTPROXY_FFI_MTPROTO_CFG_PARSE_SERVER_PORT_ERR_INTERNAL          (-6)
 
 #define MTPROXY_FFI_MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_OK                  0
 #define MTPROXY_FFI_MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_NOT_FOUND           1
@@ -545,15 +528,6 @@ int32_t mtproxy_ffi_mtproto_cfg_expect_semicolon(
   size_t len,
   size_t *out_advance
 );
-int32_t mtproxy_ffi_mtproto_cfg_parse_server_port(
-  const char *cur,
-  size_t len,
-  uint32_t current_targets,
-  uint32_t max_targets,
-  int64_t min_connections,
-  int64_t max_connections,
-  mtproxy_ffi_mtproto_cfg_parse_server_port_result_t *out
-);
 int32_t mtproxy_ffi_mtproto_cfg_lookup_cluster_index(
   const int32_t *cluster_ids,
   uint32_t clusters_len,
@@ -569,17 +543,6 @@ int32_t mtproxy_ffi_mtproto_cfg_finalize(
   uint32_t clusters_len,
   int32_t default_cluster_id,
   mtproxy_ffi_mtproto_cfg_finalize_result_t *out
-);
-int32_t mtproxy_ffi_mtproto_init_old_cluster(
-  uint32_t first_target_index,
-  int32_t cluster_id,
-  uint32_t flags,
-  mtproxy_ffi_mtproto_old_cluster_state_t *out
-);
-int32_t mtproxy_ffi_mtproto_extend_old_cluster(
-  mtproxy_ffi_mtproto_old_cluster_state_t *state,
-  uint32_t target_index,
-  int32_t cluster_id
 );
 
 // CRC32 (IEEE, reflected polynomial 0xEDB88320) partial update.

@@ -596,6 +596,7 @@
    - [x] 2026-02-11: Removed additional dead C compatibility leftovers in `mtproto/mtproto-config.c` (deleted stale commented parser globals/calls and pruned vestigial helper parameters no longer used after Step 15 Rust-FFI control-flow migration).
    - [x] 2026-02-11: Removed dead C runtime leftovers in `mtproto/mtproto-config.c` after Step 15 parser migration (`dump_mf_cluster` and unused `need_reload_config` state).
    - [x] 2026-02-11: Moved proxy target parse/apply mutation behind one Rust helper step by adding `cfg_parse_proxy_target_step` (`runtime::mtproto::config`) and FFI export `mtproxy_ffi_mtproto_cfg_parse_proxy_target_step`; rewired C `parse_config` proxy branch to consume Rust-produced target/cluster mutation payloads while keeping only host resolution (`cfg_gethost`) and target creation (`create_target`) side effects in C, and removed now-unused C helpers (`cfg_parse_server_port`, `init_old_mf_cluster`, `extend_old_mf_cluster`) from active runtime.
+   - [x] 2026-02-11: Removed now-unused transitional mtproto-config FFI exports (`mtproxy_ffi_mtproto_cfg_parse_server_port`, `mtproxy_ffi_mtproto_init_old_cluster`, `mtproxy_ffi_mtproto_extend_old_cluster`) from `rust/mtproxy-ffi` ABI surface and tests after runtime callsites were collapsed behind `mtproxy_ffi_mtproto_cfg_parse_proxy_target_step`.
    - Done when: `rust/mtproxy-bin` runs MTProxy using only Rust code migrated from C counterparts.
 
 16. Final Hardening, Security Review, and Release

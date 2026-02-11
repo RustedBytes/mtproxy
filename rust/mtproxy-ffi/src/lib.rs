@@ -123,13 +123,6 @@ const MTPROTO_DIRECTIVE_TOKEN_KIND_MIN_CONNECTIONS: i32 = 6;
 const MTPROTO_CFG_CLUSTER_TARGETS_ACTION_KEEP_EXISTING: i32 = 0;
 const MTPROTO_CFG_CLUSTER_TARGETS_ACTION_CLEAR: i32 = 1;
 const MTPROTO_CFG_CLUSTER_TARGETS_ACTION_SET_TARGET: i32 = 2;
-const MTPROTO_CFG_PARSE_SERVER_PORT_OK: i32 = 0;
-const MTPROTO_CFG_PARSE_SERVER_PORT_ERR_INVALID_ARGS: i32 = -1;
-const MTPROTO_CFG_PARSE_SERVER_PORT_ERR_TOO_MANY_TARGETS: i32 = -2;
-const MTPROTO_CFG_PARSE_SERVER_PORT_ERR_HOSTNAME_EXPECTED: i32 = -3;
-const MTPROTO_CFG_PARSE_SERVER_PORT_ERR_PORT_EXPECTED: i32 = -4;
-const MTPROTO_CFG_PARSE_SERVER_PORT_ERR_PORT_RANGE: i32 = -5;
-const MTPROTO_CFG_PARSE_SERVER_PORT_ERR_INTERNAL: i32 = -6;
 const MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_OK: i32 = 0;
 const MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_NOT_FOUND: i32 = 1;
 const MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_ERR_INVALID_ARGS: i32 = -1;
@@ -263,17 +256,6 @@ pub struct MtproxyCfgScanResult {
 pub struct MtproxyCfgIntResult {
     pub value: i64,
     pub consumed: usize,
-}
-
-#[repr(C)]
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub struct MtproxyMtprotoCfgParseServerPortResult {
-    pub advance: usize,
-    pub target_index: u32,
-    pub host_len: u8,
-    pub port: u16,
-    pub min_connections: i64,
-    pub max_connections: i64,
 }
 
 #[repr(C)]
@@ -1146,27 +1128,6 @@ fn mtproto_cfg_cluster_apply_decision_err_to_code(
     }
 }
 
-fn mtproto_cfg_parse_server_port_err_to_code(
-    err: mtproxy_core::runtime::mtproto::config::MtprotoDirectiveParseError,
-) -> i32 {
-    use mtproxy_core::runtime::mtproto::config::MtprotoDirectiveParseError;
-    match err {
-        MtprotoDirectiveParseError::TooManyTargets(_) => {
-            MTPROTO_CFG_PARSE_SERVER_PORT_ERR_TOO_MANY_TARGETS
-        }
-        MtprotoDirectiveParseError::HostnameExpected => {
-            MTPROTO_CFG_PARSE_SERVER_PORT_ERR_HOSTNAME_EXPECTED
-        }
-        MtprotoDirectiveParseError::PortNumberExpected => {
-            MTPROTO_CFG_PARSE_SERVER_PORT_ERR_PORT_EXPECTED
-        }
-        MtprotoDirectiveParseError::PortOutOfRange(_) => {
-            MTPROTO_CFG_PARSE_SERVER_PORT_ERR_PORT_RANGE
-        }
-        _ => MTPROTO_CFG_PARSE_SERVER_PORT_ERR_INTERNAL,
-    }
-}
-
 fn mtproto_cfg_cluster_targets_action_to_ffi(
     action: mtproxy_core::runtime::mtproto::config::MtprotoClusterTargetsAction,
 ) -> i32 {
@@ -1651,61 +1612,6 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_expect_semicolon(
     }
 }
 
-/// Parses `host:port` target syntax used by `cfg_parse_server_port`.
-///
-/// # Safety
-/// `cur` must be readable for `len` bytes when `len > 0`; `out` must be writable.
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_parse_server_port(
-    cur: *const c_char,
-    len: usize,
-    current_targets: u32,
-    max_targets: u32,
-    min_connections: i64,
-    max_connections: i64,
-    out: *mut MtproxyMtprotoCfgParseServerPortResult,
-) -> i32 {
-    if out.is_null() {
-        return MTPROTO_CFG_PARSE_SERVER_PORT_ERR_INVALID_ARGS;
-    }
-    let Some(bytes) = cfg_bytes_from_cstr(cur, len) else {
-        return MTPROTO_CFG_PARSE_SERVER_PORT_ERR_INVALID_ARGS;
-    };
-    let Ok(current_targets_usize) = usize::try_from(current_targets) else {
-        return MTPROTO_CFG_PARSE_SERVER_PORT_ERR_INVALID_ARGS;
-    };
-    let Ok(max_targets_usize) = usize::try_from(max_targets) else {
-        return MTPROTO_CFG_PARSE_SERVER_PORT_ERR_INVALID_ARGS;
-    };
-
-    let mut cursor = 0usize;
-    match mtproxy_core::runtime::mtproto::config::cfg_parse_server_port_preview(
-        bytes,
-        &mut cursor,
-        current_targets_usize,
-        max_targets_usize,
-        min_connections,
-        max_connections,
-    ) {
-        Ok(preview) => {
-            let Ok(target_index) = u32::try_from(preview.target_index) else {
-                return MTPROTO_CFG_PARSE_SERVER_PORT_ERR_INTERNAL;
-            };
-            let out_ref = unsafe { &mut *out };
-            *out_ref = MtproxyMtprotoCfgParseServerPortResult {
-                advance: preview.advance,
-                target_index,
-                host_len: preview.target.host_len,
-                port: preview.target.port,
-                min_connections: preview.target.min_connections,
-                max_connections: preview.target.max_connections,
-            };
-            MTPROTO_CFG_PARSE_SERVER_PORT_OK
-        }
-        Err(err) => mtproto_cfg_parse_server_port_err_to_code(err),
-    }
-}
-
 /// Looks up a cluster index by `cluster_id` mirroring `mf_cluster_lookup()`.
 ///
 /// # Safety
@@ -1814,76 +1720,6 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_finalize(
         }
         Err(err) => mtproto_cfg_finalize_err_to_code(err),
     }
-}
-
-/// Initializes old-cluster apply state like `init_old_mf_cluster`.
-///
-/// # Safety
-/// `out` must be writable.
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_init_old_cluster(
-    first_target_index: u32,
-    cluster_id: i32,
-    flags: u32,
-    out: *mut MtproxyMtprotoOldClusterState,
-) -> i32 {
-    if out.is_null() {
-        return -1;
-    }
-    let Ok(first_target_index_usize) = usize::try_from(first_target_index) else {
-        return -1;
-    };
-    let mut cluster = mtproxy_core::runtime::mtproto::config::MtprotoClusterState {
-        cluster_id: 0,
-        targets_num: 0,
-        write_targets_num: 0,
-        flags: 0,
-        first_target_index: None,
-    };
-    mtproxy_core::runtime::mtproto::config::init_old_mf_cluster(
-        &mut cluster,
-        first_target_index_usize,
-        flags,
-        cluster_id,
-    );
-    let Some(cluster_ffi) = mtproto_old_cluster_to_ffi(&cluster) else {
-        return -1;
-    };
-    let out_ref = unsafe { &mut *out };
-    *out_ref = cluster_ffi;
-    0
-}
-
-/// Extends old-cluster apply state like `extend_old_mf_cluster`.
-///
-/// # Safety
-/// `state` must be writable.
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_extend_old_cluster(
-    state: *mut MtproxyMtprotoOldClusterState,
-    target_index: u32,
-    cluster_id: i32,
-) -> i32 {
-    if state.is_null() {
-        return -1;
-    }
-    let Ok(target_index_usize) = usize::try_from(target_index) else {
-        return -1;
-    };
-    let state_ref = unsafe { &mut *state };
-    let Some(mut cluster) = mtproto_old_cluster_from_ffi(state_ref) else {
-        return -1;
-    };
-    let extended = mtproxy_core::runtime::mtproto::config::extend_old_mf_cluster(
-        &mut cluster,
-        target_index_usize,
-        cluster_id,
-    );
-    let Some(updated) = mtproto_old_cluster_to_ffi(&cluster) else {
-        return -1;
-    };
-    *state_ref = updated;
-    i32::from(extended)
 }
 
 fn md5_digest_impl(input: &[u8], out: &mut [u8; DIGEST_MD5_LEN]) -> bool {
@@ -3976,11 +3812,10 @@ mod tests {
         mtproxy_ffi_mtproto_cfg_decide_cluster_apply, mtproxy_ffi_mtproto_cfg_finalize,
         mtproxy_ffi_mtproto_cfg_expect_semicolon, mtproxy_ffi_mtproto_cfg_parse_directive_step,
         mtproxy_ffi_mtproto_cfg_getlex_ext, mtproxy_ffi_mtproto_cfg_lookup_cluster_index,
-        mtproxy_ffi_mtproto_cfg_parse_proxy_target_step, mtproxy_ffi_mtproto_cfg_parse_server_port, mtproxy_ffi_mtproto_cfg_preinit,
+        mtproxy_ffi_mtproto_cfg_parse_proxy_target_step, mtproxy_ffi_mtproto_cfg_preinit,
         mtproxy_ffi_mtproto_cfg_scan_directive_token,
         mtproxy_ffi_mtproto_conn_tag,
-        mtproxy_ffi_mtproto_ext_conn_hash, mtproxy_ffi_mtproto_extend_old_cluster,
-        mtproxy_ffi_mtproto_init_old_cluster, mtproxy_ffi_net_epoll_conv_flags,
+        mtproxy_ffi_mtproto_ext_conn_hash, mtproxy_ffi_net_epoll_conv_flags,
         mtproxy_ffi_net_epoll_unconv_flags, mtproxy_ffi_net_timers_wait_msec,
         mtproxy_ffi_parse_meminfo_summary, mtproxy_ffi_parse_proc_stat_line,
         mtproxy_ffi_parse_statm, mtproxy_ffi_pid_init_common, mtproxy_ffi_precise_now_rdtsc_value,
@@ -3998,7 +3833,7 @@ mod tests {
         MtproxyMtprotoCfgDirectiveTokenResult, MtproxyMtprotoCfgFinalizeResult,
         MtproxyMtprotoCfgGetlexExtResult,
         MtproxyMtprotoCfgParseProxyTargetStepResult,
-        MtproxyMtprotoCfgParseServerPortResult, MtproxyMtprotoCfgPreinitResult,
+        MtproxyMtprotoCfgPreinitResult,
         MtproxyMtprotoOldClusterState,
         MtproxyNetworkBoundary, MtproxyProcStats, MtproxyProcessId, MtproxyRpcBoundary,
         MtproxyTlHeaderParseResult, AESNI_CIPHER_AES_256_CTR, AESNI_CONTRACT_OPS,
@@ -4010,10 +3845,7 @@ mod tests {
         MPQ_IMPLEMENTED_OPS, MTPROTO_CFG_FINALIZE_ERR_MISSING_PROXY_DIRECTIVES,
         MTPROTO_CFG_FINALIZE_ERR_NO_PROXY_SERVERS_DEFINED, MTPROTO_CFG_FINALIZE_OK,
         MTPROTO_CFG_GETLEX_EXT_OK, MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_NOT_FOUND,
-        MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_OK, MTPROTO_CFG_PARSE_SERVER_PORT_ERR_HOSTNAME_EXPECTED,
-        MTPROTO_CFG_PARSE_SERVER_PORT_ERR_PORT_EXPECTED,
-        MTPROTO_CFG_PARSE_SERVER_PORT_ERR_PORT_RANGE,
-        MTPROTO_CFG_PARSE_SERVER_PORT_ERR_TOO_MANY_TARGETS, MTPROTO_CFG_PARSE_SERVER_PORT_OK,
+        MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_OK,
         MTPROTO_CFG_PARSE_PROXY_TARGET_STEP_ERR_CLUSTER_EXTEND_INVARIANT,
         MTPROTO_CFG_PARSE_PROXY_TARGET_STEP_ERR_EXPECTED_SEMICOLON,
         MTPROTO_CFG_PARSE_PROXY_TARGET_STEP_ERR_PROXIES_INTERMIXED,
@@ -4289,88 +4121,6 @@ mod tests {
             rc,
             MTPROTO_CFG_CLUSTER_APPLY_DECISION_ERR_TOO_MANY_AUTH_CLUSTERS
         );
-    }
-
-    #[test]
-    fn mtproto_config_server_port_helper_matches_preview_expectations() {
-        let input = b" host-01:8443";
-        let mut out = MtproxyMtprotoCfgParseServerPortResult::default();
-        let rc = unsafe {
-            mtproxy_ffi_mtproto_cfg_parse_server_port(
-                input.as_ptr().cast(),
-                input.len(),
-                7,
-                16,
-                2,
-                64,
-                &raw mut out,
-            )
-        };
-        assert_eq!(rc, MTPROTO_CFG_PARSE_SERVER_PORT_OK);
-        assert_eq!(out.advance, input.len());
-        assert_eq!(out.target_index, 7);
-        assert_eq!(out.host_len, 7);
-        assert_eq!(out.port, 8443);
-        assert_eq!(out.min_connections, 2);
-        assert_eq!(out.max_connections, 64);
-    }
-
-    #[test]
-    fn mtproto_config_server_port_helper_reports_expected_errors() {
-        let mut out = MtproxyMtprotoCfgParseServerPortResult::default();
-        let rc = unsafe {
-            mtproxy_ffi_mtproto_cfg_parse_server_port(
-                b"h:70000".as_ptr().cast(),
-                7,
-                0,
-                16,
-                2,
-                64,
-                &raw mut out,
-            )
-        };
-        assert_eq!(rc, MTPROTO_CFG_PARSE_SERVER_PORT_ERR_PORT_RANGE);
-
-        let rc = unsafe {
-            mtproxy_ffi_mtproto_cfg_parse_server_port(
-                b"h".as_ptr().cast(),
-                1,
-                0,
-                16,
-                2,
-                64,
-                &raw mut out,
-            )
-        };
-        assert_eq!(rc, MTPROTO_CFG_PARSE_SERVER_PORT_ERR_PORT_EXPECTED);
-
-        let rc = unsafe {
-            mtproxy_ffi_mtproto_cfg_parse_server_port(
-                b"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:1"
-                    .as_ptr()
-                    .cast(),
-                66,
-                0,
-                16,
-                2,
-                64,
-                &raw mut out,
-            )
-        };
-        assert_eq!(rc, MTPROTO_CFG_PARSE_SERVER_PORT_ERR_HOSTNAME_EXPECTED);
-
-        let rc = unsafe {
-            mtproxy_ffi_mtproto_cfg_parse_server_port(
-                b"h:1".as_ptr().cast(),
-                3,
-                4,
-                4,
-                2,
-                64,
-                &raw mut out,
-            )
-        };
-        assert_eq!(rc, MTPROTO_CFG_PARSE_SERVER_PORT_ERR_TOO_MANY_TARGETS);
     }
 
     #[test]
@@ -4884,37 +4634,6 @@ mod tests {
         let rc =
             unsafe { mtproxy_ffi_mtproto_cfg_finalize(1, core::ptr::null(), 0, 0, &raw mut out) };
         assert_eq!(rc, MTPROTO_CFG_FINALIZE_ERR_NO_PROXY_SERVERS_DEFINED);
-    }
-
-    #[test]
-    fn mtproto_old_cluster_helpers_follow_c_contiguity_rules() {
-        let mut state = MtproxyMtprotoOldClusterState::default();
-        assert_eq!(
-            unsafe { mtproxy_ffi_mtproto_init_old_cluster(3, -2, 1, &raw mut state) },
-            0
-        );
-        assert_eq!(state.cluster_id, -2);
-        assert_eq!(state.flags, 1);
-        assert_eq!(state.targets_num, 1);
-        assert_eq!(state.write_targets_num, 1);
-        assert_eq!(state.has_first_target_index, 1);
-        assert_eq!(state.first_target_index, 3);
-
-        assert_eq!(
-            unsafe { mtproxy_ffi_mtproto_extend_old_cluster(&raw mut state, 4, -2) },
-            1
-        );
-        assert_eq!(state.targets_num, 2);
-        assert_eq!(state.write_targets_num, 2);
-
-        assert_eq!(
-            unsafe { mtproxy_ffi_mtproto_extend_old_cluster(&raw mut state, 6, -2) },
-            0
-        );
-        assert_eq!(
-            unsafe { mtproxy_ffi_mtproto_extend_old_cluster(&raw mut state, 5, -3) },
-            0
-        );
     }
 
     #[test]
