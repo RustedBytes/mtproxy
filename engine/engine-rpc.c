@@ -278,25 +278,6 @@ void free_vars_to_be_freed(void) {}
 void tl_printf_clear(void) __attribute__((weak));
 void tl_printf_clear(void) {}
 
-static inline struct paramed_type *
-do_skip_function_any(struct tl_in_state *tlio_in) {
-  free_vars_to_be_freed();
-  return skip_function_any(tlio_in);
-}
-
-static inline struct paramed_type *
-do_fetch_function_any(struct tl_in_state *tlio_in) {
-  free_vars_to_be_freed();
-  tl_printf_clear();
-  return fetch_function_any(tlio_in);
-}
-
-static inline int do_fetch_type_any(struct tl_in_state *tlio_in,
-                                    struct paramed_type *P) {
-  tl_printf_clear();
-  return fetch_type_any(tlio_in, P);
-}
-
 void paramed_type_free(struct paramed_type *P) __attribute__((weak));
 void paramed_type_free(struct paramed_type *P) {}
 

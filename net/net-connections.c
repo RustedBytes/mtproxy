@@ -325,13 +325,6 @@ static inline void disable_qack(int fd) {
   assert(setsockopt(fd, IPPROTO_TCP, TCP_QUICKACK, (int[]){0}, sizeof(int)) >=
          0);
 }
-
-static inline void cond_disable_qack(socket_connection_job_t C) {
-  struct socket_connection_info *c = SOCKET_CONN_INFO(C);
-  if (c->flags & C_NOQACK) {
-    disable_qack(c->fd);
-  }
-}
 /* }}} */
 
 /* {{{ CPU PART OF CONNECTION */

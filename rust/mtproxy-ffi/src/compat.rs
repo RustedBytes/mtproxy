@@ -139,123 +139,49 @@ pub unsafe extern "C" fn mtproxy_ffi_get_application_boundary(
 }
 
 fn net_epoll_conv_flags_impl(flags: i32) -> i32 {
-    if flags == 0 {
-        return 0;
-    }
-    let flags_u = u32::from_ne_bytes(flags.to_ne_bytes());
-    let mut out = EPOLLERR;
-    if (flags_u & EVT_READ) != 0 {
-        out |= EPOLLIN;
-    }
-    if (flags_u & EVT_WRITE) != 0 {
-        out |= EPOLLOUT;
-    }
-    if (flags_u & EVT_SPEC) != 0 {
-        out |= EPOLLRDHUP | EPOLLPRI;
-    }
-    if (flags_u & EVT_LEVEL) == 0 {
-        out |= EPOLLET;
-    }
-    i32::from_ne_bytes(out.to_ne_bytes())
+    mtproxy_core::runtime::net::events::epoll_conv_flags(flags)
 }
 
 fn net_epoll_unconv_flags_impl(epoll_flags: i32) -> i32 {
-    let flags_u = u32::from_ne_bytes(epoll_flags.to_ne_bytes());
-    let mut out = EVT_FROM_EPOLL;
-    if (flags_u & (EPOLLIN | EPOLLERR)) != 0 {
-        out |= EVT_READ;
-    }
-    if (flags_u & EPOLLOUT) != 0 {
-        out |= EVT_WRITE;
-    }
-    if (flags_u & (EPOLLRDHUP | EPOLLPRI)) != 0 {
-        out |= EVT_SPEC;
-    }
-    i32::from_ne_bytes(out.to_ne_bytes())
+    mtproxy_core::runtime::net::events::epoll_unconv_flags(epoll_flags)
 }
 
-#[allow(clippy::cast_possible_truncation)]
 fn net_timers_wait_msec_impl(wakeup_time: f64, now: f64) -> i32 {
-    let wait_time = wakeup_time - now;
-    if wait_time <= 0.0 {
-        return 0;
-    }
-    let millis = (wait_time * 1000.0) + 1.0;
-    if !millis.is_finite() || millis >= f64::from(i32::MAX) {
-        i32::MAX
-    } else {
-        millis as i32
-    }
+    mtproxy_core::runtime::net::timers::wait_msec(wakeup_time, now)
 }
 
 fn msg_buffers_pick_size_index_impl(buffer_sizes: &[i32], size_hint: i32) -> i32 {
-    if buffer_sizes.is_empty() {
-        return -1;
-    }
-    let mut idx = i32::try_from(buffer_sizes.len()).unwrap_or(i32::MAX) - 1;
-    if size_hint >= 0 {
-        while idx > 0 {
-            let prev_idx = usize::try_from(idx - 1).unwrap_or(0);
-            if buffer_sizes[prev_idx] < size_hint {
-                break;
-            }
-            idx -= 1;
-        }
-    }
-    idx
+    mtproxy_core::runtime::net::msg_buffers::pick_size_index(buffer_sizes, size_hint)
 }
 
 fn tcp_rpc_encode_compact_header_impl(payload_len: i32, is_medium: i32) -> (i32, i32) {
-    if is_medium != 0 {
-        return (payload_len, 4);
-    }
-    if payload_len <= 0x7e * 4 {
-        return (payload_len >> 2, 1);
-    }
-    let len_u = u32::from_ne_bytes(payload_len.to_ne_bytes());
-    let encoded = (len_u << 6) | 0x7f;
-    (i32::from_ne_bytes(encoded.to_ne_bytes()), 4)
+    mtproxy_core::runtime::net::tcp_rpc_common::encode_compact_header(payload_len, is_medium)
 }
 
 fn tcp_rpc_client_packet_len_state_impl(packet_len: i32, max_packet_len: i32) -> i32 {
-    if packet_len <= 0
-        || (packet_len & 3) != 0
-        || (max_packet_len > 0 && packet_len > max_packet_len)
-    {
-        return TCP_RPC_PACKET_LEN_STATE_INVALID;
-    }
-    if packet_len == 4 {
-        return TCP_RPC_PACKET_LEN_STATE_SKIP;
-    }
-    if packet_len < 16 {
-        return TCP_RPC_PACKET_LEN_STATE_SHORT;
-    }
-    TCP_RPC_PACKET_LEN_STATE_READY
+    mtproxy_core::runtime::net::tcp_rpc_client::packet_len_state(packet_len, max_packet_len)
 }
 
 fn tcp_rpc_server_packet_header_malformed_impl(packet_len: i32) -> i32 {
-    i32::from(
-        packet_len <= 0 || (packet_len & i32::from_ne_bytes(0xc000_0003_u32.to_ne_bytes())) != 0,
-    )
+    mtproxy_core::runtime::net::tcp_rpc_server::packet_header_malformed(packet_len)
 }
 
 fn tcp_rpc_server_packet_len_state_impl(packet_len: i32, max_packet_len: i32) -> i32 {
-    if max_packet_len > 0 && packet_len > max_packet_len {
-        return TCP_RPC_PACKET_LEN_STATE_INVALID;
-    }
-    if packet_len == 4 {
-        return TCP_RPC_PACKET_LEN_STATE_SKIP;
-    }
-    if packet_len < 16 {
-        return TCP_RPC_PACKET_LEN_STATE_INVALID;
-    }
-    TCP_RPC_PACKET_LEN_STATE_READY
+    mtproxy_core::runtime::net::tcp_rpc_server::packet_len_state(packet_len, max_packet_len)
 }
 
 fn rpc_target_normalize_pid_impl(pid: &mut MtproxyProcessId, default_ip: u32) {
-    if pid.ip == 0 {
-        pid.ip = default_ip;
-    }
+    let mut core_pid = mtproxy_core::runtime::net::rpc_targets::ProcessId {
+        ip: pid.ip,
+        port: pid.port,
+        pid: pid.pid,
+        utime: pid.utime,
+    };
+    mtproxy_core::runtime::net::rpc_targets::normalize_pid(&mut core_pid, default_ip);
+    pid.ip = core_pid.ip;
+    pid.port = core_pid.port;
+    pid.pid = core_pid.pid;
+    pid.utime = core_pid.utime;
 }
 
 fn engine_rpc_result_new_flags_impl(old_flags: i32) -> i32 {

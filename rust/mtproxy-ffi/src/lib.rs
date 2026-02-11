@@ -174,22 +174,37 @@ const MTPROTO_CLIENT_PACKET_KIND_UNKNOWN: i32 = 5;
 const MTPROTO_CLIENT_PACKET_KIND_MALFORMED: i32 = 6;
 const CRYPTO_TEMP_DH_PARAMS_MAGIC: i32 = i32::from_ne_bytes(0xab45_ccd3_u32.to_ne_bytes());
 
+#[cfg(test)]
 const TCP_RPC_PACKET_LEN_STATE_SKIP: i32 = 0;
+#[cfg(test)]
 const TCP_RPC_PACKET_LEN_STATE_READY: i32 = 1;
+#[cfg(test)]
 const TCP_RPC_PACKET_LEN_STATE_INVALID: i32 = -1;
+#[cfg(test)]
 const TCP_RPC_PACKET_LEN_STATE_SHORT: i32 = -2;
 
+#[cfg(test)]
 const EVT_SPEC: u32 = 1;
+#[cfg(test)]
 const EVT_WRITE: u32 = 2;
+#[cfg(test)]
 const EVT_READ: u32 = 4;
+#[cfg(test)]
 const EVT_LEVEL: u32 = 8;
+#[cfg(test)]
 const EVT_FROM_EPOLL: u32 = 0x400;
 
+#[cfg(test)]
 const EPOLLIN: u32 = 0x001;
+#[cfg(test)]
 const EPOLLPRI: u32 = 0x002;
+#[cfg(test)]
 const EPOLLOUT: u32 = 0x004;
+#[cfg(test)]
 const EPOLLERR: u32 = 0x008;
+#[cfg(test)]
 const EPOLLRDHUP: u32 = 0x2000;
+#[cfg(test)]
 const EPOLLET: u32 = 0x8000_0000;
 const AES_CREATE_KEYS_MAX_STR_LEN: usize =
     16 + 16 + 4 + 4 + 2 + 6 + 4 + 2 + MAX_PWD_LEN + 16 + 16 + 4 + (16 * 2) + 256;
