@@ -398,18 +398,6 @@ double drand48_j(void) {
 struct mp_queue MainJobQueue __attribute__((aligned(128)));
 
 static struct thread_callback *jobs_cb_list;
-static int jobs_tokio_bridge_enabled;
-
-static int jobs_tokio_bridge_disabled_by_env(void) {
-  static int cached = -1;
-  if (cached >= 0) {
-    return cached;
-  }
-
-  const char *value = getenv("MTPROXY_DISABLE_TOKIO_JOBS_QUEUE");
-  cached = (value && *value && !(value[0] == '0' && !value[1])) ? 1 : 0;
-  return cached;
-}
 
 void process_one_job(JOB_REF_ARG(job), int thread_class);
 
@@ -569,23 +557,12 @@ int init_async_jobs(void) {
 }
 
 int jobs_enable_tokio_bridge(void) {
-  if (jobs_tokio_bridge_disabled_by_env()) {
-    const char *value = getenv("MTPROXY_DISABLE_TOKIO_JOBS_QUEUE");
-    jobs_tokio_bridge_enabled = 0;
-    vkprintf(1,
-             "rust ffi tokio jobs bridge disabled by env: "
-             "MTPROXY_DISABLE_TOKIO_JOBS_QUEUE=%s\n",
-             value ? value : "");
-    return 1;
-  }
-
   int32_t rc = mtproxy_ffi_jobs_tokio_init();
   if (rc < 0) {
     kprintf("fatal: rust ffi tokio jobs bridge init failed (code %d)\n",
             (int)rc);
     return -1;
   }
-  jobs_tokio_bridge_enabled = 1;
   vkprintf(1, "rust ffi tokio jobs bridge enabled for class queue routing\n");
   return 0;
 }
@@ -785,19 +762,13 @@ int unlock_job(JOB_REF_ARG(job)) {
             job, job->j_execute, job->j_flags, job->j_refcnt, req_class);
         vkprintf(JOBS_DEBUG, "sub=%p\n", JT->job_class->subclasses);
         job_t queued_job = PTR_MOVE(job);
-        if (jobs_tokio_bridge_enabled) {
-          int32_t rc =
-              mtproxy_ffi_jobs_tokio_enqueue_class(tokio_class,
-                                                   (void *)queued_job);
-          if (rc < 0) {
-            vkprintf(
-                JOBS_DEBUG,
-                "RUST TOKIO QUEUE FAIL (%d), fallback to C queue for job %p\n",
-                (int)rc, queued_job);
-            mpq_push_w(JQ, queued_job, 0);
-          }
-        } else {
-          mpq_push_w(JQ, queued_job, 0);
+        int32_t rc =
+            mtproxy_ffi_jobs_tokio_enqueue_class(tokio_class, (void *)queued_job);
+        if (rc < 0) {
+          kprintf("fatal: rust tokio class enqueue failed (class=%d rc=%d "
+                  "job=%p)\n",
+                  tokio_class, (int)rc, queued_job);
+          assert(0);
         }
         if (JQ == &MainJobQueue && main_thread_interrupt_status == 1 &&
             __sync_fetch_and_add(&main_thread_interrupt_status, 1) == 1) {
@@ -820,37 +791,25 @@ int unlock_job(JOB_REF_ARG(job)) {
                  job, job->j_execute, job->j_flags, job->j_refcnt, req_class,
                  cur_subclass);
         job_t subclass_job = PTR_MOVE(job);
-        if (jobs_tokio_bridge_enabled) {
-          int32_t rc = mtproxy_ffi_jobs_tokio_enqueue_subclass(
-              req_class, cur_subclass, (void *)subclass_job);
-          if (rc < 0) {
-            vkprintf(
-                JOBS_DEBUG,
-                "RUST TOKIO SUBCLASS JOB QUEUE FAIL (%d), fallback to C queue "
-                "for job %p\n",
-                (int)rc, subclass_job);
-            mpq_push_w(JSC->job_queue, subclass_job, 0);
-          }
-        } else {
-          mpq_push_w(JSC->job_queue, subclass_job, 0);
+        int32_t rc = mtproxy_ffi_jobs_tokio_enqueue_subclass(
+            req_class, cur_subclass, (void *)subclass_job);
+        if (rc < 0) {
+          kprintf("fatal: rust tokio subclass enqueue failed (class=%d "
+                  "subclass=%d rc=%d job=%p)\n",
+                  req_class, cur_subclass, (int)rc, subclass_job);
+          assert(0);
         }
 
         struct mp_queue *JQ = JC->job_queue;
         assert(JQ);
         int tokio_class = (JQ == &MainJobQueue) ? JC_MAIN : req_class;
         void *subclass_token = (void *)(long)(cur_subclass + JOB_SUBCLASS_OFFSET);
-        if (jobs_tokio_bridge_enabled) {
-          int32_t rc =
-              mtproxy_ffi_jobs_tokio_enqueue_class(tokio_class, subclass_token);
-          if (rc < 0) {
-            vkprintf(JOBS_DEBUG,
-                     "RUST TOKIO SUBCLASS QUEUE FAIL (%d), fallback to C queue "
-                     "for token %p\n",
-                     (int)rc, subclass_token);
-            mpq_push_w(JQ, subclass_token, 0);
-          }
-        } else {
-          mpq_push_w(JQ, subclass_token, 0);
+        rc = mtproxy_ffi_jobs_tokio_enqueue_class(tokio_class, subclass_token);
+        if (rc < 0) {
+          kprintf("fatal: rust tokio subclass token enqueue failed "
+                  "(class=%d rc=%d token=%p)\n",
+                  tokio_class, (int)rc, subclass_token);
+          assert(0);
         }
       }
       return 1;
@@ -1047,7 +1006,6 @@ void *job_thread_ex(void *arg, void (*work_one)(void *, int)) {
   JT->status |= JTS_RUNNING;
 
   int thread_class = JT->thread_class;
-  struct mp_queue *Q = JT->job_queue;
   // void **hptr = thread_hazard_pointers;
 
   if (JT->job_class->max_threads == 1) {
@@ -1058,43 +1016,23 @@ void *job_thread_ex(void *arg, void (*work_one)(void *, int)) {
   long long last_rdtsc = 0;
   while (1) {
     void *job = NULL;
-    int use_tokio_queue = jobs_tokio_bridge_enabled;
-    if (use_tokio_queue) {
-      int32_t rc =
-          mtproxy_ffi_jobs_tokio_dequeue_class(thread_class, 0, &job);
-      if (rc <= 0 || !job) {
-        double wait_start = get_utime_monotonic();
-        MODULE_STAT->locked_since = wait_start;
-        rc = mtproxy_ffi_jobs_tokio_dequeue_class(thread_class, 1, &job);
-        double wait_time = get_utime_monotonic() - wait_start;
-        MODULE_STAT->locked_since = 0;
-        MODULE_STAT->tot_idle_time += wait_time;
-        MODULE_STAT->a_idle_time += wait_time;
-      }
-      if (!job) {
-        // If Rust queue produced nothing, fall back to legacy C queue path.
-        job = mpq_pop_nw(Q, 4);
-        if (!job) {
-          double wait_start = get_utime_monotonic();
-          MODULE_STAT->locked_since = wait_start;
-          job = mpq_pop_w(Q, 4);
-          double wait_time = get_utime_monotonic() - wait_start;
-          MODULE_STAT->locked_since = 0;
-          MODULE_STAT->tot_idle_time += wait_time;
-          MODULE_STAT->a_idle_time += wait_time;
-        }
-      }
-    } else {
-      job = mpq_pop_nw(Q, 4);
-      if (!job) {
-        double wait_start = get_utime_monotonic();
-        MODULE_STAT->locked_since = wait_start;
-        job = mpq_pop_w(Q, 4);
-        double wait_time = get_utime_monotonic() - wait_start;
-        MODULE_STAT->locked_since = 0;
-        MODULE_STAT->tot_idle_time += wait_time;
-        MODULE_STAT->a_idle_time += wait_time;
-      }
+    int32_t rc = mtproxy_ffi_jobs_tokio_dequeue_class(thread_class, 0, &job);
+    if (rc <= 0 || !job) {
+      double wait_start = get_utime_monotonic();
+      MODULE_STAT->locked_since = wait_start;
+      rc = mtproxy_ffi_jobs_tokio_dequeue_class(thread_class, 1, &job);
+      double wait_time = get_utime_monotonic() - wait_start;
+      MODULE_STAT->locked_since = 0;
+      MODULE_STAT->tot_idle_time += wait_time;
+      MODULE_STAT->a_idle_time += wait_time;
+    }
+    if (rc < 0) {
+      kprintf("fatal: rust tokio class dequeue failed (class=%d rc=%d)\n",
+              thread_class, (int)rc);
+      assert(0);
+    }
+    if (!job) {
+      continue;
     }
     long long new_rdtsc = rdtsc();
     if (new_rdtsc - last_rdtsc > 1000000) {
@@ -1132,8 +1070,6 @@ static void process_one_sublist(unsigned long id, int class) {
   struct job_class *JC = JT->job_class;
   assert(JC->subclasses);
 
-  struct job_subclass_list *J_SCL = JC->subclasses;
-
   id -= JOB_SUBCLASS_OFFSET;
 
   int subclass_id = id;
@@ -1141,119 +1077,74 @@ static void process_one_sublist(unsigned long id, int class) {
   assert(subclass_id >= -2);
   assert(subclass_id < JC->subclasses->subclass_cnt);
 
-  struct job_subclass *J_SC = &J_SCL->subclasses[subclass_id];
-  int use_tokio_subclass_gate = jobs_tokio_bridge_enabled;
-  if (use_tokio_subclass_gate) {
-    int32_t enter_rc =
-        mtproxy_ffi_jobs_tokio_subclass_enter(JT->thread_class, subclass_id);
-    if (enter_rc <= 0) {
-      return;
-    }
-  } else {
-    __sync_fetch_and_add(&J_SC->allowed_to_run_jobs, 1);
-
-    if (!__sync_bool_compare_and_swap(&J_SC->locked, 0, 1)) {
-      return;
-    }
+  int32_t enter_rc =
+      mtproxy_ffi_jobs_tokio_subclass_enter(JT->thread_class, subclass_id);
+  if (enter_rc < 0) {
+    kprintf("fatal: rust tokio subclass enter failed (class=%d subclass=%d "
+            "rc=%d)\n",
+            JT->thread_class, subclass_id, (int)enter_rc);
+    assert(0);
+  }
+  if (enter_rc == 0) {
+    return;
   }
 
-  int use_tokio_subclass_permits = use_tokio_subclass_gate;
-  if (use_tokio_subclass_permits) {
-    int32_t permit_rc = mtproxy_ffi_jobs_tokio_subclass_permit_acquire(
-        JT->thread_class, subclass_id);
-    if (permit_rc != 0) {
-      vkprintf(JOBS_DEBUG,
-               "RUST TOKIO SUBCLASS PERMIT ACQUIRE FAIL (%d), fallback to C "
-               "semaphore for subclass %d\n",
-               permit_rc, subclass_id);
-      use_tokio_subclass_permits = 0;
-    }
-  }
-
-  if (!use_tokio_subclass_permits) {
-    if (subclass_id != -1) {
-      while (sem_wait(&J_SCL->sem) < 0)
-        ;
-    } else {
-      int i;
-      for (i = 0; i < MAX_SUBCLASS_THREADS; i++) {
-        while (sem_wait(&J_SCL->sem))
-          ;
-      }
-    }
+  int32_t permit_rc = mtproxy_ffi_jobs_tokio_subclass_permit_acquire(
+      JT->thread_class, subclass_id);
+  if (permit_rc != 0) {
+    kprintf("fatal: rust tokio subclass permit acquire failed "
+            "(class=%d subclass=%d rc=%d)\n",
+            JT->thread_class, subclass_id, (int)permit_rc);
+    assert(0);
   }
 
   while (1) {
     while (1) {
-      int has_pending = 0;
-      if (use_tokio_subclass_gate) {
-        int32_t pending_rc =
-            mtproxy_ffi_jobs_tokio_subclass_has_pending(JT->thread_class,
-                                                        subclass_id);
-        has_pending = pending_rc > 0;
-      } else {
-        has_pending = J_SC->processed_jobs < J_SC->allowed_to_run_jobs;
+      int32_t pending_rc = mtproxy_ffi_jobs_tokio_subclass_has_pending(
+          JT->thread_class, subclass_id);
+      if (pending_rc < 0) {
+        kprintf("fatal: rust tokio subclass pending check failed "
+                "(class=%d subclass=%d rc=%d)\n",
+                JT->thread_class, subclass_id, (int)pending_rc);
+        assert(0);
       }
-      if (!has_pending) {
+      if (!pending_rc) {
         break;
       }
       job_t job = NULL;
-      if (jobs_tokio_bridge_enabled) {
-        int32_t rc = mtproxy_ffi_jobs_tokio_dequeue_subclass(
-            JT->thread_class, subclass_id, 0, (void **)&job);
-        if (rc <= 0 || !job) {
-          job = mpq_pop_nw(J_SC->job_queue, 4);
-        }
-      } else {
-        job = mpq_pop_nw(J_SC->job_queue, 4);
+      int32_t rc = mtproxy_ffi_jobs_tokio_dequeue_subclass(
+          JT->thread_class, subclass_id, 1, (void **)&job);
+      if (rc < 0) {
+        kprintf("fatal: rust tokio subclass dequeue failed (class=%d "
+                "subclass=%d rc=%d)\n",
+                JT->thread_class, subclass_id, (int)rc);
+        assert(0);
       }
       assert(job);
 
       process_one_job(JOB_REF_PASS(job), JT->thread_class);
-      if (use_tokio_subclass_gate) {
-        int32_t mark_rc = mtproxy_ffi_jobs_tokio_subclass_mark_processed(
-            JT->thread_class, subclass_id);
-        assert(mark_rc == 0);
-      } else {
-        J_SC->processed_jobs++;
-      }
+      int32_t mark_rc = mtproxy_ffi_jobs_tokio_subclass_mark_processed(
+          JT->thread_class, subclass_id);
+      assert(mark_rc == 0);
     }
 
-    if (use_tokio_subclass_gate) {
-      int32_t cont_rc = mtproxy_ffi_jobs_tokio_subclass_exit_or_continue(
-          JT->thread_class, subclass_id);
-      if (cont_rc > 0) {
-        continue;
-      }
-    } else {
-      J_SC->locked = 0;
-
-      __sync_synchronize();
-
-      if (J_SC->processed_jobs < J_SC->allowed_to_run_jobs &&
-          __sync_bool_compare_and_swap(&J_SC->locked, 0, 1)) {
-        continue;
-      }
+    int32_t cont_rc = mtproxy_ffi_jobs_tokio_subclass_exit_or_continue(
+        JT->thread_class, subclass_id);
+    if (cont_rc < 0) {
+      kprintf("fatal: rust tokio subclass exit/continue failed "
+              "(class=%d subclass=%d rc=%d)\n",
+              JT->thread_class, subclass_id, (int)cont_rc);
+      assert(0);
+    }
+    if (cont_rc > 0) {
+      continue;
     }
     break;
   }
 
-  if (use_tokio_subclass_permits) {
-    int32_t permit_rc = mtproxy_ffi_jobs_tokio_subclass_permit_release(
-        JT->thread_class, subclass_id);
-    assert(permit_rc == 0);
-  } else {
-    if (subclass_id != -1) {
-      while (sem_post(&J_SCL->sem) < 0)
-        ;
-    } else {
-      int i;
-      for (i = 0; i < MAX_SUBCLASS_THREADS; i++) {
-        while (sem_post(&J_SCL->sem))
-          ;
-      }
-    }
-  }
+  permit_rc = mtproxy_ffi_jobs_tokio_subclass_permit_release(JT->thread_class,
+                                                              subclass_id);
+  assert(permit_rc == 0);
 }
 
 static void process_one_sublist_gw(void *x, int class) {
@@ -1281,33 +1172,20 @@ static int32_t jobs_process_main_job_from_tokio(void *job_ptr) {
 }
 
 int run_pending_main_jobs(void) {
-  if (!MainJobQueue.mq_magic) {
-    return -1;
-  }
   struct job_thread *JT = this_job_thread;
   assert(JT && JT->thread_class == JC_MAIN);
   JT->status |= JTS_RUNNING;
 
-  int cnt = 0;
-  if (jobs_tokio_bridge_enabled) {
-    int32_t tokio_cnt =
-        mtproxy_ffi_jobs_tokio_drain_main(jobs_process_main_job_from_tokio, 0);
-    if (tokio_cnt > 0) {
-      cnt += tokio_cnt;
-    }
-  }
-  while (1) {
-    job_t job = mpq_pop_nw(&MainJobQueue, 4);
-    if (!job) {
-      break;
-    }
-    vkprintf(JOBS_DEBUG, "MAIN THREAD: got job %p\n", job);
-    process_one_job(JOB_REF_PASS(job), JC_MAIN);
-    cnt++;
+  int32_t tokio_cnt =
+      mtproxy_ffi_jobs_tokio_drain_main(jobs_process_main_job_from_tokio, 0);
+  if (tokio_cnt < 0) {
+    kprintf("fatal: rust tokio main queue drain failed (rc=%d)\n",
+            (int)tokio_cnt);
+    assert(0);
   }
 
   JT->status &= ~JTS_RUNNING;
-  return cnt;
+  return tokio_cnt;
 }
 
 /* ------ JOB CREATION/QUEUEING ------ */

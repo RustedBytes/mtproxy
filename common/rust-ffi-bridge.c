@@ -480,19 +480,13 @@ int rust_ffi_enable_concurrency_bridges(void) {
     return -2;
   }
 
-  int jobs_bridge_rc = jobs_enable_tokio_bridge();
-  if (jobs_bridge_rc < 0) {
+  if (jobs_enable_tokio_bridge() < 0) {
     kprintf("fatal: rust ffi tokio jobs bridge enable failed\n");
     return -3;
   }
 
-  if (jobs_bridge_rc == 0) {
-    vkprintf(1, "rust ffi concurrency boundary validated; tokio jobs bridge "
-                "enabled\n");
-  } else {
-    vkprintf(1, "rust ffi concurrency boundary validated; tokio jobs bridge "
-                "disabled\n");
-  }
+  vkprintf(1, "rust ffi concurrency boundary validated; tokio jobs bridge "
+              "enabled\n");
   return 0;
 }
 
