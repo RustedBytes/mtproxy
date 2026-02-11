@@ -35,16 +35,10 @@ const MIN_PWD_LEN: usize = 32;
 const MAX_PWD_LEN: usize = 256;
 const DEFAULT_PWD_FILE: &str = "secret";
 const HEX_LOWER: &[u8; 16] = b"0123456789abcdef";
-const TL_ERROR_HEADER: i32 = -1002;
+#[cfg(test)]
 const RPC_INVOKE_REQ: i32 = 0x2374_df3d;
-const RPC_INVOKE_KPHP_REQ: i32 = i32::from_ne_bytes(0x99a3_7fda_u32.to_ne_bytes());
-const RPC_REQ_ERROR: i32 = 0x7ae4_32f5;
+#[cfg(test)]
 const RPC_REQ_RESULT: i32 = 0x63ae_da4e;
-const RPC_REQ_ERROR_WRAPPED: i32 = RPC_REQ_ERROR + 1;
-const RPC_DEST_ACTOR: i32 = 0x7568_aabd;
-const RPC_DEST_ACTOR_FLAGS: i32 = i32::from_ne_bytes(0xf0a5_acf7_u32.to_ne_bytes());
-const RPC_DEST_FLAGS: i32 = i32::from_ne_bytes(0xe352_035e_u32.to_ne_bytes());
-const RPC_REQ_RESULT_FLAGS: i32 = i32::from_ne_bytes(0x8cc8_4ce1_u32.to_ne_bytes());
 const CONCURRENCY_BOUNDARY_VERSION: u32 = 1;
 const NETWORK_BOUNDARY_VERSION: u32 = 1;
 const RPC_BOUNDARY_VERSION: u32 = 1;
@@ -2130,13 +2124,13 @@ fn refresh_aes_nonce_seed(rand_buf: &mut [u8; 64]) -> bool {
     let mut seed: c_long = 0;
     let seed_len = core::mem::size_of::<c_long>();
     unsafe {
+        core::ptr::copy_nonoverlapping(rand_buf.as_ptr(), (&raw mut seed).cast::<u8>(), seed_len);
+        seed ^= lrand48_j();
         core::ptr::copy_nonoverlapping(
-            rand_buf.as_ptr(),
-            (&raw mut seed).cast::<u8>(),
+            (&raw const seed).cast::<u8>(),
+            rand_buf.as_mut_ptr(),
             seed_len,
         );
-        seed ^= lrand48_j();
-        core::ptr::copy_nonoverlapping((&raw const seed).cast::<u8>(), rand_buf.as_mut_ptr(), seed_len);
         srand48(seed);
     }
     true
@@ -2324,7 +2318,9 @@ pub unsafe extern "C" fn mtproxy_ffi_crypto_aes_load_pwd_file(
     };
 
     {
-        let mut state = AES_NONCE_RAND_BUF.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let mut state = AES_NONCE_RAND_BUF
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         if !refresh_aes_nonce_seed(&mut state) {
             unsafe {
                 (*main_secret).secret_len = 0;
@@ -2385,7 +2381,9 @@ pub unsafe extern "C" fn mtproxy_ffi_crypto_aes_generate_nonce(out: *mut u8) -> 
     }
     let out_ref = unsafe { &mut *out.cast::<[u8; 16]>() };
 
-    let mut rand_buf = AES_NONCE_RAND_BUF.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut rand_buf = AES_NONCE_RAND_BUF
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     if rand_buf[..16].iter().all(|b| *b == 0) && !refresh_aes_nonce_seed(&mut rand_buf) {
         return -1;
     }
@@ -2406,12 +2404,7 @@ pub unsafe extern "C" fn mtproxy_ffi_crypto_aes_generate_nonce(out: *mut u8) -> 
     rand_buf[32..36].copy_from_slice(&(ts.tv_sec as i32).to_ne_bytes());
     rand_buf[36..40].copy_from_slice(&(ts.tv_nsec as i32).to_ne_bytes());
 
-    let mut ctr = i32::from_ne_bytes([
-        rand_buf[40],
-        rand_buf[41],
-        rand_buf[42],
-        rand_buf[43],
-    ]);
+    let mut ctr = i32::from_ne_bytes([rand_buf[40], rand_buf[41], rand_buf[42], rand_buf[43]]);
     ctr = ctr.wrapping_add(1);
     rand_buf[40..44].copy_from_slice(&ctr.to_ne_bytes());
 
@@ -2471,9 +2464,7 @@ pub unsafe extern "C" fn mtproxy_ffi_crypto_free_temp(ptr: *mut c_void, len: i32
 /// # Safety
 /// `out_dh_params_select` must be writable.
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_crypto_dh_init_params(
-    out_dh_params_select: *mut i32,
-) -> i32 {
+pub unsafe extern "C" fn mtproxy_ffi_crypto_dh_init_params(out_dh_params_select: *mut i32) -> i32 {
     if out_dh_params_select.is_null() {
         return -1;
     }
@@ -2489,7 +2480,12 @@ pub unsafe extern "C" fn mtproxy_ffi_crypto_dh_init_params(
     if select <= 0 {
         return -1;
     }
-    match DH_PARAMS_SELECT_INIT.compare_exchange(0, i64::from(select), Ordering::AcqRel, Ordering::Acquire) {
+    match DH_PARAMS_SELECT_INIT.compare_exchange(
+        0,
+        i64::from(select),
+        Ordering::AcqRel,
+        Ordering::Acquire,
+    ) {
         Ok(_) => {
             unsafe {
                 *out_dh_params_select = select;
@@ -4691,20 +4687,6 @@ pub unsafe extern "C" fn mtproxy_ffi_cfg_getint_signed_zero(
     0
 }
 
-fn read_i32_le(data: &[u8], offset: &mut usize) -> Option<i32> {
-    let end = offset.checked_add(4)?;
-    let bytes: [u8; 4] = data.get(*offset..end)?.try_into().ok()?;
-    *offset = end;
-    Some(i32::from_le_bytes(bytes))
-}
-
-fn read_i64_le(data: &[u8], offset: &mut usize) -> Option<i64> {
-    let end = offset.checked_add(8)?;
-    let bytes: [u8; 8] = data.get(*offset..end)?.try_into().ok()?;
-    *offset = end;
-    Some(i64::from_le_bytes(bytes))
-}
-
 #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 fn copy_error_message(out: &mut MtproxyTlHeaderParseResult, message: &str) {
     let bytes = message.as_bytes();
@@ -4719,175 +4701,46 @@ fn copy_error_message(out: &mut MtproxyTlHeaderParseResult, message: &str) {
     out.error_len = i32::try_from(n).unwrap_or(i32::MAX);
 }
 
-fn tl_parse_flags(data: &[u8], offset: &mut usize, out: &mut MtproxyTlHeaderParseResult) -> bool {
-    let Some(flags) = read_i32_le(data, offset) else {
-        out.status = -1;
-        out.errnum = TL_ERROR_HEADER;
-        copy_error_message(out, "Trying to read 4 bytes at header flags");
-        return false;
-    };
-    if (out.flags & flags) != 0 {
-        out.status = -1;
-        out.errnum = TL_ERROR_HEADER;
-        let msg = format!("Duplicate flags in header 0x{:08x}", out.flags & flags);
-        copy_error_message(out, &msg);
-        return false;
+fn saturating_i32_from_usize(value: usize) -> i32 {
+    match i32::try_from(value) {
+        Ok(converted) => converted,
+        Err(_) => i32::MAX,
     }
-    if flags != 0 {
-        out.status = -1;
-        out.errnum = TL_ERROR_HEADER;
-        let msg = format!("Unsupported flags in header 0x{flags:08x}");
-        copy_error_message(out, &msg);
-        return false;
-    }
-    out.flags |= flags;
-    true
+}
+
+fn write_tl_parse_success(
+    out: &mut MtproxyTlHeaderParseResult,
+    parsed: mtproxy_core::runtime::config::tl_parse::TlParsedHeader,
+) {
+    out.status = 0;
+    out.consumed = saturating_i32_from_usize(parsed.consumed);
+    out.op = parsed.header.op;
+    out.real_op = parsed.header.real_op;
+    out.flags = parsed.header.flags;
+    out.qid = parsed.header.qid;
+    out.actor_id = parsed.header.actor_id;
+}
+
+fn write_tl_parse_error(
+    out: &mut MtproxyTlHeaderParseResult,
+    err: &mtproxy_core::runtime::config::tl_parse::TlError,
+) {
+    out.status = -1;
+    out.errnum = err.errnum;
+    copy_error_message(out, &err.message);
 }
 
 fn tl_parse_query_header_impl(data: &[u8], out: &mut MtproxyTlHeaderParseResult) {
-    let mut offset = 0usize;
-    let Some(op) = read_i32_le(data, &mut offset) else {
-        out.status = -1;
-        out.errnum = TL_ERROR_HEADER;
-        copy_error_message(out, "Expected RPC_INVOKE_REQ or RPC_INVOKE_KPHP_REQ");
-        return;
-    };
-    out.op = op;
-    out.real_op = op;
-
-    if op != RPC_INVOKE_REQ && op != RPC_INVOKE_KPHP_REQ {
-        out.status = -1;
-        out.errnum = TL_ERROR_HEADER;
-        copy_error_message(out, "Expected RPC_INVOKE_REQ or RPC_INVOKE_KPHP_REQ");
-        return;
-    }
-
-    let Some(qid) = read_i64_le(data, &mut offset) else {
-        out.status = -1;
-        out.errnum = TL_ERROR_HEADER;
-        copy_error_message(out, "Expected RPC_INVOKE_REQ or RPC_INVOKE_KPHP_REQ");
-        return;
-    };
-    out.qid = qid;
-
-    if op == RPC_INVOKE_KPHP_REQ {
-        out.status = 0;
-        out.consumed = i32::try_from(offset).unwrap_or(i32::MAX);
-        return;
-    }
-
-    loop {
-        let Some(marker) = read_i32_le(data, &mut offset) else {
-            out.status = -1;
-            out.errnum = TL_ERROR_HEADER;
-            copy_error_message(out, "Expected RPC_INVOKE_REQ or RPC_INVOKE_KPHP_REQ");
-            return;
-        };
-        match marker {
-            RPC_DEST_ACTOR => {
-                let Some(actor) = read_i64_le(data, &mut offset) else {
-                    out.status = -1;
-                    out.errnum = TL_ERROR_HEADER;
-                    copy_error_message(out, "Expected RPC_INVOKE_REQ or RPC_INVOKE_KPHP_REQ");
-                    return;
-                };
-                out.actor_id = actor;
-            }
-            RPC_DEST_ACTOR_FLAGS => {
-                let Some(actor) = read_i64_le(data, &mut offset) else {
-                    out.status = -1;
-                    out.errnum = TL_ERROR_HEADER;
-                    copy_error_message(out, "Expected RPC_INVOKE_REQ or RPC_INVOKE_KPHP_REQ");
-                    return;
-                };
-                out.actor_id = actor;
-                if !tl_parse_flags(data, &mut offset, out) {
-                    return;
-                }
-            }
-            RPC_DEST_FLAGS => {
-                if !tl_parse_flags(data, &mut offset, out) {
-                    return;
-                }
-            }
-            _ => {
-                offset = offset.saturating_sub(4);
-                out.status = 0;
-                out.consumed = i32::try_from(offset).unwrap_or(i32::MAX);
-                return;
-            }
-        }
+    match mtproxy_core::runtime::config::tl_parse::parse_query_header(data) {
+        Ok(parsed) => write_tl_parse_success(out, parsed),
+        Err(err) => write_tl_parse_error(out, &err),
     }
 }
 
 fn tl_parse_answer_header_impl(data: &[u8], out: &mut MtproxyTlHeaderParseResult) {
-    let mut offset = 0usize;
-    let Some(op) = read_i32_le(data, &mut offset) else {
-        out.status = -1;
-        out.errnum = TL_ERROR_HEADER;
-        copy_error_message(out, "Expected RPC_REQ_ERROR or RPC_REQ_RESULT");
-        return;
-    };
-    out.op = op;
-    out.real_op = op;
-    if op != RPC_REQ_ERROR && op != RPC_REQ_RESULT {
-        out.status = -1;
-        out.errnum = TL_ERROR_HEADER;
-        copy_error_message(out, "Expected RPC_REQ_ERROR or RPC_REQ_RESULT");
-        return;
-    }
-
-    let Some(qid) = read_i64_le(data, &mut offset) else {
-        out.status = -1;
-        out.errnum = TL_ERROR_HEADER;
-        copy_error_message(out, "Expected RPC_REQ_ERROR or RPC_REQ_RESULT");
-        return;
-    };
-    out.qid = qid;
-
-    loop {
-        if out.op == RPC_REQ_ERROR {
-            out.status = 0;
-            out.consumed = i32::try_from(offset).unwrap_or(i32::MAX);
-            return;
-        }
-
-        let Some(marker) = read_i32_le(data, &mut offset) else {
-            out.status = -1;
-            out.errnum = TL_ERROR_HEADER;
-            copy_error_message(out, "Expected RPC_REQ_ERROR or RPC_REQ_RESULT");
-            return;
-        };
-
-        match marker {
-            RPC_REQ_ERROR => {
-                out.op = RPC_REQ_ERROR_WRAPPED;
-                let Some(_) = read_i64_le(data, &mut offset) else {
-                    out.status = -1;
-                    out.errnum = TL_ERROR_HEADER;
-                    copy_error_message(out, "Expected RPC_REQ_ERROR or RPC_REQ_RESULT");
-                    return;
-                };
-            }
-            RPC_REQ_ERROR_WRAPPED => {
-                out.op = RPC_REQ_ERROR_WRAPPED;
-                offset = offset.saturating_sub(4);
-                out.status = 0;
-                out.consumed = i32::try_from(offset).unwrap_or(i32::MAX);
-                return;
-            }
-            RPC_REQ_RESULT_FLAGS => {
-                if !tl_parse_flags(data, &mut offset, out) {
-                    return;
-                }
-            }
-            _ => {
-                offset = offset.saturating_sub(4);
-                out.status = 0;
-                out.consumed = i32::try_from(offset).unwrap_or(i32::MAX);
-                return;
-            }
-        }
+    match mtproxy_core::runtime::config::tl_parse::parse_answer_header(data) {
+        Ok(parsed) => write_tl_parse_success(out, parsed),
+        Err(err) => write_tl_parse_error(out, &err),
     }
 }
 
@@ -5218,15 +5071,15 @@ mod tests {
         mtproxy_ffi_cfg_getword_len, mtproxy_ffi_cfg_skipspc, mtproxy_ffi_cpuid_fill,
         mtproxy_ffi_crc32_check_and_repair, mtproxy_ffi_crc32_partial, mtproxy_ffi_crc32c_partial,
         mtproxy_ffi_crypto_aes_create_keys, mtproxy_ffi_crypto_dh_first_round,
-        mtproxy_ffi_crypto_dh_get_params_select,
-        mtproxy_ffi_crypto_dh_is_good_rpc_dh_bin, mtproxy_ffi_crypto_dh_second_round,
-        mtproxy_ffi_crypto_dh_third_round, mtproxy_ffi_crypto_rand_bytes,
-        mtproxy_ffi_crypto_tls_generate_public_key, mtproxy_ffi_engine_rpc_result_header_len,
-        mtproxy_ffi_engine_rpc_result_new_flags, mtproxy_ffi_get_application_boundary,
-        mtproxy_ffi_get_concurrency_boundary, mtproxy_ffi_get_crypto_boundary,
-        mtproxy_ffi_get_network_boundary, mtproxy_ffi_get_precise_time,
-        mtproxy_ffi_get_rpc_boundary, mtproxy_ffi_get_utime_monotonic, mtproxy_ffi_matches_pid,
-        mtproxy_ffi_gf32_combine_clmul, mtproxy_ffi_gf32_compute_powers_clmul, mtproxy_ffi_md5,
+        mtproxy_ffi_crypto_dh_get_params_select, mtproxy_ffi_crypto_dh_is_good_rpc_dh_bin,
+        mtproxy_ffi_crypto_dh_second_round, mtproxy_ffi_crypto_dh_third_round,
+        mtproxy_ffi_crypto_rand_bytes, mtproxy_ffi_crypto_tls_generate_public_key,
+        mtproxy_ffi_engine_rpc_result_header_len, mtproxy_ffi_engine_rpc_result_new_flags,
+        mtproxy_ffi_get_application_boundary, mtproxy_ffi_get_concurrency_boundary,
+        mtproxy_ffi_get_crypto_boundary, mtproxy_ffi_get_network_boundary,
+        mtproxy_ffi_get_precise_time, mtproxy_ffi_get_rpc_boundary,
+        mtproxy_ffi_get_utime_monotonic, mtproxy_ffi_gf32_combine_clmul,
+        mtproxy_ffi_gf32_compute_powers_clmul, mtproxy_ffi_matches_pid, mtproxy_ffi_md5,
         mtproxy_ffi_md5_hex, mtproxy_ffi_msg_buffers_pick_size_index,
         mtproxy_ffi_mtproto_cfg_decide_cluster_apply, mtproxy_ffi_mtproto_cfg_expect_semicolon,
         mtproxy_ffi_mtproto_cfg_finalize, mtproxy_ffi_mtproto_cfg_getlex_ext,
@@ -6593,7 +6446,8 @@ mod tests {
     #[test]
     fn crc32_check_and_repair_fixes_single_bit_flip() {
         let mut data = *b"abcdef012345";
-        let original_crc = (unsafe { mtproxy_ffi_crc32_partial(data.as_ptr(), data.len(), u32::MAX) }) ^ u32::MAX;
+        let original_crc =
+            (unsafe { mtproxy_ffi_crc32_partial(data.as_ptr(), data.len(), u32::MAX) }) ^ u32::MAX;
         let mut stored_crc = original_crc;
         data[4] ^= 0x04;
 

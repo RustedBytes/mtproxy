@@ -2,6 +2,8 @@
 
 //! Core Rust components for the `MTProxy` migration.
 
+extern crate alloc;
+
 pub mod runtime;
 pub mod step15;
 

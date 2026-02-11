@@ -809,8 +809,11 @@ pub fn cfg_parse_config_full_pass<const MAX_CLUSTERS: usize>(
         }
     }
 
-    let default_cluster_index =
-        finalize_parse_config_state(have_proxy, &cluster_ids[..auth_clusters], default_cluster_id)?;
+    let default_cluster_index = finalize_parse_config_state(
+        have_proxy,
+        &cluster_ids[..auth_clusters],
+        default_cluster_id,
+    )?;
     Ok(MtprotoParseConfigPassResult {
         tot_targets,
         auth_clusters,
@@ -1205,17 +1208,14 @@ pub fn parse_config_directive_blocks<const MAX_CLUSTERS: usize, const MAX_TARGET
 #[cfg(test)]
 mod tests {
     use super::{
-        cfg_expect_semicolon, cfg_getlex_ext, cfg_parse_config_full_pass, cfg_parse_directive_step, cfg_parse_server_port,
-        cfg_parse_server_port_preview,
-        cfg_parse_proxy_target_step,
-        decide_proxy_cluster_apply,
-        extend_old_mf_cluster, finalize_parse_config_state, init_old_mf_cluster,
-        mf_cluster_lookup_index, parse_config_directive_blocks, preinit_config,
-        preinit_config_snapshot,
-        MtprotoClusterState, MtprotoConfigDefaults, MtprotoConfigState, MtprotoDirectiveParseError,
-        MtprotoDirectiveParseOptions, MtprotoClusterApplyDecision, MtprotoProxyTargetPassAction,
-        MtprotoClusterTargetsAction,
-        MtprotoClusterApplyDecisionKind, CFG_LEX_EOF, CFG_LEX_INVALID,
+        cfg_expect_semicolon, cfg_getlex_ext, cfg_parse_config_full_pass, cfg_parse_directive_step,
+        cfg_parse_proxy_target_step, cfg_parse_server_port, cfg_parse_server_port_preview,
+        decide_proxy_cluster_apply, extend_old_mf_cluster, finalize_parse_config_state,
+        init_old_mf_cluster, mf_cluster_lookup_index, parse_config_directive_blocks,
+        preinit_config, preinit_config_snapshot, MtprotoClusterApplyDecision,
+        MtprotoClusterApplyDecisionKind, MtprotoClusterState, MtprotoClusterTargetsAction,
+        MtprotoConfigDefaults, MtprotoConfigState, MtprotoDirectiveParseError,
+        MtprotoDirectiveParseOptions, MtprotoProxyTargetPassAction, CFG_LEX_EOF, CFG_LEX_INVALID,
     };
 
     fn lexeme(byte: u8) -> i32 {
@@ -1487,7 +1487,10 @@ mod tests {
 
         cursor = 0;
         let err = cfg_expect_semicolon(b":", &mut cursor).expect_err("colon must fail");
-        assert_eq!(err, MtprotoDirectiveParseError::ExpectedSemicolon(i32::from(b':')));
+        assert_eq!(
+            err,
+            MtprotoDirectiveParseError::ExpectedSemicolon(i32::from(b':'))
+        );
     }
 
     #[test]
@@ -1502,9 +1505,8 @@ mod tests {
     #[test]
     fn cfg_parse_directive_step_returns_proxy_decision_without_host_parse() {
         let cluster_ids = [4, -2];
-        let step =
-            cfg_parse_directive_step(b"proxy_for -2   dc1:443;", 2, 64, &cluster_ids, 8)
-                .expect("proxy step parse");
+        let step = cfg_parse_directive_step(b"proxy_for -2   dc1:443;", 2, 64, &cluster_ids, 8)
+            .expect("proxy step parse");
         assert_eq!(step.kind, super::MtprotoDirectiveTokenKind::ProxyFor);
         assert_eq!(step.value, -2);
         assert_eq!(step.advance, 15);
@@ -1526,20 +1528,9 @@ mod tests {
 
     #[test]
     fn cfg_parse_proxy_target_step_create_new_with_targets_returns_full_mutation() {
-        let step = cfg_parse_proxy_target_step(
-            b"dc1:443;",
-            2,
-            16,
-            5,
-            10,
-            &[-2],
-            3,
-            8,
-            true,
-            1,
-            None,
-        )
-        .expect("proxy step parse");
+        let step =
+            cfg_parse_proxy_target_step(b"dc1:443;", 2, 16, 5, 10, &[-2], 3, 8, true, 1, None)
+                .expect("proxy step parse");
 
         assert_eq!(step.advance, 8);
         assert_eq!(step.target_index, 2);
@@ -1590,7 +1581,10 @@ mod tests {
         )
         .expect("append step parse");
 
-        assert_eq!(step.cluster_apply_decision.kind, MtprotoClusterApplyDecisionKind::AppendLast);
+        assert_eq!(
+            step.cluster_apply_decision.kind,
+            MtprotoClusterApplyDecisionKind::AppendLast
+        );
         assert_eq!(step.cluster_apply_decision.cluster_index, 0);
         assert_eq!(step.cluster_state_after.cluster_id, -2);
         assert_eq!(step.cluster_state_after.targets_num, 3);
@@ -1627,7 +1621,10 @@ mod tests {
         )
         .expect_err("broken contiguity should fail");
 
-        assert_eq!(err, MtprotoDirectiveParseError::InternalClusterExtendInvariant);
+        assert_eq!(
+            err,
+            MtprotoDirectiveParseError::InternalClusterExtendInvariant
+        );
     }
 
     #[test]
