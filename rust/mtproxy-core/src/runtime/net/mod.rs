@@ -106,7 +106,7 @@ pub const NET_MODULE_PLAN: [NetModulePlanEntry; 15] = [
     NetModulePlanEntry {
         c_translation_unit: "net/net-thread.c",
         rust_module: "runtime::net::thread",
-        state: NetMigrationState::Planned,
+        state: NetMigrationState::HelperExtracted,
     },
     NetModulePlanEntry {
         c_translation_unit: "net/net-timers.c",

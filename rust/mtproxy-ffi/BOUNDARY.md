@@ -31,6 +31,7 @@ Current exported API:
 - `mtproxy_ffi_net_epoll_unconv_flags(...)`
 - `mtproxy_ffi_net_timers_wait_msec(...)`
 - `mtproxy_ffi_msg_buffers_pick_size_index(...)`
+- `mtproxy_ffi_net_thread_run_notification_event(...)`
 - Step 11 boundary contract probe:
 - `mtproxy_ffi_get_rpc_boundary(...)` (reports tcp-rpc/rpc-target operation contract vs implemented subsets)
 - Step 11 rpc/tcp helpers:
@@ -95,6 +96,7 @@ Current exported API:
 - `net/net-tcp-rpc-client.c` delegates non-compact packet-length classification helper to Rust (Step 14 decommission batch removed C fallback path).
 - `net/net-tcp-rpc-server.c` delegates packet-header malformed check and packet-length classification helpers to Rust (Step 14 decommission batch removed C fallback path).
 - `net/net-rpc-targets.c` delegates zero-ip PID normalization helper to Rust (Step 14 decommission batch removed C fallback path).
+- `net/net-thread.c` delegates notification event dispatch branch logic to Rust via callback bridge.
 - `net/net-crypto-aes.c` delegates key derivation, connection AES lifecycle, secret-file load, nonce generation, and temp-buffer management to Rust.
 - `net/net-crypto-dh.c` delegates DH params init and all DH rounds/stat counters to Rust.
 - `crypto/aesni256.c` can delegate `EVP_CipherUpdate` wrapper helper to Rust when symbols are linked.

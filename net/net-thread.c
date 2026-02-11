@@ -40,31 +40,55 @@ struct notification_event {
   void *who;
 };
 
-void run_notification_event(struct notification_event *ev) {
-  connection_job_t C = ev->who;
-  switch (ev->type) {
-  case NEV_TCP_CONN_READY:
-    if (TCP_RPCC_FUNC(C)->rpc_ready && TCP_RPCC_FUNC(C)->rpc_ready(C) < 0) {
-      fail_connection(C, -8);
-    }
-    job_decref(JOB_REF_PASS(C));
-    break;
-  case NEV_TCP_CONN_CLOSE:
-    TCP_RPCC_FUNC(C)->rpc_close(C, 0);
-    job_decref(JOB_REF_PASS(C));
-    break;
-  case NEV_TCP_CONN_ALARM:
-    TCP_RPCC_FUNC(C)->rpc_alarm(C);
-    job_decref(JOB_REF_PASS(C));
-    break;
-  case NEV_TCP_CONN_WAKEUP:
-    TCP_RPCC_FUNC(C)->rpc_wakeup(C);
-    job_decref(JOB_REF_PASS(C));
-    break;
-  default:
-    assert(0);
+extern int32_t mtproxy_ffi_net_thread_run_notification_event(
+    int32_t event_type, void *who, void *event,
+    int32_t (*rpc_ready)(void *who), void (*rpc_close)(void *who),
+    void (*rpc_alarm)(void *who), void (*rpc_wakeup)(void *who),
+    void (*fail_connection)(void *who, int32_t code),
+    void (*job_decref)(void *who), void (*event_free)(void *event));
+
+static int32_t net_thread_rpc_ready_bridge(void *who) {
+  connection_job_t C = who;
+  if (TCP_RPCC_FUNC(C)->rpc_ready) {
+    return TCP_RPCC_FUNC(C)->rpc_ready(C);
   }
-  free(ev);
+  return 0;
+}
+
+static void net_thread_rpc_close_bridge(void *who) {
+  connection_job_t C = who;
+  TCP_RPCC_FUNC(C)->rpc_close(C, 0);
+}
+
+static void net_thread_rpc_alarm_bridge(void *who) {
+  connection_job_t C = who;
+  TCP_RPCC_FUNC(C)->rpc_alarm(C);
+}
+
+static void net_thread_rpc_wakeup_bridge(void *who) {
+  connection_job_t C = who;
+  TCP_RPCC_FUNC(C)->rpc_wakeup(C);
+}
+
+static void net_thread_fail_connection_bridge(void *who, int32_t code) {
+  connection_job_t C = who;
+  fail_connection(C, code);
+}
+
+static void net_thread_job_decref_bridge(void *who) {
+  connection_job_t C = who;
+  job_decref(JOB_REF_PASS(C));
+}
+
+static void net_thread_event_free_bridge(void *event) { free(event); }
+
+void run_notification_event(struct notification_event *ev) {
+  int32_t rc = mtproxy_ffi_net_thread_run_notification_event(
+      ev->type, ev->who, ev, net_thread_rpc_ready_bridge,
+      net_thread_rpc_close_bridge, net_thread_rpc_alarm_bridge,
+      net_thread_rpc_wakeup_bridge, net_thread_fail_connection_bridge,
+      net_thread_job_decref_bridge, net_thread_event_free_bridge);
+  assert(rc == 0);
 }
 
 struct notification_event_job_extra {

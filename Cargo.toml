@@ -9,7 +9,9 @@ resolver = "2"
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
+authors = ["Yehor Smoliakov <egorsmkv@gmail.com>"]
 license = "GPL-2.0-or-later"
+repository = "https://github.com/RustedBytes/mtproxy"
 publish = false
 
 [profile.release]

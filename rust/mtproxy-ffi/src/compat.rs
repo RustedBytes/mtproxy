@@ -205,6 +205,79 @@ fn net_translate_ip_impl(local_ip: u32) -> u32 {
     mtproxy_core::runtime::net::connections::nat_translate_ip(local_ip)
 }
 
+type NetThreadRpcReadyFn = unsafe extern "C" fn(*mut c_void) -> i32;
+type NetThreadRpcFn = unsafe extern "C" fn(*mut c_void);
+type NetThreadFailConnectionFn = unsafe extern "C" fn(*mut c_void, i32);
+
+struct NetThreadCallbackOps {
+    rpc_ready: NetThreadRpcReadyFn,
+    rpc_close: NetThreadRpcFn,
+    rpc_alarm: NetThreadRpcFn,
+    rpc_wakeup: NetThreadRpcFn,
+    fail_connection: NetThreadFailConnectionFn,
+    job_decref: NetThreadRpcFn,
+    event_free: NetThreadRpcFn,
+}
+
+impl mtproxy_core::runtime::net::thread::NotificationEventOps for NetThreadCallbackOps {
+    fn rpc_ready(&mut self, who: *mut c_void) -> i32 {
+        unsafe { (self.rpc_ready)(who) }
+    }
+
+    fn rpc_close(&mut self, who: *mut c_void) {
+        unsafe { (self.rpc_close)(who) };
+    }
+
+    fn rpc_alarm(&mut self, who: *mut c_void) {
+        unsafe { (self.rpc_alarm)(who) };
+    }
+
+    fn rpc_wakeup(&mut self, who: *mut c_void) {
+        unsafe { (self.rpc_wakeup)(who) };
+    }
+
+    fn fail_connection(&mut self, who: *mut c_void, code: i32) {
+        unsafe { (self.fail_connection)(who, code) };
+    }
+
+    fn job_decref(&mut self, who: *mut c_void) {
+        unsafe { (self.job_decref)(who) };
+    }
+
+    fn free_event(&mut self, event: *mut c_void) {
+        unsafe { (self.event_free)(event) };
+    }
+}
+
+fn net_thread_run_notification_event_impl(
+    event_type: i32,
+    who: *mut c_void,
+    event: *mut c_void,
+    rpc_ready: NetThreadRpcReadyFn,
+    rpc_close: NetThreadRpcFn,
+    rpc_alarm: NetThreadRpcFn,
+    rpc_wakeup: NetThreadRpcFn,
+    fail_connection: NetThreadFailConnectionFn,
+    job_decref: NetThreadRpcFn,
+    event_free: NetThreadRpcFn,
+) -> i32 {
+    let mut ops = NetThreadCallbackOps {
+        rpc_ready,
+        rpc_close,
+        rpc_alarm,
+        rpc_wakeup,
+        fail_connection,
+        job_decref,
+        event_free,
+    };
+    match mtproxy_core::runtime::net::thread::run_notification_event(
+        event_type, who, event, &mut ops,
+    ) {
+        Ok(()) => 0,
+        Err(()) => -1,
+    }
+}
+
 fn net_http_error_msg_text_impl(code: i32) -> (i32, *const c_char) {
     let (normalized_code, message) =
         mtproxy_core::runtime::net::http_server::http_error_msg_text(code);
@@ -371,6 +444,57 @@ pub unsafe extern "C" fn mtproxy_ffi_net_add_nat_info(rule_text: *const c_char) 
 #[no_mangle]
 pub extern "C" fn mtproxy_ffi_net_translate_ip(local_ip: u32) -> u32 {
     net_translate_ip_impl(local_ip)
+}
+
+/// Runs one net-thread notification event via Rust dispatcher.
+///
+/// # Safety
+/// All callback pointers must be valid for the duration of the call.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_thread_run_notification_event(
+    event_type: i32,
+    who: *mut c_void,
+    event: *mut c_void,
+    rpc_ready: Option<NetThreadRpcReadyFn>,
+    rpc_close: Option<NetThreadRpcFn>,
+    rpc_alarm: Option<NetThreadRpcFn>,
+    rpc_wakeup: Option<NetThreadRpcFn>,
+    fail_connection: Option<NetThreadFailConnectionFn>,
+    job_decref: Option<NetThreadRpcFn>,
+    event_free: Option<NetThreadRpcFn>,
+) -> i32 {
+    let (
+        Some(rpc_ready),
+        Some(rpc_close),
+        Some(rpc_alarm),
+        Some(rpc_wakeup),
+        Some(fail_connection),
+        Some(job_decref),
+        Some(event_free),
+    ) = (
+        rpc_ready,
+        rpc_close,
+        rpc_alarm,
+        rpc_wakeup,
+        fail_connection,
+        job_decref,
+        event_free,
+    )
+    else {
+        return -1;
+    };
+    net_thread_run_notification_event_impl(
+        event_type,
+        who,
+        event,
+        rpc_ready,
+        rpc_close,
+        rpc_alarm,
+        rpc_wakeup,
+        fail_connection,
+        job_decref,
+        event_free,
+    )
 }
 
 /// Returns HTTP status text and normalizes unknown status code to `500`.
