@@ -98,7 +98,9 @@ pub fn nat_add_rule(local_ip: u32, global_ip: u32) -> Result<i32, NatAddRuleErro
 /// Applies NAT translation to `local_ip`, returning original value if no rule matches.
 #[must_use]
 pub fn nat_translate_ip(local_ip: u32) -> u32 {
-    let rules = NAT_INFO_RULES.load(Ordering::Acquire).min(MAX_NAT_INFO_RULES);
+    let rules = NAT_INFO_RULES
+        .load(Ordering::Acquire)
+        .min(MAX_NAT_INFO_RULES);
     for i in 0..rules {
         if NAT_INFO_LOCAL[i].load(Ordering::Relaxed) == local_ip {
             return NAT_INFO_GLOBAL[i].load(Ordering::Relaxed);
@@ -110,10 +112,9 @@ pub fn nat_translate_ip(local_ip: u32) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::{
-        compute_conn_events, connection_is_active, nat_add_rule, nat_translate_ip, C_CONNECTED,
-        C_ERROR, C_FAILED, C_NET_FAILED, C_NORD, C_NOWR, C_READY_PENDING, C_WANTRD, C_WANTWR,
-        EVT_LEVEL, EVT_READ, EVT_SPEC, EVT_WRITE, MAX_NAT_INFO_RULES, NAT_INFO_RULES,
-        NatAddRuleError,
+        compute_conn_events, connection_is_active, nat_add_rule, nat_translate_ip, NatAddRuleError,
+        C_CONNECTED, C_ERROR, C_FAILED, C_NET_FAILED, C_NORD, C_NOWR, C_READY_PENDING, C_WANTRD,
+        C_WANTWR, EVT_LEVEL, EVT_READ, EVT_SPEC, EVT_WRITE, MAX_NAT_INFO_RULES, NAT_INFO_RULES,
     };
     use core::sync::atomic::Ordering;
 
@@ -184,7 +185,10 @@ mod tests {
             let idx = u32::try_from(i).unwrap_or_default();
             let local = 0x0a00_0000 | idx;
             let global = 0x0b00_0000 | idx;
-            assert_eq!(nat_add_rule(local, global), Ok(i32::try_from(i).unwrap_or(i32::MAX)));
+            assert_eq!(
+                nat_add_rule(local, global),
+                Ok(i32::try_from(i).unwrap_or(i32::MAX))
+            );
         }
 
         assert_eq!(

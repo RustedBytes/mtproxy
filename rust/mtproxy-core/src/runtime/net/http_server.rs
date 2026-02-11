@@ -171,7 +171,9 @@ fn parse_int_prefix(input: &str) -> Option<(i32, &str)> {
     Some((value.saturating_mul(sign), &input[i..]))
 }
 
-fn scanf_like_parse_http_time(date_text: &str) -> Result<(i32, [u8; 3], i32, i32, i32, i32, &str), i32> {
+fn scanf_like_parse_http_time(
+    date_text: &str,
+) -> Result<(i32, [u8; 3], i32, i32, i32, i32, &str), i32> {
     let mut argc = 0i32;
     let mut s = date_text;
 
@@ -307,11 +309,75 @@ pub fn gen_http_time(date_text: &str) -> Result<i32, i32> {
     Ok((((d * 24 + hour) * 60 + min) * 60) + sec)
 }
 
+#[inline]
+fn eq_ascii_case(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    a.iter()
+        .zip(b.iter())
+        .all(|(&x, &y)| x.eq_ignore_ascii_case(&y))
+}
+
+/// Extracts an HTTP header value from raw header bytes.
+///
+/// Mirrors `get_http_header()` scanning semantics from C:
+/// - header name comparison is ASCII case-insensitive
+/// - leading/trailing spaces and tabs around value are trimmed
+/// - returns `None` when header is missing or malformed at end of input
+#[must_use]
+pub fn get_http_header_value<'a>(headers: &'a [u8], arg_name: &[u8]) -> Option<&'a [u8]> {
+    let mut cursor = 0usize;
+    while cursor < headers.len() {
+        let start = cursor;
+        while cursor < headers.len() && headers[cursor] != b':' && headers[cursor] != b'\n' {
+            cursor += 1;
+        }
+        if cursor == headers.len() {
+            return None;
+        }
+
+        if headers[cursor] == b':' {
+            if (cursor - start) == arg_name.len()
+                && eq_ascii_case(arg_name, &headers[start..cursor])
+            {
+                cursor += 1;
+                while cursor < headers.len()
+                    && (headers[cursor] == b'\t' || headers[cursor] == b' ')
+                {
+                    cursor += 1;
+                }
+                let value_start = cursor;
+                while cursor < headers.len() && headers[cursor] != b'\r' && headers[cursor] != b'\n'
+                {
+                    cursor += 1;
+                }
+                let mut value_end = cursor;
+                while value_end > value_start
+                    && (headers[value_end - 1] == b' ' || headers[value_end - 1] == b'\t')
+                {
+                    value_end -= 1;
+                }
+                return Some(&headers[value_start..value_end]);
+            }
+            cursor += 1;
+        }
+
+        while cursor < headers.len() && headers[cursor] != b'\n' {
+            cursor += 1;
+        }
+        if cursor < headers.len() {
+            cursor += 1;
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        gen_http_date, gen_http_time, http_error_msg_text, HTTP_INTERNAL_SERVER_ERROR,
-        HTTP_NOT_FOUND, HTTP_OK,
+        gen_http_date, gen_http_time, get_http_header_value, http_error_msg_text,
+        HTTP_INTERNAL_SERVER_ERROR, HTTP_NOT_FOUND, HTTP_OK,
     };
 
     #[test]
@@ -344,7 +410,10 @@ mod tests {
         assert_eq!(gen_http_time(date), Ok(0));
         let roundtrip = gen_http_date(1_451_606_400);
         assert_eq!(&roundtrip, b"Fri, 01 Jan 2016 00:00:00 GMT");
-        assert_eq!(gen_http_time("Fri, 01 Jan 2016 00:00:00 GMT"), Ok(1_451_606_400));
+        assert_eq!(
+            gen_http_time("Fri, 01 Jan 2016 00:00:00 GMT"),
+            Ok(1_451_606_400)
+        );
     }
 
     #[test]
@@ -353,5 +422,26 @@ mod tests {
         assert_eq!(gen_http_time("Thu, 01 Xxx 1970 00:00:00 GMT"), Err(-11));
         assert_eq!(gen_http_time("Thu, 01 Jan 2060 00:00:00 GMT"), Err(-12));
         assert_eq!(gen_http_time("Thu, 01 Jan 1970 00:00:00 UTC"), Err(-16));
+    }
+
+    #[test]
+    fn finds_http_header_value_case_insensitive() {
+        let headers = b"Host: example.com\r\nUser-Agent:  curl/8.0 \r\n";
+        assert_eq!(
+            get_http_header_value(headers, b"user-agent"),
+            Some(&b"curl/8.0"[..])
+        );
+    }
+
+    #[test]
+    fn returns_none_for_missing_http_header() {
+        let headers = b"Host: example.com\r\n";
+        assert_eq!(get_http_header_value(headers, b"x-real-ip"), None);
+    }
+
+    #[test]
+    fn returns_none_for_unfinished_header_line() {
+        let headers = b"Host";
+        assert_eq!(get_http_header_value(headers, b"host"), None);
     }
 }

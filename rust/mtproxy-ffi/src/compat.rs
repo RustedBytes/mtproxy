@@ -206,7 +206,8 @@ fn net_translate_ip_impl(local_ip: u32) -> u32 {
 }
 
 fn net_http_error_msg_text_impl(code: i32) -> (i32, *const c_char) {
-    let (normalized_code, message) = mtproxy_core::runtime::net::http_server::http_error_msg_text(code);
+    let (normalized_code, message) =
+        mtproxy_core::runtime::net::http_server::http_error_msg_text(code);
     (normalized_code, message.as_ptr().cast::<c_char>())
 }
 
@@ -216,6 +217,21 @@ fn net_http_gen_date_impl(time: i32) -> [u8; 29] {
 
 fn net_http_gen_time_impl(date_text: &str) -> Result<i32, i32> {
     mtproxy_core::runtime::net::http_server::gen_http_time(date_text)
+}
+
+fn net_http_get_header_impl(headers: &[u8], out: &mut [u8], arg_name: &[u8]) -> i32 {
+    let Some(value) =
+        mtproxy_core::runtime::net::http_server::get_http_header_value(headers, arg_name)
+    else {
+        out[0] = 0;
+        return -1;
+    };
+
+    let max_copy = out.len().saturating_sub(1);
+    let copy_len = core::cmp::min(value.len(), max_copy);
+    out[..copy_len].copy_from_slice(&value[..copy_len]);
+    out[copy_len] = 0;
+    i32::try_from(copy_len).unwrap_or(i32::MAX)
 }
 
 fn msg_buffers_pick_size_index_impl(buffer_sizes: &[i32], size_hint: i32) -> i32 {
@@ -422,6 +438,46 @@ pub unsafe extern "C" fn mtproxy_ffi_net_http_gen_time(
         }
         Err(code) => code,
     }
+}
+
+/// Extracts one HTTP header value from raw header block.
+///
+/// # Safety
+/// - `q_headers` must point to `q_headers_len` readable bytes.
+/// - `buffer` must be writable for `b_len` bytes.
+/// - `arg_name` must point to `arg_len` readable bytes.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_http_get_header(
+    q_headers: *const c_char,
+    q_headers_len: i32,
+    buffer: *mut c_char,
+    b_len: i32,
+    arg_name: *const c_char,
+    arg_len: i32,
+) -> i32 {
+    if buffer.is_null() || b_len <= 0 {
+        return -1;
+    }
+    let Ok(buffer_len) = usize::try_from(b_len) else {
+        return -1;
+    };
+    let out = unsafe { core::slice::from_raw_parts_mut(buffer.cast::<u8>(), buffer_len) };
+
+    if q_headers.is_null() || arg_name.is_null() || q_headers_len < 0 || arg_len < 0 {
+        out[0] = 0;
+        return -1;
+    }
+    let Ok(headers_len) = usize::try_from(q_headers_len) else {
+        out[0] = 0;
+        return -1;
+    };
+    let Ok(name_len) = usize::try_from(arg_len) else {
+        out[0] = 0;
+        return -1;
+    };
+    let headers = unsafe { core::slice::from_raw_parts(q_headers.cast::<u8>(), headers_len) };
+    let name = unsafe { core::slice::from_raw_parts(arg_name.cast::<u8>(), name_len) };
+    net_http_get_header_impl(headers, out, name)
 }
 
 /// Selects message-buffer size-class index matching C allocation policy.
