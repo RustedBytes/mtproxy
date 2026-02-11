@@ -95,6 +95,23 @@ typedef struct mtproxy_ffi_mtproto_old_cluster_state {
   int32_t has_first_target_index;
 } mtproxy_ffi_mtproto_old_cluster_state_t;
 
+typedef struct mtproxy_ffi_mtproto_cfg_parse_proxy_target_step_result {
+  size_t advance;
+  uint32_t target_index;
+  uint8_t host_len;
+  uint16_t port;
+  int64_t min_connections;
+  int64_t max_connections;
+  uint32_t tot_targets_after;
+  int32_t cluster_decision_kind;
+  int32_t cluster_index;
+  uint32_t auth_clusters_after;
+  uint32_t auth_tot_clusters_after;
+  mtproxy_ffi_mtproto_old_cluster_state_t cluster_state_after;
+  int32_t cluster_targets_action;
+  uint32_t cluster_targets_index;
+} mtproxy_ffi_mtproto_cfg_parse_proxy_target_step_result_t;
+
 #define MTPROXY_FFI_MTPROTO_CFG_PARSE_SERVER_PORT_OK                     0
 #define MTPROXY_FFI_MTPROTO_CFG_PARSE_SERVER_PORT_ERR_INVALID_ARGS      (-1)
 #define MTPROXY_FFI_MTPROTO_CFG_PARSE_SERVER_PORT_ERR_TOO_MANY_TARGETS  (-2)
@@ -152,6 +169,18 @@ typedef struct mtproxy_ffi_mtproto_old_cluster_state {
 #define MTPROXY_FFI_MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_EXPECTED_SEMICOLON      (-10)
 #define MTPROXY_FFI_MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_INTERNAL                 (-11)
 
+#define MTPROXY_FFI_MTPROTO_CFG_PARSE_PROXY_TARGET_STEP_OK                               0
+#define MTPROXY_FFI_MTPROTO_CFG_PARSE_PROXY_TARGET_STEP_ERR_INVALID_ARGS                (-1)
+#define MTPROXY_FFI_MTPROTO_CFG_PARSE_PROXY_TARGET_STEP_ERR_TOO_MANY_AUTH_CLUSTERS      (-2)
+#define MTPROXY_FFI_MTPROTO_CFG_PARSE_PROXY_TARGET_STEP_ERR_PROXIES_INTERMIXED          (-3)
+#define MTPROXY_FFI_MTPROTO_CFG_PARSE_PROXY_TARGET_STEP_ERR_TOO_MANY_TARGETS            (-4)
+#define MTPROXY_FFI_MTPROTO_CFG_PARSE_PROXY_TARGET_STEP_ERR_HOSTNAME_EXPECTED           (-5)
+#define MTPROXY_FFI_MTPROTO_CFG_PARSE_PROXY_TARGET_STEP_ERR_PORT_EXPECTED               (-6)
+#define MTPROXY_FFI_MTPROTO_CFG_PARSE_PROXY_TARGET_STEP_ERR_PORT_RANGE                  (-7)
+#define MTPROXY_FFI_MTPROTO_CFG_PARSE_PROXY_TARGET_STEP_ERR_EXPECTED_SEMICOLON          (-8)
+#define MTPROXY_FFI_MTPROTO_CFG_PARSE_PROXY_TARGET_STEP_ERR_CLUSTER_EXTEND_INVARIANT    (-9)
+#define MTPROXY_FFI_MTPROTO_CFG_PARSE_PROXY_TARGET_STEP_ERR_INTERNAL                    (-10)
+
 #define MTPROXY_FFI_MTPROTO_CFG_EXPECT_SEMICOLON_OK                     0
 #define MTPROXY_FFI_MTPROTO_CFG_EXPECT_SEMICOLON_ERR_INVALID_ARGS      (-1)
 #define MTPROXY_FFI_MTPROTO_CFG_EXPECT_SEMICOLON_ERR_EXPECTED          (-2)
@@ -163,6 +192,10 @@ typedef struct mtproxy_ffi_mtproto_old_cluster_state {
 #define MTPROXY_FFI_MTPROTO_DIRECTIVE_TOKEN_KIND_PROXY            4
 #define MTPROXY_FFI_MTPROTO_DIRECTIVE_TOKEN_KIND_MAX_CONNECTIONS  5
 #define MTPROXY_FFI_MTPROTO_DIRECTIVE_TOKEN_KIND_MIN_CONNECTIONS  6
+
+#define MTPROXY_FFI_MTPROTO_CFG_CLUSTER_TARGETS_ACTION_KEEP_EXISTING 0
+#define MTPROXY_FFI_MTPROTO_CFG_CLUSTER_TARGETS_ACTION_CLEAR         1
+#define MTPROXY_FFI_MTPROTO_CFG_CLUSTER_TARGETS_ACTION_SET_TARGET    2
 
 typedef struct mtproxy_ffi_tl_header_parse_result {
   int32_t status;
@@ -489,6 +522,23 @@ int32_t mtproxy_ffi_mtproto_cfg_parse_directive_step(
   uint32_t clusters_len,
   uint32_t max_clusters,
   mtproxy_ffi_mtproto_cfg_directive_step_result_t *out
+);
+int32_t mtproxy_ffi_mtproto_cfg_parse_proxy_target_step(
+  const char *cur,
+  size_t len,
+  uint32_t current_targets,
+  uint32_t max_targets,
+  int64_t min_connections,
+  int64_t max_connections,
+  const int32_t *cluster_ids,
+  uint32_t clusters_len,
+  int32_t target_dc,
+  uint32_t max_clusters,
+  int32_t create_targets,
+  uint32_t current_auth_tot_clusters,
+  const mtproxy_ffi_mtproto_old_cluster_state_t *last_cluster_state,
+  int32_t has_last_cluster_state,
+  mtproxy_ffi_mtproto_cfg_parse_proxy_target_step_result_t *out
 );
 int32_t mtproxy_ffi_mtproto_cfg_expect_semicolon(
   const char *cur,
