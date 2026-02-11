@@ -561,7 +561,28 @@
    - [x] 2026-02-11: Removed obsolete post-migration C code in crypto paths: deleted unused `aes_create_keys_c_impl` (`net/net-crypto-aes.c`), removed stale in-file DH prime blob and excess includes (`net/net-crypto-dh.c`), and dropped unused SHA incremental context API surface (`common/sha1.h`, `common/sha1.c`, `common/sha256.h`, `common/sha256.c`); re-verified with `make all`, `cargo test -p mtproxy-ffi`, and golden crypto/hash differential suites.
    - Done when: production runs on Rust by default and deprecated C paths are removed.
 
-15. Final Hardening, Security Review, and Release
+15. Complete Remaining C-to-Rust Port in `rust/mtproxy-bin`
+   - Move all remaining runtime logic still implemented in C into Rust crates.
+   - Make `rust/mtproxy-bin` the authoritative runtime crate that uses only Rust code created from C counterparts.
+   - Remove C runtime linkage from the default production artifact once parity is proven.
+   - Step 15 kickoff checklist (`rust/mtproxy-bin` Rust-only runtime cutover):
+   - [ ] Inventory every remaining C translation unit still linked into the runtime path.
+   - [ ] Create a one-to-one ownership map from each remaining C unit to a Rust module/crate target.
+   - [ ] Port remaining C runtime logic into `rust/mtproxy-core` and `rust/mtproxy-bin` with parity tests.
+   - [ ] Replace remaining FFI runtime call sites with direct Rust module calls in `rust/mtproxy-bin`.
+   - [ ] Switch default runtime/deploy artifact generation to `cargo build -p mtproxy-bin` with no C object linkage.
+   - [ ] Keep C code only as historical reference and golden differential fixtures until deletion gates are met.
+   - [ ] Remove decommissioned C runtime files from active build graph after parity and burn-in pass.
+   - Verification:
+   - [ ] `cargo build -p mtproxy-bin` (PASS; produced artifact is the only runtime binary used for deploy/cutover)
+   - [ ] `cargo test --workspace` (PASS)
+   - [ ] `make test` (PASS with `rust/mtproxy-bin` artifact)
+   - [ ] Link verification confirms no project C runtime objects are linked into released `mtproxy-bin`.
+   - Operation log:
+   - [ ] 2026-02-11: Added Step 15 plan for Rust-only runtime cutover in `rust/mtproxy-bin`.
+   - Done when: `rust/mtproxy-bin` runs MTProxy using only Rust code migrated from C counterparts.
+
+16. Final Hardening, Security Review, and Release
    - Run full performance comparison vs baseline and investigate regressions.
    - Audit all `unsafe`/FFI boundaries, memory ownership, and panic handling strategy.
    - Update docs, runbook, deployment notes, and rollback plan.
