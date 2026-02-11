@@ -52,26 +52,12 @@
 
 #include "net/net-thread.h"
 
-extern int32_t mtproxy_ffi_tcp_rpc_client_packet_len_state (int32_t packet_len, int32_t max_packet_len) __attribute__ ((weak));
+extern int32_t mtproxy_ffi_tcp_rpc_client_packet_len_state (int32_t packet_len, int32_t max_packet_len);
 
 static inline int tcp_rpc_client_packet_len_state (int packet_len, int max_packet_len) {
-  if (mtproxy_ffi_tcp_rpc_client_packet_len_state) {
-    int32_t state = mtproxy_ffi_tcp_rpc_client_packet_len_state (packet_len, max_packet_len);
-    if (state >= -2 && state <= 1) {
-      return state;
-    }
-  }
-
-  if (packet_len <= 0 || (packet_len & 3) || (packet_len > max_packet_len && max_packet_len > 0)) {
-    return -1;
-  }
-  if (packet_len == 4) {
-    return 0;
-  }
-  if (packet_len < 16) {
-    return -2;
-  }
-  return 1;
+  int32_t state = mtproxy_ffi_tcp_rpc_client_packet_len_state (packet_len, max_packet_len);
+  assert (state >= -2 && state <= 1);
+  return state;
 }
 
 /*

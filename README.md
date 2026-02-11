@@ -28,14 +28,6 @@ make && cd objs/bin
 
 If the build has failed, you should run `make clean` before building it again.
 
-Short-lived C fallback build:
-
-```bash
-make c-fallback
-```
-
-This produces `objs/bin/mtproto-proxy-c`.
-
 ## Running
 1. Obtain a secret, used to connect to telegram servers.
 ```bash

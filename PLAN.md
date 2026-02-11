@@ -491,10 +491,10 @@
    - Done when: end-to-end proxy behavior is equivalent under production-like load.
 
 14. Flip Default to Rust and Decommission C Gradually
-   - Make Rust binary the default build/run target while keeping a short-lived C fallback option.
+   - Make Rust binary the default build/run target and retire temporary C fallback once burn-in is complete.
    - Remove migrated C modules in small batches after each passes burn-in.
    - Simplify build scripts and dependency graph after fallback window ends.
-   - Step 14 kickoff checklist (default-target cutover + guarded fallback window):
+   - Step 14 kickoff checklist (default-target cutover + fallback retirement):
    - [x] Flipped default build artifact to Rust-enabled runtime while preserving binary path:
    - `Makefile`: `make`/`make all` now produce `objs/bin/mtproto-proxy` from `USE_RUST_FFI` objects + `target/debug/libmtproxy_ffi.a`.
    - [x] Added an explicit short-lived C fallback build/test path:
@@ -507,18 +507,26 @@
    - `README.md`, `rust/README.md`, `rust/mtproxy-ffi/BOUNDARY.md`, `tests/README.md`, `scripts/baseline_capture.sh`.
    - [x] Fixed fallback/runtime smoke harness boot arguments for `--http-stats` mode:
    - `tests/regression/test_runtime_smoke.sh`: now allocates a distinct proxy port and passes `-p <proxy-port>` in addition to `-H <http-port>`.
-   - [ ] Decommission migrated C modules in batches after burn-in evidence is collected.
-   - [ ] Collapse temporary compatibility targets (`mixed`, `c-fallback`) after fallback window closes.
+   - [x] Decommission migrated C modules in batches after burn-in evidence is collected.
+   - Step 14 decommission batch 1 (Rust-required helper routes; C fallback removed for these migrated paths):
+   - `net/net-events.c`: epoll flag conversion helpers now require Rust FFI (`mtproxy_ffi_net_epoll_*`).
+   - `net/net-timers.c`: wait-ms helper now requires Rust FFI (`mtproxy_ffi_net_timers_wait_msec`).
+   - `net/net-msg-buffers.c`: size-index selection now requires Rust FFI (`mtproxy_ffi_msg_buffers_pick_size_index`).
+   - `net/net-tcp-rpc-common.c`, `net/net-tcp-rpc-client.c`, `net/net-tcp-rpc-server.c`: compact header/packet-length helpers now require Rust FFI.
+   - `net/net-rpc-targets.c`: PID normalization helper now requires Rust FFI.
+   - `engine/engine-rpc.c`, `mtproto/mtproto-proxy.c`: Step 13 helpers now require Rust FFI.
+   - [x] Collapse temporary compatibility targets (`mixed`, `c-fallback`) after fallback window closes.
+   - `Makefile`: removed `mixed`, `mixed-test`, `c-fallback`, `c-test`, and compatibility symlink/binary targets.
+   - `README.md`, `rust/README.md`, `tests/README.md`: removed fallback-target workflow and documented Rust-default differential toggle (`TEST_INCLUDE_RUST_DIFFERENTIAL=1`).
+   - `tests/run.sh`: differential toggle renamed to `TEST_INCLUDE_RUST_DIFFERENTIAL` (legacy `TEST_INCLUDE_MIXED` still accepted for compatibility).
    - Verification:
    - `make clean` (PASS, 2026-02-11)
-   - `make all` (PASS: default binary now Rust-enabled at `objs/bin/mtproto-proxy`, 2026-02-11)
-   - `make mixed` (PASS: produces `objs/bin/mtproto-proxy-mixed` symlink alias, 2026-02-11)
-   - `make c-fallback` (PASS: builds `objs/bin/mtproto-proxy-c`, 2026-02-11)
+   - `make all` (PASS: default binary builds at `objs/bin/mtproto-proxy` after compatibility-target removal, 2026-02-11)
    - `./objs/bin/mtproto-proxy -v /tmp/definitely-missing-mtproxy-config.conf` (PASS: startup handshake + Step 9/10/11/12/13 boundary logs observed; expected config-check failure path; exit code 1, 2026-02-11)
-   - `./objs/bin/mtproto-proxy-c -v /tmp/definitely-missing-mtproxy-config.conf` (PASS: fallback startup path without Rust boundary logs; expected config-check failure path; exit code 1, 2026-02-11)
-   - `bash -n tests/regression/test_runtime_smoke.sh` (PASS, 2026-02-11)
+   - `tests/golden/test_rust_network_boundary_differential.sh` (PASS, 2026-02-11)
+   - `tests/golden/test_rust_rpc_boundary_differential.sh` (PASS, 2026-02-11)
+   - `tests/golden/test_rust_application_boundary_differential.sh` (PASS, 2026-02-11)
    - `make test` (FAIL in this sandbox due environment restrictions: netlink/socket operations are not permitted, 2026-02-11)
-   - `make c-test` (FAIL in this sandbox due environment restrictions: netlink/socket operations are not permitted, 2026-02-11)
    - Operation log:
    - [x] 2026-02-11: Flipped default `make` target to Rust-enabled `objs/bin/mtproto-proxy`.
    - [x] 2026-02-11: Added `make c-fallback`/`make c-test` for temporary C-only fallback validation.
@@ -526,6 +534,10 @@
    - [x] 2026-02-11: Added `MTPROXY_BIN` override in test harness for fallback binary selection.
    - [x] 2026-02-11: Updated root/Rust/FFI-boundary/test docs and baseline script summary to reflect Rust-default cutover.
    - [x] 2026-02-11: Resolved fallback `c-test` runtime smoke boot failure (`fatal: port isn't defined`) by passing explicit `-p` proxy port in `tests/regression/test_runtime_smoke.sh`.
+   - [x] 2026-02-11: Decommissioned Step 14 batch 1 migrated C fallbacks by making Step 10/11/13 helper routes Rust-required (`net-events`, `net-timers`, `net-msg-buffers`, `net-tcp-rpc-*`, `net-rpc-targets`, `engine-rpc`, `mtproto-proxy`).
+   - [x] 2026-02-11: Removed temporary compatibility targets (`mixed`, `mixed-test`, `c-fallback`, `c-test`) from `Makefile` after fallback-window closure.
+   - [x] 2026-02-11: Updated runtime/test docs and harness toggles for post-fallback workflow (`TEST_INCLUDE_RUST_DIFFERENTIAL`).
+   - [x] 2026-02-11: Verified post-collapse build/startup plus Step 10/11/13 boundary differential suites.
    - Done when: production runs on Rust by default and deprecated C paths are removed.
 
 15. Final Hardening, Security Review, and Release

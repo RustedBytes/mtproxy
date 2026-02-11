@@ -28,22 +28,17 @@ DEPDIRS := ${DEP} $(addprefix ${DEP}/,${PROJECTS})
 ALLDIRS := ${DEPDIRS} ${OBJDIRS}
 
 
-.PHONY:	all clean test mixed mixed-test c-fallback c-test rust-check rust-fmt rust-fmt-check rust-clippy rust-test rust-ci
+.PHONY:	all clean test rust-check rust-fmt rust-fmt-check rust-clippy rust-test rust-ci
 
 EXELIST	:= ${EXE}/mtproto-proxy
-C_FALLBACK_EXELIST := ${EXE}/mtproto-proxy-c
-MIXED_EXELIST := ${EXE}/mtproto-proxy-mixed
-
-
-OBJECTS	=	\
-  ${OBJ}/mtproto/mtproto-proxy.o ${OBJ}/mtproto/mtproto-config.o ${OBJ}/net/net-tcp-rpc-ext-server.o
-MIXED_OBJECTS	=	\
-  ${OBJ}/mtproto/mtproto-proxy.mixed.o ${OBJ}/mtproto/mtproto-config.o ${OBJ}/net/net-tcp-rpc-ext-server.o
+RUST_OBJECTS	=	\
+  ${OBJ}/mtproto/mtproto-proxy.rust.o ${OBJ}/mtproto/mtproto-config.o ${OBJ}/net/net-tcp-rpc-ext-server.o
+RUST_OBJECTS_COMMON	=	\
+  ${OBJ}/mtproto/mtproto-config.o ${OBJ}/net/net-tcp-rpc-ext-server.o
 
 DEPENDENCE_CXX		:=	$(subst ${OBJ}/,${DEP}/,$(patsubst %.o,%.d,${OBJECTS_CXX}))
 DEPENDENCE_STRANGE	:=	$(subst ${OBJ}/,${DEP}/,$(patsubst %.o,%.d,${OBJECTS_STRANGE}))
-DEPENDENCE_NORM	:=	$(subst ${OBJ}/,${DEP}/,$(patsubst %.o,%.d,${OBJECTS}))
-DEPENDENCE_MIXED	:=	$(subst ${OBJ}/,${DEP}/,$(patsubst %.o,%.d,${MIXED_OBJECTS}))
+DEPENDENCE_RUST	:=	$(subst ${OBJ}/,${DEP}/,$(patsubst %.o,%.d,${RUST_OBJECTS}))
 
 LIB_OBJS_NORMAL := \
 	${OBJ}/common/crc32c.o \
@@ -76,13 +71,11 @@ LIB_OBJS := ${LIB_OBJS_NORMAL}
 
 DEPENDENCE_LIB	:=	$(subst ${OBJ}/,${DEP}/,$(patsubst %.o,%.d,${LIB_OBJS}))
 
-DEPENDENCE_ALL		:=	${DEPENDENCE_NORM} ${DEPENDENCE_MIXED} ${DEPENDENCE_STRANGE} ${DEPENDENCE_LIB}
+DEPENDENCE_ALL		:=	${DEPENDENCE_RUST} ${DEPENDENCE_STRANGE} ${DEPENDENCE_LIB}
 
-OBJECTS_ALL		:=	${OBJECTS} ${LIB_OBJS}
+OBJECTS_ALL		:=	${RUST_OBJECTS} ${LIB_OBJS}
 
 all:	${ALLDIRS} ${EXELIST}
-mixed: ${ALLDIRS} ${EXELIST} ${MIXED_EXELIST}
-c-fallback: ${ALLDIRS} ${C_FALLBACK_EXELIST}
 dirs: ${ALLDIRS}
 create_dirs_and_headers: ${ALLDIRS} 
 
@@ -91,25 +84,19 @@ ${ALLDIRS}:
 
 -include ${DEPENDENCE_ALL}
 
-${OBJECTS}: ${OBJ}/%.o: %.c | create_dirs_and_headers
+${RUST_OBJECTS_COMMON}: ${OBJ}/%.o: %.c | create_dirs_and_headers
 	${CC} ${CFLAGS} ${CINCLUDE} -c -MP -MD -MF ${DEP}/$*.d -MQ ${OBJ}/$*.o -o $@ $<
 
-${OBJ}/mtproto/mtproto-proxy.mixed.o: mtproto/mtproto-proxy.c | create_dirs_and_headers
-	${CC} ${CFLAGS} -DUSE_RUST_FFI=1 ${CINCLUDE} -c -MP -MD -MF ${DEP}/mtproto/mtproto-proxy.mixed.d -MQ ${OBJ}/mtproto/mtproto-proxy.mixed.o -o $@ $<
+${OBJ}/mtproto/mtproto-proxy.rust.o: mtproto/mtproto-proxy.c | create_dirs_and_headers
+	${CC} ${CFLAGS} -DUSE_RUST_FFI=1 ${CINCLUDE} -c -MP -MD -MF ${DEP}/mtproto/mtproto-proxy.rust.d -MQ ${OBJ}/mtproto/mtproto-proxy.rust.o -o $@ $<
 
 ${LIB_OBJS_NORMAL}: ${OBJ}/%.o: %.c | create_dirs_and_headers
 	${CC} ${CFLAGS} -fpic ${CINCLUDE} -c -MP -MD -MF ${DEP}/$*.d -MQ ${OBJ}/$*.o -o $@ $<
 
 ${EXELIST}: ${LIBLIST}
 
-${EXE}/mtproto-proxy: ${MIXED_OBJECTS} ${LIB}/libkdb.a ${RUST_FFI_STATICLIB}
-	${CC} -o $@ ${MIXED_OBJECTS} ${LIB}/libkdb.a ${RUST_FFI_STATICLIB} ${LDFLAGS} -ldl
-
-${EXE}/mtproto-proxy-c:	${OBJECTS} ${LIB}/libkdb.a
-	${CC} -o $@ ${OBJECTS} ${LIB}/libkdb.a ${LDFLAGS}
-
-${EXE}/mtproto-proxy-mixed: ${EXE}/mtproto-proxy
-	ln -sf mtproto-proxy $@
+${EXE}/mtproto-proxy: ${RUST_OBJECTS} ${LIB}/libkdb.a ${RUST_FFI_STATICLIB}
+	${CC} -o $@ ${RUST_OBJECTS} ${LIB}/libkdb.a ${RUST_FFI_STATICLIB} ${LDFLAGS} -ldl
 
 ${RUST_FFI_STATICLIB}: Cargo.toml rust/mtproxy-ffi/Cargo.toml rust/mtproxy-ffi/src/lib.rs rust/mtproxy-core/src/lib.rs
 	cargo build -p mtproxy-ffi
@@ -124,12 +111,6 @@ force-clean: clean
 
 test: all
 	./tests/run.sh
-
-mixed-test: mixed
-	TEST_INCLUDE_MIXED=1 ./tests/run.sh
-
-c-test: c-fallback
-	MTPROXY_BIN="${PWD}/${EXE}/mtproto-proxy-c" ./tests/run.sh
 
 rust-check:
 	./scripts/rust_tooling.sh check

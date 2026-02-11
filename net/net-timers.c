@@ -52,20 +52,12 @@ MODULE_STAT_FUNCTION_END
 static __thread event_timer_t **et_heap;
 __thread int et_heap_size;
 
-extern int32_t mtproxy_ffi_net_timers_wait_msec (double wakeup_time, double now) __attribute__ ((weak));
+extern int32_t mtproxy_ffi_net_timers_wait_msec (double wakeup_time, double now);
 
 static inline int timers_wait_msec (double wakeup_time) {
-  if (mtproxy_ffi_net_timers_wait_msec) {
-    int32_t r = mtproxy_ffi_net_timers_wait_msec (wakeup_time, precise_now);
-    if (r >= 0) {
-      return r;
-    }
-  }
-  double wait_time = wakeup_time - precise_now;
-  if (wait_time <= 0) {
-    return 0;
-  }
-  return (int) (wait_time * 1000) + 1;
+  int32_t wait_msec = mtproxy_ffi_net_timers_wait_msec (wakeup_time, precise_now);
+  assert (wait_msec >= 0);
+  return wait_msec;
 }
 
 

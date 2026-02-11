@@ -74,18 +74,18 @@ Current exported API:
 - `common/proc-stat.c` delegates `/proc/.../stat` parsing to Rust when symbols are linked.
 - `common/common-stats.c` delegates `statm` and `meminfo` parsing helpers to Rust when symbols are linked.
 - `common/kprintf.c` can delegate log-prefix formatting helper to Rust when symbols are linked.
-- `net/net-events.c` can delegate epoll flag conversion helpers to Rust when symbols are linked.
-- `net/net-timers.c` can delegate timer wait-ms conversion helper to Rust when symbols are linked.
-- `net/net-msg-buffers.c` can delegate size-class index selection helper to Rust when symbols are linked.
-- `net/net-tcp-rpc-common.c` can delegate compact/medium packet-length prefix encoding helper to Rust when symbols are linked.
-- `net/net-tcp-rpc-client.c` can delegate non-compact packet-length classification helper to Rust when symbols are linked.
-- `net/net-tcp-rpc-server.c` can delegate packet-header malformed check and packet-length classification helpers to Rust when symbols are linked.
-- `net/net-rpc-targets.c` can delegate zero-ip PID normalization helper to Rust when symbols are linked.
+- `net/net-events.c` delegates epoll flag conversion helpers to Rust (Step 14 decommission batch removed C fallback path).
+- `net/net-timers.c` delegates timer wait-ms conversion helper to Rust (Step 14 decommission batch removed C fallback path).
+- `net/net-msg-buffers.c` delegates size-class index selection helper to Rust (Step 14 decommission batch removed C fallback path).
+- `net/net-tcp-rpc-common.c` delegates compact/medium packet-length prefix encoding helper to Rust (Step 14 decommission batch removed C fallback path).
+- `net/net-tcp-rpc-client.c` delegates non-compact packet-length classification helper to Rust (Step 14 decommission batch removed C fallback path).
+- `net/net-tcp-rpc-server.c` delegates packet-header malformed check and packet-length classification helpers to Rust (Step 14 decommission batch removed C fallback path).
+- `net/net-rpc-targets.c` delegates zero-ip PID normalization helper to Rust (Step 14 decommission batch removed C fallback path).
 - `net/net-crypto-aes.c` can delegate key-derivation glue (`aes_create_keys`) to Rust when symbols are linked.
 - `net/net-crypto-dh.c` can delegate peer DH value prefix validation helper to Rust when symbols are linked.
 - `crypto/aesni256.c` can delegate `EVP_CipherUpdate` wrapper helper to Rust when symbols are linked.
-- `engine/engine-rpc.c` can delegate TL result header helpers (`tl_result_new_flags`, `tl_result_get_header_len`) to Rust when symbols are linked.
-- `mtproto/mtproto-proxy.c` can delegate ext-connection hash bucket and connection-tag helpers to Rust when symbols are linked.
+- `engine/engine-rpc.c` delegates TL result header helpers (`tl_result_new_flags`, `tl_result_get_header_len`) to Rust (Step 14 decommission batch removed C fallback path).
+- `mtproto/mtproto-proxy.c` delegates ext-connection hash bucket and connection-tag helpers to Rust (Step 14 decommission batch removed C fallback path).
 - If handshake fails, startup aborts before config load.
 
 ## Ownership and memory rules
@@ -127,5 +127,5 @@ Current exported API:
 
 ## Compatibility/versioning rules
 
-- Version mismatch is treated as hard startup failure in mixed mode.
+- Version mismatch is treated as hard startup failure in the Rust-default runtime.
 - API changes must bump the FFI API version and update bridge checks.

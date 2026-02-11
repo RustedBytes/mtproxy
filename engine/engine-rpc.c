@@ -114,38 +114,19 @@ static struct tl_act_extra *(*tl_parse_function)(struct tl_in_state *tlio_in, lo
 static int (*tl_get_op_function)(struct tl_in_state *tlio_in);
 static void (*tl_stat_function)(struct tl_out_state *tlio_out);
 
-extern int mtproxy_ffi_engine_rpc_result_new_flags (int old_flags) __attribute__ ((weak));
-extern int mtproxy_ffi_engine_rpc_result_header_len (int flags) __attribute__ ((weak));
-
-static int tl_result_new_flags_c_impl (int old_flags) {
-  return old_flags & 0xffff;
-}
+extern int mtproxy_ffi_engine_rpc_result_new_flags (int old_flags);
+extern int mtproxy_ffi_engine_rpc_result_header_len (int flags);
 
 int tl_result_new_flags (int old_flags) {
-  if (mtproxy_ffi_engine_rpc_result_new_flags) {
-    int new_flags = mtproxy_ffi_engine_rpc_result_new_flags (old_flags);
-    if ((new_flags & ~0xffff) == 0) {
-      return new_flags;
-    }
-  }
-  return tl_result_new_flags_c_impl (old_flags);
-}
-
-static int tl_result_get_header_len_c_impl (int flags) {
-  if (!flags) {
-    return 0;
-  }
-  return 8;
+  int new_flags = mtproxy_ffi_engine_rpc_result_new_flags (old_flags);
+  assert ((new_flags & ~0xffff) == 0);
+  return new_flags;
 }
 
 int tl_result_get_header_len (struct tl_query_header *h) {
-  if (mtproxy_ffi_engine_rpc_result_header_len) {
-    int len = mtproxy_ffi_engine_rpc_result_header_len (h->flags);
-    if (len == 0 || len == 8) {
-      return len;
-    }
-  }
-  return tl_result_get_header_len_c_impl (h->flags);
+  int len = mtproxy_ffi_engine_rpc_result_header_len (h->flags);
+  assert (len == 0 || len == 8);
+  return len;
 }
 
 int tl_result_make_header (int *ptr, struct tl_query_header *h) {

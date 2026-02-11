@@ -37,30 +37,17 @@
 #include "kprintf.h"
 #include "vv/vv-io.h"
 
-extern int32_t mtproxy_ffi_tcp_rpc_encode_compact_header (int32_t payload_len, int32_t is_medium, int32_t *out_prefix_word, int32_t *out_prefix_bytes) __attribute__ ((weak));
+extern int32_t mtproxy_ffi_tcp_rpc_encode_compact_header (int32_t payload_len, int32_t is_medium, int32_t *out_prefix_word, int32_t *out_prefix_bytes);
 
 static void tcp_rpc_compact_encode_header (int payload_len, int is_medium, int *prefix_word, int *prefix_bytes) {
   assert (prefix_word && prefix_bytes);
-  if (mtproxy_ffi_tcp_rpc_encode_compact_header) {
-    int32_t word = 0;
-    int32_t bytes = 0;
-    if (mtproxy_ffi_tcp_rpc_encode_compact_header (payload_len, is_medium, &word, &bytes) == 0 && (bytes == 1 || bytes == 4)) {
-      *prefix_word = word;
-      *prefix_bytes = bytes;
-      return;
-    }
-  }
-
-  if (is_medium) {
-    *prefix_word = payload_len;
-    *prefix_bytes = 4;
-  } else if (payload_len <= 0x7e * 4) {
-    *prefix_word = payload_len >> 2;
-    *prefix_bytes = 1;
-  } else {
-    *prefix_word = (payload_len << 6) | 0x7f;
-    *prefix_bytes = 4;
-  }
+  int32_t word = 0;
+  int32_t bytes = 0;
+  int32_t rc = mtproxy_ffi_tcp_rpc_encode_compact_header (payload_len, is_medium, &word, &bytes);
+  assert (rc == 0);
+  assert (bytes == 1 || bytes == 4);
+  *prefix_word = word;
+  *prefix_bytes = bytes;
 }
 
 // Flags:

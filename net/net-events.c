@@ -70,8 +70,8 @@ long long event_timer_remove_ops;
 
 int epoll_remove (int fd);
 
-extern int32_t mtproxy_ffi_net_epoll_conv_flags (int32_t flags) __attribute__ ((weak));
-extern int32_t mtproxy_ffi_net_epoll_unconv_flags (int32_t epoll_flags) __attribute__ ((weak));
+extern int32_t mtproxy_ffi_net_epoll_conv_flags (int32_t flags);
+extern int32_t mtproxy_ffi_net_epoll_unconv_flags (int32_t epoll_flags);
 
 int init_epoll (void) {
   int fd;
@@ -201,58 +201,16 @@ int epoll_sethandler (int fd, int prio, event_handler_t handler, void *data) {
   return 0;
 }
 
-static int epoll_conv_flags_c_impl (int flags) {
-  if (!flags) {
-    return 0;
-  }
-  int r = EPOLLERR;
-
-  // no need
-  // it is always set
-  //if (!(flags & EVT_NOHUP)) {
-  //  r |= EPOLLHUP;
-  //}
-  if (flags & EVT_READ) {
-    r |= EPOLLIN;
-  }
-  if (flags & EVT_WRITE) {
-    r |= EPOLLOUT;
-  }
-  if (flags & EVT_SPEC) {
-    r |= EPOLLRDHUP | EPOLLPRI;
-  }
-  if (!(flags & EVT_LEVEL)) {
-    r |= EPOLLET;
-  }
-  return r;
-}
-
-static int epoll_unconv_flags_c_impl (int f) {
-  int r = EVT_FROM_EPOLL;
-  if (f & (EPOLLIN | EPOLLERR)) {
-    r |= EVT_READ;
-  }
-  if (f & EPOLLOUT) {
-    r |= EVT_WRITE;
-  }
-  if (f & (EPOLLRDHUP | EPOLLPRI)) {
-    r |= EVT_SPEC;
-  }
-  return r;
-}
-
 int epoll_conv_flags (int flags) {
-  if (mtproxy_ffi_net_epoll_conv_flags) {
-    return mtproxy_ffi_net_epoll_conv_flags (flags);
-  }
-  return epoll_conv_flags_c_impl (flags);
+  int32_t converted = mtproxy_ffi_net_epoll_conv_flags (flags);
+  assert (converted >= 0);
+  return converted;
 }
 
 int epoll_unconv_flags (int f) {
-  if (mtproxy_ffi_net_epoll_unconv_flags) {
-    return mtproxy_ffi_net_epoll_unconv_flags (f);
-  }
-  return epoll_unconv_flags_c_impl (f);
+  int32_t converted = mtproxy_ffi_net_epoll_unconv_flags (f);
+  assert (converted >= 0);
+  return converted;
 }
 
 int epoll_insert (int fd, int flags) {

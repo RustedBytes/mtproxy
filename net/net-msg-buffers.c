@@ -85,7 +85,7 @@ struct msg_buffers_chunk ChunkHeaders[MAX_BUFFER_SIZE_VALUES];
 static int32_t ChunkBufferSizes[MAX_BUFFER_SIZE_VALUES];
 __thread struct msg_buffers_chunk *ChunkSave[MAX_BUFFER_SIZE_VALUES];
 
-extern int32_t mtproxy_ffi_msg_buffers_pick_size_index (const int32_t *buffer_sizes, int32_t buffer_size_values, int32_t size_hint) __attribute__ ((weak));
+extern int32_t mtproxy_ffi_msg_buffers_pick_size_index (const int32_t *buffer_sizes, int32_t buffer_size_values, int32_t size_hint);
 
 int default_buffer_sizes[] = { 48, 512, 2048, 16384, 262144 };
 int default_buffer_sizes_cnt = sizeof (default_buffer_sizes) / 4;
@@ -108,25 +108,11 @@ void init_buffer_chunk_headers (void) {
   buffer_size_values = i;
 }
 
-static int msg_buffer_pick_size_index_c_impl (int size_hint) {
-  int si = buffer_size_values - 1;
-  if (size_hint >= 0) {
-    while (si > 0 && ChunkHeaders[si-1].buffer_size >= size_hint) {
-      si--;
-    }
-  }
-  return si;
-}
-
 static int msg_buffer_pick_size_index (int size_hint) {
-  int si = msg_buffer_pick_size_index_c_impl (size_hint);
-  if (mtproxy_ffi_msg_buffers_pick_size_index && buffer_size_values > 0) {
-    int32_t rust_si = mtproxy_ffi_msg_buffers_pick_size_index (ChunkBufferSizes, buffer_size_values, size_hint);
-    if (rust_si >= 0 && rust_si < buffer_size_values) {
-      return rust_si;
-    }
-  }
-  return si;
+  assert (buffer_size_values > 0);
+  int32_t rust_si = mtproxy_ffi_msg_buffers_pick_size_index (ChunkBufferSizes, buffer_size_values, size_hint);
+  assert (rust_si >= 0 && rust_si < buffer_size_values);
+  return rust_si;
 }
 
 static inline void prepare_bs_inv (struct msg_buffers_chunk *C) {

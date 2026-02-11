@@ -20,17 +20,6 @@ From repository root:
 - `make rust-ci`
 
 The Rust-enabled binary is now default (`make`, `make test`) at `objs/bin/mtproto-proxy`.
-Use `make c-fallback` for the temporary C-only fallback binary at `objs/bin/mtproto-proxy-c`.
-
-## Mixed C/Rust FFI Compatibility Target
-
-Build the compatibility alias binary:
-
-```bash
-make mixed
-```
-
-This produces `objs/bin/mtproto-proxy-mixed` (alias of `objs/bin/mtproto-proxy`).
 
 Boundary contract documentation:
 - `rust/mtproxy-ffi/BOUNDARY.md`

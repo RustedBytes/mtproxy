@@ -42,18 +42,12 @@
 #include "common/server-functions.h"
 #include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 
-extern int32_t mtproxy_ffi_rpc_target_normalize_pid (mtproxy_ffi_process_id_t *pid, uint32_t default_ip) __attribute__ ((weak));
+extern int32_t mtproxy_ffi_rpc_target_normalize_pid (mtproxy_ffi_process_id_t *pid, uint32_t default_ip);
 
 static inline void rpc_target_normalize_pid (struct process_id *pid) {
   assert (pid);
-  if (mtproxy_ffi_rpc_target_normalize_pid) {
-    if (mtproxy_ffi_rpc_target_normalize_pid ((mtproxy_ffi_process_id_t *) pid, PID.ip) == 0) {
-      return;
-    }
-  }
-  if (!pid->ip) {
-    pid->ip = PID.ip;
-  }
+  int32_t rc = mtproxy_ffi_rpc_target_normalize_pid ((mtproxy_ffi_process_id_t *) pid, PID.ip);
+  assert (rc == 0);
 }
 
 #define rpc_target_cmp(a,b) (RPC_TARGET_INFO(a)->PID.port ? memcmp (&RPC_TARGET_INFO(a)->PID, &RPC_TARGET_INFO(b)->PID, 6) : memcmp (&RPC_TARGET_INFO(a)->PID, &RPC_TARGET_INFO(b)->PID, 8)) 

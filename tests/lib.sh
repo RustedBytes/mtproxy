@@ -26,7 +26,7 @@ log_fail() {
 require_binary() {
   if [ ! -x "$BIN" ]; then
     log_fail "Binary not found: $BIN"
-    log_fail "Run 'make' first (or set MTPROXY_BIN to a built fallback binary)."
+    log_fail "Run 'make' first (or set MTPROXY_BIN to an executable under test)."
     exit 1
   fi
 }

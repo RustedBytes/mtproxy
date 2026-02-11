@@ -17,7 +17,7 @@ log_info "Suites: regression, golden, fuzz"
 "$ROOT_DIR/tests/golden/test_tl_header_golden.sh"
 "$ROOT_DIR/tests/fuzz/test_config_parser_fuzz.sh" "$FUZZ_ITERS"
 
-if [ "${TEST_INCLUDE_MIXED:-0}" = "1" ]; then
+if [ "${TEST_INCLUDE_RUST_DIFFERENTIAL:-${TEST_INCLUDE_MIXED:-0}}" = "1" ]; then
   "$ROOT_DIR/tests/golden/test_rust_crc32_differential.sh"
   "$ROOT_DIR/tests/golden/test_rust_crc32c_differential.sh"
   "$ROOT_DIR/tests/golden/test_rust_config_lexer_differential.sh"
