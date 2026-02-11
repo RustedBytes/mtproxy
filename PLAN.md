@@ -583,7 +583,22 @@
    - Done when: `rust/mtproxy-bin` runs MTProxy using only Rust code migrated from C counterparts.
 
 16. Final Hardening, Security Review, and Release
-   - Run full performance comparison vs baseline and investigate regressions.
-   - Audit all `unsafe`/FFI boundaries, memory ownership, and panic handling strategy.
-   - Update docs, runbook, deployment notes, and rollback plan.
-   - Done when: release criteria are met, migration is documented, and cutover is approved.
+   - Run final release-readiness hardening for the Rust-only runtime produced by `rust/mtproxy-bin`.
+   - Prove performance, stability, and operational parity against Section 1 success targets and Section 2 baseline.
+   - Complete security review, deployment documentation, and production cutover approvals.
+   - Step 16 kickoff checklist (release-readiness and cutover approval):
+   - [ ] Re-run baseline/perf benchmarks with `rust/mtproxy-bin` and document deltas vs Section 1 targets.
+   - [ ] Execute sustained soak and canary runs; confirm no Sev-1 regressions during the defined observation window.
+   - [ ] Audit all `unsafe` and FFI boundaries in active Rust runtime paths; document ownership/lifetime invariants and panic strategy.
+   - [ ] Complete dependency and supply-chain review for Cargo crates and native libraries used by release artifact.
+   - [ ] Verify operator-facing behavior parity: CLI flags, logs, stats fields, and failure-mode diagnostics.
+   - [ ] Finalize and review migration docs: runbook, deployment notes, rollback drills, and incident-response playbook updates.
+   - [ ] Obtain formal sign-off from engineering, SRE/operations, and security reviewers before production rollout.
+   - Verification:
+   - [ ] Performance report is archived and demonstrates target compliance (throughput/latency/memory/startup/error budget).
+   - [ ] Soak/canary report is archived with incident summary and approval decision.
+   - [ ] Security review artifacts (unsafe/FFI audit + dependency review) are archived and approved.
+   - [ ] Release checklist completed and tagged against the production release candidate.
+   - Operation log:
+   - [ ] 2026-02-11: Expanded Step 16 into explicit hardening/security/release gates for Rust-only cutover.
+   - Done when: release criteria are met, migration is documented, and production cutover is approved.

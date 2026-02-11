@@ -29,7 +29,6 @@
 
 #include "net/net-connections.h"
 #include "crypto/aesni256.h"
-#include "pid.h"
 
 #define	MIN_PWD_LEN 32
 #define MAX_PWD_LEN 256
@@ -39,9 +38,6 @@
 int aes_crypto_init (connection_job_t c, void *key_data, int key_data_len);  /* < 0 = error */
 int aes_crypto_ctr128_init (connection_job_t c, void *key_data, int key_data_len);
 int aes_crypto_free (connection_job_t c);
-int aes_crypto_encrypt_output (connection_job_t c);  /* 0 = all ok, >0 = so much more bytes needed to encrypt last block */
-int aes_crypto_decrypt_input (connection_job_t c);   /* 0 = all ok, >0 = so much more bytes needed to decrypt last block */
-int aes_crypto_needed_output_bytes (connection_job_t c);	/* returns # of bytes needed to complete last output block */
 
 void fetch_aes_crypto_stat (int *allocated_aes_crypto_ptr, int *allocated_aes_crypto_temp_ptr);
 
@@ -74,10 +70,7 @@ struct aes_crypto {
 
 extern int aes_initialized;
 
-int aes_load_pwd_data (void *data, int len);
 int aes_load_pwd_file (const char *filename);
-int aes_load_random (void);
-int aes_get_pwd_data (void *data, int len);
 int aes_generate_nonce (char res[16]);
 
 int aes_create_keys (struct aes_key_data *R, int am_client, const char nonce_server[16], const char nonce_client[16], int client_timestamp,
@@ -85,11 +78,5 @@ int aes_create_keys (struct aes_key_data *R, int am_client, const char nonce_ser
 		     unsigned client_ip, unsigned short client_port, const unsigned char client_ipv6[16],
 		     const aes_secret_t *key, const unsigned char *temp_key, int temp_key_len);
 
-int aes_create_udp_keys (struct aes_key_data *R, struct process_id *local_pid, struct process_id *remote_pid, int generation, const aes_secret_t *key);
-
-void free_aes_secret (aes_secret_t *secret);
-aes_secret_t *alloc_aes_secret (const char *key, int key_len);
-static inline void aes_secret_decref (aes_secret_t *secret) { if (__sync_add_and_fetch (&secret->refcnt, -1) <= 0) { free_aes_secret (secret); } }
-static inline void aes_secret_incref (aes_secret_t *secret) { __sync_fetch_and_add (&secret->refcnt, 1); }
 void free_crypto_temp (void *crypto, int len);
 void *alloc_crypto_temp (int len);

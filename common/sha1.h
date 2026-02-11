@@ -18,4 +18,3 @@
               2016 Nikolai Durov
 */
 void sha1 (const unsigned char *input, int ilen, unsigned char output[20]);
-void sha1_two_chunks (const unsigned char *input1, int ilen1, const unsigned char *input2, int ilen2, unsigned char output[20]);

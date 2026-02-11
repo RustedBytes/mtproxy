@@ -25,17 +25,9 @@
 #include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 
 extern int32_t mtproxy_ffi_sha1 (const uint8_t *input, size_t len, uint8_t output[20]);
-extern int32_t mtproxy_ffi_sha1_two_chunks (const uint8_t *input1, size_t len1, const uint8_t *input2, size_t len2, uint8_t output[20]);
 
 void sha1 (const unsigned char *input, int ilen, unsigned char output[20]) {
   size_t len = ilen > 0 ? (size_t) ilen : 0;
   int rc = mtproxy_ffi_sha1 ((const uint8_t *) input, len, (uint8_t *) output);
-  assert (rc == 0);
-}
-
-void sha1_two_chunks (const unsigned char *input1, int ilen1, const unsigned char *input2, int ilen2, unsigned char output[20]) {
-  size_t len1 = ilen1 > 0 ? (size_t) ilen1 : 0;
-  size_t len2 = ilen2 > 0 ? (size_t) ilen2 : 0;
-  int rc = mtproxy_ffi_sha1_two_chunks ((const uint8_t *) input1, len1, (const uint8_t *) input2, len2, (uint8_t *) output);
   assert (rc == 0);
 }
