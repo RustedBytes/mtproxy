@@ -1,87 +1,119 @@
 # MTProxy
-Simple MT-Proto proxy
+Simple MT-Proto proxy with a Rust-first runtime path.
 
-## Building
-Install dependencies, you would need common set of tools for building from source, and development packages for `openssl` and `zlib`.
+## Build
+### Dependencies
+Install the usual C build tools plus Rust tooling (`cargo` is required by `make`).
 
-On Debian/Ubuntu:
+Debian/Ubuntu:
 ```bash
-apt install git curl build-essential libssl-dev zlib1g-dev
+apt install git curl build-essential libssl-dev zlib1g-dev rustc cargo
 ```
-On CentOS/RHEL:
+
+CentOS/RHEL:
 ```bash
-yum install openssl-devel zlib-devel
+yum install openssl-devel zlib-devel rust cargo
 yum groupinstall "Development Tools"
 ```
 
-Clone the repo:
+### Clone
 ```bash
 git clone https://github.com/TelegramMessenger/MTProxy
 cd MTProxy
 ```
 
-To build, run `make`. The default binary (`objs/bin/mtproto-proxy`) is the Rust-enabled migration target:
-
+### Compile
+Default build (Rust-enabled runtime binary):
 ```bash
-make && cd objs/bin
+make
+```
+Binary path:
+```text
+objs/bin/mtproto-proxy
 ```
 
-To link against Cargo release artifacts, run:
-
+Link with Cargo release artifacts:
 ```bash
 make release
 ```
 
-If the build has failed, you should run `make clean` before building it again.
+If you need a clean rebuild:
+```bash
+make clean
+make
+```
+
+## Test
+Run regression/golden/fuzz harness:
+```bash
+make test
+```
+
+Optional knobs:
+```bash
+TEST_FUZZ_ITERATIONS=120 make test
+TEST_INCLUDE_RUST_DIFFERENTIAL=1 make test
+```
+
+Rust-only quality gates:
+```bash
+make rust-check
+make rust-fmt-check
+make rust-clippy
+make rust-test
+make rust-ci
+```
 
 ## Running
-1. Obtain a secret, used to connect to telegram servers.
+1. Fetch the Telegram proxy secret:
 ```bash
 curl -s https://core.telegram.org/getProxySecret -o proxy-secret
 ```
-2. Obtain current telegram configuration. It can change (occasionally), so we encourage you to update it once per day.
+2. Fetch Telegram proxy configuration:
 ```bash
 curl -s https://core.telegram.org/getProxyConfig -o proxy-multi.conf
 ```
-3. Generate a secret to be used by users to connect to your proxy.
+3. Generate your public proxy secret (32 hex chars):
 ```bash
 head -c 16 /dev/urandom | xxd -ps
 ```
-4. Run `mtproto-proxy`:
+4. Start MTProxy:
 ```bash
-./mtproto-proxy -u nobody -p 8888 -H 443 -S <secret> --aes-pwd proxy-secret proxy-multi.conf -M 1
+./objs/bin/mtproto-proxy -u nobody -p 8888 -H 443 -S <secret> --aes-pwd proxy-secret proxy-multi.conf -M 1
 ```
-... where:
-- `nobody` is the username. `mtproto-proxy` calls `setuid()` to drop privileges.
-- `443` is the port, used by clients to connect to the proxy.
-- `8888` is the local port. You can use it to get statistics from `mtproto-proxy`. Like `wget localhost:8888/stats`. You can only get this stat via loopback.
-- `<secret>` is the secret generated at step 3. Also you can set multiple secrets: `-S <secret1> -S <secret2>`.
-- `proxy-secret` and `proxy-multi.conf` are obtained at steps 1 and 2.
-- `1` is the number of workers. You can increase the number of workers, if you have a powerful server.
 
-Also feel free to check out other options using `mtproto-proxy --help`.
+Parameters:
+- `-u nobody`: drop privileges via `setuid()`.
+- `-H 443`: public port for client connections.
+- `-p 8888`: local stats port (loopback only), e.g. `curl localhost:8888/stats`.
+- `-S <secret>`: secret from step 3 (`-S` can be specified multiple times).
+- `--aes-pwd proxy-secret proxy-multi.conf`: files from steps 1-2.
+- `-M 1`: number of workers.
 
-5. Generate the link with following schema: `tg://proxy?server=SERVER_NAME&port=PORT&secret=SECRET` (or let the official bot generate it for you).
-6. Register your proxy with [@MTProxybot](https://t.me/MTProxybot) on Telegram.
-7. Set received tag with arguments: `-P <proxy tag>`
-8. Enjoy.
+Inspect all CLI options:
+```bash
+./objs/bin/mtproto-proxy --help
+```
+
+5. Generate a client link with:
+```text
+tg://proxy?server=SERVER_NAME&port=PORT&secret=SECRET
+```
+6. Register your proxy with [@MTProxybot](https://t.me/MTProxybot).
+7. Add the returned tag with `-P <proxy-tag>`.
 
 ## Random padding
-Due to some ISPs detecting MTProxy by packet sizes, random padding is
-added to packets if such mode is enabled.
+Some networks detect MTProxy by packet size. To enable random padding for clients, prefix the secret with `dd`:
 
-It's only enabled for clients which request it.
+`cafe...babe` -> `ddcafe...babe`
 
-Add `dd` prefix to secret (`cafe...babe` => `ddcafe...babe`) to enable
-this mode on client side.
-
-## Systemd example configuration
-1. Create systemd service file (it's standard path for the most Linux distros, but you should check it before):
+## Systemd example
+1. Create service file:
 ```bash
 nano /etc/systemd/system/MTProxy.service
 ```
-2. Edit this basic service (especially paths and params):
-```bash
+2. Example service (adjust paths and params):
+```ini
 [Unit]
 Description=MTProxy
 After=network.target
@@ -89,27 +121,31 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=/opt/MTProxy
-ExecStart=/opt/MTProxy/mtproto-proxy -u nobody -p 8888 -H 443 -S <secret> -P <proxy tag> <other params>
+ExecStart=/opt/MTProxy/objs/bin/mtproto-proxy -u nobody -p 8888 -H 443 -S <secret> -P <proxy-tag> <other params>
 Restart=on-failure
 
 [Install]
 WantedBy=multi-user.target
 ```
-3. Reload daemons:
+3. Reload unit files:
 ```bash
 systemctl daemon-reload
 ```
-4. Test fresh MTProxy service:
+4. Start and check:
 ```bash
 systemctl restart MTProxy.service
-# Check status, it should be active
 systemctl status MTProxy.service
 ```
-5. Enable it, to autostart service after reboot:
+5. Enable on boot:
 ```bash
 systemctl enable MTProxy.service
 ```
 
+## Additional docs
+- Rust workspace notes: `rust/README.md`
+- Test harness details: `tests/README.md`
+- FFI boundary contract: `rust/mtproxy-ffi/BOUNDARY.md`
+
 ## Docker image
-Telegram is also providing [official Docker image](https://hub.docker.com/r/telegrammessenger/proxy/).
-Note: the image is outdated.
+Telegram provides an [official Docker image](https://hub.docker.com/r/telegrammessenger/proxy/).
+Note: the published image may lag behind this repository.
