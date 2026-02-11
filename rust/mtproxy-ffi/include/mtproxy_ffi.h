@@ -14,6 +14,13 @@ typedef struct mtproxy_ffi_process_id {
   int32_t utime;
 } mtproxy_ffi_process_id_t;
 
+typedef struct mtproxy_ffi_aes_key_data {
+  uint8_t read_key[32];
+  uint8_t read_iv[16];
+  uint8_t write_key[32];
+  uint8_t write_iv[16];
+} mtproxy_ffi_aes_key_data_t;
+
 typedef struct mtproxy_ffi_cpuid {
   int32_t magic;
   int32_t ebx;
@@ -165,6 +172,24 @@ typedef struct mtproxy_ffi_rpc_boundary {
   uint32_t rpc_targets_implemented_ops;
 } mtproxy_ffi_rpc_boundary_t;
 
+#define MTPROXY_FFI_CRYPTO_BOUNDARY_VERSION 1u
+
+#define MTPROXY_FFI_NET_CRYPTO_AES_OP_CREATE_KEYS         (1u << 0)
+
+#define MTPROXY_FFI_NET_CRYPTO_DH_OP_IS_GOOD_RPC_DH_BIN   (1u << 0)
+
+#define MTPROXY_FFI_AESNI_OP_EVP_CRYPT                    (1u << 0)
+
+typedef struct mtproxy_ffi_crypto_boundary {
+  uint32_t boundary_version;
+  uint32_t net_crypto_aes_contract_ops;
+  uint32_t net_crypto_aes_implemented_ops;
+  uint32_t net_crypto_dh_contract_ops;
+  uint32_t net_crypto_dh_implemented_ops;
+  uint32_t aesni_contract_ops;
+  uint32_t aesni_implemented_ops;
+} mtproxy_ffi_crypto_boundary_t;
+
 #define MTPROXY_FFI_TCP_RPC_PACKET_LEN_STATE_SKIP    0
 #define MTPROXY_FFI_TCP_RPC_PACKET_LEN_STATE_READY   1
 #define MTPROXY_FFI_TCP_RPC_PACKET_LEN_STATE_INVALID (-1)
@@ -185,6 +210,9 @@ int32_t mtproxy_ffi_get_network_boundary(mtproxy_ffi_network_boundary_t *out);
 
 // Reports extracted Step 11 boundary contract for RPC/TCP operations.
 int32_t mtproxy_ffi_get_rpc_boundary(mtproxy_ffi_rpc_boundary_t *out);
+
+// Reports extracted Step 12 boundary contract for crypto integration operations.
+int32_t mtproxy_ffi_get_crypto_boundary(mtproxy_ffi_crypto_boundary_t *out);
 
 // net-events helpers for incremental event-loop migration.
 int32_t mtproxy_ffi_net_epoll_conv_flags(int32_t flags);
@@ -217,6 +245,36 @@ int32_t mtproxy_ffi_tcp_rpc_server_packet_len_state(int32_t packet_len, int32_t 
 
 // net-rpc-targets helper: normalizes zero-ip PID to default local IP.
 int32_t mtproxy_ffi_rpc_target_normalize_pid(mtproxy_ffi_process_id_t *pid, uint32_t default_ip);
+
+// net-crypto-aes helper: derives session keys/ivs from handshake material.
+int32_t mtproxy_ffi_crypto_aes_create_keys(
+  mtproxy_ffi_aes_key_data_t *out,
+  int32_t am_client,
+  const uint8_t nonce_server[16],
+  const uint8_t nonce_client[16],
+  int32_t client_timestamp,
+  uint32_t server_ip,
+  uint16_t server_port,
+  const uint8_t server_ipv6[16],
+  uint32_t client_ip,
+  uint16_t client_port,
+  const uint8_t client_ipv6[16],
+  const uint8_t *secret,
+  int32_t secret_len,
+  const uint8_t *temp_key,
+  int32_t temp_key_len
+);
+
+// net-crypto-dh helper: validates peer DH blob prefix against known prime prefix.
+int32_t mtproxy_ffi_crypto_dh_is_good_rpc_dh_bin(
+  const uint8_t *data,
+  size_t len,
+  const uint8_t *prime_prefix,
+  size_t prime_prefix_len
+);
+
+// crypto/aesni helper: OpenSSL-backed EVP_CipherUpdate glue.
+int32_t mtproxy_ffi_aesni_crypt(void *evp_ctx, const uint8_t *in, uint8_t *out, int32_t size);
 
 // CRC32 (IEEE, reflected polynomial 0xEDB88320) partial update.
 // Semantics match C `crc32_partial` function.

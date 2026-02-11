@@ -341,6 +341,91 @@ int rust_ffi_check_rpc_boundary(void) {
   return 0;
 }
 
+int rust_ffi_check_crypto_boundary(void) {
+  mtproxy_ffi_crypto_boundary_t boundary = {0};
+  int32_t rc = mtproxy_ffi_get_crypto_boundary (&boundary);
+  if (rc < 0) {
+    kprintf ("fatal: rust ffi crypto boundary probe failed (code %d)\n", rc);
+    return -1;
+  }
+
+  if (boundary.boundary_version != MTPROXY_FFI_CRYPTO_BOUNDARY_VERSION) {
+    kprintf (
+      "fatal: rust ffi crypto boundary version mismatch: expected %u, got %u\n",
+      (unsigned) MTPROXY_FFI_CRYPTO_BOUNDARY_VERSION,
+      (unsigned) boundary.boundary_version
+    );
+    return -2;
+  }
+
+  const uint32_t expected_net_crypto_aes_contract_ops = MTPROXY_FFI_NET_CRYPTO_AES_OP_CREATE_KEYS;
+  if ((boundary.net_crypto_aes_contract_ops & expected_net_crypto_aes_contract_ops) != expected_net_crypto_aes_contract_ops) {
+    kprintf (
+      "fatal: rust ffi net-crypto-aes boundary contract incomplete: expected mask %08x, got %08x\n",
+      (unsigned) expected_net_crypto_aes_contract_ops,
+      (unsigned) boundary.net_crypto_aes_contract_ops
+    );
+    return -3;
+  }
+
+  const uint32_t expected_net_crypto_dh_contract_ops = MTPROXY_FFI_NET_CRYPTO_DH_OP_IS_GOOD_RPC_DH_BIN;
+  if ((boundary.net_crypto_dh_contract_ops & expected_net_crypto_dh_contract_ops) != expected_net_crypto_dh_contract_ops) {
+    kprintf (
+      "fatal: rust ffi net-crypto-dh boundary contract incomplete: expected mask %08x, got %08x\n",
+      (unsigned) expected_net_crypto_dh_contract_ops,
+      (unsigned) boundary.net_crypto_dh_contract_ops
+    );
+    return -4;
+  }
+
+  const uint32_t expected_aesni_contract_ops = MTPROXY_FFI_AESNI_OP_EVP_CRYPT;
+  if ((boundary.aesni_contract_ops & expected_aesni_contract_ops) != expected_aesni_contract_ops) {
+    kprintf (
+      "fatal: rust ffi aesni boundary contract incomplete: expected mask %08x, got %08x\n",
+      (unsigned) expected_aesni_contract_ops,
+      (unsigned) boundary.aesni_contract_ops
+    );
+    return -5;
+  }
+
+  if ((boundary.net_crypto_aes_implemented_ops & ~boundary.net_crypto_aes_contract_ops) != 0) {
+    kprintf (
+      "fatal: rust ffi net-crypto-aes implementation mask %08x exceeds contract %08x\n",
+      (unsigned) boundary.net_crypto_aes_implemented_ops,
+      (unsigned) boundary.net_crypto_aes_contract_ops
+    );
+    return -6;
+  }
+  if ((boundary.net_crypto_dh_implemented_ops & ~boundary.net_crypto_dh_contract_ops) != 0) {
+    kprintf (
+      "fatal: rust ffi net-crypto-dh implementation mask %08x exceeds contract %08x\n",
+      (unsigned) boundary.net_crypto_dh_implemented_ops,
+      (unsigned) boundary.net_crypto_dh_contract_ops
+    );
+    return -7;
+  }
+  if ((boundary.aesni_implemented_ops & ~boundary.aesni_contract_ops) != 0) {
+    kprintf (
+      "fatal: rust ffi aesni implementation mask %08x exceeds contract %08x\n",
+      (unsigned) boundary.aesni_implemented_ops,
+      (unsigned) boundary.aesni_contract_ops
+    );
+    return -8;
+  }
+
+  vkprintf (
+    1,
+    "rust ffi crypto boundary extracted: net-crypto-aes(contract=%08x implemented=%08x) net-crypto-dh(contract=%08x implemented=%08x) aesni(contract=%08x implemented=%08x)\n",
+    (unsigned) boundary.net_crypto_aes_contract_ops,
+    (unsigned) boundary.net_crypto_aes_implemented_ops,
+    (unsigned) boundary.net_crypto_dh_contract_ops,
+    (unsigned) boundary.net_crypto_dh_implemented_ops,
+    (unsigned) boundary.aesni_contract_ops,
+    (unsigned) boundary.aesni_implemented_ops
+  );
+  return 0;
+}
+
 int rust_ffi_enable_concurrency_bridges(void) {
   mtproxy_ffi_concurrency_boundary_t boundary = {0};
   int32_t rc = mtproxy_ffi_get_concurrency_boundary (&boundary);

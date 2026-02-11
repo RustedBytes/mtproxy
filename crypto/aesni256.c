@@ -24,6 +24,9 @@
 #include "crypto/aesni256.h"
 
 #include <assert.h>
+#include <stdint.h>
+
+extern int32_t mtproxy_ffi_aesni_crypt (void *evp_ctx, const uint8_t *in, uint8_t *out, int32_t size) __attribute__ ((weak));
 
 EVP_CIPHER_CTX *evp_cipher_ctx_init (const EVP_CIPHER *cipher, unsigned char *key, unsigned char iv[16], int is_encrypt) {
   EVP_CIPHER_CTX *evp_ctx = EVP_CIPHER_CTX_new();
@@ -34,8 +37,19 @@ EVP_CIPHER_CTX *evp_cipher_ctx_init (const EVP_CIPHER *cipher, unsigned char *ke
   return evp_ctx;
 }
 
-void evp_crypt (EVP_CIPHER_CTX *evp_ctx, const void *in, void *out, int size) {
+static void evp_crypt_c_impl (EVP_CIPHER_CTX *evp_ctx, const void *in, void *out, int size) {
   int len;
   assert (EVP_CipherUpdate(evp_ctx, out, &len, in, size) == 1);
   assert (len == size);
+}
+
+void evp_crypt (EVP_CIPHER_CTX *evp_ctx, const void *in, void *out, int size) {
+  if (mtproxy_ffi_aesni_crypt) {
+    int32_t rc = mtproxy_ffi_aesni_crypt (evp_ctx, in, out, size);
+    if (rc == 0) {
+      return;
+    }
+  }
+
+  evp_crypt_c_impl (evp_ctx, in, out, size);
 }

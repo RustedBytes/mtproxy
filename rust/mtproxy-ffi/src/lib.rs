@@ -17,6 +17,8 @@ const DOUBLE_TIME_RDTSC_WINDOW: i64 = 1_000_000;
 const DIGEST_MD5_LEN: usize = 16;
 const DIGEST_SHA1_LEN: usize = 20;
 const DIGEST_SHA256_LEN: usize = 32;
+const MIN_PWD_LEN: usize = 32;
+const MAX_PWD_LEN: usize = 256;
 const HEX_LOWER: &[u8; 16] = b"0123456789abcdef";
 const TL_ERROR_HEADER: i32 = -1002;
 const RPC_INVOKE_REQ: i32 = 0x2374_df3d;
@@ -31,6 +33,7 @@ const RPC_REQ_RESULT_FLAGS: i32 = i32::from_ne_bytes(0x8cc8_4ce1_u32.to_ne_bytes
 const CONCURRENCY_BOUNDARY_VERSION: u32 = 1;
 const NETWORK_BOUNDARY_VERSION: u32 = 1;
 const RPC_BOUNDARY_VERSION: u32 = 1;
+const CRYPTO_BOUNDARY_VERSION: u32 = 1;
 const MPQ_CONTRACT_OPS: u32 =
     (1u32 << 0) | (1u32 << 1) | (1u32 << 2) | (1u32 << 3) | (1u32 << 4) | (1u32 << 5);
 const JOBS_CONTRACT_OPS: u32 =
@@ -51,6 +54,12 @@ const TCP_RPC_COMMON_IMPLEMENTED_OPS: u32 = TCP_RPC_COMMON_CONTRACT_OPS;
 const TCP_RPC_CLIENT_IMPLEMENTED_OPS: u32 = TCP_RPC_CLIENT_CONTRACT_OPS;
 const TCP_RPC_SERVER_IMPLEMENTED_OPS: u32 = TCP_RPC_SERVER_CONTRACT_OPS;
 const RPC_TARGETS_IMPLEMENTED_OPS: u32 = RPC_TARGETS_CONTRACT_OPS;
+const NET_CRYPTO_AES_CONTRACT_OPS: u32 = 1u32 << 0;
+const NET_CRYPTO_DH_CONTRACT_OPS: u32 = 1u32 << 0;
+const AESNI_CONTRACT_OPS: u32 = 1u32 << 0;
+const NET_CRYPTO_AES_IMPLEMENTED_OPS: u32 = NET_CRYPTO_AES_CONTRACT_OPS;
+const NET_CRYPTO_DH_IMPLEMENTED_OPS: u32 = NET_CRYPTO_DH_CONTRACT_OPS;
+const AESNI_IMPLEMENTED_OPS: u32 = AESNI_CONTRACT_OPS;
 
 const TCP_RPC_PACKET_LEN_STATE_SKIP: i32 = 0;
 const TCP_RPC_PACKET_LEN_STATE_READY: i32 = 1;
@@ -69,9 +78,24 @@ const EPOLLOUT: u32 = 0x004;
 const EPOLLERR: u32 = 0x008;
 const EPOLLRDHUP: u32 = 0x2000;
 const EPOLLET: u32 = 0x8000_0000;
+const AES_CREATE_KEYS_MAX_STR_LEN: usize =
+    16 + 16 + 4 + 4 + 2 + 6 + 4 + 2 + MAX_PWD_LEN + 16 + 16 + 4 + (16 * 2) + 256;
+const AES_ROLE_XOR_MASK: [u8; 6] = [
+    b'C' ^ b'S',
+    b'L' ^ b'E',
+    b'I' ^ b'R',
+    b'E' ^ b'V',
+    b'N' ^ b'E',
+    b'T' ^ b'R',
+];
 
 #[repr(C)]
 struct OpenSslMd {
+    _private: [u8; 0],
+}
+
+#[repr(C)]
+struct OpenSslCipherCtx {
     _private: [u8; 0],
 }
 
@@ -96,6 +120,15 @@ pub struct MtproxyProcessId {
     pub port: i16,
     pub pid: u16,
     pub utime: i32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct MtproxyAesKeyData {
+    pub read_key: [u8; 32],
+    pub read_iv: [u8; 16],
+    pub write_key: [u8; 32],
+    pub write_iv: [u8; 16],
 }
 
 #[repr(C)]
@@ -279,6 +312,18 @@ pub struct MtproxyRpcBoundary {
     pub rpc_targets_implemented_ops: u32,
 }
 
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct MtproxyCryptoBoundary {
+    pub boundary_version: u32,
+    pub net_crypto_aes_contract_ops: u32,
+    pub net_crypto_aes_implemented_ops: u32,
+    pub net_crypto_dh_contract_ops: u32,
+    pub net_crypto_dh_implemented_ops: u32,
+    pub aesni_contract_ops: u32,
+    pub aesni_implemented_ops: u32,
+}
+
 impl Default for MtproxyTlHeaderParseResult {
     fn default() -> Self {
         Self {
@@ -319,6 +364,13 @@ unsafe extern "C" {
         md: *mut u8,
         md_len: *mut c_uint,
     ) -> *mut u8;
+    fn EVP_CipherUpdate(
+        ctx: *mut OpenSslCipherCtx,
+        out: *mut u8,
+        outl: *mut c_int,
+        in_: *const u8,
+        inl: c_int,
+    ) -> c_int;
 }
 
 thread_local! {
@@ -421,6 +473,28 @@ pub unsafe extern "C" fn mtproxy_ffi_get_rpc_boundary(out: *mut MtproxyRpcBounda
         tcp_rpc_server_implemented_ops: TCP_RPC_SERVER_IMPLEMENTED_OPS,
         rpc_targets_contract_ops: RPC_TARGETS_CONTRACT_OPS,
         rpc_targets_implemented_ops: RPC_TARGETS_IMPLEMENTED_OPS,
+    };
+    0
+}
+
+/// Returns extracted Step 12 boundary contract for crypto integration migration.
+///
+/// # Safety
+/// `out` must be a valid writable pointer to `MtproxyCryptoBoundary`.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_get_crypto_boundary(out: *mut MtproxyCryptoBoundary) -> i32 {
+    if out.is_null() {
+        return -1;
+    }
+    let out_ref = unsafe { &mut *out };
+    *out_ref = MtproxyCryptoBoundary {
+        boundary_version: CRYPTO_BOUNDARY_VERSION,
+        net_crypto_aes_contract_ops: NET_CRYPTO_AES_CONTRACT_OPS,
+        net_crypto_aes_implemented_ops: NET_CRYPTO_AES_IMPLEMENTED_OPS,
+        net_crypto_dh_contract_ops: NET_CRYPTO_DH_CONTRACT_OPS,
+        net_crypto_dh_implemented_ops: NET_CRYPTO_DH_IMPLEMENTED_OPS,
+        aesni_contract_ops: AESNI_CONTRACT_OPS,
+        aesni_implemented_ops: AESNI_IMPLEMENTED_OPS,
     };
     0
 }
@@ -643,6 +717,281 @@ pub unsafe extern "C" fn mtproxy_ffi_rpc_target_normalize_pid(
     }
     let pid_ref = unsafe { &mut *pid };
     rpc_target_normalize_pid_impl(pid_ref, default_ip);
+    0
+}
+
+fn md5_digest_impl(input: &[u8], out: &mut [u8; DIGEST_MD5_LEN]) -> bool {
+    let Ok(len_ulong) = c_ulong::try_from(input.len()) else {
+        return false;
+    };
+    let res = unsafe { MD5(input.as_ptr(), len_ulong, out.as_mut_ptr()) };
+    !res.is_null()
+}
+
+fn sha1_digest_impl(input: &[u8], out: &mut [u8; DIGEST_SHA1_LEN]) -> bool {
+    let Ok(len_ulong) = c_ulong::try_from(input.len()) else {
+        return false;
+    };
+    let res = unsafe { SHA1(input.as_ptr(), len_ulong, out.as_mut_ptr()) };
+    !res.is_null()
+}
+
+fn crypto_dh_is_good_rpc_dh_bin_impl(data: &[u8], prime_prefix: &[u8]) -> i32 {
+    if data.len() < 8 || prime_prefix.len() < 8 {
+        return -1;
+    }
+    if data[..8].iter().all(|b| *b == 0) {
+        return 0;
+    }
+    for i in 0..8 {
+        if data[i] > prime_prefix[i] {
+            return 0;
+        }
+        if data[i] < prime_prefix[i] {
+            return 1;
+        }
+    }
+    0
+}
+
+#[allow(clippy::too_many_arguments)]
+fn crypto_aes_create_keys_impl(
+    out: &mut MtproxyAesKeyData,
+    am_client: i32,
+    nonce_server: &[u8; 16],
+    nonce_client: &[u8; 16],
+    client_timestamp: i32,
+    server_ip: u32,
+    server_port: u16,
+    server_ipv6: &[u8; 16],
+    client_ip: u32,
+    client_port: u16,
+    client_ipv6: &[u8; 16],
+    secret: &[u8],
+    temp_key: &[u8],
+) -> i32 {
+    if secret.len() < MIN_PWD_LEN || secret.len() > MAX_PWD_LEN {
+        return -1;
+    }
+    if server_ip == 0 {
+        if client_ip != 0 {
+            return -1;
+        }
+    } else if client_ip == 0 {
+        return -1;
+    }
+
+    let mut material = [0u8; AES_CREATE_KEYS_MAX_STR_LEN];
+    material[..16].copy_from_slice(nonce_server);
+    material[16..32].copy_from_slice(nonce_client);
+    material[32..36].copy_from_slice(&client_timestamp.to_ne_bytes());
+    material[36..40].copy_from_slice(&server_ip.to_ne_bytes());
+    material[40..42].copy_from_slice(&client_port.to_ne_bytes());
+    material[42..48].copy_from_slice(if am_client != 0 { b"CLIENT" } else { b"SERVER" });
+    material[48..52].copy_from_slice(&client_ip.to_ne_bytes());
+    material[52..54].copy_from_slice(&server_port.to_ne_bytes());
+
+    let secret_len = secret.len();
+    material[54..54 + secret_len].copy_from_slice(secret);
+    material[54 + secret_len..70 + secret_len].copy_from_slice(nonce_server);
+    let mut str_len = 70 + secret_len;
+
+    if server_ip == 0 {
+        material[str_len..str_len + 16].copy_from_slice(client_ipv6);
+        material[str_len + 16..str_len + 32].copy_from_slice(server_ipv6);
+        str_len += 32;
+    }
+
+    material[str_len..str_len + 16].copy_from_slice(nonce_client);
+    str_len += 16;
+
+    let first_len = str_len.min(temp_key.len());
+    for i in 0..first_len {
+        material[i] ^= temp_key[i];
+    }
+    if temp_key.len() > first_len {
+        material[first_len..temp_key.len()].copy_from_slice(&temp_key[first_len..]);
+    }
+    if str_len < temp_key.len() {
+        str_len = temp_key.len();
+    }
+
+    let mut md5_out = [0u8; DIGEST_MD5_LEN];
+    let mut sha1_out = [0u8; DIGEST_SHA1_LEN];
+    if !md5_digest_impl(&material[1..str_len], &mut md5_out) {
+        return -1;
+    }
+    out.write_key[..DIGEST_MD5_LEN].copy_from_slice(&md5_out);
+    if !sha1_digest_impl(&material[..str_len], &mut sha1_out) {
+        return -1;
+    }
+    out.write_key[12..32].copy_from_slice(&sha1_out);
+    if !md5_digest_impl(&material[2..str_len], &mut md5_out) {
+        return -1;
+    }
+    out.write_iv.copy_from_slice(&md5_out);
+
+    for (i, mask) in AES_ROLE_XOR_MASK.iter().copied().enumerate() {
+        material[42 + i] ^= mask;
+    }
+
+    if !md5_digest_impl(&material[1..str_len], &mut md5_out) {
+        return -1;
+    }
+    out.read_key[..DIGEST_MD5_LEN].copy_from_slice(&md5_out);
+    if !sha1_digest_impl(&material[..str_len], &mut sha1_out) {
+        return -1;
+    }
+    out.read_key[12..32].copy_from_slice(&sha1_out);
+    if !md5_digest_impl(&material[2..str_len], &mut md5_out) {
+        return -1;
+    }
+    out.read_iv.copy_from_slice(&md5_out);
+
+    material[..str_len].fill(0);
+    1
+}
+
+/// Validates first bytes of peer DH value against canonical prime prefix.
+///
+/// # Safety
+/// `data` and `prime_prefix` must point to readable slices when lengths are non-zero.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_crypto_dh_is_good_rpc_dh_bin(
+    data: *const u8,
+    len: usize,
+    prime_prefix: *const u8,
+    prime_prefix_len: usize,
+) -> i32 {
+    if data.is_null() || prime_prefix.is_null() {
+        return -1;
+    }
+    if len < 8 || prime_prefix_len < 8 {
+        return -1;
+    }
+    let data_ref = unsafe { core::slice::from_raw_parts(data, len) };
+    let prime_ref = unsafe { core::slice::from_raw_parts(prime_prefix, prime_prefix_len) };
+    crypto_dh_is_good_rpc_dh_bin_impl(data_ref, prime_ref)
+}
+
+/// Derives AES session keys and IVs exactly like C `aes_create_keys`.
+///
+/// # Safety
+/// All pointer arguments must reference writable/readable buffers of the documented size.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_crypto_aes_create_keys(
+    out: *mut MtproxyAesKeyData,
+    am_client: i32,
+    nonce_server: *const u8,
+    nonce_client: *const u8,
+    client_timestamp: i32,
+    server_ip: u32,
+    server_port: u16,
+    server_ipv6: *const u8,
+    client_ip: u32,
+    client_port: u16,
+    client_ipv6: *const u8,
+    secret: *const u8,
+    secret_len: i32,
+    temp_key: *const u8,
+    temp_key_len: i32,
+) -> i32 {
+    if out.is_null()
+        || nonce_server.is_null()
+        || nonce_client.is_null()
+        || server_ipv6.is_null()
+        || client_ipv6.is_null()
+    {
+        return -1;
+    }
+    let Ok(secret_count) = usize::try_from(secret_len) else {
+        return -1;
+    };
+    if !(MIN_PWD_LEN..=MAX_PWD_LEN).contains(&secret_count) || secret.is_null() {
+        return -1;
+    }
+    let Ok(temp_count_raw) = usize::try_from(temp_key_len) else {
+        return -1;
+    };
+    let temp_count = temp_count_raw.min(AES_CREATE_KEYS_MAX_STR_LEN);
+    if temp_count > 0 && temp_key.is_null() {
+        return -1;
+    }
+
+    let out_ref = unsafe { &mut *out };
+    let nonce_server_ref = unsafe { &*nonce_server.cast::<[u8; 16]>() };
+    let nonce_client_ref = unsafe { &*nonce_client.cast::<[u8; 16]>() };
+    let server_ipv6_ref = unsafe { &*server_ipv6.cast::<[u8; 16]>() };
+    let client_ipv6_ref = unsafe { &*client_ipv6.cast::<[u8; 16]>() };
+    let secret_ref = unsafe { core::slice::from_raw_parts(secret, secret_count) };
+    let temp_ref = if temp_count == 0 {
+        &[]
+    } else {
+        unsafe { core::slice::from_raw_parts(temp_key, temp_count) }
+    };
+
+    crypto_aes_create_keys_impl(
+        out_ref,
+        am_client,
+        nonce_server_ref,
+        nonce_client_ref,
+        client_timestamp,
+        server_ip,
+        server_port,
+        server_ipv6_ref,
+        client_ip,
+        client_port,
+        client_ipv6_ref,
+        secret_ref,
+        temp_ref,
+    )
+}
+
+/// OpenSSL-backed `EVP_CipherUpdate` wrapper used by `crypto/aesni256.c`.
+///
+/// # Safety
+/// `evp_ctx` must be a valid `EVP_CIPHER_CTX*`; `in`/`out` must be valid for `size` bytes.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_aesni_crypt(
+    evp_ctx: *mut c_void,
+    input: *const u8,
+    output: *mut u8,
+    size: i32,
+) -> i32 {
+    if evp_ctx.is_null() || size < 0 {
+        return -1;
+    }
+    let Ok(size_usize) = usize::try_from(size) else {
+        return -1;
+    };
+    if size_usize > 0 && (input.is_null() || output.is_null()) {
+        return -1;
+    }
+
+    let mut out_len: c_int = 0;
+    let in_ptr = if size_usize == 0 {
+        core::ptr::NonNull::<u8>::dangling().as_ptr().cast_const()
+    } else {
+        input
+    };
+    let out_ptr = if size_usize == 0 {
+        core::ptr::NonNull::<u8>::dangling().as_ptr()
+    } else {
+        output
+    };
+
+    let rc = unsafe {
+        EVP_CipherUpdate(
+            evp_ctx.cast::<OpenSslCipherCtx>(),
+            out_ptr,
+            &raw mut out_len,
+            in_ptr,
+            size,
+        )
+    };
+    if rc != 1 || out_len != size {
+        return -2;
+    }
     0
 }
 
@@ -2098,13 +2447,14 @@ pub unsafe extern "C" fn mtproxy_ffi_format_log_prefix(
 #[cfg(test)]
 mod tests {
     use super::{
-        ffi_api_version, mtproxy_ffi_api_version, mtproxy_ffi_cfg_getint_signed_zero,
-        mtproxy_ffi_cfg_getword_len, mtproxy_ffi_cfg_skipspc, mtproxy_ffi_cpuid_fill,
-        mtproxy_ffi_crc32_partial, mtproxy_ffi_crc32c_partial,
-        mtproxy_ffi_get_concurrency_boundary, mtproxy_ffi_get_network_boundary,
-        mtproxy_ffi_get_precise_time, mtproxy_ffi_get_rpc_boundary,
-        mtproxy_ffi_get_utime_monotonic, mtproxy_ffi_matches_pid, mtproxy_ffi_md5,
-        mtproxy_ffi_md5_hex, mtproxy_ffi_msg_buffers_pick_size_index,
+        ffi_api_version, mtproxy_ffi_aesni_crypt, mtproxy_ffi_api_version,
+        mtproxy_ffi_cfg_getint_signed_zero, mtproxy_ffi_cfg_getword_len, mtproxy_ffi_cfg_skipspc,
+        mtproxy_ffi_cpuid_fill, mtproxy_ffi_crc32_partial, mtproxy_ffi_crc32c_partial,
+        mtproxy_ffi_crypto_aes_create_keys, mtproxy_ffi_crypto_dh_is_good_rpc_dh_bin,
+        mtproxy_ffi_get_concurrency_boundary, mtproxy_ffi_get_crypto_boundary,
+        mtproxy_ffi_get_network_boundary, mtproxy_ffi_get_precise_time,
+        mtproxy_ffi_get_rpc_boundary, mtproxy_ffi_get_utime_monotonic, mtproxy_ffi_matches_pid,
+        mtproxy_ffi_md5, mtproxy_ffi_md5_hex, mtproxy_ffi_msg_buffers_pick_size_index,
         mtproxy_ffi_net_epoll_conv_flags, mtproxy_ffi_net_epoll_unconv_flags,
         mtproxy_ffi_net_timers_wait_msec, mtproxy_ffi_parse_meminfo_summary,
         mtproxy_ffi_parse_proc_stat_line, mtproxy_ffi_parse_statm, mtproxy_ffi_pid_init_common,
@@ -2116,20 +2466,23 @@ mod tests {
         mtproxy_ffi_tcp_rpc_encode_compact_header,
         mtproxy_ffi_tcp_rpc_server_packet_header_malformed,
         mtproxy_ffi_tcp_rpc_server_packet_len_state, mtproxy_ffi_tl_parse_answer_header,
-        mtproxy_ffi_tl_parse_query_header, MtproxyCfgIntResult, MtproxyCfgScanResult,
-        MtproxyConcurrencyBoundary, MtproxyCpuid, MtproxyMeminfoSummary, MtproxyNetworkBoundary,
-        MtproxyProcStats, MtproxyProcessId, MtproxyRpcBoundary, MtproxyTlHeaderParseResult,
-        CONCURRENCY_BOUNDARY_VERSION, CPUID_MAGIC, EPOLLERR, EPOLLET, EPOLLIN, EPOLLOUT, EPOLLPRI,
-        EPOLLRDHUP, EVT_FROM_EPOLL, EVT_LEVEL, EVT_READ, EVT_SPEC, EVT_WRITE, FFI_API_VERSION,
-        JOBS_CONTRACT_OPS, JOBS_IMPLEMENTED_OPS, MPQ_CONTRACT_OPS, MPQ_IMPLEMENTED_OPS,
-        NETWORK_BOUNDARY_VERSION, NET_EVENTS_CONTRACT_OPS, NET_EVENTS_IMPLEMENTED_OPS,
-        NET_MSG_BUFFERS_CONTRACT_OPS, NET_MSG_BUFFERS_IMPLEMENTED_OPS, NET_TIMERS_CONTRACT_OPS,
-        NET_TIMERS_IMPLEMENTED_OPS, RPC_BOUNDARY_VERSION, RPC_INVOKE_REQ, RPC_REQ_RESULT,
-        RPC_TARGETS_CONTRACT_OPS, RPC_TARGETS_IMPLEMENTED_OPS, TCP_RPC_CLIENT_CONTRACT_OPS,
-        TCP_RPC_CLIENT_IMPLEMENTED_OPS, TCP_RPC_COMMON_CONTRACT_OPS,
-        TCP_RPC_COMMON_IMPLEMENTED_OPS, TCP_RPC_PACKET_LEN_STATE_INVALID,
-        TCP_RPC_PACKET_LEN_STATE_READY, TCP_RPC_PACKET_LEN_STATE_SHORT,
-        TCP_RPC_PACKET_LEN_STATE_SKIP, TCP_RPC_SERVER_CONTRACT_OPS, TCP_RPC_SERVER_IMPLEMENTED_OPS,
+        mtproxy_ffi_tl_parse_query_header, MtproxyAesKeyData, MtproxyCfgIntResult,
+        MtproxyCfgScanResult, MtproxyConcurrencyBoundary, MtproxyCpuid, MtproxyCryptoBoundary,
+        MtproxyMeminfoSummary, MtproxyNetworkBoundary, MtproxyProcStats, MtproxyProcessId,
+        MtproxyRpcBoundary, MtproxyTlHeaderParseResult, AESNI_CONTRACT_OPS, AESNI_IMPLEMENTED_OPS,
+        CONCURRENCY_BOUNDARY_VERSION, CPUID_MAGIC, CRYPTO_BOUNDARY_VERSION, EPOLLERR, EPOLLET,
+        EPOLLIN, EPOLLOUT, EPOLLPRI, EPOLLRDHUP, EVT_FROM_EPOLL, EVT_LEVEL, EVT_READ, EVT_SPEC,
+        EVT_WRITE, FFI_API_VERSION, JOBS_CONTRACT_OPS, JOBS_IMPLEMENTED_OPS, MPQ_CONTRACT_OPS,
+        MPQ_IMPLEMENTED_OPS, NETWORK_BOUNDARY_VERSION, NET_CRYPTO_AES_CONTRACT_OPS,
+        NET_CRYPTO_AES_IMPLEMENTED_OPS, NET_CRYPTO_DH_CONTRACT_OPS, NET_CRYPTO_DH_IMPLEMENTED_OPS,
+        NET_EVENTS_CONTRACT_OPS, NET_EVENTS_IMPLEMENTED_OPS, NET_MSG_BUFFERS_CONTRACT_OPS,
+        NET_MSG_BUFFERS_IMPLEMENTED_OPS, NET_TIMERS_CONTRACT_OPS, NET_TIMERS_IMPLEMENTED_OPS,
+        RPC_BOUNDARY_VERSION, RPC_INVOKE_REQ, RPC_REQ_RESULT, RPC_TARGETS_CONTRACT_OPS,
+        RPC_TARGETS_IMPLEMENTED_OPS, TCP_RPC_CLIENT_CONTRACT_OPS, TCP_RPC_CLIENT_IMPLEMENTED_OPS,
+        TCP_RPC_COMMON_CONTRACT_OPS, TCP_RPC_COMMON_IMPLEMENTED_OPS,
+        TCP_RPC_PACKET_LEN_STATE_INVALID, TCP_RPC_PACKET_LEN_STATE_READY,
+        TCP_RPC_PACKET_LEN_STATE_SHORT, TCP_RPC_PACKET_LEN_STATE_SKIP, TCP_RPC_SERVER_CONTRACT_OPS,
+        TCP_RPC_SERVER_IMPLEMENTED_OPS,
     };
 
     #[test]
@@ -2203,6 +2556,185 @@ mod tests {
         );
         assert_eq!(out.rpc_targets_contract_ops, RPC_TARGETS_CONTRACT_OPS);
         assert_eq!(out.rpc_targets_implemented_ops, RPC_TARGETS_IMPLEMENTED_OPS);
+    }
+
+    #[test]
+    fn crypto_boundary_contract_is_reported() {
+        let mut out = MtproxyCryptoBoundary::default();
+        assert_eq!(unsafe { mtproxy_ffi_get_crypto_boundary(&raw mut out) }, 0);
+        assert_eq!(out.boundary_version, CRYPTO_BOUNDARY_VERSION);
+        assert_eq!(out.net_crypto_aes_contract_ops, NET_CRYPTO_AES_CONTRACT_OPS);
+        assert_eq!(
+            out.net_crypto_aes_implemented_ops,
+            NET_CRYPTO_AES_IMPLEMENTED_OPS
+        );
+        assert_eq!(out.net_crypto_dh_contract_ops, NET_CRYPTO_DH_CONTRACT_OPS);
+        assert_eq!(
+            out.net_crypto_dh_implemented_ops,
+            NET_CRYPTO_DH_IMPLEMENTED_OPS
+        );
+        assert_eq!(out.aesni_contract_ops, AESNI_CONTRACT_OPS);
+        assert_eq!(out.aesni_implemented_ops, AESNI_IMPLEMENTED_OPS);
+    }
+
+    #[test]
+    fn crypto_dh_prefix_check_matches_current_rules() {
+        let prime_prefix = [0x89u8, 0x52, 0x13, 0x1b, 0x1e, 0x3a, 0x69, 0xba];
+        let mut data = [0u8; 256];
+        assert_eq!(
+            unsafe {
+                mtproxy_ffi_crypto_dh_is_good_rpc_dh_bin(
+                    data.as_ptr(),
+                    data.len(),
+                    prime_prefix.as_ptr(),
+                    prime_prefix.len(),
+                )
+            },
+            0
+        );
+        data[7] = 1;
+        assert_eq!(
+            unsafe {
+                mtproxy_ffi_crypto_dh_is_good_rpc_dh_bin(
+                    data.as_ptr(),
+                    data.len(),
+                    prime_prefix.as_ptr(),
+                    prime_prefix.len(),
+                )
+            },
+            1
+        );
+        data[0] = 0x90;
+        assert_eq!(
+            unsafe {
+                mtproxy_ffi_crypto_dh_is_good_rpc_dh_bin(
+                    data.as_ptr(),
+                    data.len(),
+                    prime_prefix.as_ptr(),
+                    prime_prefix.len(),
+                )
+            },
+            0
+        );
+    }
+
+    #[test]
+    fn crypto_aes_create_keys_is_deterministic_for_fixed_input() {
+        let nonce_server = [0x11u8; 16];
+        let nonce_client = [0x22u8; 16];
+        let server_ipv6 = [0x33u8; 16];
+        let client_ipv6 = [0x44u8; 16];
+        let secret = [0x55u8; 32];
+        let temp_key = [0x66u8; 64];
+
+        let mut out_a = MtproxyAesKeyData::default();
+        let mut out_b = MtproxyAesKeyData::default();
+        assert_eq!(
+            unsafe {
+                mtproxy_ffi_crypto_aes_create_keys(
+                    &raw mut out_a,
+                    1,
+                    nonce_server.as_ptr(),
+                    nonce_client.as_ptr(),
+                    1_700_000_000,
+                    0x0a00_0001,
+                    443,
+                    server_ipv6.as_ptr(),
+                    0x0a00_0002,
+                    32000,
+                    client_ipv6.as_ptr(),
+                    secret.as_ptr(),
+                    i32::try_from(secret.len()).unwrap_or(i32::MAX),
+                    temp_key.as_ptr(),
+                    i32::try_from(temp_key.len()).unwrap_or(i32::MAX),
+                )
+            },
+            1
+        );
+        assert_eq!(
+            unsafe {
+                mtproxy_ffi_crypto_aes_create_keys(
+                    &raw mut out_b,
+                    1,
+                    nonce_server.as_ptr(),
+                    nonce_client.as_ptr(),
+                    1_700_000_000,
+                    0x0a00_0001,
+                    443,
+                    server_ipv6.as_ptr(),
+                    0x0a00_0002,
+                    32000,
+                    client_ipv6.as_ptr(),
+                    secret.as_ptr(),
+                    i32::try_from(secret.len()).unwrap_or(i32::MAX),
+                    temp_key.as_ptr(),
+                    i32::try_from(temp_key.len()).unwrap_or(i32::MAX),
+                )
+            },
+            1
+        );
+        assert_eq!(out_a, out_b);
+        assert_ne!(out_a.write_key, [0u8; 32]);
+        assert_ne!(out_a.read_key, [0u8; 32]);
+    }
+
+    #[test]
+    fn crypto_aes_create_keys_rejects_short_secret() {
+        let nonce_server = [0x11u8; 16];
+        let nonce_client = [0x22u8; 16];
+        let server_ipv6 = [0x33u8; 16];
+        let client_ipv6 = [0x44u8; 16];
+        let secret = [0x55u8; 16];
+        let temp_key = [0x66u8; 8];
+        let mut out = MtproxyAesKeyData::default();
+        assert_eq!(
+            unsafe {
+                mtproxy_ffi_crypto_aes_create_keys(
+                    &raw mut out,
+                    0,
+                    nonce_server.as_ptr(),
+                    nonce_client.as_ptr(),
+                    1_700_000_000,
+                    0,
+                    443,
+                    server_ipv6.as_ptr(),
+                    0,
+                    32000,
+                    client_ipv6.as_ptr(),
+                    secret.as_ptr(),
+                    i32::try_from(secret.len()).unwrap_or(i32::MAX),
+                    temp_key.as_ptr(),
+                    i32::try_from(temp_key.len()).unwrap_or(i32::MAX),
+                )
+            },
+            -1
+        );
+    }
+
+    #[test]
+    fn aesni_crypt_rejects_invalid_args() {
+        assert_eq!(
+            unsafe {
+                mtproxy_ffi_aesni_crypt(
+                    core::ptr::null_mut(),
+                    core::ptr::null(),
+                    core::ptr::null_mut(),
+                    16,
+                )
+            },
+            -1
+        );
+        assert_eq!(
+            unsafe {
+                mtproxy_ffi_aesni_crypt(
+                    core::ptr::dangling_mut::<core::ffi::c_void>(),
+                    core::ptr::null(),
+                    core::ptr::null_mut(),
+                    -1,
+                )
+            },
+            -1
+        );
     }
 
     #[test]

@@ -2278,6 +2278,9 @@ void mtfront_pre_init (void) {
   if (rust_ffi_check_rpc_boundary () < 0) {
     exit (1);
   }
+  if (rust_ffi_check_crypto_boundary () < 0) {
+    exit (1);
+  }
   if (rust_ffi_enable_concurrency_bridges () < 0) {
     exit (1);
   }

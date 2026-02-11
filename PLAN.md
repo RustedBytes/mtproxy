@@ -412,6 +412,42 @@
    - Port crypto glue (`net-crypto-*`, `crypto/aesni*`) with conservative approach.
    - Keep trusted crypto backends (OpenSSL or audited Rust crates) and avoid ad-hoc crypto rewrites.
    - Add known-answer tests and side-channel-aware reviews for sensitive paths.
+   - Step 12 kickoff checklist (`net-crypto-aes` + `net-crypto-dh` + `crypto/aesni` extraction first):
+   - [x] Added explicit Step 12 FFI boundary contract for crypto integration operations:
+   - `rust/mtproxy-ffi/include/mtproxy_ffi.h`: `mtproxy_ffi_crypto_boundary_t`, Step 12 op-mask constants, helper declarations.
+   - `rust/mtproxy-ffi/src/lib.rs`: `mtproxy_ffi_get_crypto_boundary(...)` with contract/implemented masks.
+   - [x] Added mixed-startup boundary validation before config load:
+   - `common/rust-ffi-bridge.h`: `rust_ffi_check_crypto_boundary()`.
+   - `common/rust-ffi-bridge.c`: strict version/mask validation for Step 12 crypto boundary.
+   - `mtproto/mtproto-proxy.c`: mixed pre-init now validates Step 12 crypto boundary after Step 11 rpc boundary.
+   - [x] Routed first `net-crypto-aes` helper through Rust FFI with C fallback:
+   - `net/net-crypto-aes.c`: `aes_create_keys` now attempts `mtproxy_ffi_crypto_aes_create_keys(...)` and falls back to C implementation.
+   - [x] Routed first `net-crypto-dh` helper through Rust FFI with C fallback:
+   - `net/net-crypto-dh.c`: `is_good_rpc_dh_bin` now attempts `mtproxy_ffi_crypto_dh_is_good_rpc_dh_bin(...)` and falls back to C implementation.
+   - [x] Routed first `crypto/aesni` helper through Rust FFI with C fallback:
+   - `crypto/aesni256.c`: `evp_crypt` now attempts `mtproxy_ffi_aesni_crypt(...)` and falls back to direct `EVP_CipherUpdate`.
+   - [x] Added mixed-mode differential coverage for Step 12 boundary/helper semantics:
+   - `tests/golden/rust_crypto_boundary_differential.c`
+   - `tests/golden/test_rust_crypto_boundary_differential.sh`
+   - `tests/run.sh` + `tests/README.md` updated to include the new optional mixed suite.
+   - Rust Step 12 API additions:
+   - `mtproxy_ffi_get_crypto_boundary(...)`
+   - `mtproxy_ffi_crypto_aes_create_keys(...)`
+   - `mtproxy_ffi_crypto_dh_is_good_rpc_dh_bin(...)`
+   - `mtproxy_ffi_aesni_crypt(...)`
+   - Verification:
+   - `cargo test -p mtproxy-ffi` (PASS, includes Step 12 boundary/helper unit coverage, 2026-02-11)
+   - `make rust-ci` (PASS, format/lint/test gates, 2026-02-11)
+   - `make mixed` (PASS, 2026-02-11)
+   - `tests/golden/test_rust_crypto_boundary_differential.sh` (PASS, 2026-02-11)
+   - `./objs/bin/mtproto-proxy-mixed -v /tmp/definitely-missing-mtproxy-config.conf` (PASS: startup handshake + Step 9/10/11 boundaries + Step 12 crypto boundary logs observed; expected config-check failure path; exit code 1, 2026-02-11)
+   - Operation log:
+   - [x] 2026-02-11: Added Step 12 crypto boundary contract probe and op-mask constants to FFI headers/Rust exports.
+   - [x] 2026-02-11: Added mixed startup validation hook for Step 12 crypto boundary compatibility in `rust-ffi-bridge`.
+   - [x] 2026-02-11: Delegated `net-crypto-aes` key-derivation glue (`aes_create_keys`) to Rust with C fallback.
+   - [x] 2026-02-11: Delegated `net-crypto-dh` peer DH prefix validation helper to Rust with C fallback.
+   - [x] 2026-02-11: Delegated `crypto/aesni` EVP update wrapper (`evp_crypt`) to Rust with C fallback.
+   - [x] 2026-02-11: Added mixed differential test coverage for Step 12 boundary/helper semantics and wired it into optional mixed harness.
    - Done when: crypto tests, interoperability checks, and performance thresholds all pass.
 
 13. Port Engine and MTProto Application Logic Last
