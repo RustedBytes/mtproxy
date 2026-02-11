@@ -26,16 +26,17 @@
 
 #include "net/net-connections.h"
 
-#define MAX_CFG_CLUSTERS	1024
-#define	MAX_CFG_TARGETS		4096
-#define MAX_CLUSTER_TARGETS	1024
+#define MAX_CFG_CLUSTERS 1024
+#define MAX_CFG_TARGETS 4096
+#define MAX_CLUSTER_TARGETS 1024
 
 struct mf_cluster {
-  int targets_num;  // 1 for old-fashioned
+  int targets_num; // 1 for old-fashioned
   int write_targets_num;
-  int targets_allocated; // size of `cluster_targets` and `balance_hashes` arrays
+  int targets_allocated; // size of `cluster_targets` and `balance_hashes`
+                         // arrays
   int flags;
-  int cluster_id;   // datacenter # or 0
+  int cluster_id;                     // datacenter # or 0
   conn_target_job_t *cluster_targets; // N entries
 };
 
@@ -66,7 +67,7 @@ extern int default_cfg_min_connections, default_cfg_max_connections;
 
 // (re)load configuration file
 
-int do_reload_config (int create_conn);
+int do_reload_config(int create_conn);
 
-struct mf_cluster *mf_cluster_lookup (struct mf_config *MC, int cluster_id, int force);
-
+struct mf_cluster *mf_cluster_lookup(struct mf_config *MC, int cluster_id,
+                                     int force);

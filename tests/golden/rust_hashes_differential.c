@@ -21,7 +21,8 @@ static void to_hex(const uint8_t *input, size_t len, char *out) {
   }
 }
 
-static int evp_digest(const EVP_MD *md, const uint8_t *data, size_t len, uint8_t *out, unsigned expected_len) {
+static int evp_digest(const EVP_MD *md, const uint8_t *data, size_t len,
+                      uint8_t *out, unsigned expected_len) {
   EVP_MD_CTX *ctx = EVP_MD_CTX_new();
   if (!ctx) {
     return -1;
@@ -55,7 +56,8 @@ int main(void) {
       fprintf(stderr, "openssl md5 failed len=%zu\n", len);
       return 1;
     }
-    if (mtproxy_ffi_md5(data, len, md5_rust) != 0 || memcmp(md5_ref, md5_rust, 16) != 0) {
+    if (mtproxy_ffi_md5(data, len, md5_rust) != 0 ||
+        memcmp(md5_ref, md5_rust, 16) != 0) {
       fprintf(stderr, "md5 mismatch len=%zu\n", len);
       return 1;
     }
@@ -63,7 +65,8 @@ int main(void) {
     char md5_hex_ref[32];
     char md5_hex_rust[32];
     to_hex(md5_ref, 16, md5_hex_ref);
-    if (mtproxy_ffi_md5_hex(data, len, md5_hex_rust) != 0 || memcmp(md5_hex_ref, md5_hex_rust, 32) != 0) {
+    if (mtproxy_ffi_md5_hex(data, len, md5_hex_rust) != 0 ||
+        memcmp(md5_hex_ref, md5_hex_rust, 32) != 0) {
       fprintf(stderr, "md5_hex mismatch len=%zu\n", len);
       return 1;
     }
@@ -74,14 +77,16 @@ int main(void) {
       fprintf(stderr, "openssl sha1 failed len=%zu\n", len);
       return 1;
     }
-    if (mtproxy_ffi_sha1(data, len, sha1_rust) != 0 || memcmp(sha1_ref, sha1_rust, 20) != 0) {
+    if (mtproxy_ffi_sha1(data, len, sha1_rust) != 0 ||
+        memcmp(sha1_ref, sha1_rust, 20) != 0) {
       fprintf(stderr, "sha1 mismatch len=%zu\n", len);
       return 1;
     }
 
     size_t split = len / 3;
     uint8_t sha1_split[20];
-    if (mtproxy_ffi_sha1_two_chunks(data, split, data + split, len - split, sha1_split) != 0 ||
+    if (mtproxy_ffi_sha1_two_chunks(data, split, data + split, len - split,
+                                    sha1_split) != 0 ||
         memcmp(sha1_ref, sha1_split, 20) != 0) {
       fprintf(stderr, "sha1 two-chunks mismatch len=%zu\n", len);
       return 1;
@@ -93,13 +98,15 @@ int main(void) {
       fprintf(stderr, "openssl sha256 failed len=%zu\n", len);
       return 1;
     }
-    if (mtproxy_ffi_sha256(data, len, sha256_rust) != 0 || memcmp(sha256_ref, sha256_rust, 32) != 0) {
+    if (mtproxy_ffi_sha256(data, len, sha256_rust) != 0 ||
+        memcmp(sha256_ref, sha256_rust, 32) != 0) {
       fprintf(stderr, "sha256 mismatch len=%zu\n", len);
       return 1;
     }
 
     uint8_t sha256_split[32];
-    if (mtproxy_ffi_sha256_two_chunks(data, split, data + split, len - split, sha256_split) != 0 ||
+    if (mtproxy_ffi_sha256_two_chunks(data, split, data + split, len - split,
+                                      sha256_split) != 0 ||
         memcmp(sha256_ref, sha256_split, 32) != 0) {
       fprintf(stderr, "sha256 two-chunks mismatch len=%zu\n", len);
       return 1;
@@ -108,7 +115,8 @@ int main(void) {
     uint8_t hmac_ref[32];
     uint8_t hmac_rust[32];
     unsigned int hmac_len = 0;
-    unsigned char *hmac_ptr = HMAC(EVP_sha256(), key, 32, data, len, hmac_ref, &hmac_len);
+    unsigned char *hmac_ptr =
+        HMAC(EVP_sha256(), key, 32, data, len, hmac_ref, &hmac_len);
     if (!hmac_ptr || hmac_ptr != hmac_ref || hmac_len != 32) {
       fprintf(stderr, "openssl hmac-sha256 failed len=%zu\n", len);
       return 1;

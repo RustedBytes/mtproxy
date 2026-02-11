@@ -20,19 +20,19 @@ static int test_statm_parser(void) {
 }
 
 static int test_meminfo_parser(void) {
-  const char *meminfo =
-      "MemTotal:       16000000 kB\n"
-      "MemFree:         1000000 kB\n"
-      "Cached:          2000000 kB\n"
-      "SwapTotal:        500000 kB\n"
-      "SwapFree:         125000 kB\n";
+  const char *meminfo = "MemTotal:       16000000 kB\n"
+                        "MemFree:         1000000 kB\n"
+                        "Cached:          2000000 kB\n"
+                        "SwapTotal:        500000 kB\n"
+                        "SwapFree:         125000 kB\n";
   mtproxy_ffi_meminfo_summary_t s = {0};
   if (mtproxy_ffi_parse_meminfo_summary(meminfo, strlen(meminfo), &s) != 0) {
     fprintf(stderr, "parse_meminfo_summary call failed\n");
     return -1;
   }
   if (s.mem_free != (1000000LL << 10) || s.mem_cached != (2000000LL << 10) ||
-      s.swap_total != (500000LL << 10) || s.swap_free != (125000LL << 10) || s.found_mask != 15) {
+      s.swap_total != (500000LL << 10) || s.swap_free != (125000LL << 10) ||
+      s.found_mask != 15) {
     fprintf(stderr, "parse_meminfo_summary values mismatch\n");
     return -1;
   }
@@ -41,14 +41,16 @@ static int test_meminfo_parser(void) {
 
 static int test_log_prefix_formatter(void) {
   char out[128];
-  int n = mtproxy_ffi_format_log_prefix(321, 2026, 2, 11, 12, 34, 56, 789, out, sizeof(out));
+  int n = mtproxy_ffi_format_log_prefix(321, 2026, 2, 11, 12, 34, 56, 789, out,
+                                        sizeof(out));
   if (n <= 0) {
     fprintf(stderr, "format_log_prefix call failed\n");
     return -1;
   }
   const char *expected = "[321][2026-02-11 12:34:56.000789 local] ";
   if (strcmp(out, expected)) {
-    fprintf(stderr, "format_log_prefix mismatch:\n got: %s\n exp: %s\n", out, expected);
+    fprintf(stderr, "format_log_prefix mismatch:\n got: %s\n exp: %s\n", out,
+            expected);
     return -1;
   }
   return 0;
@@ -56,13 +58,15 @@ static int test_log_prefix_formatter(void) {
 
 static int test_proc_stat_line_parser(void) {
   const char *line =
-      "123 (cmd) R 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39\n";
+      "123 (cmd) R 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 "
+      "24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39\n";
   mtproxy_ffi_proc_stats_t s = {0};
   if (mtproxy_ffi_parse_proc_stat_line(line, strlen(line), &s) != 0) {
     fprintf(stderr, "parse_proc_stat_line call failed\n");
     return -1;
   }
-  if (s.pid != 123 || s.state != 'R' || s.ppid != 1 || s.pgrp != 2 || s.delayacct_blkio_ticks != 39) {
+  if (s.pid != 123 || s.state != 'R' || s.ppid != 1 || s.pgrp != 2 ||
+      s.delayacct_blkio_ticks != 39) {
     fprintf(stderr, "parse_proc_stat_line field mismatch\n");
     return -1;
   }

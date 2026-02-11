@@ -37,7 +37,9 @@ static ref_scan_t ref_skipspc(const char *cur, size_t len, int line_no) {
     }
     break;
   }
-  return (ref_scan_t){.advance = i, .line_no = line_no, .ch = i < len ? (unsigned char)cur[i] : 0};
+  return (ref_scan_t){.advance = i,
+                      .line_no = line_no,
+                      .ch = i < len ? (unsigned char)cur[i] : 0};
 }
 
 static ref_scan_t ref_skspc(const char *cur, size_t len, int line_no) {
@@ -45,11 +47,14 @@ static ref_scan_t ref_skspc(const char *cur, size_t len, int line_no) {
   while (i < len && (cur[i] == ' ' || cur[i] == '\t')) {
     i++;
   }
-  return (ref_scan_t){.advance = i, .line_no = line_no, .ch = i < len ? (unsigned char)cur[i] : 0};
+  return (ref_scan_t){.advance = i,
+                      .line_no = line_no,
+                      .ch = i < len ? (unsigned char)cur[i] : 0};
 }
 
 static int ref_is_word_char(unsigned char ch) {
-  return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '.' || ch == '-' || ch == '_';
+  return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
+         (ch >= '0' && ch <= '9') || ch == '.' || ch == '-' || ch == '_';
 }
 
 static int ref_getword_len(const char *cur, size_t len) {
@@ -65,7 +70,8 @@ static int ref_getword_len(const char *cur, size_t len) {
     return (int)(i - scan.advance);
   }
   i++;
-  while (i < len && (ref_is_word_char((unsigned char)cur[i]) || cur[i] == ':')) {
+  while (i < len &&
+         (ref_is_word_char((unsigned char)cur[i]) || cur[i] == ':')) {
     i++;
   }
   if (i < len && cur[i] == ']') {
@@ -137,7 +143,8 @@ static int test_case(const char *src) {
     ref_scan_t rs = ref_skipspc(cur, rem, 7);
     mtproxy_ffi_cfg_scan_result_t ms = {0};
     if (mtproxy_ffi_cfg_skipspc(cur, rem, 7, &ms) != 0 ||
-        ms.advance != rs.advance || ms.line_no != rs.line_no || ms.ch != rs.ch) {
+        ms.advance != rs.advance || ms.line_no != rs.line_no ||
+        ms.ch != rs.ch) {
       fprintf(stderr, "cfg_skipspc mismatch at off=%zu\n", off);
       return -1;
     }
@@ -145,7 +152,8 @@ static int test_case(const char *src) {
     rs = ref_skspc(cur, rem, 13);
     ms = (mtproxy_ffi_cfg_scan_result_t){0};
     if (mtproxy_ffi_cfg_skspc(cur, rem, 13, &ms) != 0 ||
-        ms.advance != rs.advance || ms.line_no != rs.line_no || ms.ch != rs.ch) {
+        ms.advance != rs.advance || ms.line_no != rs.line_no ||
+        ms.ch != rs.ch) {
       fprintf(stderr, "cfg_skspc mismatch at off=%zu\n", off);
       return -1;
     }
@@ -153,14 +161,16 @@ static int test_case(const char *src) {
     int rw = ref_getword_len(cur, rem);
     int mw = mtproxy_ffi_cfg_getword_len(cur, rem);
     if (rw != mw) {
-      fprintf(stderr, "cfg_getword_len mismatch at off=%zu ref=%d ffi=%d\n", off, rw, mw);
+      fprintf(stderr, "cfg_getword_len mismatch at off=%zu ref=%d ffi=%d\n",
+              off, rw, mw);
       return -1;
     }
 
     int rg = ref_getstr_len(cur, rem);
     int mg = mtproxy_ffi_cfg_getstr_len(cur, rem);
     if (rg != mg) {
-      fprintf(stderr, "cfg_getstr_len mismatch at off=%zu ref=%d ffi=%d\n", off, rg, mg);
+      fprintf(stderr, "cfg_getstr_len mismatch at off=%zu ref=%d ffi=%d\n", off,
+              rg, mg);
       return -1;
     }
 

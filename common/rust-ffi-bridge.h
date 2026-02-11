@@ -20,8 +20,8 @@ int rust_ffi_check_rpc_boundary(void);
 // Returns 0 on success, negative on incompatibility.
 int rust_ffi_check_crypto_boundary(void);
 
-// Validates extracted engine/mtproto application migration boundary contract from Rust.
-// Returns 0 on success, negative on incompatibility.
+// Validates extracted engine/mtproto application migration boundary contract
+// from Rust. Returns 0 on success, negative on incompatibility.
 int rust_ffi_check_application_boundary(void);
 
 // Installs Step 9 concurrency adapter routes for mp-queue/jobs in mixed mode.

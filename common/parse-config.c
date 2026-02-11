@@ -1,10 +1,10 @@
 /*
     This file is part of Mtproto-proxy Library.
 
-    Mtproto-proxy Library is free software: you can redistribute it and/or modify
-    it under the terms of the GNU Lesser General Public License as published by
-    the Free Software Foundation, either version 2 of the License, or
-    (at your option) any later version.
+    Mtproto-proxy Library is free software: you can redistribute it and/or
+   modify it under the terms of the GNU Lesser General Public License as
+   published by the Free Software Foundation, either version 2 of the License,
+   or (at your option) any later version.
 
     Mtproto-proxy Library is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -12,27 +12,28 @@
     GNU Lesser General Public License for more details.
 
     You should have received a copy of the GNU Lesser General Public License
-    along with Mtproto-proxy Library.  If not, see <http://www.gnu.org/licenses/>.
+    along with Mtproto-proxy Library.  If not, see
+   <http://www.gnu.org/licenses/>.
 
     Copyright 2014 Telegram Messenger Inc
               2014 Vitaly Valtman
 */
 
 #include <assert.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <unistd.h>
-#include <stdarg.h>
-#include <string.h>
-#include <stdint.h>
-#include <sys/types.h>
-#include <sys/stat.h>
 #include <fcntl.h>
+#include <stdarg.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
 
-#include "crypto/md5.h"
 #include "common/parse-config.h"
-#include "resolver.h"
+#include "crypto/md5.h"
 #include "kprintf.h"
+#include "resolver.h"
 #include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 
 #define MAX_CONFIG_SIZE (16 << 20)
@@ -41,40 +42,48 @@ static char *config_buff;
 char *config_name, *cfg_start, *cfg_end, *cfg_cur;
 int config_bytes, cfg_lno, cfg_lex = -1;
 
-extern int32_t mtproxy_ffi_cfg_skipspc (const char *cur, size_t len, int32_t line_no, mtproxy_ffi_cfg_scan_result_t *out);
-extern int32_t mtproxy_ffi_cfg_skspc (const char *cur, size_t len, int32_t line_no, mtproxy_ffi_cfg_scan_result_t *out);
-extern int32_t mtproxy_ffi_cfg_getword_len (const char *cur, size_t len);
-extern int32_t mtproxy_ffi_cfg_getstr_len (const char *cur, size_t len);
-extern int32_t mtproxy_ffi_cfg_getint (const char *cur, size_t len, mtproxy_ffi_cfg_int_result_t *out);
-extern int32_t mtproxy_ffi_cfg_getint_zero (const char *cur, size_t len, mtproxy_ffi_cfg_int_result_t *out);
-extern int32_t mtproxy_ffi_cfg_getint_signed_zero (const char *cur, size_t len, mtproxy_ffi_cfg_int_result_t *out);
+extern int32_t mtproxy_ffi_cfg_skipspc(const char *cur, size_t len,
+                                       int32_t line_no,
+                                       mtproxy_ffi_cfg_scan_result_t *out);
+extern int32_t mtproxy_ffi_cfg_skspc(const char *cur, size_t len,
+                                     int32_t line_no,
+                                     mtproxy_ffi_cfg_scan_result_t *out);
+extern int32_t mtproxy_ffi_cfg_getword_len(const char *cur, size_t len);
+extern int32_t mtproxy_ffi_cfg_getstr_len(const char *cur, size_t len);
+extern int32_t mtproxy_ffi_cfg_getint(const char *cur, size_t len,
+                                      mtproxy_ffi_cfg_int_result_t *out);
+extern int32_t mtproxy_ffi_cfg_getint_zero(const char *cur, size_t len,
+                                           mtproxy_ffi_cfg_int_result_t *out);
+extern int32_t
+mtproxy_ffi_cfg_getint_signed_zero(const char *cur, size_t len,
+                                   mtproxy_ffi_cfg_int_result_t *out);
 
-static size_t cfg_remaining_len (void) {
+static size_t cfg_remaining_len(void) {
   if (!cfg_cur || !cfg_end || cfg_cur >= cfg_end) {
     return 0;
   }
-  return (size_t) (cfg_end - cfg_cur);
+  return (size_t)(cfg_end - cfg_cur);
 }
 
-int cfg_skipspc (void) {
+int cfg_skipspc(void) {
   mtproxy_ffi_cfg_scan_result_t out = {0};
-  int rc = mtproxy_ffi_cfg_skipspc (cfg_cur, cfg_remaining_len (), cfg_lno, &out);
-  assert (rc == 0);
+  int rc = mtproxy_ffi_cfg_skipspc(cfg_cur, cfg_remaining_len(), cfg_lno, &out);
+  assert(rc == 0);
   cfg_cur += out.advance;
   cfg_lno = out.line_no;
   return out.ch;
 }
 
-int cfg_skspc (void) {
+int cfg_skspc(void) {
   mtproxy_ffi_cfg_scan_result_t out = {0};
-  int rc = mtproxy_ffi_cfg_skspc (cfg_cur, cfg_remaining_len (), cfg_lno, &out);
-  assert (rc == 0);
+  int rc = mtproxy_ffi_cfg_skspc(cfg_cur, cfg_remaining_len(), cfg_lno, &out);
+  assert(rc == 0);
   cfg_cur += out.advance;
   cfg_lno = out.line_no;
   return out.ch;
 }
 
-int cfg_getlex (void) {
+int cfg_getlex(void) {
   switch (cfg_skipspc()) {
   case ';':
   case ':':
@@ -87,34 +96,34 @@ int cfg_getlex (void) {
   return cfg_lex = -1;
 }
 
-int cfg_getword (void) {
+int cfg_getword(void) {
   cfg_skspc();
-  int32_t n = mtproxy_ffi_cfg_getword_len (cfg_cur, cfg_remaining_len ());
-  assert (n >= 0);
+  int32_t n = mtproxy_ffi_cfg_getword_len(cfg_cur, cfg_remaining_len());
+  assert(n >= 0);
   return n;
 }
 
-int cfg_getstr (void) {
+int cfg_getstr(void) {
   cfg_skspc();
-  int32_t n = mtproxy_ffi_cfg_getstr_len (cfg_cur, cfg_remaining_len ());
-  assert (n >= 0);
+  int32_t n = mtproxy_ffi_cfg_getstr_len(cfg_cur, cfg_remaining_len());
+  assert(n >= 0);
   return n;
 }
 
-long long cfg_getint (void) {
-  cfg_skspc ();
+long long cfg_getint(void) {
+  cfg_skspc();
   mtproxy_ffi_cfg_int_result_t out = {0};
-  int rc = mtproxy_ffi_cfg_getint (cfg_cur, cfg_remaining_len (), &out);
-  assert (rc == 0);
+  int rc = mtproxy_ffi_cfg_getint(cfg_cur, cfg_remaining_len(), &out);
+  assert(rc == 0);
   cfg_cur += out.consumed;
   return out.value;
 }
 
-long long cfg_getint_zero (void) {
-  cfg_skspc ();
+long long cfg_getint_zero(void) {
+  cfg_skspc();
   mtproxy_ffi_cfg_int_result_t out = {0};
-  int rc = mtproxy_ffi_cfg_getint_zero (cfg_cur, cfg_remaining_len (), &out);
-  assert (rc == 0);
+  int rc = mtproxy_ffi_cfg_getint_zero(cfg_cur, cfg_remaining_len(), &out);
+  assert(rc == 0);
   if (!out.consumed) {
     return -1;
   }
@@ -122,11 +131,12 @@ long long cfg_getint_zero (void) {
   return out.value;
 }
 
-long long cfg_getint_signed_zero (void) {
-  cfg_skspc ();
+long long cfg_getint_signed_zero(void) {
+  cfg_skspc();
   mtproxy_ffi_cfg_int_result_t out = {0};
-  int rc = mtproxy_ffi_cfg_getint_signed_zero (cfg_cur, cfg_remaining_len (), &out);
-  assert (rc == 0);
+  int rc =
+      mtproxy_ffi_cfg_getint_signed_zero(cfg_cur, cfg_remaining_len(), &out);
+  assert(rc == 0);
   if (!out.consumed) {
     return (-1LL << 63);
   }
@@ -134,74 +144,74 @@ long long cfg_getint_signed_zero (void) {
   return out.value;
 }
 
-void syntax (const char *msg, ...) {
+void syntax(const char *msg, ...) {
   if (!msg) {
     msg = "syntax error";
   }
   if (cfg_lno) {
-    fprintf (stderr, "%s:%d: ", config_name, cfg_lno);
+    fprintf(stderr, "%s:%d: ", config_name, cfg_lno);
   }
-  fprintf (stderr, "fatal: ");
+  fprintf(stderr, "fatal: ");
   va_list args;
-  va_start (args, msg);
-  vfprintf (stderr, msg, args);
-  va_end (args);
+  va_start(args, msg);
+  vfprintf(stderr, msg, args);
+  va_end(args);
   int len = 0;
   while (cfg_cur[len] && cfg_cur[len] != 13 && cfg_cur[len] != 10 && len < 20) {
     len++;
   }
-  fprintf (stderr, " near %.*s%s\n", len, cfg_cur, len >= 20 ? " ..." : "");
+  fprintf(stderr, " near %.*s%s\n", len, cfg_cur, len >= 20 ? " ..." : "");
 }
 
-void syntax_warning (const char *msg, ...) {
+void syntax_warning(const char *msg, ...) {
   va_list args;
   if (cfg_lno) {
-    fprintf (stderr, "%s:%d: ", config_name, cfg_lno);
+    fprintf(stderr, "%s:%d: ", config_name, cfg_lno);
   }
-  fputs ("warning: ", stderr);
-  va_start (args, msg);
-  vfprintf (stderr, msg, args);
-  va_end (args);
+  fputs("warning: ", stderr);
+  va_start(args, msg);
+  vfprintf(stderr, msg, args);
+  va_end(args);
   int len = 0;
   while (cfg_cur[len] && cfg_cur[len] != 13 && cfg_cur[len] != 10 && len < 20) {
     len++;
   }
-  fprintf (stderr, " near %.*s%s\n", len, cfg_cur, len >= 20 ? " ..." : "");
+  fprintf(stderr, " near %.*s%s\n", len, cfg_cur, len >= 20 ? " ..." : "");
 }
 
-int expect_lexem (int lexem) {
+int expect_lexem(int lexem) {
   if (cfg_lex != lexem) {
-    syntax ("%c expected", lexem);
+    syntax("%c expected", lexem);
     return -1;
   } else {
     return 0;
   }
 }
 
-int expect_word (const char *name, int len) {
-  int l = cfg_getword ();
-  if (len != l || memcmp (name, cfg_cur, len)) {
-    syntax ("Expected %.*s", len, name);
+int expect_word(const char *name, int len) {
+  int l = cfg_getword();
+  if (len != l || memcmp(name, cfg_cur, len)) {
+    syntax("Expected %.*s", len, name);
     return -1;
   }
   cfg_cur += l;
   return 0;
 }
 
-struct hostent *cfg_gethost_ex (int verb) {
+struct hostent *cfg_gethost_ex(int verb) {
   struct hostent *h;
-  int l = cfg_getword ();  
+  int l = cfg_getword();
   if (!l || l > 63) {
-    syntax ("hostname expected");
+    syntax("hostname expected");
     return 0;
   }
   char c = cfg_cur[l];
-  //hostname = cfg_cur;
+  // hostname = cfg_cur;
   cfg_cur[l] = 0;
 
-  if (!(h = kdb_gethostbyname (cfg_cur)) || !h->h_addr_list || !h->h_addr) {  
+  if (!(h = kdb_gethostbyname(cfg_cur)) || !h->h_addr_list || !h->h_addr) {
     if (verbosity >= verb) {
-      syntax ("cannot resolve '%s'\n", cfg_cur);
+      syntax("cannot resolve '%s'\n", cfg_cur);
     }
     *(cfg_cur += l) = c;
     return 0;
@@ -210,70 +220,69 @@ struct hostent *cfg_gethost_ex (int verb) {
   return h;
 }
 
-struct hostent *cfg_gethost (void) {
-  return cfg_gethost_ex (0);
-}
+struct hostent *cfg_gethost(void) { return cfg_gethost_ex(0); }
 
-void reset_config (void) {
-  assert (config_buff);
+void reset_config(void) {
+  assert(config_buff);
   cfg_cur = cfg_start = config_buff;
   cfg_end = cfg_start + config_bytes;
   *cfg_end = 0;
   cfg_lno = 0;
 }
 
-int load_config (const char *file, int fd) {
+int load_config(const char *file, int fd) {
   if (!config_buff) {
-    config_buff = malloc (MAX_CONFIG_SIZE+4);
-    assert (config_buff);
+    config_buff = malloc(MAX_CONFIG_SIZE + 4);
+    assert(config_buff);
   }
   if (fd < 0) {
-    fd = open (file, O_RDONLY);
+    fd = open(file, O_RDONLY);
     if (fd < 0) {
-      fprintf (stderr, "Can not open file %s: %m\n", file);
+      fprintf(stderr, "Can not open file %s: %m\n", file);
       return -1;
     }
   }
   int r;
-  config_bytes = r = read (fd, config_buff, MAX_CONFIG_SIZE + 1);
+  config_bytes = r = read(fd, config_buff, MAX_CONFIG_SIZE + 1);
   if (r < 0) {
-    fprintf (stderr, "error reading configuration file %s: %m\n", config_name);
+    fprintf(stderr, "error reading configuration file %s: %m\n", config_name);
     return -2;
   }
   if (r > MAX_CONFIG_SIZE) {
-    fprintf (stderr, "configuration file %s too long (max %d bytes)\n", config_name, MAX_CONFIG_SIZE);
+    fprintf(stderr, "configuration file %s too long (max %d bytes)\n",
+            config_name, MAX_CONFIG_SIZE);
     return -2;
   }
   if (config_name) {
-    free (config_name);
+    free(config_name);
   }
   if (file) {
-    config_name = strdup (file);
+    config_name = strdup(file);
   }
 
-  reset_config ();
+  reset_config();
   return fd;
 }
 
-void md5_hex_config (char *out) {
-  assert (config_buff);
-  md5_hex (config_buff, config_bytes, out);
+void md5_hex_config(char *out) {
+  assert(config_buff);
+  md5_hex(config_buff, config_bytes, out);
 }
 
-void close_config (int *fd) {
+void close_config(int *fd) {
   if (config_buff) {
-    free (config_buff);
+    free(config_buff);
     config_buff = NULL;
   }
   if (config_name) {
-    free (config_name);
+    free(config_name);
     config_name = NULL;
   }
   config_bytes = 0;
   cfg_cur = cfg_start = cfg_end = NULL;
   if (fd) {
     if (*fd >= 0) {
-      assert (!close (*fd));
+      assert(!close(*fd));
       *fd = -1;
     }
   }

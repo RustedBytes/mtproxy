@@ -5,9 +5,9 @@
 extern "C" {
 #endif
 
-void md5( unsigned char *input, int ilen, unsigned char output[16] );
+void md5(unsigned char *input, int ilen, unsigned char output[16]);
 
-void md5_hex (char *input, int ilen, char output[32]);
+void md5_hex(char *input, int ilen, char output[32]);
 
 #ifdef __cplusplus
 }

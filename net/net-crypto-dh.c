@@ -1,10 +1,10 @@
 /*
     This file is part of Mtproto-proxy Library.
 
-    Mtproto-proxy Library is free software: you can redistribute it and/or modify
-    it under the terms of the GNU Lesser General Public License as published by
-    the Free Software Foundation, either version 2 of the License, or
-    (at your option) any later version.
+    Mtproto-proxy Library is free software: you can redistribute it and/or
+   modify it under the terms of the GNU Lesser General Public License as
+   published by the Free Software Foundation, either version 2 of the License,
+   or (at your option) any later version.
 
     Mtproto-proxy Library is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -12,122 +12,128 @@
     GNU Lesser General Public License for more details.
 
     You should have received a copy of the GNU Lesser General Public License
-    along with Mtproto-proxy Library.  If not, see <http://www.gnu.org/licenses/>.
+    along with Mtproto-proxy Library.  If not, see
+   <http://www.gnu.org/licenses/>.
 
-    Copyright 2014 Telegram Messenger Inc             
+    Copyright 2014 Telegram Messenger Inc
               2014 Nikolai Durov
               2014 Andrey Lopatin
-    
-*/
-#define	_FILE_OFFSET_BITS	64
-#define _XOPEN_SOURCE 500
 
+*/
+#define _FILE_OFFSET_BITS 64
+#define _XOPEN_SOURCE 500
 
 #include <assert.h>
 #include <pthread.h>
 #include <stdint.h>
 
-#include "kprintf.h"
 #include "jobs/jobs.h"
+#include "kprintf.h"
 
-#include "net/net-crypto-dh.h"
 #include "common/common-stats.h"
+#include "net/net-crypto-dh.h"
 
 #define MODULE crypto_dh
 
-MODULE_STAT_TYPE {
-  long long tot_dh_rounds[3];
-};
+MODULE_STAT_TYPE { long long tot_dh_rounds[3]; };
 
 MODULE_INIT
 
 MODULE_STAT_FUNCTION
-  sb_printf (sb,
-    "tot_dh_rounds\t%lld %lld %lld\n", SB_SUM_LL(tot_dh_rounds[0]), SB_SUM_LL(tot_dh_rounds[1]), SB_SUM_LL(tot_dh_rounds[2])
-  );
+sb_printf(sb, "tot_dh_rounds\t%lld %lld %lld\n", SB_SUM_LL(tot_dh_rounds[0]),
+          SB_SUM_LL(tot_dh_rounds[1]), SB_SUM_LL(tot_dh_rounds[2]));
 MODULE_STAT_FUNCTION_END
 
-void fetch_tot_dh_rounds_stat (long long _tot_dh_rounds[3]) {
+void fetch_tot_dh_rounds_stat(long long _tot_dh_rounds[3]) {
   int i;
   for (i = 0; i < 3; i++) {
     _tot_dh_rounds[i] = SB_SUM_LL(tot_dh_rounds[i]);
   }
 }
 
-#define RPC_PARAM_HASH	0x00620b93
+#define RPC_PARAM_HASH 0x00620b93
 
 int dh_params_select;
 
-extern int32_t mtproxy_ffi_crypto_dh_get_params_select (void);
-extern int32_t mtproxy_ffi_crypto_dh_first_round (uint8_t g_a[256], uint8_t a_out[256]);
-extern int32_t mtproxy_ffi_crypto_dh_second_round (uint8_t g_ab[256], uint8_t g_a[256], const uint8_t g_b[256]);
-extern int32_t mtproxy_ffi_crypto_dh_third_round (uint8_t g_ab[256], const uint8_t g_b[256], const uint8_t a[256]);
-
+extern int32_t mtproxy_ffi_crypto_dh_get_params_select(void);
+extern int32_t mtproxy_ffi_crypto_dh_first_round(uint8_t g_a[256],
+                                                 uint8_t a_out[256]);
+extern int32_t mtproxy_ffi_crypto_dh_second_round(uint8_t g_ab[256],
+                                                  uint8_t g_a[256],
+                                                  const uint8_t g_b[256]);
+extern int32_t mtproxy_ffi_crypto_dh_third_round(uint8_t g_ab[256],
+                                                 const uint8_t g_b[256],
+                                                 const uint8_t a[256]);
 
 pthread_mutex_t DhInitLock = PTHREAD_MUTEX_INITIALIZER;
 
 // result: 1 = OK, 0 = already done, -1 = error
-int init_dh_params (void) {
+int init_dh_params(void) {
   if (dh_params_select) {
     return 0;
   }
-  pthread_mutex_lock (&DhInitLock);
+  pthread_mutex_lock(&DhInitLock);
   if (dh_params_select) {
-    pthread_mutex_unlock (&DhInitLock);
+    pthread_mutex_unlock(&DhInitLock);
     return 0;
   }
-  int32_t select = mtproxy_ffi_crypto_dh_get_params_select ();
+  int32_t select = mtproxy_ffi_crypto_dh_get_params_select();
   if (select <= 0) {
-    pthread_mutex_unlock (&DhInitLock);
+    pthread_mutex_unlock(&DhInitLock);
     return -1;
   }
   dh_params_select = select;
-  assert (dh_params_select == RPC_PARAM_HASH);
-  
-  pthread_mutex_unlock (&DhInitLock);
+  assert(dh_params_select == RPC_PARAM_HASH);
+
+  pthread_mutex_unlock(&DhInitLock);
   return 1;
 }
 
-int dh_first_round (unsigned char g_a[256], struct crypto_temp_dh_params *dh_params) {
+int dh_first_round(unsigned char g_a[256],
+                   struct crypto_temp_dh_params *dh_params) {
   if (!g_a || !dh_params) {
     return -1;
   }
   dh_params->dh_params_select = dh_params_select;
-  int32_t r = mtproxy_ffi_crypto_dh_first_round (g_a, dh_params->a);
+  int32_t r = mtproxy_ffi_crypto_dh_first_round(g_a, dh_params->a);
   if (r != 1) {
     return -1;
   }
   dh_params->magic = CRYPTO_TEMP_DH_PARAMS_MAGIC;
-  MODULE_STAT->tot_dh_rounds[0] ++;
-  
+  MODULE_STAT->tot_dh_rounds[0]++;
+
   return 1;
 }
 
-int dh_second_round (unsigned char g_ab[256], unsigned char g_a[256], const unsigned char g_b[256]) {
+int dh_second_round(unsigned char g_ab[256], unsigned char g_a[256],
+                    const unsigned char g_b[256]) {
   if (!g_ab || !g_a || !g_b) {
     return -1;
   }
-  int32_t r = mtproxy_ffi_crypto_dh_second_round (g_ab, g_a, g_b);
+  int32_t r = mtproxy_ffi_crypto_dh_second_round(g_ab, g_a, g_b);
   if (r <= 0) {
     return r;
   }
 
-  vkprintf (2, "DH key is %02x%02x%02x...%02x%02x%02x\n", g_ab[0], g_ab[1], g_ab[2], g_ab[253], g_ab[254], g_ab[255]);
+  vkprintf(2, "DH key is %02x%02x%02x...%02x%02x%02x\n", g_ab[0], g_ab[1],
+           g_ab[2], g_ab[253], g_ab[254], g_ab[255]);
   MODULE_STAT->tot_dh_rounds[1]++;
-  
+
   return r;
 }
 
-int dh_third_round (unsigned char g_ab[256], const unsigned char g_b[256], struct crypto_temp_dh_params *dh_params) {
+int dh_third_round(unsigned char g_ab[256], const unsigned char g_b[256],
+                   struct crypto_temp_dh_params *dh_params) {
   if (!g_ab || !g_b || !dh_params) {
     return -1;
   }
-  int32_t r = mtproxy_ffi_crypto_dh_third_round (g_ab, g_b, dh_params->a);
+  int32_t r = mtproxy_ffi_crypto_dh_third_round(g_ab, g_b, dh_params->a);
   if (r <= 0) {
     return r;
   }
 
-  vkprintf (2, "DH key is %02x%02x%02x...%02x%02x%02x\n", g_ab[0], g_ab[1], g_ab[2], g_ab[253], g_ab[254], g_ab[255]);
+  vkprintf(2, "DH key is %02x%02x%02x...%02x%02x%02x\n", g_ab[0], g_ab[1],
+           g_ab[2], g_ab[253], g_ab[254], g_ab[255]);
   MODULE_STAT->tot_dh_rounds[2]++;
 
   return r;

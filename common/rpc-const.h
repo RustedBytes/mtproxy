@@ -1,10 +1,10 @@
 /*
     This file is part of Mtproto-proxy Library.
 
-    Mtproto-proxy Library is free software: you can redistribute it and/or modify
-    it under the terms of the GNU Lesser General Public License as published by
-    the Free Software Foundation, either version 2 of the License, or
-    (at your option) any later version.
+    Mtproto-proxy Library is free software: you can redistribute it and/or
+   modify it under the terms of the GNU Lesser General Public License as
+   published by the Free Software Foundation, either version 2 of the License,
+   or (at your option) any later version.
 
     Mtproto-proxy Library is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -12,7 +12,8 @@
     GNU Lesser General Public License for more details.
 
     You should have received a copy of the GNU Lesser General Public License
-    along with Mtproto-proxy Library.  If not, see <http://www.gnu.org/licenses/>.
+    along with Mtproto-proxy Library.  If not, see
+   <http://www.gnu.org/licenses/>.
 
     Copyright 2012-2013 Vkontakte Ltd
               2012-2013 Nikolai Durov
@@ -27,19 +28,17 @@
 
 #define TL_STAT 0x9d56e6b2
 
-
-#define RPC_INVOKE_REQ			0x2374df3d
-#define RPC_INVOKE_KPHP_REQ		0x99a37fda
-#define RPC_REQ_RUNNING			0x346d5efa
-#define RPC_REQ_ERROR			0x7ae432f5
-#define RPC_REQ_RESULT			0x63aeda4e
-#define	RPC_READY			0x6a34cac7
-#define	RPC_STOP_READY			0x59d86654
-#define	RPC_SEND_SESSION_MSG		0x1ed5a3cc
-#define RPC_RESPONSE_INDIRECT		0x2194f56e
+#define RPC_INVOKE_REQ 0x2374df3d
+#define RPC_INVOKE_KPHP_REQ 0x99a37fda
+#define RPC_REQ_RUNNING 0x346d5efa
+#define RPC_REQ_ERROR 0x7ae432f5
+#define RPC_REQ_RESULT 0x63aeda4e
+#define RPC_READY 0x6a34cac7
+#define RPC_STOP_READY 0x59d86654
+#define RPC_SEND_SESSION_MSG 0x1ed5a3cc
+#define RPC_RESPONSE_INDIRECT 0x2194f56e
 #define RPC_PING 0x5730a2df
 #define RPC_PONG 0x8430eaa7
-
 
 #define RPC_DEST_ACTOR 0x7568aabd
 #define RPC_DEST_ACTOR_FLAGS 0xf0a5acf7
@@ -66,7 +65,7 @@
 #define TL_MAYBE_FALSE 0x27930a7b
 
 #define TL_VECTOR 0x1cb5c415
-#define TL_VECTOR_TOTAL 0x10133f47 
+#define TL_VECTOR_TOTAL 0x10133f47
 #define TL_TUPLE 0x9770768a
 
 #define TL_DICTIONARY 0x1f4c618f
@@ -97,7 +96,7 @@
 #define TL_ERROR_BAD_VALUE -2006
 #define TL_ERROR_BINLOG_DISABLED -2007
 #define TL_ERROR_FEATURE_DISABLED -2008
-#define TL_ERROR_QUERY_IS_EMPTY	-2009
+#define TL_ERROR_QUERY_IS_EMPTY -2009
 #define TL_ERROR_INVALID_CONNECTION_ID -2010
 #define TL_ERROR_WRONG_SPLIT -2011
 #define TL_ERROR_TOO_BIG_OFFSET -2012
@@ -129,7 +128,7 @@
 
 #define TL_NAMESPACE TL_
 
-#define CONCAT(a,b) a ## b
-#define TLN(nspc,name) CONCAT (nspc, name)
-#define TLG(name) TL_ ## name
-#define TL(x) TLN (TL_NAMESPACE, x)
+#define CONCAT(a, b) a##b
+#define TLN(nspc, name) CONCAT(nspc, name)
+#define TLG(name) TL_##name
+#define TL(x) TLN(TL_NAMESPACE, x)

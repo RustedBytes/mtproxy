@@ -35,19 +35,21 @@
 
 #include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 
-extern int32_t mtproxy_ffi_md5 (const uint8_t *input, size_t len, uint8_t output[16]);
-extern int32_t mtproxy_ffi_md5_hex (const uint8_t *input, size_t len, char output[32]);
+extern int32_t mtproxy_ffi_md5(const uint8_t *input, size_t len,
+                               uint8_t output[16]);
+extern int32_t mtproxy_ffi_md5_hex(const uint8_t *input, size_t len,
+                                   char output[32]);
 
-void md5( unsigned char *input, int ilen, unsigned char output[16] ) {
-  size_t len = ilen > 0 ? (size_t) ilen : 0;
-  int rc = mtproxy_ffi_md5 ((const uint8_t *) input, len, (uint8_t *) output);
-  assert (rc == 0);
+void md5(unsigned char *input, int ilen, unsigned char output[16]) {
+  size_t len = ilen > 0 ? (size_t)ilen : 0;
+  int rc = mtproxy_ffi_md5((const uint8_t *)input, len, (uint8_t *)output);
+  assert(rc == 0);
 }
 
-void md5_hex (char *input, int ilen, char output[32]) {
-  size_t len = ilen > 0 ? (size_t) ilen : 0;
-  int rc = mtproxy_ffi_md5_hex ((const uint8_t *) input, len, output);
-  assert (rc == 0);
+void md5_hex(char *input, int ilen, char output[32]) {
+  size_t len = ilen > 0 ? (size_t)ilen : 0;
+  int rc = mtproxy_ffi_md5_hex((const uint8_t *)input, len, output);
+  assert(rc == 0);
 }
 
 #endif

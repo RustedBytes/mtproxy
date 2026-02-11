@@ -17,11 +17,13 @@ int main(void) {
   double mono_ref = clock_now(CLOCK_MONOTONIC);
   double mono_rust = mtproxy_ffi_get_utime_monotonic();
   if (mono_ref < 0.0 || mono_rust <= 0.0 || fabs(mono_rust - mono_ref) > 1.0) {
-    fprintf(stderr, "monotonic mismatch: rust=%.9f ref=%.9f\n", mono_rust, mono_ref);
+    fprintf(stderr, "monotonic mismatch: rust=%.9f ref=%.9f\n", mono_rust,
+            mono_ref);
     return 1;
   }
 
-  if (mtproxy_ffi_precise_now_value() <= 0.0 || mtproxy_ffi_precise_now_rdtsc_value() < 0) {
+  if (mtproxy_ffi_precise_now_value() <= 0.0 ||
+      mtproxy_ffi_precise_now_rdtsc_value() < 0) {
     fprintf(stderr, "thread-local precise_now mirrors are invalid\n");
     return 1;
   }
@@ -34,7 +36,8 @@ int main(void) {
   }
 
   long long precise = mtproxy_ffi_get_precise_time(0);
-  if (precise <= 0 || mtproxy_ffi_precise_time_value() <= 0 || mtproxy_ffi_precise_time_rdtsc_value() < 0) {
+  if (precise <= 0 || mtproxy_ffi_precise_time_value() <= 0 ||
+      mtproxy_ffi_precise_time_rdtsc_value() < 0) {
     fprintf(stderr, "precise_time mirrors are invalid\n");
     return 1;
   }

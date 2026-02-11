@@ -24,31 +24,41 @@
 */
 #pragma once
 
-#define tls_push()	{ struct tl_out_state *tlio_out = tl_out_state_alloc ();
-#define tls_pop()	tl_out_state_free (tlio_out); }
-#define TLS_START(C)		tls_push(); tls_init_tcp_raw_msg (tlio_out, C, 0);
-#define TLS_START_UNALIGN(C)	tls_push(); tls_init_tcp_raw_msg_unaligned (tlio_out, C, 0);
-#define TLS_END		tl_store_end_ext (0); tls_pop();
+#define tls_push()                                                             \
+  {                                                                            \
+    struct tl_out_state *tlio_out = tl_out_state_alloc();
+#define tls_pop()                                                              \
+  tl_out_state_free(tlio_out);                                                 \
+  }
+#define TLS_START(C)                                                           \
+  tls_push();                                                                  \
+  tls_init_tcp_raw_msg(tlio_out, C, 0);
+#define TLS_START_UNALIGN(C)                                                   \
+  tls_push();                                                                  \
+  tls_init_tcp_raw_msg_unaligned(tlio_out, C, 0);
+#define TLS_END                                                                \
+  tl_store_end_ext(0);                                                         \
+  tls_pop();
 
 /* DH key exchange protocol data structures */
-#define	CODE_req_pq			0x60469778
-#define	CODE_req_pq_multi	       	0xbe7e8ef1
-#define CODE_req_DH_params		0xd712e4be
-#define CODE_set_client_DH_params	0xf5045f1f
+#define CODE_req_pq 0x60469778
+#define CODE_req_pq_multi 0xbe7e8ef1
+#define CODE_req_DH_params 0xd712e4be
+#define CODE_set_client_DH_params 0xf5045f1f
 
 /* RPC for front/proxy */
-#define	RPC_PROXY_REQ		0x36cef1ee
-#define	RPC_PROXY_ANS		0x4403da0d
-#define	RPC_CLOSE_CONN		0x1fcf425d
-#define	RPC_CLOSE_EXT		0x5eb634a2
-#define	RPC_SIMPLE_ACK		0x3bac409b
+#define RPC_PROXY_REQ 0x36cef1ee
+#define RPC_PROXY_ANS 0x4403da0d
+#define RPC_CLOSE_CONN 0x1fcf425d
+#define RPC_CLOSE_EXT 0x5eb634a2
+#define RPC_SIMPLE_ACK 0x3bac409b
 
 /* not really a limit, for struct encrypted_message only */
 // #define MAX_MESSAGE_INTS	16384
-#define MAX_MESSAGE_INTS	1048576
-#define MAX_PROTO_MESSAGE_INTS	524288
+#define MAX_MESSAGE_INTS 1048576
+#define MAX_PROTO_MESSAGE_INTS 524288
 
-#pragma pack(push,4)
+#pragma pack(push, 4)
 struct encrypted_message {
   // unencrypted header
   long long auth_key_id;
@@ -59,14 +69,14 @@ struct encrypted_message {
   // first message follows
   long long msg_id;
   int seq_no;
-  int msg_len;   // divisible by 4
+  int msg_len; // divisible by 4
   int message[MAX_MESSAGE_INTS + 8];
 };
 
-#define MAX_PROXY_EXTRA_BYTES	16384
+#define MAX_PROXY_EXTRA_BYTES 16384
 
 struct rpc_proxy_req {
-  int type;	// RPC_PROXY_REQ
+  int type; // RPC_PROXY_REQ
   int flags;
   long long ext_conn_id;
   unsigned char remote_ipv6[16];
@@ -83,24 +93,24 @@ struct rpc_proxy_req {
 };
 
 struct rpc_proxy_ans {
-  int type;	// RPC_PROXY_ANS
-  int flags;	// +16 = small error packet, +8 = flush immediately
+  int type;  // RPC_PROXY_ANS
+  int flags; // +16 = small error packet, +8 = flush immediately
   long long ext_conn_id;
   int data[];
 };
 
 struct rpc_close_conn {
-  int type;	// RPC_CLOSE_CONN
+  int type; // RPC_CLOSE_CONN
   long long ext_conn_id;
 };
 
 struct rpc_close_ext {
-  int type;	// RPC_CLOSE_EXT
+  int type; // RPC_CLOSE_EXT
   long long ext_conn_id;
 };
 
 struct rpc_simple_ack {
-  int type;	// RPC_SIMPLE_ACK
+  int type; // RPC_SIMPLE_ACK
   long long ext_conn_id;
   int confirm_key;
 };
