@@ -1147,24 +1147,6 @@ int forward_tcp_query(struct tl_in_state *tlio_in, connection_job_t C,
                       conn_target_job_t S, int flags, long long auth_key_id,
                       int remote_ip_port[5], int our_ip_port[5]);
 
-unsigned parse_text_ipv4(char *str) {
-  uint32_t out_ip = 0;
-  int32_t rc = mtproxy_ffi_mtproto_parse_text_ipv4(str, &out_ip);
-  if (rc < 0) {
-    return 0;
-  }
-  return out_ip;
-}
-
-int parse_text_ipv6(unsigned char ip[16], const char *str) {
-  int32_t consumed = -1;
-  int32_t rc = mtproxy_ffi_mtproto_parse_text_ipv6(str, ip, &consumed);
-  if (rc < 0) {
-    return -1;
-  }
-  return consumed;
-}
-
 struct http_query_info {
   struct event_timer ev;
   connection_job_t conn;
@@ -1277,10 +1259,15 @@ int process_http_query(struct tl_in_state *tlio_in, job_t HQJ) {
           get_http_header(qHeaders, qHeadersLen, x_real_port,
                           sizeof(x_real_port) - 1, "X-Real-Port", 11);
       if (x_real_ip_len > 0) {
-        unsigned real_ip = parse_text_ipv4(x_real_ip);
-        if (real_ip >= (1 << 24) ||
-            parse_text_ipv6((unsigned char *)tmp_ip_port, x_real_ip) > 0) {
-          if (real_ip >= (1 << 24)) {
+        uint32_t real_ip = 0;
+        int32_t parsed_ipv6_len = -1;
+        int32_t parse_ipv4_rc =
+            mtproxy_ffi_mtproto_parse_text_ipv4(x_real_ip, &real_ip);
+        int32_t parse_ipv6_rc = mtproxy_ffi_mtproto_parse_text_ipv6(
+            x_real_ip, (uint8_t *)tmp_ip_port, &parsed_ipv6_len);
+        if ((parse_ipv4_rc == 0 && real_ip >= (1u << 24)) ||
+            (parse_ipv6_rc == 0 && parsed_ipv6_len > 0)) {
+          if (parse_ipv4_rc == 0 && real_ip >= (1u << 24)) {
             tmp_ip_port[0] = 0;
             tmp_ip_port[1] = 0;
             tmp_ip_port[2] = 0xffff0000;
