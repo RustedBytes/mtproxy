@@ -28,6 +28,11 @@
 */
 #pragma once
 
+#include "net/net-connections.h"
+
+struct tcp_rpc_server_functions;
+struct http_server_functions;
+
 void default_close_network_sockets(void);
 void engine_do_open_port(void);
 int try_open_port_range(int start_port, int end_port, int mod_port,

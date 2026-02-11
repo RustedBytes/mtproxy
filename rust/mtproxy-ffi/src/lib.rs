@@ -13,7 +13,10 @@ use rustls::crypto::ring::default_provider as rustls_default_provider;
 use sha1::Sha1;
 use sha2::{Digest, Sha256};
 use std::cell::Cell;
+use std::ffi::CStr;
 use std::fs;
+use std::io::Read;
+use std::sync::Mutex;
 use std::thread_local;
 use std::vec::Vec;
 
@@ -27,8 +30,10 @@ const DOUBLE_TIME_RDTSC_WINDOW: i64 = 1_000_000;
 const DIGEST_MD5_LEN: usize = 16;
 const DIGEST_SHA1_LEN: usize = 20;
 const DIGEST_SHA256_LEN: usize = 32;
+const MAX_PWD_CONFIG_LEN: usize = 16_384;
 const MIN_PWD_LEN: usize = 32;
 const MAX_PWD_LEN: usize = 256;
+const DEFAULT_PWD_FILE: &str = "secret";
 const HEX_LOWER: &[u8; 16] = b"0123456789abcdef";
 const TL_ERROR_HEADER: i32 = -1002;
 const RPC_INVOKE_REQ: i32 = 0x2374_df3d;
@@ -161,6 +166,7 @@ const MTPROTO_CFG_CLUSTER_APPLY_DECISION_ERR_PROXIES_INTERMIXED: i32 = -3;
 const MTPROTO_CFG_CLUSTER_APPLY_DECISION_ERR_INTERNAL: i32 = -4;
 const MTPROTO_CFG_CLUSTER_APPLY_DECISION_KIND_CREATE_NEW: i32 = 1;
 const MTPROTO_CFG_CLUSTER_APPLY_DECISION_KIND_APPEND_LAST: i32 = 2;
+const CRYPTO_TEMP_DH_PARAMS_MAGIC: i32 = i32::from_ne_bytes(0xab45_ccd3_u32.to_ne_bytes());
 
 const TCP_RPC_PACKET_LEN_STATE_SKIP: i32 = 0;
 const TCP_RPC_PACKET_LEN_STATE_READY: i32 = 1;
@@ -252,6 +258,42 @@ pub struct MtproxyAesKeyData {
     pub read_iv: [u8; 16],
     pub write_key: [u8; 32],
     pub write_iv: [u8; 16],
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct MtproxyAesSecret {
+    pub refcnt: i32,
+    pub secret_len: i32,
+    pub secret: [u8; MAX_PWD_LEN + 4],
+}
+
+impl Default for MtproxyAesSecret {
+    fn default() -> Self {
+        Self {
+            refcnt: 0,
+            secret_len: 0,
+            secret: [0u8; MAX_PWD_LEN + 4],
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct MtproxyCryptoTempDhParams {
+    pub magic: i32,
+    pub dh_params_select: i32,
+    pub a: [u8; DH_KEY_BYTES],
+}
+
+impl Default for MtproxyCryptoTempDhParams {
+    fn default() -> Self {
+        Self {
+            magic: 0,
+            dh_params_select: 0,
+            a: [0u8; DH_KEY_BYTES],
+        }
+    }
 }
 
 #[repr(C)]
@@ -582,11 +624,21 @@ unsafe extern "C" {
     fn time(timer: *mut c_long) -> c_long;
     fn clock_gettime(clock_id: c_int, tp: *mut Timespec) -> c_int;
     fn gettimeofday(tv: *mut Timeval, tz: *mut c_void) -> c_int;
+    fn lrand48_j() -> c_long;
+    fn srand48(seedval: c_long);
+    fn malloc(size: usize) -> *mut c_void;
+    fn free(ptr: *mut c_void);
 }
 
 type Aes256Ctr = Ctr128BE<Aes256>;
 type HmacMd5 = Hmac<Md5>;
 type HmacSha256 = Hmac<Sha256>;
+
+#[repr(C, align(16))]
+struct MtproxyAesCryptoCtx {
+    read_aeskey: *mut c_void,
+    write_aeskey: *mut c_void,
+}
 
 enum AesniCipherCtx {
     Aes256CbcEncrypt(cbc::Encryptor<Aes256>),
@@ -637,6 +689,13 @@ static PRECISE_TIME: AtomicI64 = AtomicI64::new(0);
 static PRECISE_TIME_RDTSC: AtomicI64 = AtomicI64::new(0);
 static DOUBLE_TIME_LAST_BITS: AtomicU64 = AtomicU64::new((-1.0f64).to_bits());
 static DOUBLE_TIME_NEXT_RDTSC: AtomicI64 = AtomicI64::new(0);
+static AES_ALLOCATED_CRYPTO: AtomicI64 = AtomicI64::new(0);
+static AES_ALLOCATED_CRYPTO_TEMP: AtomicI64 = AtomicI64::new(0);
+static DH_PARAMS_SELECT_INIT: AtomicI64 = AtomicI64::new(0);
+static DH_TOT_ROUNDS_0: AtomicI64 = AtomicI64::new(0);
+static DH_TOT_ROUNDS_1: AtomicI64 = AtomicI64::new(0);
+static DH_TOT_ROUNDS_2: AtomicI64 = AtomicI64::new(0);
+static AES_NONCE_RAND_BUF: Mutex<[u8; 64]> = Mutex::new([0u8; 64]);
 
 /// Mirrors core API version for Rust callers.
 #[must_use]
@@ -2013,6 +2072,515 @@ fn sha256_digest_impl(input: &[u8], out: &mut [u8; DIGEST_SHA256_LEN]) -> bool {
     hasher.update(input);
     out.copy_from_slice(&hasher.finalize());
     true
+}
+
+fn i64_to_i32_saturating(value: i64) -> i32 {
+    if value > i64::from(i32::MAX) {
+        i32::MAX
+    } else if value < i64::from(i32::MIN) {
+        i32::MIN
+    } else {
+        value as i32
+    }
+}
+
+fn atomic_dec_saturating(counter: &AtomicI64) {
+    let _ = counter.fetch_update(Ordering::AcqRel, Ordering::Acquire, |value| {
+        Some(if value > 0 { value - 1 } else { 0 })
+    });
+}
+
+#[inline]
+fn rdtsc_now() -> i64 {
+    #[cfg(target_arch = "x86_64")]
+    {
+        unsafe { core::arch::x86_64::_rdtsc() as i64 }
+    }
+    #[cfg(all(not(target_arch = "x86_64"), target_arch = "x86"))]
+    {
+        unsafe { core::arch::x86::_rdtsc() as i64 }
+    }
+    #[cfg(not(any(target_arch = "x86_64", target_arch = "x86")))]
+    {
+        let mut ts = Timespec {
+            tv_sec: 0,
+            tv_nsec: 0,
+        };
+        if unsafe { clock_gettime(CLOCK_MONOTONIC_ID, &raw mut ts) } < 0 {
+            0
+        } else {
+            (ts.tv_sec as i64)
+                .saturating_mul(1_000_000_000_i64)
+                .saturating_add(ts.tv_nsec as i64)
+        }
+    }
+}
+
+fn refresh_aes_nonce_seed(rand_buf: &mut [u8; 64]) -> bool {
+    let mut seeded = false;
+    if let Ok(mut urandom) = fs::File::open("/dev/urandom") {
+        if urandom.read_exact(&mut rand_buf[..16]).is_ok() {
+            seeded = true;
+        }
+    }
+    if !seeded && !crypto_rand_fill(&mut rand_buf[..16]) {
+        return false;
+    }
+
+    let mut seed: c_long = 0;
+    let seed_len = core::mem::size_of::<c_long>();
+    unsafe {
+        core::ptr::copy_nonoverlapping(
+            rand_buf.as_ptr(),
+            (&raw mut seed).cast::<u8>(),
+            seed_len,
+        );
+        seed ^= lrand48_j();
+        core::ptr::copy_nonoverlapping((&raw const seed).cast::<u8>(), rand_buf.as_mut_ptr(), seed_len);
+        srand48(seed);
+    }
+    true
+}
+
+fn write_md5_hex(input: &[u8], out: &mut [u8; 33]) -> bool {
+    let mut digest = [0u8; DIGEST_MD5_LEN];
+    if !md5_digest_impl(input, &mut digest) {
+        return false;
+    }
+    for (idx, byte) in digest.iter().copied().enumerate() {
+        out[idx * 2] = HEX_LOWER[usize::from(byte >> 4)];
+        out[idx * 2 + 1] = HEX_LOWER[usize::from(byte & 0x0f)];
+    }
+    out[32] = 0;
+    true
+}
+
+/// Fetches current net-crypto-aes allocation counters.
+///
+/// # Safety
+/// Output pointers may be null; non-null pointers must be writable.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_crypto_aes_fetch_stat(
+    allocated_aes_crypto: *mut i32,
+    allocated_aes_crypto_temp: *mut i32,
+) -> i32 {
+    if !allocated_aes_crypto.is_null() {
+        unsafe {
+            *allocated_aes_crypto =
+                i64_to_i32_saturating(AES_ALLOCATED_CRYPTO.load(Ordering::Acquire));
+        }
+    }
+    if !allocated_aes_crypto_temp.is_null() {
+        unsafe {
+            *allocated_aes_crypto_temp =
+                i64_to_i32_saturating(AES_ALLOCATED_CRYPTO_TEMP.load(Ordering::Acquire));
+        }
+    }
+    0
+}
+
+/// Initializes per-connection AES state for CBC/CTR mode.
+///
+/// # Safety
+/// `conn_crypto_slot` must be a writable pointer to a `void *` storage slot.
+/// `key_data` must be readable for `key_data_len` bytes.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_crypto_aes_conn_init(
+    conn_crypto_slot: *mut *mut c_void,
+    key_data: *const MtproxyAesKeyData,
+    key_data_len: i32,
+    use_ctr_mode: i32,
+) -> i32 {
+    if conn_crypto_slot.is_null() || key_data.is_null() {
+        return -1;
+    }
+    let Ok(expected_len) = i32::try_from(core::mem::size_of::<MtproxyAesKeyData>()) else {
+        return -1;
+    };
+    if key_data_len != expected_len {
+        return -1;
+    }
+    let slot = unsafe { &mut *conn_crypto_slot };
+    if !slot.is_null() {
+        return -1;
+    }
+
+    let key = unsafe { &*key_data };
+    let cipher_kind = if use_ctr_mode != 0 {
+        AESNI_CIPHER_AES_256_CTR
+    } else {
+        AESNI_CIPHER_AES_256_CBC
+    };
+    let read_is_encrypt = if use_ctr_mode != 0 { 1 } else { 0 };
+    let write_is_encrypt = 1;
+
+    let mut read_ctx: *mut c_void = core::ptr::null_mut();
+    let mut write_ctx: *mut c_void = core::ptr::null_mut();
+    let read_rc = unsafe {
+        mtproxy_ffi_aesni_ctx_init(
+            cipher_kind,
+            key.read_key.as_ptr(),
+            key.read_iv.as_ptr(),
+            read_is_encrypt,
+            &raw mut read_ctx,
+        )
+    };
+    if read_rc != 0 {
+        return -1;
+    }
+    let write_rc = unsafe {
+        mtproxy_ffi_aesni_ctx_init(
+            cipher_kind,
+            key.write_key.as_ptr(),
+            key.write_iv.as_ptr(),
+            write_is_encrypt,
+            &raw mut write_ctx,
+        )
+    };
+    if write_rc != 0 {
+        let _ = unsafe { mtproxy_ffi_aesni_ctx_free(read_ctx) };
+        return -1;
+    }
+
+    let ctx = MtproxyAesCryptoCtx {
+        read_aeskey: read_ctx,
+        write_aeskey: write_ctx,
+    };
+    *slot = Box::into_raw(Box::new(ctx)).cast::<c_void>();
+    AES_ALLOCATED_CRYPTO.fetch_add(1, Ordering::AcqRel);
+    0
+}
+
+/// Releases per-connection AES state and optional temporary crypto blob.
+///
+/// # Safety
+/// Non-null slot pointers must be writable and contain pointers allocated via Rust FFI exports.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_crypto_aes_conn_free(
+    conn_crypto_slot: *mut *mut c_void,
+    conn_crypto_temp_slot: *mut *mut c_void,
+) -> i32 {
+    if !conn_crypto_slot.is_null() {
+        let slot_ref = unsafe { &mut *conn_crypto_slot };
+        let crypto_ptr = *slot_ref;
+        if !crypto_ptr.is_null() {
+            let ctx = unsafe { Box::from_raw(crypto_ptr.cast::<MtproxyAesCryptoCtx>()) };
+            let _ = unsafe { mtproxy_ffi_aesni_ctx_free(ctx.read_aeskey) };
+            let _ = unsafe { mtproxy_ffi_aesni_ctx_free(ctx.write_aeskey) };
+            *slot_ref = core::ptr::null_mut();
+            atomic_dec_saturating(&AES_ALLOCATED_CRYPTO);
+        }
+    }
+
+    if !conn_crypto_temp_slot.is_null() {
+        let temp_slot_ref = unsafe { &mut *conn_crypto_temp_slot };
+        let temp_ptr = *temp_slot_ref;
+        if !temp_ptr.is_null() {
+            unsafe {
+                free(temp_ptr);
+            }
+            *temp_slot_ref = core::ptr::null_mut();
+            atomic_dec_saturating(&AES_ALLOCATED_CRYPTO_TEMP);
+        }
+    }
+
+    0
+}
+
+/// Loads secret-file bytes and computes MD5 hex fingerprint used by C stats output.
+///
+/// # Safety
+/// All non-null output pointers must reference writable storage matching argument sizes.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_crypto_aes_load_pwd_file(
+    filename: *const c_char,
+    pwd_config_buf: *mut u8,
+    pwd_config_capacity: i32,
+    pwd_config_len_out: *mut i32,
+    pwd_config_md5_out: *mut c_char,
+    main_secret: *mut MtproxyAesSecret,
+) -> i32 {
+    if pwd_config_buf.is_null()
+        || pwd_config_len_out.is_null()
+        || pwd_config_md5_out.is_null()
+        || main_secret.is_null()
+    {
+        return -1;
+    }
+
+    let Ok(buf_capacity) = usize::try_from(pwd_config_capacity) else {
+        return -1;
+    };
+    if buf_capacity < (MAX_PWD_CONFIG_LEN + 4) {
+        return -1;
+    }
+
+    let file_name = if filename.is_null() {
+        DEFAULT_PWD_FILE.to_owned()
+    } else {
+        unsafe { CStr::from_ptr(filename) }
+            .to_string_lossy()
+            .into_owned()
+    };
+
+    {
+        let mut state = AES_NONCE_RAND_BUF.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        if !refresh_aes_nonce_seed(&mut state) {
+            unsafe {
+                (*main_secret).secret_len = 0;
+            }
+            return -1;
+        }
+    }
+
+    let mut file = match fs::File::open(&file_name) {
+        Ok(file) => file,
+        Err(_) => return i32::MIN,
+    };
+    let mut read_buf = vec![0u8; MAX_PWD_CONFIG_LEN + 1];
+    let read_len = match file.read(&mut read_buf) {
+        Ok(bytes) => bytes,
+        Err(_) => return -1,
+    };
+    if read_len > MAX_PWD_CONFIG_LEN {
+        unsafe {
+            *pwd_config_len_out = 0;
+        }
+        return -1;
+    }
+
+    let cfg_out = unsafe { core::slice::from_raw_parts_mut(pwd_config_buf, buf_capacity) };
+    cfg_out[..read_len].copy_from_slice(&read_buf[..read_len]);
+    cfg_out[read_len..read_len + 4].fill(0);
+    unsafe {
+        *pwd_config_len_out = i32::try_from(read_len).unwrap_or(i32::MAX);
+    }
+
+    if !(MIN_PWD_LEN..=MAX_PWD_LEN).contains(&read_len) {
+        return -1;
+    }
+
+    let md5_out = unsafe { core::slice::from_raw_parts_mut(pwd_config_md5_out.cast::<u8>(), 33) };
+    let md5_out_ref = unsafe { &mut *md5_out.as_mut_ptr().cast::<[u8; 33]>() };
+    if !write_md5_hex(&read_buf[..read_len], md5_out_ref) {
+        return -1;
+    }
+
+    let secret_ref = unsafe { &mut *main_secret };
+    secret_ref.secret.fill(0);
+    secret_ref.secret[..read_len].copy_from_slice(&read_buf[..read_len]);
+    secret_ref.secret_len = i32::try_from(read_len).unwrap_or(i32::MAX);
+
+    1
+}
+
+/// Produces a 16-byte handshake nonce equivalent to C flow based on mutable random state.
+///
+/// # Safety
+/// `out` must point to at least 16 writable bytes.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_crypto_aes_generate_nonce(out: *mut u8) -> i32 {
+    if out.is_null() {
+        return -1;
+    }
+    let out_ref = unsafe { &mut *out.cast::<[u8; 16]>() };
+
+    let mut rand_buf = AES_NONCE_RAND_BUF.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    if rand_buf[..16].iter().all(|b| *b == 0) && !refresh_aes_nonce_seed(&mut rand_buf) {
+        return -1;
+    }
+
+    let x = unsafe { lrand48_j() } as i32;
+    rand_buf[16..20].copy_from_slice(&x.to_ne_bytes());
+    let y = unsafe { lrand48_j() } as i32;
+    rand_buf[20..24].copy_from_slice(&y.to_ne_bytes());
+    rand_buf[24..32].copy_from_slice(&rdtsc_now().to_ne_bytes());
+
+    let mut ts = Timespec {
+        tv_sec: 0,
+        tv_nsec: 0,
+    };
+    if unsafe { clock_gettime(CLOCK_REALTIME_ID, &raw mut ts) } < 0 {
+        return -1;
+    }
+    rand_buf[32..36].copy_from_slice(&(ts.tv_sec as i32).to_ne_bytes());
+    rand_buf[36..40].copy_from_slice(&(ts.tv_nsec as i32).to_ne_bytes());
+
+    let mut ctr = i32::from_ne_bytes([
+        rand_buf[40],
+        rand_buf[41],
+        rand_buf[42],
+        rand_buf[43],
+    ]);
+    ctr = ctr.wrapping_add(1);
+    rand_buf[40..44].copy_from_slice(&ctr.to_ne_bytes());
+
+    let mut digest = [0u8; DIGEST_MD5_LEN];
+    if !md5_digest_impl(&rand_buf[..44], &mut digest) {
+        return -1;
+    }
+    out_ref.copy_from_slice(&digest);
+    0
+}
+
+/// Allocates temporary crypto blob storage tracked by Rust-side stats.
+///
+/// # Safety
+/// Returned pointer must be released by `mtproxy_ffi_crypto_free_temp`.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_crypto_alloc_temp(len: i32) -> *mut c_void {
+    if len < 0 {
+        return core::ptr::null_mut();
+    }
+    let Ok(requested) = usize::try_from(len) else {
+        return core::ptr::null_mut();
+    };
+    let alloc_len = requested.max(1);
+    let ptr = unsafe { malloc(alloc_len) };
+    if ptr.is_null() {
+        return core::ptr::null_mut();
+    }
+    AES_ALLOCATED_CRYPTO_TEMP.fetch_add(1, Ordering::AcqRel);
+    ptr
+}
+
+/// Zeroes (optionally) and frees temporary crypto blob storage.
+///
+/// # Safety
+/// `ptr` must be null or returned by `mtproxy_ffi_crypto_alloc_temp`.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_crypto_free_temp(ptr: *mut c_void, len: i32) -> i32 {
+    if ptr.is_null() {
+        return 0;
+    }
+    if len > 0 {
+        let Ok(zero_len) = usize::try_from(len) else {
+            return -1;
+        };
+        unsafe { core::ptr::write_bytes(ptr.cast::<u8>(), 0, zero_len) };
+    }
+    unsafe {
+        free(ptr);
+    }
+    atomic_dec_saturating(&AES_ALLOCATED_CRYPTO_TEMP);
+    0
+}
+
+/// Initializes shared DH params selector exactly once and returns C-compatible status.
+///
+/// # Safety
+/// `out_dh_params_select` must be writable.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_crypto_dh_init_params(
+    out_dh_params_select: *mut i32,
+) -> i32 {
+    if out_dh_params_select.is_null() {
+        return -1;
+    }
+    let current = i64_to_i32_saturating(DH_PARAMS_SELECT_INIT.load(Ordering::Acquire));
+    if current > 0 {
+        unsafe {
+            *out_dh_params_select = current;
+        }
+        return 0;
+    }
+
+    let select = mtproxy_ffi_crypto_dh_get_params_select();
+    if select <= 0 {
+        return -1;
+    }
+    match DH_PARAMS_SELECT_INIT.compare_exchange(0, i64::from(select), Ordering::AcqRel, Ordering::Acquire) {
+        Ok(_) => {
+            unsafe {
+                *out_dh_params_select = select;
+            }
+            1
+        }
+        Err(existing) => {
+            unsafe {
+                *out_dh_params_select = i64_to_i32_saturating(existing);
+            }
+            0
+        }
+    }
+}
+
+/// Returns cumulative DH round counters used by C stats output.
+///
+/// # Safety
+/// `out_rounds` must be writable for three 64-bit integers.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_crypto_dh_fetch_tot_rounds(out_rounds: *mut i64) -> i32 {
+    if out_rounds.is_null() {
+        return -1;
+    }
+    let out_ref = unsafe { &mut *out_rounds.cast::<[i64; 3]>() };
+    out_ref[0] = DH_TOT_ROUNDS_0.load(Ordering::Acquire);
+    out_ref[1] = DH_TOT_ROUNDS_1.load(Ordering::Acquire);
+    out_ref[2] = DH_TOT_ROUNDS_2.load(Ordering::Acquire);
+    0
+}
+
+/// Performs DH first round and fills temporary DH state struct for C runtime.
+///
+/// # Safety
+/// `g_a` and `dh_params` must be writable.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_crypto_dh_first_round_stateful(
+    g_a: *mut u8,
+    dh_params: *mut MtproxyCryptoTempDhParams,
+    dh_params_select: i32,
+) -> i32 {
+    if g_a.is_null() || dh_params.is_null() || dh_params_select <= 0 {
+        return -1;
+    }
+    let dh_params_ref = unsafe { &mut *dh_params };
+    let rc = unsafe { mtproxy_ffi_crypto_dh_first_round(g_a, dh_params_ref.a.as_mut_ptr()) };
+    if rc != 1 {
+        return -1;
+    }
+    dh_params_ref.dh_params_select = dh_params_select;
+    dh_params_ref.magic = CRYPTO_TEMP_DH_PARAMS_MAGIC;
+    DH_TOT_ROUNDS_0.fetch_add(1, Ordering::AcqRel);
+    1
+}
+
+/// Performs DH second round and updates cumulative round stats on success.
+///
+/// # Safety
+/// `g_ab`, `g_a`, and `g_b` must point to readable/writable 256-byte buffers.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_crypto_dh_second_round_stateful(
+    g_ab: *mut u8,
+    g_a: *mut u8,
+    g_b: *const u8,
+) -> i32 {
+    let rc = unsafe { mtproxy_ffi_crypto_dh_second_round(g_ab, g_a, g_b) };
+    if rc > 0 {
+        DH_TOT_ROUNDS_1.fetch_add(1, Ordering::AcqRel);
+    }
+    rc
+}
+
+/// Performs DH third round using stored temporary exponent and tracks successful rounds.
+///
+/// # Safety
+/// `g_ab`, `g_b`, and `dh_params` must be valid pointers.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_crypto_dh_third_round_stateful(
+    g_ab: *mut u8,
+    g_b: *const u8,
+    dh_params: *const MtproxyCryptoTempDhParams,
+) -> i32 {
+    if dh_params.is_null() {
+        return -1;
+    }
+    let dh_params_ref = unsafe { &*dh_params };
+    let rc = unsafe { mtproxy_ffi_crypto_dh_third_round(g_ab, g_b, dh_params_ref.a.as_ptr()) };
+    if rc > 0 {
+        DH_TOT_ROUNDS_2.fetch_add(1, Ordering::AcqRel);
+    }
+    rc
 }
 
 fn crypto_dh_is_good_rpc_dh_bin_impl(data: &[u8], prime_prefix: &[u8]) -> i32 {

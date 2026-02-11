@@ -30,6 +30,7 @@
 #include <fcntl.h>
 #include <stdarg.h>
 #include <unistd.h>
+#include <stdio.h>
 
 #include "common/kprintf.h"
 #include "common/server-functions.h"

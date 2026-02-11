@@ -44,6 +44,16 @@ Current exported API:
 - Step 12 crypto helpers:
 - `mtproxy_ffi_crypto_aes_create_keys(...)`
 - `mtproxy_ffi_crypto_dh_is_good_rpc_dh_bin(...)`
+- `mtproxy_ffi_crypto_aes_conn_init(...)`
+- `mtproxy_ffi_crypto_aes_conn_free(...)`
+- `mtproxy_ffi_crypto_aes_load_pwd_file(...)`
+- `mtproxy_ffi_crypto_aes_generate_nonce(...)`
+- `mtproxy_ffi_crypto_alloc_temp(...)`
+- `mtproxy_ffi_crypto_free_temp(...)`
+- `mtproxy_ffi_crypto_dh_init_params(...)`
+- `mtproxy_ffi_crypto_dh_first_round_stateful(...)`
+- `mtproxy_ffi_crypto_dh_second_round_stateful(...)`
+- `mtproxy_ffi_crypto_dh_third_round_stateful(...)`
 - `mtproxy_ffi_aesni_crypt(...)`
 - Step 13 boundary contract probe:
 - `mtproxy_ffi_get_application_boundary(...)` (reports engine-rpc/mtproto-proxy operation contract vs implemented subsets)
@@ -81,8 +91,8 @@ Current exported API:
 - `net/net-tcp-rpc-client.c` delegates non-compact packet-length classification helper to Rust (Step 14 decommission batch removed C fallback path).
 - `net/net-tcp-rpc-server.c` delegates packet-header malformed check and packet-length classification helpers to Rust (Step 14 decommission batch removed C fallback path).
 - `net/net-rpc-targets.c` delegates zero-ip PID normalization helper to Rust (Step 14 decommission batch removed C fallback path).
-- `net/net-crypto-aes.c` can delegate key-derivation glue (`aes_create_keys`) to Rust when symbols are linked.
-- `net/net-crypto-dh.c` can delegate peer DH value prefix validation helper to Rust when symbols are linked.
+- `net/net-crypto-aes.c` delegates key derivation, connection AES lifecycle, secret-file load, nonce generation, and temp-buffer management to Rust.
+- `net/net-crypto-dh.c` delegates DH params init and all DH rounds/stat counters to Rust.
 - `crypto/aesni256.c` can delegate `EVP_CipherUpdate` wrapper helper to Rust when symbols are linked.
 - `engine/engine-rpc.c` delegates TL result header helpers (`tl_result_new_flags`, `tl_result_get_header_len`) to Rust (Step 14 decommission batch removed C fallback path).
 - `mtproto/mtproto-proxy.c` delegates ext-connection hash bucket and connection-tag helpers to Rust (Step 14 decommission batch removed C fallback path).

@@ -21,6 +21,18 @@ typedef struct mtproxy_ffi_aes_key_data {
   uint8_t write_iv[16];
 } mtproxy_ffi_aes_key_data_t;
 
+typedef struct mtproxy_ffi_aes_secret {
+  int32_t refcnt;
+  int32_t secret_len;
+  uint8_t secret[260];
+} mtproxy_ffi_aes_secret_t;
+
+typedef struct mtproxy_ffi_crypto_temp_dh_params {
+  int32_t magic;
+  int32_t dh_params_select;
+  uint8_t a[256];
+} mtproxy_ffi_crypto_temp_dh_params_t;
+
 typedef struct mtproxy_ffi_cpuid {
   int32_t magic;
   int32_t ebx;
@@ -473,6 +485,33 @@ int32_t mtproxy_ffi_crypto_aes_create_keys(
   int32_t temp_key_len
 );
 
+// net-crypto-aes module migration helpers.
+int32_t mtproxy_ffi_crypto_aes_fetch_stat(
+  int32_t *allocated_aes_crypto,
+  int32_t *allocated_aes_crypto_temp
+);
+int32_t mtproxy_ffi_crypto_aes_conn_init(
+  void **conn_crypto_slot,
+  const mtproxy_ffi_aes_key_data_t *key_data,
+  int32_t key_data_len,
+  int32_t use_ctr_mode
+);
+int32_t mtproxy_ffi_crypto_aes_conn_free(
+  void **conn_crypto_slot,
+  void **conn_crypto_temp_slot
+);
+int32_t mtproxy_ffi_crypto_aes_load_pwd_file(
+  const char *filename,
+  uint8_t *pwd_config_buf,
+  int32_t pwd_config_capacity,
+  int32_t *pwd_config_len_out,
+  char *pwd_config_md5_out,
+  mtproxy_ffi_aes_secret_t *main_secret
+);
+int32_t mtproxy_ffi_crypto_aes_generate_nonce(uint8_t out[16]);
+void *mtproxy_ffi_crypto_alloc_temp(int32_t len);
+int32_t mtproxy_ffi_crypto_free_temp(void *ptr, int32_t len);
+
 // net-crypto-dh helper: validates peer DH blob prefix against known prime prefix.
 int32_t mtproxy_ffi_crypto_dh_is_good_rpc_dh_bin(
   const uint8_t *data,
@@ -486,6 +525,23 @@ int32_t mtproxy_ffi_crypto_dh_get_params_select(void);
 int32_t mtproxy_ffi_crypto_dh_first_round(uint8_t g_a[256], uint8_t a_out[256]);
 int32_t mtproxy_ffi_crypto_dh_second_round(uint8_t g_ab[256], uint8_t g_a[256], const uint8_t g_b[256]);
 int32_t mtproxy_ffi_crypto_dh_third_round(uint8_t g_ab[256], const uint8_t g_b[256], const uint8_t a[256]);
+int32_t mtproxy_ffi_crypto_dh_init_params(int32_t *out_dh_params_select);
+int32_t mtproxy_ffi_crypto_dh_fetch_tot_rounds(int64_t out_rounds[3]);
+int32_t mtproxy_ffi_crypto_dh_first_round_stateful(
+  uint8_t g_a[256],
+  mtproxy_ffi_crypto_temp_dh_params_t *dh_params,
+  int32_t dh_params_select
+);
+int32_t mtproxy_ffi_crypto_dh_second_round_stateful(
+  uint8_t g_ab[256],
+  uint8_t g_a[256],
+  const uint8_t g_b[256]
+);
+int32_t mtproxy_ffi_crypto_dh_third_round_stateful(
+  uint8_t g_ab[256],
+  const uint8_t g_b[256],
+  const mtproxy_ffi_crypto_temp_dh_params_t *dh_params
+);
 
 // generic crypto helpers for TLS-obfuscated transport paths.
 int32_t mtproxy_ffi_crypto_rand_bytes(uint8_t *out, int32_t len);
