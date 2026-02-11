@@ -28,9 +28,10 @@ DEPDIRS := ${DEP} $(addprefix ${DEP}/,${PROJECTS})
 ALLDIRS := ${DEPDIRS} ${OBJDIRS}
 
 
-.PHONY:	all clean test mixed mixed-test rust-check rust-fmt rust-fmt-check rust-clippy rust-test rust-ci
+.PHONY:	all clean test mixed mixed-test c-fallback c-test rust-check rust-fmt rust-fmt-check rust-clippy rust-test rust-ci
 
 EXELIST	:= ${EXE}/mtproto-proxy
+C_FALLBACK_EXELIST := ${EXE}/mtproto-proxy-c
 MIXED_EXELIST := ${EXE}/mtproto-proxy-mixed
 
 
@@ -79,8 +80,9 @@ DEPENDENCE_ALL		:=	${DEPENDENCE_NORM} ${DEPENDENCE_MIXED} ${DEPENDENCE_STRANGE} 
 
 OBJECTS_ALL		:=	${OBJECTS} ${LIB_OBJS}
 
-all:	${ALLDIRS} ${EXELIST} 
-mixed: ${ALLDIRS} ${MIXED_EXELIST}
+all:	${ALLDIRS} ${EXELIST}
+mixed: ${ALLDIRS} ${EXELIST} ${MIXED_EXELIST}
+c-fallback: ${ALLDIRS} ${C_FALLBACK_EXELIST}
 dirs: ${ALLDIRS}
 create_dirs_and_headers: ${ALLDIRS} 
 
@@ -100,11 +102,14 @@ ${LIB_OBJS_NORMAL}: ${OBJ}/%.o: %.c | create_dirs_and_headers
 
 ${EXELIST}: ${LIBLIST}
 
-${EXE}/mtproto-proxy:	${OBJ}/mtproto/mtproto-proxy.o ${OBJ}/mtproto/mtproto-config.o ${OBJ}/net/net-tcp-rpc-ext-server.o
-	${CC} -o $@ $^ ${LIB}/libkdb.a ${LDFLAGS}
-
-${EXE}/mtproto-proxy-mixed: ${MIXED_OBJECTS} ${LIB}/libkdb.a ${RUST_FFI_STATICLIB}
+${EXE}/mtproto-proxy: ${MIXED_OBJECTS} ${LIB}/libkdb.a ${RUST_FFI_STATICLIB}
 	${CC} -o $@ ${MIXED_OBJECTS} ${LIB}/libkdb.a ${RUST_FFI_STATICLIB} ${LDFLAGS} -ldl
+
+${EXE}/mtproto-proxy-c:	${OBJECTS} ${LIB}/libkdb.a
+	${CC} -o $@ ${OBJECTS} ${LIB}/libkdb.a ${LDFLAGS}
+
+${EXE}/mtproto-proxy-mixed: ${EXE}/mtproto-proxy
+	ln -sf mtproto-proxy $@
 
 ${RUST_FFI_STATICLIB}: Cargo.toml rust/mtproxy-ffi/Cargo.toml rust/mtproxy-ffi/src/lib.rs rust/mtproxy-core/src/lib.rs
 	cargo build -p mtproxy-ffi
@@ -122,6 +127,9 @@ test: all
 
 mixed-test: mixed
 	TEST_INCLUDE_MIXED=1 ./tests/run.sh
+
+c-test: c-fallback
+	MTPROXY_BIN="${PWD}/${EXE}/mtproto-proxy-c" ./tests/run.sh
 
 rust-check:
 	./scripts/rust_tooling.sh check

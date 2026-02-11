@@ -20,13 +20,21 @@ git clone https://github.com/TelegramMessenger/MTProxy
 cd MTProxy
 ```
 
-To build, simply run `make`, the binary will be in `objs/bin/mtproto-proxy`:
+To build, run `make`. The default binary (`objs/bin/mtproto-proxy`) is the Rust-enabled migration target:
 
 ```bash
 make && cd objs/bin
 ```
 
 If the build has failed, you should run `make clean` before building it again.
+
+Short-lived C fallback build:
+
+```bash
+make c-fallback
+```
+
+This produces `objs/bin/mtproto-proxy-c`.
 
 ## Running
 1. Obtain a secret, used to connect to telegram servers.

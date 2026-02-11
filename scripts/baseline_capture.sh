@@ -125,7 +125,7 @@ write_summary() {
 # Baseline Summary
 
 This baseline captures:
-- Build timing and logs for the C implementation.
+- Build timing and logs for the default Rust-enabled implementation.
 - Produced binary size and SHA-256 digest.
 - Startup/help smoke outputs.
 - Known-good runtime command sequence from README.

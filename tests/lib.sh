@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BIN="$ROOT_DIR/objs/bin/mtproto-proxy"
+BIN="${MTPROXY_BIN:-$ROOT_DIR/objs/bin/mtproto-proxy}"
 TMP_DIR="$ROOT_DIR/tests/.tmp"
 
 mkdir -p "$TMP_DIR"
@@ -26,7 +26,7 @@ log_fail() {
 require_binary() {
   if [ ! -x "$BIN" ]; then
     log_fail "Binary not found: $BIN"
-    log_fail "Run 'make' first."
+    log_fail "Run 'make' first (or set MTPROXY_BIN to a built fallback binary)."
     exit 1
   fi
 }

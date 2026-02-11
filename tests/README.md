@@ -44,6 +44,13 @@ This harness provides migration safety checks before porting C modules to Rust.
 make test
 ```
 
+`make test` uses the default Rust-enabled binary (`objs/bin/mtproto-proxy`).
+To run suites against the temporary C fallback binary, use:
+
+```bash
+make c-test
+```
+
 Optional fuzz iteration override:
 
 ```bash

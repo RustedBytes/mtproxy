@@ -55,7 +55,7 @@ Current exported API:
 
 ## Call flow
 
-- C startup path (`mtproto/mtproto-proxy.c`, mixed build only) calls `rust_ffi_startup_check()`.
+- C startup path (`mtproto/mtproto-proxy.c`, Rust-enabled default build) calls `rust_ffi_startup_check()`.
 - C startup then calls `rust_ffi_check_concurrency_boundary()` to validate extracted Step 9 mp-queue/jobs contract.
 - C startup then calls `rust_ffi_check_network_boundary()` to validate extracted Step 10 net-core contract.
 - C startup then calls `rust_ffi_check_rpc_boundary()` to validate extracted Step 11 rpc/tcp contract.
@@ -68,7 +68,7 @@ Current exported API:
 - C startup then calls `rust_ffi_enable_crc32_bridge()` which runs differential checks and swaps CRC32 implementation.
 - C startup then calls `rust_ffi_enable_crc32c_bridge()` which runs differential checks and swaps CRC32C implementation.
 - `rust_ffi_startup_check()` and `rust_ffi_enable_crc32_bridge()` live in `common/rust-ffi-bridge.c`.
-- PID/CPUID/hash/precise-time C modules delegate to Rust via weak-symbol calls when the mixed binary is linked.
+- PID/CPUID/hash/precise-time C modules delegate to Rust via weak-symbol calls when the Rust-enabled binary is linked.
 - `common/parse-config.c` delegates scanner/int primitives to Rust when symbols are linked.
 - `common/tl-parse.c` opportunistically delegates TL query/answer header parsing to Rust (with C fallback).
 - `common/proc-stat.c` delegates `/proc/.../stat` parsing to Rust when symbols are linked.
