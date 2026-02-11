@@ -400,6 +400,17 @@ struct mp_queue MainJobQueue __attribute__((aligned(128)));
 static struct thread_callback *jobs_cb_list;
 static int jobs_tokio_bridge_enabled;
 
+static int jobs_tokio_bridge_disabled_by_env(void) {
+  static int cached = -1;
+  if (cached >= 0) {
+    return cached;
+  }
+
+  const char *value = getenv("MTPROXY_DISABLE_TOKIO_JOBS_QUEUE");
+  cached = (value && *value && !(value[0] == '0' && !value[1])) ? 1 : 0;
+  return cached;
+}
+
 void process_one_job(JOB_REF_ARG(job), int thread_class);
 
 void init_main_pthread_id(void) {
@@ -558,6 +569,16 @@ int init_async_jobs(void) {
 }
 
 int jobs_enable_tokio_bridge(void) {
+  if (jobs_tokio_bridge_disabled_by_env()) {
+    const char *value = getenv("MTPROXY_DISABLE_TOKIO_JOBS_QUEUE");
+    jobs_tokio_bridge_enabled = 0;
+    vkprintf(1,
+             "rust ffi tokio jobs bridge disabled by env: "
+             "MTPROXY_DISABLE_TOKIO_JOBS_QUEUE=%s\n",
+             value ? value : "");
+    return 1;
+  }
+
   int32_t rc = mtproxy_ffi_jobs_tokio_init();
   if (rc < 0) {
     kprintf("fatal: rust ffi tokio jobs bridge init failed (code %d)\n",
@@ -757,6 +778,7 @@ int unlock_job(JOB_REF_ARG(job)) {
       if (!JC->subclasses) {
         struct mp_queue *JQ = JC->job_queue;
         assert(JQ);
+        int tokio_class = (JQ == &MainJobQueue) ? JC_MAIN : req_class;
         vkprintf(
             JOBS_DEBUG,
             "RESCHEDULED JOB %p, type %p, flags %08x, refcnt %d -> Queue %d\n",
@@ -765,7 +787,8 @@ int unlock_job(JOB_REF_ARG(job)) {
         job_t queued_job = PTR_MOVE(job);
         if (jobs_tokio_bridge_enabled) {
           int32_t rc =
-              mtproxy_ffi_jobs_tokio_enqueue_class(req_class, (void *)queued_job);
+              mtproxy_ffi_jobs_tokio_enqueue_class(tokio_class,
+                                                   (void *)queued_job);
           if (rc < 0) {
             vkprintf(
                 JOBS_DEBUG,
@@ -814,10 +837,11 @@ int unlock_job(JOB_REF_ARG(job)) {
 
         struct mp_queue *JQ = JC->job_queue;
         assert(JQ);
+        int tokio_class = (JQ == &MainJobQueue) ? JC_MAIN : req_class;
         void *subclass_token = (void *)(long)(cur_subclass + JOB_SUBCLASS_OFFSET);
         if (jobs_tokio_bridge_enabled) {
           int32_t rc =
-              mtproxy_ffi_jobs_tokio_enqueue_class(req_class, subclass_token);
+              mtproxy_ffi_jobs_tokio_enqueue_class(tokio_class, subclass_token);
           if (rc < 0) {
             vkprintf(JOBS_DEBUG,
                      "RUST TOKIO SUBCLASS QUEUE FAIL (%d), fallback to C queue "

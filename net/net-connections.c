@@ -888,11 +888,12 @@ int net_server_socket_reader(socket_connection_job_t C) /* {{{ */ {
 
     __sync_fetch_and_or(&c->flags, C_NORD);
     int r = readv(c->fd, tcp_recv_iovec + p, MAX_TCP_RECV_BUFFERS + 1 - p);
+    int read_errno = (r < 0) ? errno : 0;
     MODULE_STAT->tcp_readv_calls++;
 
     if (r <= 0) {
-      if (r < 0 && errno == EAGAIN) {
-      } else if (r < 0 && errno == EINTR) {
+      if (r < 0 && read_errno == EAGAIN) {
+      } else if (r < 0 && read_errno == EINTR) {
         __sync_fetch_and_and(&c->flags, ~C_NORD);
         MODULE_STAT->tcp_readv_intr++;
         continue;
@@ -906,10 +907,15 @@ int net_server_socket_reader(socket_connection_job_t C) /* {{{ */ {
       __sync_fetch_and_and(&c->flags, ~C_NORD);
     }
 
-    if (verbosity > 0 && r < 0 && errno != EAGAIN) {
+    if (verbosity > 0 && r < 0 && read_errno != EAGAIN) {
       perror("recv()");
     }
-    vkprintf(2, "readv from %d: %d read out of %d\n", c->fd, r, s);
+    if (r < 0) {
+      vkprintf(2, "readv from %d: %d read out of %d (errno=%d %s)\n", c->fd, r,
+               s, read_errno, strerror(read_errno));
+    } else {
+      vkprintf(2, "readv from %d: %d read out of %d\n", c->fd, r, s);
+    }
 
     if (r <= 0) {
       rwm_free(in);
