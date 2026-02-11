@@ -501,6 +501,57 @@ struct MtproxyMfConfig {
 }
 
 #[repr(C)]
+#[derive(Clone, Copy)]
+struct MtproxyEventTimer {
+    h_idx: c_int,
+    flags: c_int,
+    wakeup: Option<unsafe extern "C" fn(*mut MtproxyEventTimer) -> c_int>,
+    wakeup_time: c_double,
+    real_wakeup_time: c_double,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+struct MtproxyInAddr {
+    s_addr: u32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct MtproxyConnTargetInfo {
+    timer: MtproxyEventTimer,
+    min_connections: c_int,
+    max_connections: c_int,
+    conn_tree: *mut c_void,
+    type_: *mut c_void,
+    extra: *mut c_void,
+    target: MtproxyInAddr,
+    target_ipv6: [u8; 16],
+    port: c_int,
+    active_outbound_connections: c_int,
+    outbound_connections: c_int,
+    ready_outbound_connections: c_int,
+    next_reconnect: c_double,
+    reconnect_timeout: c_double,
+    next_reconnect_timeout: c_double,
+    custom_field: c_int,
+    next_target: MtproxyConnTargetJob,
+    prev_target: MtproxyConnTargetJob,
+    hnext: MtproxyConnTargetJob,
+    global_refcnt: c_int,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct MtproxyHostEnt {
+    h_name: *mut c_char,
+    h_aliases: *mut *mut c_char,
+    h_addrtype: c_int,
+    h_length: c_int,
+    h_addr_list: *mut *mut c_char,
+}
+
+#[repr(C)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct MtproxyTlHeaderParseResult {
     pub status: i32,
@@ -737,22 +788,18 @@ unsafe extern "C" {
     fn load_config(file: *const c_char, fd: c_int) -> c_int;
     fn reset_config();
     fn md5_hex_config(out: *mut c_char);
-    fn clear_config(mc: *mut MtproxyMfConfig, do_destroy_targets: c_int);
+    fn cfg_gethost() -> *mut MtproxyHostEnt;
+    fn destroy_target(ctj_tag_int: c_int, ctj: MtproxyConnTargetJob) -> c_int;
+    fn create_target(
+        source: *mut MtproxyConnTargetInfo,
+        was_created: *mut c_int,
+    ) -> MtproxyConnTargetJob;
     fn create_all_outbound_connections() -> c_int;
     fn kdb_load_hosts() -> c_int;
 
-    fn mtproxy_ffi_mtproto_cfg_resolve_default_target_from_cfg_cur() -> c_int;
-    fn mtproxy_ffi_mtproto_cfg_set_default_target_endpoint(
-        port: u16,
-        min_connections: i64,
-        max_connections: i64,
-        reconnect_timeout: c_double,
-    );
-    fn mtproxy_ffi_mtproto_cfg_create_target(mc: *mut MtproxyMfConfig, target_index: u32);
-    fn mtproxy_ffi_mtproto_cfg_now_or_time() -> c_int;
-
     static mut default_cfg_min_connections: c_int;
     static mut default_cfg_max_connections: c_int;
+    static mut default_cfg_ct: MtproxyConnTargetInfo;
     static mut cfg_cur: *mut c_char;
     static mut cfg_end: *mut c_char;
     static mut config_filename: *mut c_char;

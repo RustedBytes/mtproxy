@@ -39,6 +39,272 @@ fn saturating_i32_from_usize(value: usize) -> i32 {
     i32::try_from(value).unwrap_or(i32::MAX)
 }
 
+const AF_INET: c_int = 2;
+const AF_INET6: c_int = 10;
+
+fn mtproto_cfg_collect_auth_cluster_ids(
+    mc: &MtproxyMfConfig,
+    out: &mut [i32; MTPROTO_CFG_MAX_CLUSTERS],
+) -> usize {
+    let count = usize::try_from(mc.auth_clusters).unwrap_or(0);
+    let bounded = count.min(MTPROTO_CFG_MAX_CLUSTERS);
+    for (idx, slot) in out.iter_mut().enumerate().take(bounded) {
+        *slot = mc.auth_cluster[idx].cluster_id;
+    }
+    bounded
+}
+
+fn mtproto_cfg_default_cluster_index(mc: &MtproxyMfConfig, auth_clusters: usize) -> Option<usize> {
+    if mc.default_cluster.is_null() {
+        return None;
+    }
+    let base = mc.auth_cluster.as_ptr().cast::<u8>() as usize;
+    let ptr = mc.default_cluster.cast::<u8>() as usize;
+    let elem = core::mem::size_of::<MtproxyMfCluster>();
+    let span = auth_clusters.checked_mul(elem)?;
+    if ptr < base || ptr >= base.saturating_add(span) {
+        return None;
+    }
+    let offset = ptr - base;
+    if (offset % elem) != 0 {
+        return None;
+    }
+    Some(offset / elem)
+}
+
+fn mtproto_cfg_forget_cluster_targets(cluster: &mut MtproxyMfCluster) {
+    if !cluster.cluster_targets.is_null() {
+        cluster.cluster_targets = core::ptr::null_mut();
+    }
+    cluster.targets_num = 0;
+    cluster.write_targets_num = 0;
+    cluster.targets_allocated = 0;
+}
+
+fn mtproto_cfg_clear_cluster(
+    group_stats: &mut MtproxyMfGroupStats,
+    cluster: &mut MtproxyMfCluster,
+) {
+    mtproto_cfg_forget_cluster_targets(cluster);
+    cluster.flags = 0;
+    group_stats.tot_clusters = group_stats.tot_clusters.wrapping_sub(1);
+}
+
+/// Clears runtime config snapshot and optionally destroys target objects.
+///
+/// # Safety
+/// `mc` must point to a writable `struct mf_config` when non-null.
+#[no_mangle]
+#[allow(private_interfaces)]
+pub unsafe extern "C" fn clear_config(mc: *mut MtproxyMfConfig, do_destroy_targets: c_int) {
+    if mc.is_null() {
+        return;
+    }
+    let mc_ref = unsafe { &mut *mc };
+    let tot_targets = usize::try_from(mc_ref.tot_targets)
+        .unwrap_or(0)
+        .min(MTPROTO_CFG_MAX_TARGETS);
+    if do_destroy_targets != 0 {
+        for idx in 0..tot_targets {
+            let target = mc_ref.targets[idx];
+            if unsafe { verbosity } >= 1 {
+                unsafe { kprintf(b"destroying target %p\n\0".as_ptr().cast(), target) };
+            }
+            unsafe {
+                destroy_target(1, target);
+            }
+        }
+        for idx in 0..tot_targets {
+            mc_ref.targets[idx] = core::ptr::null_mut();
+        }
+    }
+
+    let auth_clusters = usize::try_from(mc_ref.auth_clusters)
+        .unwrap_or(0)
+        .min(MTPROTO_CFG_MAX_CLUSTERS);
+    for idx in 0..auth_clusters {
+        mtproto_cfg_clear_cluster(&mut mc_ref.auth_stats, &mut mc_ref.auth_cluster[idx]);
+    }
+    mc_ref.tot_targets = 0;
+    mc_ref.auth_clusters = 0;
+    mc_ref.auth_stats = MtproxyMfGroupStats { tot_clusters: 0 };
+}
+
+/// Resolves and returns auth cluster by `cluster_id`.
+///
+/// # Safety
+/// `mc` must point to a valid `struct mf_config` when non-null.
+#[no_mangle]
+#[allow(private_interfaces)]
+pub unsafe extern "C" fn mf_cluster_lookup(
+    mc: *mut MtproxyMfConfig,
+    cluster_id: c_int,
+    force: c_int,
+) -> *mut MtproxyMfCluster {
+    if mc.is_null() {
+        return core::ptr::null_mut();
+    }
+    let mc_ref = unsafe { &mut *mc };
+    let mut cluster_ids = [0i32; MTPROTO_CFG_MAX_CLUSTERS];
+    let auth_clusters = mtproto_cfg_collect_auth_cluster_ids(mc_ref, &mut cluster_ids);
+    let default_cluster_index = mtproto_cfg_default_cluster_index(mc_ref, auth_clusters);
+    let mut out_cluster_index = -1;
+
+    let lookup_rc = unsafe {
+        mtproxy_ffi_mtproto_cfg_lookup_cluster_index(
+            cluster_ids.as_ptr(),
+            auth_clusters as u32,
+            cluster_id,
+            if force != 0 { 1 } else { 0 },
+            default_cluster_index
+                .and_then(|idx| i32::try_from(idx).ok())
+                .unwrap_or(0),
+            i32::from(default_cluster_index.is_some()),
+            &raw mut out_cluster_index,
+        )
+    };
+    if lookup_rc == MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_OK {
+        if let Ok(idx) = usize::try_from(out_cluster_index) {
+            if idx < auth_clusters {
+                return &mut mc_ref.auth_cluster[idx];
+            }
+        }
+        return if force != 0 {
+            mc_ref.default_cluster
+        } else {
+            core::ptr::null_mut()
+        };
+    }
+    if lookup_rc == MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_NOT_FOUND {
+        return if force != 0 {
+            mc_ref.default_cluster
+        } else {
+            core::ptr::null_mut()
+        };
+    }
+    if force != 0 {
+        mc_ref.default_cluster
+    } else {
+        core::ptr::null_mut()
+    }
+}
+
+/// Resolves target hostname from parser cursor and stores it into `default_cfg_ct`.
+///
+/// # Safety
+/// Uses global parser cursors from C runtime and mutates `default_cfg_ct`.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_resolve_default_target_from_cfg_cur() -> c_int {
+    let host = unsafe { cfg_gethost() };
+    if host.is_null() {
+        return -1;
+    }
+    let host_ref = unsafe { &*host };
+    if host_ref.h_addr_list.is_null() {
+        return -1;
+    }
+    let addr = unsafe { *host_ref.h_addr_list };
+    if addr.is_null() {
+        return -1;
+    }
+
+    if host_ref.h_addrtype == AF_INET {
+        let in_addr = unsafe { *(addr.cast::<MtproxyInAddr>()) };
+        unsafe {
+            default_cfg_ct.target = in_addr;
+            default_cfg_ct.target_ipv6 = [0; 16];
+        }
+        return 0;
+    }
+    if host_ref.h_addrtype == AF_INET6 {
+        unsafe {
+            default_cfg_ct.target.s_addr = 0;
+            core::ptr::copy_nonoverlapping(
+                addr.cast::<u8>(),
+                core::ptr::addr_of_mut!(default_cfg_ct.target_ipv6).cast::<u8>(),
+                16,
+            );
+        }
+        return 0;
+    }
+
+    unsafe { mtproto_cfg_syntax_literal(b"cannot resolve hostname\0") };
+    -1
+}
+
+/// Updates endpoint-specific defaults used by `create_target`.
+///
+/// # Safety
+/// Mutates process-global `default_cfg_ct` fields.
+#[allow(clippy::cast_possible_truncation)]
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_set_default_target_endpoint(
+    port: u16,
+    min_connections: i64,
+    max_connections: i64,
+    reconnect_timeout: c_double,
+) {
+    unsafe {
+        default_cfg_ct.port = c_int::from(port);
+        default_cfg_ct.min_connections = min_connections as c_int;
+        default_cfg_ct.max_connections = max_connections as c_int;
+        default_cfg_ct.reconnect_timeout = reconnect_timeout;
+    }
+}
+
+/// Creates one target from `default_cfg_ct` and stores it into config slots.
+///
+/// # Safety
+/// `mc` must point to writable `struct mf_config`; `target_index` must be in range.
+#[no_mangle]
+#[allow(private_interfaces)]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_create_target(
+    mc: *mut MtproxyMfConfig,
+    target_index: u32,
+) {
+    if mc.is_null() {
+        return;
+    }
+    let Ok(target_index_usize) = usize::try_from(target_index) else {
+        return;
+    };
+    if target_index_usize >= MTPROTO_CFG_MAX_TARGETS {
+        return;
+    }
+    let mc_ref = unsafe { &mut *mc };
+    let mut was_created = -1;
+    let target = unsafe { create_target(&raw mut default_cfg_ct, &raw mut was_created) };
+    mc_ref.targets[target_index_usize] = target;
+
+    if unsafe { verbosity } >= 3 {
+        let ipv4 = unsafe { default_cfg_ct.target.s_addr.to_ne_bytes() };
+        unsafe {
+            kprintf(
+                b"new target %p created (%d): ip %d.%d.%d.%d, port %d\n\0"
+                    .as_ptr()
+                    .cast(),
+                target,
+                was_created,
+                c_int::from(ipv4[0]),
+                c_int::from(ipv4[1]),
+                c_int::from(ipv4[2]),
+                c_int::from(ipv4[3]),
+                default_cfg_ct.port,
+            );
+        }
+    }
+}
+
+/// Returns current wall-clock unix seconds.
+///
+/// # Safety
+/// Calls C runtime `time(0)` via FFI.
+#[allow(clippy::cast_possible_truncation)]
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_now_or_time() -> c_int {
+    unsafe { time(core::ptr::null_mut()) as c_int }
+}
+
 /// Parses dotted IPv4 text into host-order integer (`a<<24|b<<16|c<<8|d`).
 ///
 /// # Safety
