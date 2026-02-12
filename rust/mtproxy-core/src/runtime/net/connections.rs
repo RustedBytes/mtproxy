@@ -26,6 +26,7 @@ const CONN_ERROR: i32 = 3;
 
 const CR_NOTYET: i32 = 0;
 const CR_OK: i32 = 1;
+const CR_STOPPED: i32 = 2;
 const CR_FAILED: i32 = 4;
 const TARGET_HASH_MULT: u64 = 0x0aba_caba;
 const TARGET_HASH_STEP: u64 = 239;
@@ -42,6 +43,10 @@ const TARGET_JOB_POST_ATTEMPT_FREE: i32 = 2;
 
 const TARGET_JOB_FINALIZE_COMPLETED: i32 = 1;
 const TARGET_JOB_FINALIZE_SCHEDULE_RETRY: i32 = 2;
+
+const CONN_JOB_RUN_SKIP: i32 = 0;
+const CONN_JOB_RUN_DO_READ_WRITE: i32 = 1;
+const CONN_JOB_RUN_HANDLE_READY_PENDING: i32 = 2;
 
 static NAT_INFO_RULES: AtomicUsize = AtomicUsize::new(0);
 static NAT_INFO_LOCAL: [AtomicU32; MAX_NAT_INFO_RULES] =
@@ -101,6 +106,117 @@ pub fn compute_conn_events(flags: i32, use_epollet: bool) -> i32 {
         events
     };
     u32_to_i32(out)
+}
+
+/// Selects `JS_RUN` actions for connection job.
+///
+/// Returns bitmask:
+/// - `1`: call `read_write`
+/// - `2`: execute `ready_pending` activation path before `read_write`
+#[must_use]
+pub fn conn_job_run_actions(flags: i32) -> i32 {
+    let f = i32_to_u32(flags);
+    if (f & C_ERROR) != 0 {
+        CONN_JOB_RUN_SKIP
+    } else if (f & C_READY_PENDING) != 0 {
+        CONN_JOB_RUN_DO_READ_WRITE | CONN_JOB_RUN_HANDLE_READY_PENDING
+    } else {
+        CONN_JOB_RUN_DO_READ_WRITE
+    }
+}
+
+/// Returns whether status should be promoted from `connecting` to `working`.
+#[must_use]
+pub fn conn_job_ready_pending_should_promote_status(status: i32) -> bool {
+    status == CONN_CONNECTING
+}
+
+/// Returns whether CAS failure status is expected during `ready_pending` handling.
+#[must_use]
+pub fn conn_job_ready_pending_cas_failure_expected(status: i32) -> bool {
+    status == CONN_ERROR
+}
+
+/// Returns whether `JS_ALARM` should invoke `type->alarm`.
+#[must_use]
+pub fn conn_job_alarm_should_call(timer_check_ok: bool, flags: i32) -> bool {
+    timer_check_ok && (i32_to_u32(flags) & C_ERROR) == 0
+}
+
+/// Returns whether `JS_ABORT` precondition (`C_ERROR`) holds.
+#[must_use]
+pub fn conn_job_abort_has_error(flags: i32) -> bool {
+    (i32_to_u32(flags) & C_ERROR) != 0
+}
+
+/// Returns whether `JS_ABORT` should invoke `type->close`.
+///
+/// Input matches old value returned by `__sync_fetch_and_or(&flags, C_FAILED)`.
+#[must_use]
+pub fn conn_job_abort_should_close(previous_flags: i32) -> bool {
+    (i32_to_u32(previous_flags) & C_FAILED) == 0
+}
+
+/// Returns whether basic target-connection scan should skip current candidate.
+#[must_use]
+pub fn target_pick_basic_should_skip(has_selected: bool) -> bool {
+    has_selected
+}
+
+/// Returns whether `allow_stopped` target-connection scan should skip current candidate.
+#[must_use]
+pub fn target_pick_allow_stopped_should_skip(has_selected: bool, selected_ready: i32) -> bool {
+    has_selected && selected_ready == CR_OK
+}
+
+/// Returns whether current candidate should be selected in basic scan.
+#[must_use]
+pub fn target_pick_basic_should_select(candidate_ready: i32) -> bool {
+    candidate_ready == CR_OK
+}
+
+/// Returns whether current candidate should be selected in `allow_stopped` scan.
+#[must_use]
+pub fn target_pick_allow_stopped_should_select(
+    candidate_ready: i32,
+    has_selected: bool,
+    selected_unreliability: i32,
+    candidate_unreliability: i32,
+) -> bool {
+    candidate_ready == CR_OK
+        || (candidate_ready == CR_STOPPED
+            && (!has_selected || selected_unreliability > candidate_unreliability))
+}
+
+/// Returns whether target-connection scan should skip current candidate.
+#[must_use]
+pub fn target_pick_should_skip(allow_stopped: bool, has_selected: bool, selected_ready: i32) -> bool {
+    if allow_stopped {
+        target_pick_allow_stopped_should_skip(has_selected, selected_ready)
+    } else {
+        target_pick_basic_should_skip(has_selected)
+    }
+}
+
+/// Returns whether current candidate should be selected.
+#[must_use]
+pub fn target_pick_should_select(
+    allow_stopped: bool,
+    candidate_ready: i32,
+    has_selected: bool,
+    selected_unreliability: i32,
+    candidate_unreliability: i32,
+) -> bool {
+    if allow_stopped {
+        target_pick_allow_stopped_should_select(
+            candidate_ready,
+            has_selected,
+            selected_unreliability,
+            candidate_unreliability,
+        )
+    } else {
+        target_pick_basic_should_select(candidate_ready)
+    }
 }
 
 /// Computes outbound connection `ready` state from connection status.
@@ -363,11 +479,16 @@ pub fn nat_translate_ip(local_ip: u32) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::{
-        accept_rate_decide, compute_conn_events, compute_next_reconnect, connection_is_active,
-        create_target_transition, destroy_target_transition, nat_add_rule, nat_translate_ip,
-        server_check_ready, target_bucket_ipv4, target_bucket_ipv6, target_job_boot_delay,
-        target_job_finalize_free_action, target_job_post_tick_action, target_job_retry_delay,
-        target_job_should_run_tick, target_job_update_mode, target_needed_connections,
+        accept_rate_decide, compute_conn_events, compute_next_reconnect, conn_job_abort_has_error,
+        conn_job_abort_should_close, conn_job_alarm_should_call,
+        conn_job_ready_pending_cas_failure_expected, conn_job_ready_pending_should_promote_status,
+        conn_job_run_actions, connection_is_active, create_target_transition, destroy_target_transition,
+        nat_add_rule, nat_translate_ip, server_check_ready, target_bucket_ipv4, target_bucket_ipv6,
+        target_job_boot_delay, target_job_finalize_free_action, target_job_post_tick_action,
+        target_job_retry_delay, target_job_should_run_tick, target_job_update_mode,
+        target_needed_connections, target_pick_allow_stopped_should_select,
+        target_pick_allow_stopped_should_skip, target_pick_basic_should_select,
+        target_pick_basic_should_skip, target_pick_should_select, target_pick_should_skip,
         target_ready_transition, target_should_attempt_reconnect, NatAddRuleError, C_CONNECTED,
         C_ERROR, C_FAILED, C_NET_FAILED, C_NORD, C_NOWR, C_READY_PENDING, C_WANTRD, C_WANTWR,
         EVT_LEVEL, EVT_READ, EVT_SPEC, EVT_WRITE, MAX_NAT_INFO_RULES, NAT_INFO_RULES,
@@ -383,6 +504,75 @@ mod tests {
             (C_CONNECTED | C_READY_PENDING).to_ne_bytes()
         )));
         assert!(!connection_is_active(0));
+    }
+
+    #[test]
+    fn conn_job_run_actions_match_c_rules() {
+        let error = i32::from_ne_bytes(C_ERROR.to_ne_bytes());
+        let pending = i32::from_ne_bytes(C_READY_PENDING.to_ne_bytes());
+        let pending_error = i32::from_ne_bytes((C_READY_PENDING | C_ERROR).to_ne_bytes());
+
+        assert_eq!(conn_job_run_actions(0), 1);
+        assert_eq!(conn_job_run_actions(pending), 3);
+        assert_eq!(conn_job_run_actions(error), 0);
+        assert_eq!(conn_job_run_actions(pending_error), 0);
+    }
+
+    #[test]
+    fn conn_job_ready_pending_status_helpers_match_c_rules() {
+        assert!(conn_job_ready_pending_should_promote_status(1));
+        assert!(!conn_job_ready_pending_should_promote_status(2));
+        assert!(conn_job_ready_pending_cas_failure_expected(3));
+        assert!(!conn_job_ready_pending_cas_failure_expected(2));
+    }
+
+    #[test]
+    fn conn_job_alarm_and_abort_helpers_match_c_rules() {
+        let error = i32::from_ne_bytes(C_ERROR.to_ne_bytes());
+        let failed = i32::from_ne_bytes(C_FAILED.to_ne_bytes());
+
+        assert!(conn_job_alarm_should_call(true, 0));
+        assert!(!conn_job_alarm_should_call(false, 0));
+        assert!(!conn_job_alarm_should_call(true, error));
+
+        assert!(!conn_job_abort_has_error(0));
+        assert!(conn_job_abort_has_error(error));
+        assert!(conn_job_abort_should_close(0));
+        assert!(!conn_job_abort_should_close(failed));
+    }
+
+    #[test]
+    fn target_pick_basic_helpers_match_c_rules() {
+        assert!(!target_pick_basic_should_skip(false));
+        assert!(target_pick_basic_should_skip(true));
+        assert!(target_pick_basic_should_select(1));
+        assert!(!target_pick_basic_should_select(2));
+    }
+
+    #[test]
+    fn target_pick_allow_stopped_helpers_match_c_rules() {
+        assert!(!target_pick_allow_stopped_should_skip(false, 1));
+        assert!(!target_pick_allow_stopped_should_skip(true, 2));
+        assert!(target_pick_allow_stopped_should_skip(true, 1));
+
+        assert!(target_pick_allow_stopped_should_select(1, false, 0, 10));
+        assert!(target_pick_allow_stopped_should_select(2, false, 0, 10));
+        assert!(target_pick_allow_stopped_should_select(2, true, 5, 3));
+        assert!(!target_pick_allow_stopped_should_select(2, true, 3, 5));
+        assert!(!target_pick_allow_stopped_should_select(0, false, 0, 0));
+    }
+
+    #[test]
+    fn target_pick_combined_helpers_match_c_rules() {
+        assert!(target_pick_should_skip(false, true, 2));
+        assert!(!target_pick_should_skip(true, true, 2));
+        assert!(target_pick_should_skip(true, true, 1));
+
+        assert!(target_pick_should_select(false, 1, false, 0, 0));
+        assert!(!target_pick_should_select(false, 2, false, 0, 0));
+        assert!(target_pick_should_select(true, 2, false, 0, 7));
+        assert!(target_pick_should_select(true, 2, true, 5, 2));
+        assert!(!target_pick_should_select(true, 2, true, 2, 5));
     }
 
     #[test]

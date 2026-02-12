@@ -245,6 +245,24 @@ extern int32_t mtproxy_ffi_net_connections_target_job_post_tick_action(
     int32_t is_completed, int32_t global_refcnt, int32_t has_conn_tree);
 extern int32_t mtproxy_ffi_net_connections_target_job_finalize_free_action(
     int32_t free_target_rc);
+extern int32_t mtproxy_ffi_net_connections_conn_job_run_actions(int32_t flags);
+extern int32_t
+mtproxy_ffi_net_connections_conn_job_ready_pending_should_promote_status(
+    int32_t status);
+extern int32_t
+mtproxy_ffi_net_connections_conn_job_ready_pending_cas_failure_expected(
+    int32_t status);
+extern int32_t mtproxy_ffi_net_connections_conn_job_alarm_should_call(
+    int32_t timer_check_ok, int32_t flags);
+extern int32_t
+mtproxy_ffi_net_connections_conn_job_abort_has_error(int32_t flags);
+extern int32_t mtproxy_ffi_net_connections_conn_job_abort_should_close(
+    int32_t previous_flags);
+extern int32_t mtproxy_ffi_net_connections_target_pick_should_skip(
+    int32_t allow_stopped, int32_t has_selected, int32_t selected_ready);
+extern int32_t mtproxy_ffi_net_connections_target_pick_should_select(
+    int32_t allow_stopped, int32_t candidate_ready, int32_t has_selected,
+    int32_t selected_unreliability, int32_t candidate_unreliability);
 
 void tcp_set_max_accept_rate(int rate) { max_accept_rate = rate; }
 
@@ -532,14 +550,26 @@ int cpu_server_close_connection(connection_job_t C, int who) {
 }
 
 int do_connection_job(job_t job, int op, struct job_thread *JT) {
+  enum {
+    CONN_JOB_RUN_SKIP = 0,
+    CONN_JOB_RUN_DO_READ_WRITE = 1,
+    CONN_JOB_RUN_HANDLE_READY_PENDING = 2,
+  };
+
   connection_job_t C = job;
 
   struct connection_info *c = CONN_INFO(C);
 
   if (op == JS_RUN) { // RUN IN NET-CPU THREAD
     assert_net_cpu_thread();
-    if (!(c->flags & C_ERROR)) {
-      if (c->flags & C_READY_PENDING) {
+    int32_t run_actions =
+        mtproxy_ffi_net_connections_conn_job_run_actions(c->flags);
+    assert((run_actions &
+            ~(CONN_JOB_RUN_DO_READ_WRITE | CONN_JOB_RUN_HANDLE_READY_PENDING)) ==
+           0);
+
+    if (run_actions != CONN_JOB_RUN_SKIP) {
+      if (run_actions & CONN_JOB_RUN_HANDLE_READY_PENDING) {
         assert(c->flags & C_CONNECTED);
         __sync_fetch_and_and(&c->flags, ~C_READY_PENDING);
         MODULE_STAT->active_outbound_connections++;
@@ -548,30 +578,47 @@ int do_connection_job(job_t job, int op, struct job_thread *JT) {
           __sync_fetch_and_add(
               &CONN_TARGET_INFO(c->target)->active_outbound_connections, 1);
         }
-        if (c->status == conn_connecting) {
+
+        int32_t should_promote_status =
+            mtproxy_ffi_net_connections_conn_job_ready_pending_should_promote_status(
+                c->status);
+        assert(should_promote_status == 0 || should_promote_status == 1);
+        if (should_promote_status) {
           if (!__sync_bool_compare_and_swap(&c->status, conn_connecting,
                                             conn_working)) {
-            assert(c->status == conn_error);
+            int32_t expected_failure =
+                mtproxy_ffi_net_connections_conn_job_ready_pending_cas_failure_expected(
+                    c->status);
+            assert(expected_failure == 1);
           }
         }
         c->type->connected(C);
       }
+
+      assert(run_actions & CONN_JOB_RUN_DO_READ_WRITE);
       c->type->read_write(C);
     }
     return 0;
   }
   if (op == JS_ALARM) { // RUN IN NET-CPU THREAD
-    if (!job_timer_check(job)) {
-      return 0;
-    }
-    if (!(c->flags & C_ERROR)) {
+    int32_t should_call_alarm =
+        mtproxy_ffi_net_connections_conn_job_alarm_should_call(
+            job_timer_check(job), c->flags);
+    assert(should_call_alarm == 0 || should_call_alarm == 1);
+    if (should_call_alarm) {
       c->type->alarm(C);
     }
     return 0;
   }
   if (op == JS_ABORT) { // RUN IN NET-CPU THREAD
-    assert(c->flags & C_ERROR);
-    if (!(__sync_fetch_and_or(&c->flags, C_FAILED) & C_FAILED)) {
+    int32_t has_error =
+        mtproxy_ffi_net_connections_conn_job_abort_has_error(c->flags);
+    assert(has_error == 1);
+    int32_t old_flags = __sync_fetch_and_or(&c->flags, C_FAILED);
+    int32_t should_close =
+        mtproxy_ffi_net_connections_conn_job_abort_should_close(old_flags);
+    assert(should_close == 0 || should_close == 1);
+    if (should_close) {
       c->type->close(C, 0);
     }
     return JOB_COMPLETED;
@@ -2116,36 +2163,31 @@ int create_all_outbound_connections(void) {
   return create_all_outbound_connections_limited(0x7fffffff);
 }
 
-static void check_connection(connection_job_t C, void *x) {
-  connection_job_t *P = x;
-  if (*P) {
+struct conn_target_pick_ctx {
+  connection_job_t *selected;
+  int32_t allow_stopped;
+};
+
+static void target_pick_policy_callback(connection_job_t C, void *x) {
+  struct conn_target_pick_ctx *ctx = x;
+  connection_job_t *P = ctx->selected;
+  int32_t has_selected = (*P != NULL);
+  int32_t selected_ready = has_selected ? CONN_INFO(*P)->ready : 0;
+  int32_t should_skip = mtproxy_ffi_net_connections_target_pick_should_skip(
+      ctx->allow_stopped, has_selected, selected_ready);
+  assert(should_skip == 0 || should_skip == 1);
+  if (should_skip) {
     return;
   }
 
-  int r = CONN_INFO(C)->type->check_ready(C);
-
-  if (r == cr_ok) {
-    *P = C;
-    return;
-  }
-}
-
-static void check_connection_stopped(connection_job_t C, void *x) {
-  connection_job_t *P = x;
-
-  if (*P && CONN_INFO(*P)->ready == cr_ok) {
-    return;
-  }
-
-  int r = CONN_INFO(C)->type->check_ready(C);
-
-  if (r == cr_ok) {
-    *P = C;
-    return;
-  }
-
-  if (r == cr_stopped &&
-      (!*P || CONN_INFO(*P)->unreliability > CONN_INFO(C)->unreliability)) {
+  int32_t candidate_ready = CONN_INFO(C)->type->check_ready(C);
+  int32_t selected_unreliability =
+      has_selected ? CONN_INFO(*P)->unreliability : 0;
+  int32_t should_select = mtproxy_ffi_net_connections_target_pick_should_select(
+      ctx->allow_stopped, candidate_ready, has_selected,
+      selected_unreliability, CONN_INFO(C)->unreliability);
+  assert(should_select == 0 || should_select == 1);
+  if (should_select) {
     *P = C;
     return;
   }
@@ -2160,8 +2202,11 @@ connection_job_t conn_target_get_connection(conn_target_job_t CT,
   struct tree_connection *T = get_tree_ptr_connection(&t->conn_tree);
 
   connection_job_t S = NULL;
-  tree_act_ex_connection(
-      T, allow_stopped ? check_connection_stopped : check_connection, &S);
+  struct conn_target_pick_ctx ctx = {
+      .selected = &S,
+      .allow_stopped = !!allow_stopped,
+  };
+  tree_act_ex_connection(T, target_pick_policy_callback, &ctx);
 
   if (S) {
     job_incref(S);

@@ -224,6 +224,114 @@ pub unsafe extern "C" fn mtproxy_ffi_net_connections_create_target_transition(
     0
 }
 
+/// Selects `JS_RUN` actions for connection job.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_connections_conn_job_run_actions(flags: c_int) -> c_int {
+    mtproxy_core::runtime::net::connections::conn_job_run_actions(flags)
+}
+
+/// Returns whether status should be promoted from `connecting` to `working`.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_connections_conn_job_ready_pending_should_promote_status(
+    status: c_int,
+) -> c_int {
+    if mtproxy_core::runtime::net::connections::conn_job_ready_pending_should_promote_status(status)
+    {
+        1
+    } else {
+        0
+    }
+}
+
+/// Returns whether CAS failure status is expected in `ready_pending` flow.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_connections_conn_job_ready_pending_cas_failure_expected(
+    status: c_int,
+) -> c_int {
+    if mtproxy_core::runtime::net::connections::conn_job_ready_pending_cas_failure_expected(status)
+    {
+        1
+    } else {
+        0
+    }
+}
+
+/// Returns whether `JS_ALARM` should invoke `type->alarm`.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_connections_conn_job_alarm_should_call(
+    timer_check_ok: c_int,
+    flags: c_int,
+) -> c_int {
+    if mtproxy_core::runtime::net::connections::conn_job_alarm_should_call(timer_check_ok != 0, flags)
+    {
+        1
+    } else {
+        0
+    }
+}
+
+/// Returns whether `JS_ABORT` precondition (`C_ERROR`) holds.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_connections_conn_job_abort_has_error(flags: c_int) -> c_int {
+    if mtproxy_core::runtime::net::connections::conn_job_abort_has_error(flags) {
+        1
+    } else {
+        0
+    }
+}
+
+/// Returns whether `JS_ABORT` should invoke `type->close`.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_connections_conn_job_abort_should_close(
+    previous_flags: c_int,
+) -> c_int {
+    if mtproxy_core::runtime::net::connections::conn_job_abort_should_close(previous_flags) {
+        1
+    } else {
+        0
+    }
+}
+
+/// Returns whether target-connection scan should skip current candidate.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_connections_target_pick_should_skip(
+    allow_stopped: c_int,
+    has_selected: c_int,
+    selected_ready: c_int,
+) -> c_int {
+    if mtproxy_core::runtime::net::connections::target_pick_should_skip(
+        allow_stopped != 0,
+        has_selected != 0,
+        selected_ready,
+    ) {
+        1
+    } else {
+        0
+    }
+}
+
+/// Returns whether current candidate should be selected.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_connections_target_pick_should_select(
+    allow_stopped: c_int,
+    candidate_ready: c_int,
+    has_selected: c_int,
+    selected_unreliability: c_int,
+    candidate_unreliability: c_int,
+) -> c_int {
+    if mtproxy_core::runtime::net::connections::target_pick_should_select(
+        allow_stopped != 0,
+        candidate_ready,
+        has_selected != 0,
+        selected_unreliability,
+        candidate_unreliability,
+    ) {
+        1
+    } else {
+        0
+    }
+}
+
 /// Returns timer delay used while epoll is not initialized.
 #[no_mangle]
 pub extern "C" fn mtproxy_ffi_net_connections_target_job_boot_delay() -> c_double {
