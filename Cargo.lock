@@ -193,6 +193,7 @@ dependencies = [
  "cbc",
  "ctr",
  "hmac",
+ "libc",
  "md-5",
  "mtproxy-core",
  "num-bigint",

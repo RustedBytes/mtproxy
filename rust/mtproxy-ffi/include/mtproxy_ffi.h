@@ -1024,6 +1024,33 @@ int32_t mtproxy_ffi_format_log_prefix(
   size_t out_len
 );
 
+// ============================================================================
+// server-functions helpers for privilege management and resource limits
+// ============================================================================
+
+// Parse memory limit with K/M/G/T suffixes.
+// Returns the parsed value in bytes, or -1 on error.
+long long rust_parse_memory_limit(const char *s);
+
+// Change user and group privileges.
+// username: Username to switch to (NULL = default "mtproxy")
+// groupname: Group name to switch to (NULL = user's primary group)
+// Returns 0 on success, -1 on failure.
+int32_t rust_change_user_group(const char *username, const char *groupname);
+
+// Change user privileges.
+// username: Username to switch to (NULL = default "mtproxy")
+// Returns 0 on success, -1 on failure.
+int32_t rust_change_user(const char *username);
+
+// Raise file descriptor limit.
+// maxfiles: Desired maximum number of open files
+// Returns 0 on success, -1 on failure.
+int32_t rust_raise_file_rlimit(int32_t maxfiles);
+
+// Print stack backtrace to stderr.
+void rust_print_backtrace(void);
+
 #ifdef __cplusplus
 }
 #endif

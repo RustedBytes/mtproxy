@@ -909,6 +909,7 @@ mod crypto;
 mod jobs;
 mod kprintf;
 mod mtproto;
+mod server_functions;
 mod time_cfg_observability;
 
 pub use compat::*;
@@ -916,6 +917,7 @@ pub use crypto::*;
 pub use jobs::*;
 pub use kprintf::*;
 pub use mtproto::*;
+pub use server_functions::*;
 pub use time_cfg_observability::*;
 
 #[cfg(test)]
