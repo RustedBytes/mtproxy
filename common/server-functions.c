@@ -149,8 +149,8 @@ int raise_file_rlimit(int maxfiles) {
     kprintf("failed to getrlimit number of files\n");
     return -1;
   } else {
-    if (rlim.rlim_cur < maxfiles)
-      rlim.rlim_cur = maxfiles + 3;
+    if (rlim.rlim_cur < (rlim_t)maxfiles)
+      rlim.rlim_cur = (rlim_t)(maxfiles + 3);
     if (rlim.rlim_max < rlim.rlim_cur)
       rlim.rlim_max = rlim.rlim_cur;
     if (setrlimit(RLIMIT_NOFILE, &rlim) != 0) {
@@ -216,7 +216,8 @@ void ksignal_ex(int sig, void (*handler)(int, siginfo_t *, void *)) {
 void engine_set_terminal_attributes(void) __attribute__((weak));
 void engine_set_terminal_attributes(void) {}
 
-void extended_debug_handler(int sig, siginfo_t *info, void *cont) {
+void extended_debug_handler(int sig, [[maybe_unused]] siginfo_t *info,
+                            [[maybe_unused]] void *cont) {
   ksignal(sig, SIG_DFL);
 
   print_backtrace();
@@ -305,7 +306,7 @@ int find_parse_option_name(const char *name) {
 }
 
 int default_parse_option_func(int a) __attribute__((weak));
-int default_parse_option_func(int a) { return -1; }
+int default_parse_option_func([[maybe_unused]] int a) { return -1; }
 
 void parse_option_up(struct engine_parse_option *P) {
   struct engine_parse_option *Q = P - 1;
@@ -336,7 +337,8 @@ void parse_option_down(struct engine_parse_option *P) {
   }
 }
 
-void parse_option_internal(const char *name, int arg, int *var, int val,
+void parse_option_internal(const char *name, int arg,
+                           [[maybe_unused]] int *var, int val,
                            unsigned flags, int (*func)(int), char *help) {
   int p = find_parse_option(val);
   if (p >= 0) {

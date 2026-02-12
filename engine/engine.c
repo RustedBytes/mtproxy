@@ -80,7 +80,7 @@ void default_cron(void) {
 
 static void default_nop(void) {}
 
-static int default_parse_option(int val) { return -1; }
+static int default_parse_option([[maybe_unused]] int val) { return -1; }
 
 static void default_sighup(void) {}
 
@@ -137,7 +137,8 @@ void wakeup_main_thread(void) {
   }
 }
 
-static int epoll_nop(int fd, void *data, event_t *ev) {
+static int epoll_nop(int fd, [[maybe_unused]] void *data,
+                     [[maybe_unused]] event_t *ev) {
   int x[100];
   while (read(fd, x, 400) == 400) {
   }
@@ -170,8 +171,11 @@ static void raise_file_limit(int maxconn) {
       kprintf("%s: getrlimit (RLIMIT_NOFILE) fail. %m\n", __func__);
       exit(1);
     }
-    if (maxconn > rlim.rlim_cur - gap) {
-      maxconn = rlim.rlim_cur - gap;
+    const rlim_t reserve_gap = (rlim_t)gap;
+    const rlim_t limit_without_gap =
+        (rlim.rlim_cur > reserve_gap) ? (rlim.rlim_cur - reserve_gap) : 0;
+    if ((rlim_t)maxconn > limit_without_gap) {
+      maxconn = (int)limit_without_gap;
     }
     tcp_set_max_connections(maxconn);
   } else {
@@ -191,8 +195,10 @@ void engine_init(const char *const pwd_filename, int do_not_open_port) {
 
   raise_file_limit(E->maxconn);
 
+  constexpr int aes_load_pwd_file_optional_error = (-0x7fff'ffff - 1);
   int aes_load_res = aes_load_pwd_file(pwd_filename);
-  if (aes_load_res < 0 && (aes_load_res != -0x80000000 || pwd_filename)) {
+  if (aes_load_res < 0 &&
+      (aes_load_res != aes_load_pwd_file_optional_error || pwd_filename)) {
     kprintf("fatal: cannot load secret definition file `%s'\n", pwd_filename);
     exit(1);
   }
@@ -367,7 +373,7 @@ static void do_precise_cron(void) {
   free_later_act();
 }
 
-double update_job_stats_gw(void *ex) {
+double update_job_stats_gw([[maybe_unused]] void *ex) {
   update_all_thread_stats();
   return 10 + precise_now;
 }
@@ -376,7 +382,7 @@ struct precise_cron_job_extra {
   struct event_timer ev;
 };
 
-int precise_cron_job_run(job_t job, int op, struct job_thread *JT) {
+int precise_cron_job_run(job_t job, int op, [[maybe_unused]] struct job_thread *JT) {
   if (op != JS_RUN && op != JS_ALARM) {
     return JOB_ERROR;
   }
@@ -389,7 +395,8 @@ int precise_cron_job_run(job_t job, int op, struct job_thread *JT) {
   return 0;
 }
 
-int terminate_job_run(job_t job, int op, struct job_thread *JT) {
+int terminate_job_run([[maybe_unused]] job_t job, int op,
+                      [[maybe_unused]] struct job_thread *JT) {
   if (op == JS_RUN) {
     engine_t *E = engine_state;
     server_functions_t *F = E->F;
@@ -715,7 +722,7 @@ void engine_add_engine_parse_options(void) {
                               LONGOPT_JOBS_SET, "number of tcp-io threads");
 }
 
-void default_parse_extra_args(int argc, char *argv[]) {
+void default_parse_extra_args(int argc, [[maybe_unused]] char *argv[]) {
   if (argc != 0) {
     vkprintf(0, "Extra args\n");
     usage();

@@ -273,14 +273,14 @@ void kprintf(const char *format, ...) {
       getpid(), t.tm_year + 1900, t.tm_mon + 1, t.tm_mday, t.tm_hour, t.tm_min,
       t.tm_sec, (int)tv.tv_usec, mp_kprintf_buf, sizeof(mp_kprintf_buf));
   assert(n >= 0 && n < (int)sizeof(mp_kprintf_buf));
-  if (n < sizeof(mp_kprintf_buf) - 1) {
+  if (n < (int)sizeof(mp_kprintf_buf) - 1) {
     errno = old_errno;
     va_list ap;
     va_start(ap, format);
     n += vsnprintf(mp_kprintf_buf + n, sizeof(mp_kprintf_buf) - n, format, ap);
     va_end(ap);
   }
-  if (n >= sizeof(mp_kprintf_buf)) {
+  if (n >= (int)sizeof(mp_kprintf_buf)) {
     n = sizeof(mp_kprintf_buf) - 1;
     if (mp_kprintf_buf[n - 1] != '\n') {
       mp_kprintf_buf[n++] = '\n';

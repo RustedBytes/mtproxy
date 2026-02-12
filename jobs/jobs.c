@@ -669,7 +669,8 @@ int unlock_job(JOB_REF_ARG(job)) {
     barrier();
     assert(job->j_flags & JF_LOCKED);
     int flags = job->j_flags;
-    int todo = flags & job->j_status & (-1 << 24);
+    unsigned int todo =
+        (unsigned int)flags & (unsigned int)job->j_status & (~0u << 24);
     if (!todo) {
       int new_flags = flags & ~JF_LOCKED;
       if (!__sync_bool_compare_and_swap(&job->j_flags, flags, new_flags)) {
@@ -829,7 +830,7 @@ int unlock_job(JOB_REF_ARG(job)) {
   }
 }
 
-void process_one_job(JOB_REF_ARG(job), int thread_class) {
+void process_one_job(JOB_REF_ARG(job), [[maybe_unused]] int thread_class) {
   struct job_thread *JT = this_job_thread;
   assert(JT);
   assert(job);
@@ -905,7 +906,7 @@ void complete_job(job_t job) {
   complete_subjob(job, JOB_REF_PASS(parent), job->j_status);
 }
 
-static void job_interrupt_signal_handler(const int sig) {
+static void job_interrupt_signal_handler([[maybe_unused]] const int sig) {
   char buffer[256];
   if (verbosity >= 2) {
     kwrite(
@@ -1006,7 +1007,7 @@ void *job_thread_ex(void *arg, void (*work_one)(void *, int)) {
   pthread_exit(0);
 }
 
-static void process_one_sublist(unsigned long id, int class) {
+static void process_one_sublist(unsigned long id, [[maybe_unused]] int class) {
   struct job_thread *JT = this_job_thread;
   assert(JT);
 
@@ -1142,14 +1143,15 @@ struct job_list_params {
   struct job_list_node *first, *last;
 };
 
-int job_list_node_wakeup(job_t list_job, int op, struct job_list_node *w) {
+int job_list_node_wakeup(job_t list_job, [[maybe_unused]] int op,
+                         struct job_list_node *w) {
   struct job_list_job_node *wj = (struct job_list_job_node *)w;
   complete_subjob(list_job, JOB_REF_PASS(wj->jl_job), wj->jl_flags);
   free(wj);
   return 0;
 }
 
-int process_job_list(job_t job, int op, struct job_thread *JT) {
+int process_job_list(job_t job, int op, [[maybe_unused]] struct job_thread *JT) {
   assert(job->j_custom_bytes == sizeof(struct job_list_params));
   struct job_list_params *P = (struct job_list_params *)job->j_custom;
   struct job_list_node *w, *wn;
@@ -1163,10 +1165,12 @@ int process_job_list(job_t job, int op, struct job_thread *JT) {
     if (!job->j_error) {
       job->j_error = ECANCELED;
     }
+    [[fallthrough]];
   case JS_ALARM:
     if (!job->j_error) {
       job->j_error = ETIMEDOUT;
     }
+    [[fallthrough]];
   default:
   case JS_RUN:
     assert(!(job->j_flags & JF_COMPLETED));
@@ -1225,7 +1229,8 @@ int insert_job_into_job_list(job_t list_job, JOB_REF_ARG(job), int mode) {
   return insert_node_into_job_list(list_job, (struct job_list_node *)wj);
 }
 
-int insert_connection_into_job_list(job_t list_job, connection_job_t c) {
+int insert_connection_into_job_list([[maybe_unused]] job_t list_job,
+                                    [[maybe_unused]] connection_job_t c) {
   assert(0);
   return 0;
 }
@@ -1332,7 +1337,7 @@ job_t alloc_timer_manager(int thread_class) {
   return timer_manager;
 }
 
-int do_timer_job(job_t job, int op, struct job_thread *JT) {
+int do_timer_job(job_t job, int op, [[maybe_unused]] struct job_thread *JT) {
   if (op == JS_ALARM) {
     if (!job_timer_check(job)) {
       return 0;
@@ -1692,7 +1697,7 @@ struct notify_job_extra {
 #define TL_ENGINE_NOTIFICATION_SUBSCRIBE 0x8934a894
 
 static int notify_job_receive_message(job_t NJ, struct job_message *M,
-                                      void *extra) {
+                                      [[maybe_unused]] void *extra) {
   struct notify_job_extra *N = (void *)NJ->j_custom;
   switch (M->type) {
   case TL_ENGINE_NOTIFICATION_SUBSCRIBE:
@@ -1717,7 +1722,7 @@ static int notify_job_receive_message(job_t NJ, struct job_message *M,
   }
 }
 
-int notify_job_run(job_t NJ, int op, struct job_thread *JT) {
+int notify_job_run(job_t NJ, int op, [[maybe_unused]] struct job_thread *JT) {
   if (op == JS_MSG) {
     job_message_queue_work(NJ, notify_job_receive_message, NULL, 0xffffff);
     return 0;

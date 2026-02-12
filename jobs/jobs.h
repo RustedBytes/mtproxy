@@ -61,7 +61,7 @@ typedef int (*job_function_t)(job_t job, int op, struct job_thread *JT);
 extern __thread struct job_thread *this_job_thread;
 extern __thread job_t this_job;
 
-#define JOB_DESTROYED -0x80000000
+#define JOB_DESTROYED (-0x7fffffff - 1)
 #define JOB_COMPLETED 0x100
 #define JOB_FINISH 0x80
 #define JOB_ERROR -1

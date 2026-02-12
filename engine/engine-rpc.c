@@ -241,16 +241,17 @@ struct ifeq_extra {
   job_t right_job;
 };
 
-static int process_act_atom_subjob(job_t job, int op, struct job_thread *JT);
+static int process_act_atom_subjob(job_t job, int op,
+                                   [[maybe_unused]] struct job_thread *JT);
 
 void paramed_type_free(struct paramed_type *P) __attribute__((weak));
-void paramed_type_free(struct paramed_type *P) {}
+void paramed_type_free([[maybe_unused]] struct paramed_type *P) {}
 
 static job_t fetch_query(job_t parent, struct tl_in_state *IO,
                          struct raw_message **raw, char **error,
                          int *error_code, long long actor_id, job_t extra_ref,
                          job_t all_list, int status,
-                         struct tl_query_header *h) {
+                         [[maybe_unused]] struct tl_query_header *h) {
   int fop = tl_get_op_function(IO);
 
   struct tl_act_extra *extra = tl_default_parse_function(IO, actor_id);
@@ -324,7 +325,8 @@ static int fetch_all_queries(job_t parent, struct tl_in_state *tlio_in) {
   }
 }
 
-static int process_act_atom_subjob(job_t job, int op, struct job_thread *JT) {
+static int process_act_atom_subjob(job_t job, int op,
+                                   [[maybe_unused]] struct job_thread *JT) {
   if (op != JS_FINISH) {
     if (parent_job_aborted(job)) {
       return job_fatal(job, ECANCELED);
@@ -418,6 +420,7 @@ static int process_act_atom_subjob(job_t job, int op, struct job_thread *JT) {
       }
     }
     assert(0);
+    return job_fatal(job, EINVAL);
   }
   case JS_ABORT:
     if (!job->j_error) {
@@ -446,7 +449,8 @@ static int process_act_atom_subjob(job_t job, int op, struct job_thread *JT) {
   }
 }
 
-static int process_query_job(job_t job, int op, struct job_thread *JT) {
+static int process_query_job(job_t job, int op,
+                             [[maybe_unused]] struct job_thread *JT) {
   struct query_work_params *P = (struct query_work_params *)job->j_custom;
   struct tl_out_state *IO = NULL;
   switch (op) {
@@ -618,7 +622,7 @@ static int process_parse_subjob(job_t job, int op, struct job_thread *JT) {
 }
 
 static int process_query_custom_subjob(job_t job, int op,
-                                       struct job_thread *JT) {
+                                       [[maybe_unused]] struct job_thread *JT) {
   struct query_work_params *P = (struct query_work_params *)job->j_custom;
   if (op == JS_RUN) {
     struct tl_in_state *IO = tl_in_state_alloc();
@@ -753,7 +757,8 @@ int query_job_run(job_t job, int fd, int generation) {
   return res;
 }
 
-static int do_query_job_run(job_t job, int op, struct job_thread *JT) {
+static int do_query_job_run(job_t job, int op,
+                            [[maybe_unused]] struct job_thread *JT) {
   struct query_info *q = QUERY_INFO(job);
   int fd = 0;
   int generation = 0;
@@ -808,7 +813,7 @@ int do_create_query_job(struct raw_message *raw, int type,
   return 0;
 }
 
-int default_tl_close_conn(connection_job_t c, int who) {
+int default_tl_close_conn(connection_job_t c, [[maybe_unused]] int who) {
   rpc_target_delete_conn(c);
   return 0;
 }
@@ -818,7 +823,7 @@ int default_tl_tcp_rpcs_execute(connection_job_t c, int op,
   CONN_INFO(c)->last_response_time = precise_now;
   // rpc_target_insert_conn (c);
 
-  if (op == RPC_PONG) {
+  if ((unsigned int)op == RPC_PONG) {
     do_create_query_job(raw, tl_type_tcp_raw_msg, &TCP_RPC_DATA(c)->remote_pid,
                         NULL);
   } else {
@@ -870,7 +875,7 @@ void engine_tl_init(struct tl_act_extra *(*parse)(struct tl_in_state *,
                                                   long long),
                     void (*stat)(struct tl_out_state *),
                     int (*get_op)(struct tl_in_state *),
-                    double timeout, const char *name) {
+                    double timeout, [[maybe_unused]] const char *name) {
   tl_parse_function = parse;
   tl_stat_function = stat;
   tl_aio_timeout = timeout;

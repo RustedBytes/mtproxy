@@ -35,7 +35,7 @@
 #include "engine/engine-signals.h"
 #include "engine/engine.h"
 
-volatile static unsigned long long pending_signals;
+static volatile unsigned long long pending_signals;
 
 void engine_set_terminal_attributes(void) __attribute__((weak));
 void engine_set_terminal_attributes(void) {}
@@ -56,14 +56,14 @@ int signal_check_pending_and_clear(int sig) {
   return res;
 }
 
-void sigint_immediate_handler(const int sig) {
+void sigint_immediate_handler([[maybe_unused]] const int sig) {
   static const char message[] = "SIGINT handled immediately.\n";
   kwrite(2, message, sizeof(message) - (size_t)1);
   engine_set_terminal_attributes();
   _exit(1);
 }
 
-void sigterm_immediate_handler(const int sig) {
+void sigterm_immediate_handler([[maybe_unused]] const int sig) {
   static const char message[] = "SIGTERM handled immediately.\n";
   kwrite(2, message, sizeof(message) - (size_t)1);
   engine_set_terminal_attributes();
@@ -88,8 +88,7 @@ static const char sig_message[] = "received signal ??\n";
 
 void default_signal_handler(const int sig) {
   char msg[sizeof(sig_message)];
-  int i;
-  for (i = 0; i < sizeof(sig_message); i++) {
+  for (size_t i = 0; i < sizeof(sig_message); i++) {
     msg[i] = sig_message[i];
   }
   msg[sizeof(sig_message) - 4] = '0' + (sig / 10);
@@ -102,8 +101,7 @@ void default_signal_handler(const int sig) {
 void quiet_signal_handler(const int sig) {
   if (verbosity >= 1) {
     char msg[sizeof(sig_message)];
-    int i;
-    for (i = 0; i < sizeof(sig_message); i++) {
+    for (size_t i = 0; i < sizeof(sig_message); i++) {
       msg[i] = sig_message[i];
     }
     msg[sizeof(sig_message) - 4] = '0' + (sig / 10);
@@ -114,7 +112,7 @@ void quiet_signal_handler(const int sig) {
   signal_set_pending(sig);
 }
 
-void empty_signal_handler(const int sig) {}
+void empty_signal_handler([[maybe_unused]] const int sig) {}
 
 int interrupt_signal_raised(void) {
   return (pending_signals & SIG_INTERRUPT_MASK) != 0;

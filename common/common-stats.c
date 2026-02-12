@@ -100,7 +100,7 @@ int am_get_memory_usage(pid_t pid, long long *a, int m) {
   char proc_filename[32];
   char buf[4096];
   assert(snprintf(proc_filename, sizeof(proc_filename), "/proc/%d/statm",
-                  (int)pid) < sizeof(proc_filename));
+                  (int)pid) < (int)sizeof(proc_filename));
   if (read_whole_file(proc_filename, buf, sizeof(buf)) < 0) {
     return -1;
   }

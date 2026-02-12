@@ -387,7 +387,7 @@ int epoll_fetch_events(int timeout) {
 }
 
 void jobs_check_all_timers(void);
-int epoll_work(int timeout) {
+int epoll_work([[maybe_unused]] int timeout) {
   int timeout2 = 10000;
   if (1) {
     now = time(0);

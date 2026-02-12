@@ -702,7 +702,8 @@ int tlf_set_error(struct tl_in_state *tlio_in, int errnum, const char *s) {
   return 0;
 }
 
-int __tl_fetch_init(struct tl_in_state *tlio_in, void *in, void *in_extra,
+int __tl_fetch_init(struct tl_in_state *tlio_in, void *in,
+                    [[maybe_unused]] void *in_extra,
                     enum tl_type type, const struct tl_in_methods *methods,
                     int size) {
   assert(TL_IN_TYPE == tl_type_none);
