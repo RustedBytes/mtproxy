@@ -15,20 +15,25 @@ use core::ptr;
 
 use mtproxy_core::runtime::collections::ip_format;
 
+const VV_IPV4_FORMAT_BUFFER_LEN: usize = 16;
+const VV_IPV6_FORMAT_BUFFER_LEN: usize = 100;
+
 /// Thread-local buffer for IPv4 formatting to avoid heap allocation.
 ///
 /// This matches the static buffer behavior of the C implementation.
 /// **WARNING**: This is NOT thread-safe across multiple threads without
 /// external synchronization.
 #[no_mangle]
-static mut VV_IPV4_FORMAT_BUFFER: [c_char; 16] = [0; 16];
+static mut VV_IPV4_FORMAT_BUFFER: [c_char; VV_IPV4_FORMAT_BUFFER_LEN] =
+    [0; VV_IPV4_FORMAT_BUFFER_LEN];
 
 /// Thread-local buffer for IPv6 formatting.
 ///
 /// **WARNING**: This is NOT thread-safe across multiple threads without
 /// external synchronization.
 #[no_mangle]
-static mut VV_IPV6_FORMAT_BUFFER: [c_char; 100] = [0; 100];
+static mut VV_IPV6_FORMAT_BUFFER: [c_char; VV_IPV6_FORMAT_BUFFER_LEN] =
+    [0; VV_IPV6_FORMAT_BUFFER_LEN];
 
 /// Formats an IPv4 address into a static buffer.
 ///
@@ -48,17 +53,14 @@ static mut VV_IPV6_FORMAT_BUFFER: [c_char; 100] = [0; 100];
 pub unsafe extern "C" fn vv_format_ipv4(addr: u32) -> *const c_char {
     let formatted = ip_format::format_ipv4(addr);
     let bytes = formatted.as_bytes();
-    
+
+    let dst = ptr::addr_of_mut!(VV_IPV4_FORMAT_BUFFER).cast::<u8>();
     // Copy to static buffer
-    let len = bytes.len().min(VV_IPV4_FORMAT_BUFFER.len() - 1);
-    ptr::copy_nonoverlapping(
-        bytes.as_ptr(),
-        VV_IPV4_FORMAT_BUFFER.as_mut_ptr() as *mut u8,
-        len,
-    );
-    VV_IPV4_FORMAT_BUFFER[len] = 0; // Null terminate
-    
-    VV_IPV4_FORMAT_BUFFER.as_ptr()
+    let len = bytes.len().min(VV_IPV4_FORMAT_BUFFER_LEN - 1);
+    ptr::copy_nonoverlapping(bytes.as_ptr(), dst, len);
+    *dst.add(len) = 0; // Null terminate
+
+    dst.cast::<c_char>()
 }
 
 /// Formats an IPv6 address into a static buffer.
@@ -81,28 +83,21 @@ pub unsafe extern "C" fn vv_format_ipv6(ipv6_bytes: *const c_void) -> *const c_c
     if ipv6_bytes.is_null() {
         return ptr::null();
     }
-    
+
     // Read 16 bytes from the pointer
     let mut addr = [0u8; 16];
-    ptr::copy_nonoverlapping(
-        ipv6_bytes as *const u8,
-        addr.as_mut_ptr(),
-        16,
-    );
-    
+    ptr::copy_nonoverlapping(ipv6_bytes as *const u8, addr.as_mut_ptr(), 16);
+
     let formatted = ip_format::format_ipv6(&addr);
     let bytes = formatted.as_bytes();
-    
+
+    let dst = ptr::addr_of_mut!(VV_IPV6_FORMAT_BUFFER).cast::<u8>();
     // Copy to static buffer
-    let len = bytes.len().min(VV_IPV6_FORMAT_BUFFER.len() - 1);
-    ptr::copy_nonoverlapping(
-        bytes.as_ptr(),
-        VV_IPV6_FORMAT_BUFFER.as_mut_ptr() as *mut u8,
-        len,
-    );
-    VV_IPV6_FORMAT_BUFFER[len] = 0; // Null terminate
-    
-    VV_IPV6_FORMAT_BUFFER.as_ptr()
+    let len = bytes.len().min(VV_IPV6_FORMAT_BUFFER_LEN - 1);
+    ptr::copy_nonoverlapping(bytes.as_ptr(), dst, len);
+    *dst.add(len) = 0; // Null terminate
+
+    dst.cast::<c_char>()
 }
 
 /// Extracts IPv4 octets for printf-style formatting.
@@ -118,7 +113,7 @@ pub unsafe extern "C" fn vv_ipv4_to_octets(addr: u32, out: *mut u8) {
     if out.is_null() {
         return;
     }
-    
+
     *out.add(0) = ((addr >> 24) & 0xff) as u8;
     *out.add(1) = ((addr >> 16) & 0xff) as u8;
     *out.add(2) = ((addr >> 8) & 0xff) as u8;
