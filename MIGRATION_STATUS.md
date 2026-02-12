@@ -199,6 +199,5 @@ make test
 
 ## References
 
-- Server functions migration example: `SERVER_FUNCTIONS_MIGRATION.md`
 - Ownership map: `rust/mtproxy-core/src/step15.rs`
 - Architecture docs: `ARCHITECTURE.md`
