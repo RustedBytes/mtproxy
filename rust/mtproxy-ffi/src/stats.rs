@@ -12,7 +12,6 @@ use crate::time_cfg_observability::{
 
 unsafe extern "C" {
     fn getpid() -> c_int;
-    fn open(pathname: *const c_char, flags: c_int) -> c_int;
     fn read(fd: c_int, buf: *mut c_void, count: usize) -> isize;
     fn close(fd: c_int) -> c_int;
     fn sysconf(name: c_int) -> c_long;
@@ -29,7 +28,9 @@ unsafe fn get_errno() -> c_int {
 }
 
 // Helper to get now and start_time from C
+// Note: This function is unused in Rust code but may be called from C via FFI
 extern "C" {
+    #[allow(dead_code)]
     fn get_utime_monotonic() -> c_double;
 }
 
@@ -146,7 +147,7 @@ pub unsafe extern "C" fn mtproxy_ffi_am_get_memory_usage(
     let m_clamped = if m > 7 { 7 } else { m };
     
     // Call Rust parsing function
-    let res = unsafe {
+    unsafe {
         mtproxy_ffi_parse_statm(
             buf.as_ptr() as *const c_char,
             n as usize,
@@ -154,9 +155,7 @@ pub unsafe extern "C" fn mtproxy_ffi_am_get_memory_usage(
             page_size,
             a,
         )
-    };
-
-    res
+    }
 }
 
 /// Get memory stats from system
@@ -225,6 +224,7 @@ pub unsafe extern "C" fn mtproxy_ffi_sb_register_stat_fun(func: StatFunT) -> c_i
     let mut p = unsafe { STAT_FUNC_FIRST };
 
     // Check if already registered
+    #[allow(unpredictable_function_pointer_comparisons)]
     while !p.is_null() {
         let p_ref = unsafe { &*p };
         last = p;
