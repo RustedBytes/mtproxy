@@ -29,7 +29,7 @@ struct tree_any_ptr {
 };
 
 static inline void tree_act_any(struct tree_any_ptr *T, void (*f)(void *)) {
-  if (!T) {
+  if (T == nullptr) {
     return;
   }
   tree_act_any(T->left, f);
@@ -39,7 +39,7 @@ static inline void tree_act_any(struct tree_any_ptr *T, void (*f)(void *)) {
 
 static inline void tree_act_any_ex(struct tree_any_ptr *T,
                                    void (*f)(void *, void *), void *extra) {
-  if (!T) {
+  if (T == nullptr) {
     return;
   }
   tree_act_any_ex(T->left, f, extra);
@@ -50,7 +50,7 @@ static inline void tree_act_any_ex(struct tree_any_ptr *T,
 static inline void tree_act_any_ex2(struct tree_any_ptr *T,
                                     void (*f)(void *, void *, void *),
                                     void *extra, void *extra2) {
-  if (!T) {
+  if (T == nullptr) {
     return;
   }
   tree_act_any_ex2(T->left, f, extra, extra2);
@@ -61,7 +61,7 @@ static inline void tree_act_any_ex2(struct tree_any_ptr *T,
 static inline void tree_act_any_ex3(struct tree_any_ptr *T,
                                     void (*f)(void *, void *, void *, void *),
                                     void *extra, void *extra2, void *extra3) {
-  if (!T) {
+  if (T == nullptr) {
     return;
   }
   tree_act_any_ex3(T->left, f, extra, extra2, extra3);
@@ -94,8 +94,8 @@ static inline void tree_act_any_ex3(struct tree_any_ptr *T,
     } else {                                                                   \
       hash %= (T->size);                                                       \
     }                                                                          \
-    if (!T->E[hash]) {                                                         \
-      return 0;                                                                \
+    if (T->E[hash] == nullptr) {                                               \
+      return nullptr;                                                          \
     }                                                                          \
     hash_elem_##name##_t *E = T->E[hash];                                      \
     do {                                                                       \
@@ -104,7 +104,7 @@ static inline void tree_act_any_ex3(struct tree_any_ptr *T,
       }                                                                        \
       E = E->next;                                                             \
     } while (E != T->E[hash]);                                                 \
-    return 0;                                                                  \
+    return nullptr;                                                            \
   }                                                                            \
                                                                                \
   prefix void hash_insert_##name(hash_table_##name##_t *T, value_t x) {        \
@@ -148,7 +148,7 @@ static inline void tree_act_any_ex3(struct tree_any_ptr *T,
     } else {                                                                   \
       hash %= (T->size);                                                       \
     }                                                                          \
-    if (!T->E[hash]) {                                                         \
+    if (T->E[hash] == nullptr) {                                               \
       return 0;                                                                \
     }                                                                          \
     hash_elem_##name##_t *E = T->E[hash];                                      \
@@ -168,7 +168,7 @@ static inline void tree_act_any_ex3(struct tree_any_ptr *T,
     if (T->E[hash] != E) {                                                     \
       hash_free_##name(E);                                                     \
     } else if (E->next == E) {                                                 \
-      T->E[hash] = 0;                                                          \
+      T->E[hash] = nullptr;                                                    \
       hash_free_##name(E);                                                     \
     } else {                                                                   \
       T->E[hash] = E->next;                                                    \
@@ -188,7 +188,7 @@ static inline void tree_act_any_ex3(struct tree_any_ptr *T,
           hash_free_##name(cur);                                               \
           cur = next;                                                          \
         } while (cur != first);                                                \
-        T->E[i] = 0;                                                           \
+        T->E[i] = nullptr;                                                     \
       }                                                                        \
     }                                                                          \
   }                                                                            \
@@ -206,7 +206,7 @@ static inline void tree_act_any_ex3(struct tree_any_ptr *T,
           hash_free_##name(cur);                                               \
           cur = next;                                                          \
         } while (cur != first);                                                \
-        T->E[i] = 0;                                                           \
+        T->E[i] = nullptr;                                                     \
       }                                                                        \
     }                                                                          \
   }

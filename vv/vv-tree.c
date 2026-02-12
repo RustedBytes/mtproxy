@@ -233,7 +233,7 @@ TREE_PREFIX X_TYPE *SUFFIX(tree_lookup_value_, TREE_NAME)(TREE_NODE_TYPE *T,
   while (T && (c = X_CMP(x, T->x))) {
     T = (c < 0) ? T->left : T->right;
   }
-  return T ? &T->x : NULL;
+  return T ? &T->x : nullptr;
 }
 
 TREE_PREFIX X_TYPE *SUFFIX(tree_lookup_value_p_, TREE_NAME)(TREE_NODE_TYPE *T,
@@ -242,7 +242,7 @@ TREE_PREFIX X_TYPE *SUFFIX(tree_lookup_value_p_, TREE_NAME)(TREE_NODE_TYPE *T,
   while (T && (c = X_CMP((*x), T->x))) {
     T = (c < 0) ? T->left : T->right;
   }
-  return T ? &T->x : NULL;
+  return T ? &T->x : nullptr;
 }
 #else
 TREE_PREFIX X_TYPE SUFFIX(tree_lookup_ptr_, TREE_NAME)(TREE_NODE_TYPE *T,
@@ -276,8 +276,8 @@ TREE_PREFIX X_TYPE SUFFIX(tree_lookup_sub_ptr_, TREE_NAME)(TREE_NODE_TYPE **T,
 TREE_PREFIX void SUFFIX(tree_split_, TREE_NAME)(TREE_NODE_TYPE **L,
                                                 TREE_NODE_TYPE **R,
                                                 TREE_NODE_TYPE *T, X_TYPE x) {
-  if (!T) {
-    *L = *R = NULL;
+  if (T == nullptr) {
+    *L = *R = nullptr;
     return;
   }
 
@@ -305,8 +305,8 @@ TREE_PREFIX void SUFFIX(tree_split_, TREE_NAME)(TREE_NODE_TYPE **L,
 TREE_PREFIX void SUFFIX(tree_split_p_,
                         TREE_NAME)(TREE_NODE_TYPE **L, TREE_NODE_TYPE **R,
                                    TREE_NODE_TYPE *T, X_TYPE *x) {
-  if (!T) {
-    *L = *R = NULL;
+  if (T == nullptr) {
+    *L = *R = nullptr;
     return;
   }
 
@@ -339,7 +339,7 @@ TREE_PREFIX TREE_NODE_TYPE *SUFFIX(tree_insert_, TREE_NAME)(TREE_NODE_TYPE *T,
 #endif
 ) {
   TREE_NODE_TYPE *P;
-  if (!T) {
+  if (T == nullptr) {
     P = SUFFIX(tree_alloc_, TREE_NAME)(x, y);
 #ifdef TREE_WEIGHT
     P->weight = weight;
@@ -428,7 +428,7 @@ TREE_PREFIX TREE_NODE_TYPE *SUFFIX(tree_insert_p_, TREE_NAME)(TREE_NODE_TYPE *T,
 #endif
 ) {
   TREE_NODE_TYPE *P;
-  if (!T) {
+  if (T == nullptr) {
     P = SUFFIX(tree_alloc_, TREE_NAME)(*x, y);
 #ifdef TREE_WEIGHT
     P->weight = weight;
@@ -480,10 +480,10 @@ TREE_PREFIX TREE_NODE_TYPE *SUFFIX(tree_insert_p_, TREE_NAME)(TREE_NODE_TYPE *T,
 
 TREE_PREFIX TREE_NODE_TYPE *SUFFIX(tree_merge_, TREE_NAME)(TREE_NODE_TYPE *L,
                                                            TREE_NODE_TYPE *R) {
-  if (!L) {
+  if (L == nullptr) {
     return R;
   }
-  if (!R) {
+  if (R == nullptr) {
     return L;
   }
   if (Y_CMP(L->y, R->y) > 0) {
@@ -517,7 +517,7 @@ TREE_PREFIX TREE_NODE_TYPE *SUFFIX(tree_delete_, TREE_NAME)(TREE_NODE_TYPE *T,
   if (!c) {
     TREE_NODE_TYPE *N = SUFFIX(tree_merge_, TREE_NAME)(T->left, T->right);
 
-    T->left = T->right = NULL;
+    T->left = T->right = nullptr;
     SUFFIX(tree_free_, TREE_NAME)(T);
     return N;
   } else if (c < 0) {
@@ -562,7 +562,7 @@ TREE_PREFIX TREE_NODE_TYPE *SUFFIX(tree_delete_p_, TREE_NAME)(TREE_NODE_TYPE *T,
   if (!c) {
     TREE_NODE_TYPE *N = SUFFIX(tree_merge_, TREE_NAME)(T->left, T->right);
 
-    T->left = T->right = NULL;
+    T->left = T->right = nullptr;
     SUFFIX(tree_free_, TREE_NAME)(T);
     return N;
   } else if (c < 0) {
@@ -595,7 +595,7 @@ TREE_PREFIX TREE_NODE_TYPE *SUFFIX(tree_get_max_,
 
 TREE_PREFIX void SUFFIX(tree_act_, TREE_NAME)(TREE_NODE_TYPE *T,
                                               void (*act)(X_TYPE x)) {
-  if (!T) {
+  if (T == nullptr) {
     return;
   }
   SUFFIX(tree_act_, TREE_NAME)(T->left, act);
@@ -606,7 +606,7 @@ TREE_PREFIX void SUFFIX(tree_act_, TREE_NAME)(TREE_NODE_TYPE *T,
 TREE_PREFIX void SUFFIX(tree_act_ex_, TREE_NAME)(TREE_NODE_TYPE *T,
                                                  void (*act)(X_TYPE, void *),
                                                  void *ex) {
-  if (!T) {
+  if (T == nullptr) {
     return;
   }
   SUFFIX(tree_act_ex_, TREE_NAME)(T->left, act, ex);
@@ -618,7 +618,7 @@ TREE_PREFIX void SUFFIX(tree_act_ex2_,
                         TREE_NAME)(TREE_NODE_TYPE *T,
                                    void (*act)(X_TYPE, void *, void *),
                                    void *ex, void *ex2) {
-  if (!T) {
+  if (T == nullptr) {
     return;
   }
   SUFFIX(tree_act_ex2_, TREE_NAME)(T->left, act, ex, ex2);
@@ -630,7 +630,7 @@ TREE_PREFIX void SUFFIX(tree_act_ex3_,
                         TREE_NAME)(TREE_NODE_TYPE *T,
                                    void (*act)(X_TYPE, void *, void *, void *),
                                    void *ex, void *ex2, void *ex3) {
-  if (!T) {
+  if (T == nullptr) {
     return;
   }
   SUFFIX(tree_act_ex3_, TREE_NAME)(T->left, act, ex, ex2, ex3);
@@ -640,26 +640,26 @@ TREE_PREFIX void SUFFIX(tree_act_ex3_,
 
 #ifndef TREE_PTHREAD
 TREE_PREFIX TREE_NODE_TYPE *SUFFIX(tree_clear_, TREE_NAME)(TREE_NODE_TYPE *T) {
-  if (!T) {
-    return 0;
+  if (T == nullptr) {
+    return nullptr;
   }
   SUFFIX(tree_clear_, TREE_NAME)(T->left);
   SUFFIX(tree_clear_, TREE_NAME)(T->right);
   SUFFIX(tree_free_, TREE_NAME)(T);
-  return 0;
+  return nullptr;
 }
 #else
 TREE_PREFIX TREE_NODE_TYPE *SUFFIX(tree_clear_, TREE_NAME)(TREE_NODE_TYPE *T) {
-  if (!T) {
-    return 0;
+  if (T == nullptr) {
+    return nullptr;
   }
   SUFFIX(tree_free_, TREE_NAME)(T);
-  return 0;
+  return nullptr;
 }
 #endif
 
 TREE_PREFIX void SUFFIX(tree_check_, TREE_NAME)(TREE_NODE_TYPE *T) {
-  if (!T) {
+  if (T == nullptr) {
     return;
   }
   if (T->left) {
@@ -675,7 +675,7 @@ TREE_PREFIX void SUFFIX(tree_check_, TREE_NAME)(TREE_NODE_TYPE *T) {
 }
 
 TREE_PREFIX int SUFFIX(tree_count_, TREE_NAME)(TREE_NODE_TYPE *T) {
-  if (!T) {
+  if (T == nullptr) {
     return 0;
   }
   return 1 + SUFFIX(tree_count_, TREE_NAME)(T->left) +
@@ -694,14 +694,14 @@ TREE_PREFIX TREE_NODE_TYPE *SUFFIX(tree_alloc_, TREE_NAME)(X_TYPE x, Y_TYPE y) {
 #ifdef TREE_PTHREAD
   T->refcnt = 1;
 #endif
-  T->left = T->right = NULL;
+  T->left = T->right = nullptr;
   __sync_fetch_and_add(&total_vv_tree_nodes, 1);
   return T;
 }
 
 TREE_PREFIX void SUFFIX(tree_free_, TREE_NAME)(TREE_NODE_TYPE *T) {
 #ifdef TREE_PTHREAD
-  if (!T) {
+  if (T == nullptr) {
     return;
   }
   if (__sync_fetch_and_add(&T->refcnt, -1) > 1) {
