@@ -8,8 +8,8 @@ This document tracks the progress of migrating the MTProxy C codebase to Rust (S
 
 **Current Status**: 
 - **Rust binary**: `mtproxy-rust` with full CLI interface ✅
-- **C units migrated**: 12 complete + 19 partial of 44 total modules
-- **Tests passing**: 205 (all Rust tests passing)
+- **C units migrated**: 15 complete + 19 partial of 44 total modules (77% in progress or complete)
+- **Tests passing**: 212 (all Rust tests passing)
 - **Build system**: Hybrid C/Rust with FFI bridge ✅
 
 ## Migration Strategy
@@ -27,8 +27,9 @@ This document tracks the progress of migrating the MTProxy C codebase to Rust (S
 - [ ] Worker process management
 - [ ] Signal handling
 
-### Phase 3: Core Runtime (PLANNED)
-- [ ] Port all 43 remaining C translation units to Rust
+### Phase 3: Core Runtime (IN PROGRESS)
+- [ ] Port remaining not-started C translation units to Rust (10 remaining)
+- [ ] Complete partial implementations (19 modules)
 - [ ] Remove C object linkage from release binary
 - [ ] Verify functional parity with integration tests
 
@@ -59,7 +60,7 @@ This document tracks the progress of migrating the MTProxy C codebase to Rust (S
 | `common/parse-config.c` | ~500 | `mtproxy-core::runtime::config::parse_config` | 🔴 Not Started | MED | Generic config parser |
 | `common/tl-parse.c` | ~400 | `mtproxy-core::runtime::config::tl_parse` | 🟢 Complete | MED | TL protocol parsing |
 | `common/resolver.c` | ~600 | `mtproxy-core::runtime::net::resolver` | 🟡 Partial | MED | DNS resolution |
-| `common/common-stats.c` | ~200 | `mtproxy-ffi::stats` | 🟢 Complete | LOW | Statistics aggregation (FFI layer) |
+| `common/common-stats.c` | 96 | `mtproxy-ffi::stats` | 🟢 Complete | LOW | Statistics aggregation (FFI layer) |
 | `common/proc-stat.c` | 85 | `mtproxy-ffi::time_cfg_observability` | 🟢 Complete | LOW | Process stats from /proc (FFI layer) |
 | `common/rust-ffi-bridge.c` | ~300 | `mtproxy-bin::runtime::bootstrap::legacy_bridge` | 🔴 Not Started | LOW | FFI helpers; will be removed |
 
@@ -67,7 +68,7 @@ This document tracks the progress of migrating the MTProxy C codebase to Rust (S
 
 | C File | Lines | Rust Module | Status | Priority | Notes |
 |--------|-------|-------------|--------|----------|-------|
-| `crypto/aesni256.c` | ~400 | `mtproxy-ffi::crypto` | 🟢 Complete | HIGH | AES encryption (FFI layer) |
+| `crypto/aesni256.c` | 58 | `mtproxy-ffi::crypto` | 🟢 Complete | HIGH | AES encryption (FFI layer) |
 | `crypto/crc32.c` | ~100 | `mtproxy-core::runtime::common::crc32` | 🟢 Complete | MED | FFI bridge active |
 | `crypto/crc32c.c` | ~100 | `mtproxy-core::runtime::common::crc32c` | 🟢 Complete | MED | FFI bridge active |
 | `crypto/md5.c` | ~150 | `mtproxy-core::runtime::common::md5` | 🟢 Complete | MED | FFI bridge active |
@@ -89,8 +90,8 @@ This document tracks the progress of migrating the MTProxy C codebase to Rust (S
 | `net/net-msg.c` | ~300 | `mtproxy-core::runtime::net::msg` | 🟡 Partial | MED | Message handling |
 | `net/net-msg-buffers.c` | ~200 | `mtproxy-core::runtime::net::msg_buffers` | 🟡 Partial | MED | Buffer management |
 | `net/net-rpc-targets.c` | ~400 | `mtproxy-core::runtime::net::rpc_targets` | 🟡 Partial | MED | RPC target management |
-| `net/net-crypto-aes.c` | ~600 | `mtproxy-ffi::crypto` | 🟢 Complete | HIGH | Network AES crypto (FFI layer) |
-| `net/net-crypto-dh.c` | ~500 | `mtproxy-ffi::crypto` | 🟢 Complete | HIGH | Diffie-Hellman (FFI layer) |
+| `net/net-crypto-aes.c` | 132 | `mtproxy-ffi::crypto` | 🟢 Complete | HIGH | Network AES crypto (FFI layer) |
+| `net/net-crypto-dh.c` | 102 | `mtproxy-ffi::crypto` | 🟢 Complete | HIGH | Diffie-Hellman (FFI layer) |
 | `net/net-timers.c` | ~300 | `mtproxy-core::runtime::net::timers` | 🟡 Partial | MED | Timer management |
 | `net/net-config.c` | ~200 | `mtproxy-core::runtime::net::config` | 🟡 Partial | LOW | Network configuration |
 | `net/net-stats.c` | ~150 | `mtproxy-core::runtime::net::stats` | 🟡 Partial | LOW | Network statistics |
