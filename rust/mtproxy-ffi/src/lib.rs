@@ -75,7 +75,7 @@ const MPQ_CONTRACT_OPS: u32 =
     (1u32 << 0) | (1u32 << 1) | (1u32 << 2) | (1u32 << 3) | (1u32 << 4) | (1u32 << 5);
 const JOBS_CONTRACT_OPS: u32 =
     (1u32 << 0) | (1u32 << 1) | (1u32 << 2) | (1u32 << 3) | (1u32 << 4) | (1u32 << 5) | (1u32 << 6);
-const MPQ_IMPLEMENTED_OPS: u32 = (1u32 << 0) | (1u32 << 1) | (1u32 << 2);
+const MPQ_IMPLEMENTED_OPS: u32 = MPQ_CONTRACT_OPS;
 const JOBS_IMPLEMENTED_OPS: u32 =
     (1u32 << 0) | (1u32 << 1) | (1u32 << 2) | (1u32 << 3) | (1u32 << 4) | (1u32 << 5) | (1u32 << 6);
 const NET_EVENTS_CONTRACT_OPS: u32 = (1u32 << 0) | (1u32 << 1);
@@ -908,6 +908,7 @@ mod compat;
 mod crypto;
 mod jobs;
 mod kprintf;
+mod mp_queue;
 mod mtproto;
 mod net_connections;
 mod net_events;
@@ -924,6 +925,7 @@ pub use compat::*;
 pub use crypto::*;
 pub use jobs::*;
 pub use kprintf::*;
+pub use mp_queue::*;
 pub use mtproto::*;
 pub use server_functions::*;
 pub use stats::*;

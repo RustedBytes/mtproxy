@@ -488,6 +488,39 @@ int32_t mtproxy_ffi_get_crypto_boundary(mtproxy_ffi_crypto_boundary_t *out);
 // Reports extracted Step 13 boundary contract for engine/mtproto application operations.
 int32_t mtproxy_ffi_get_application_boundary(mtproxy_ffi_application_boundary_t *out);
 
+// mp-queue helper: creates one Rust-backed queue handle (`waitable != 0` => `_w` semantics).
+int32_t mtproxy_ffi_mpq_handle_create(int32_t waitable, void **out_handle);
+
+// mp-queue helper: destroys one Rust-backed queue handle.
+int32_t mtproxy_ffi_mpq_handle_destroy(void *handle);
+
+// mp-queue helper: clears queue contents.
+int32_t mtproxy_ffi_mpq_handle_clear(void *handle);
+
+// mp-queue helper: push (`mpq_push` equivalent), writes enqueue position to `out_pos`.
+int32_t mtproxy_ffi_mpq_handle_push(void *handle, void *value, int32_t flags, int64_t *out_pos);
+
+// mp-queue helper: pop (`mpq_pop` equivalent).
+// Returns `1` when one value is dequeued, `0` when queue is empty.
+int32_t mtproxy_ffi_mpq_handle_pop(void *handle, int32_t flags, void **out_value);
+
+// mp-queue helper: emptiness check (`mpq_is_empty` equivalent).
+// Returns `1` when queue is empty, `0` when non-empty.
+int32_t mtproxy_ffi_mpq_handle_is_empty(void *handle);
+
+// mp-queue helper: waitable push (`mpq_push_w` equivalent), writes position to `out_pos`.
+// Returns `-2` when queue was created as non-waitable.
+int32_t mtproxy_ffi_mpq_handle_push_w(void *handle, void *value, int32_t flags, int64_t *out_pos);
+
+// mp-queue helper: waitable pop (`mpq_pop_w` equivalent).
+// Returns `1` when one value is dequeued; returns `-2` for non-waitable queue.
+int32_t mtproxy_ffi_mpq_handle_pop_w(void *handle, int32_t flags, void **out_value);
+
+// mp-queue helper: non-blocking waitable pop (`mpq_pop_nw` equivalent).
+// Returns `1` when one value is dequeued, `0` when no value was produced.
+// Returns `-2` for non-waitable queue.
+int32_t mtproxy_ffi_mpq_handle_pop_nw(void *handle, int32_t flags, void **out_value);
+
 // jobs helper: initializes Rust/Tokio main-queue bridge.
 int32_t mtproxy_ffi_jobs_tokio_init(void);
 

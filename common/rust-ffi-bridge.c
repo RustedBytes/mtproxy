@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "common/kprintf.h"
+#include "common/mp-queue-rust.h"
 #include "crypto/crc32.h"
 #include "crypto/crc32c.h"
 #include "jobs/jobs.h"
@@ -484,9 +485,13 @@ int rust_ffi_enable_concurrency_bridges(void) {
     kprintf("fatal: rust ffi tokio jobs bridge enable failed\n");
     return -3;
   }
+  if (mpq_rust_bridge_enable() < 0) {
+    kprintf("fatal: rust ffi mpq bridge enable failed\n");
+    return -4;
+  }
 
-  vkprintf(1, "rust ffi concurrency boundary validated; tokio jobs bridge "
-              "enabled\n");
+  vkprintf(1, "rust ffi concurrency boundary validated; tokio jobs and mpq "
+              "bridges enabled\n");
   return 0;
 }
 

@@ -52,6 +52,7 @@ LIB_OBJS_NORMAL := \
 	${OBJ}/common/parse-config.o \
 	${OBJ}/crypto/aesni256.o \
 	${OBJ}/jobs/jobs.o ${OBJ}/common/mp-queue.o \
+	${OBJ}/common/mp-queue-rust.o \
 	${OBJ}/net/net-events.o ${OBJ}/net/net-msg.o ${OBJ}/net/net-msg-buffers.o \
 	${OBJ}/net/net-config.o ${OBJ}/net/net-crypto-aes.o ${OBJ}/net/net-crypto-dh.o \
 	${OBJ}/net/net-connections.o \

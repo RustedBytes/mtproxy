@@ -35,6 +35,7 @@
 #include "common/common-stats.h"
 #include "jobs/jobs.h"
 #include "mp-queue.h"
+#include "mp-queue-rust.h"
 #include "server-functions.h"
 
 volatile int mpq_blocks_allocated, mpq_blocks_allocated_max,
@@ -383,6 +384,10 @@ long mpq_block_push(struct mp_queue_block *QB, mqn_value_t val) {
 
 /* functions for mp_queue = list of mp_queue_block's */
 void init_mp_queue(struct mp_queue *MQ) {
+  if (mpq_rust_bridge_enabled()) {
+    assert(mpq_rust_init_queue(MQ, 0) >= 0);
+    return;
+  }
   assert(MQ->mq_magic != MQ_MAGIC && MQ->mq_magic != MQ_MAGIC_SEM);
   memset(MQ, 0, sizeof(struct mp_queue));
   MQ->mq_head = MQ->mq_tail = alloc_mpq_block(0, 0, 1);
@@ -398,6 +403,11 @@ void init_mp_queue(struct mp_queue *MQ) {
 }
 
 void init_mp_queue_w(struct mp_queue *MQ) {
+  if (mpq_rust_bridge_enabled()) {
+    MODULE_STAT->mpq_active++;
+    assert(mpq_rust_init_queue(MQ, 1) >= 0);
+    return;
+  }
   init_mp_queue(MQ);
   MODULE_STAT->mpq_active++;
 #if MPQ_USE_POSIX_SEMAPHORES
@@ -427,6 +437,10 @@ struct mp_queue *alloc_mp_queue_w(void) {
  */
 void clear_mp_queue(struct mp_queue *MQ) {
   MODULE_STAT->mpq_active--;
+  if (mpq_rust_queue_attached(MQ)) {
+    mpq_rust_clear_queue(MQ);
+    return;
+  }
   assert(MQ->mq_magic == MQ_MAGIC || MQ->mq_magic == MQ_MAGIC_SEM);
   assert(MQ->mq_head && MQ->mq_tail);
   struct mp_queue_block *QB = MQ->mq_head, *QBN;
@@ -621,16 +635,30 @@ static long mpq_push_c_impl(struct mp_queue *MQ, mqn_value_t val, int flags) {
 }
 
 long mpq_push(struct mp_queue *MQ, mqn_value_t val, int flags) {
+  if (mpq_rust_queue_attached(MQ)) {
+    return mpq_rust_push(MQ, val, flags);
+  }
   return mpq_push_c_impl(MQ, val, flags);
 }
 
 mqn_value_t mpq_pop(struct mp_queue *MQ, int flags) {
+  if (mpq_rust_queue_attached(MQ)) {
+    return mpq_rust_pop(MQ, flags);
+  }
   return mpq_pop_c_impl(MQ, flags);
 }
 
-int mpq_is_empty(struct mp_queue *MQ) { return mpq_is_empty_c_impl(MQ); }
+int mpq_is_empty(struct mp_queue *MQ) {
+  if (mpq_rust_queue_attached(MQ)) {
+    return mpq_rust_is_empty(MQ);
+  }
+  return mpq_is_empty_c_impl(MQ);
+}
 
 mqn_value_t mpq_pop_w(struct mp_queue *MQ, int flags) {
+  if (mpq_rust_queue_attached(MQ)) {
+    return mpq_rust_pop_w(MQ, flags);
+  }
   assert(MQ->mq_magic == MQ_MAGIC_SEM);
   int s = -1, iterations = flags & MPQF_MAX_ITERATIONS;
   while (iterations-- > 0) {
@@ -665,6 +693,9 @@ mqn_value_t mpq_pop_w(struct mp_queue *MQ, int flags) {
 }
 
 mqn_value_t mpq_pop_nw(struct mp_queue *MQ, int flags) {
+  if (mpq_rust_queue_attached(MQ)) {
+    return mpq_rust_pop_nw(MQ, flags);
+  }
   assert(MQ->mq_magic == MQ_MAGIC_SEM);
   int s = -1, iterations = flags & MPQF_MAX_ITERATIONS;
   while (iterations-- > 0) {
@@ -689,6 +720,9 @@ mqn_value_t mpq_pop_nw(struct mp_queue *MQ, int flags) {
 }
 
 long mpq_push_w(struct mp_queue *MQ, mqn_value_t v, int flags) {
+  if (mpq_rust_queue_attached(MQ)) {
+    return mpq_rust_push_w(MQ, v, flags);
+  }
   assert(MQ->mq_magic == MQ_MAGIC_SEM);
   long res = mpq_push(MQ, v, flags);
 #if MPQ_USE_POSIX_SEMAPHORES
