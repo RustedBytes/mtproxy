@@ -31,30 +31,36 @@
 #define EPOLLRDHUP 0x2000
 #endif
 
-#define MAX_EVENTS (1 << 19)
+enum {
+  MAX_EVENTS = (1 << 19),
+  MAX_UDP_SENDBUF_SIZE = (1 << 24),
+  MAX_UDP_RCVBUF_SIZE = (1 << 24),
+  PRIVILEGED_TCP_PORTS = 1024,
+};
 
-#define EVT_READ 4
-#define EVT_WRITE 2
-#define EVT_SPEC 1
-#define EVT_RW (EVT_READ | EVT_WRITE)
-#define EVT_RWX (EVT_READ | EVT_WRITE | EVT_SPEC)
-#define EVT_LEVEL 8
-#define EVT_OPEN 0x80
-#define EVT_CLOSED 0x40
-#define EVT_IN_EPOLL 0x20
-#define EVT_NEW 0x100
-#define EVT_NOHUP 0x200
-#define EVT_FROM_EPOLL 0x400
+enum {
+  EVT_READ = 4,
+  EVT_WRITE = 2,
+  EVT_SPEC = 1,
+  EVT_RW = EVT_READ | EVT_WRITE,
+  EVT_RWX = EVT_READ | EVT_WRITE | EVT_SPEC,
+  EVT_LEVEL = 8,
+  EVT_OPEN = 0x80,
+  EVT_CLOSED = 0x40,
+  EVT_IN_EPOLL = 0x20,
+  EVT_NEW = 0x100,
+  EVT_NOHUP = 0x200,
+  EVT_FROM_EPOLL = 0x400,
+};
 
-#define EVA_CONTINUE 0
-#define EVA_RERUN -2
-#define EVA_REMOVE -3
-#define EVA_DESTROY -5
-#define EVA_ERROR -8
-#define EVA_FATAL -666
-
-#define MAX_UDP_SENDBUF_SIZE (1L << 24)
-#define MAX_UDP_RCVBUF_SIZE (1L << 24)
+enum {
+  EVA_CONTINUE = 0,
+  EVA_RERUN = -2,
+  EVA_REMOVE = -3,
+  EVA_DESTROY = -5,
+  EVA_ERROR = -8,
+  EVA_FATAL = -666,
+};
 
 typedef struct event_descr event_t;
 typedef int (*event_handler_t)(int fd, void *data, event_t *ev);
@@ -104,18 +110,18 @@ extern volatile int main_thread_interrupt_status;
 // static inline int event_timer_active (event_timer_t *et) { return et->h_idx;
 // } static inline void event_timer_init (event_timer_t *et) { et->h_idx = 0;}
 
-#define PRIVILEGED_TCP_PORTS 1024
-
 extern int tcp_maximize_buffers;
 
-#define SM_UDP 1
-#define SM_IPV6 2
-#define SM_IPV6_ONLY 4
-#define SM_LOWPRIO 8
-#define SM_REUSE 16
-#define SM_SPECIAL 0x10000
-#define SM_NOQACK 0x20000
-#define SM_RAWMSG 0x40000
+enum {
+  SM_UDP = 1,
+  SM_IPV6 = 2,
+  SM_IPV6_ONLY = 4,
+  SM_LOWPRIO = 8,
+  SM_REUSE = 16,
+  SM_SPECIAL = 0x10000,
+  SM_NOQACK = 0x20000,
+  SM_RAWMSG = 0x40000,
+};
 
 int server_socket(int port, struct in_addr in_addr, int backlog, int mode);
 int client_socket(in_addr_t in_addr, int port, int mode);

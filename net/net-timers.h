@@ -20,7 +20,9 @@
 */
 #pragma once
 
-#define MAX_EVENT_TIMERS (1 << 19)
+enum {
+  MAX_EVENT_TIMERS = (1 << 19),
+};
 
 typedef struct event_timer event_timer_t;
 

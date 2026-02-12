@@ -36,56 +36,53 @@
 #include "net/net-events.h"
 #include "net/net-msg.h"
 
-#define MAX_CONNECTIONS 65536
-#define MAX_TARGETS 65536
-#define PRIME_TARGETS 99961
-#define MAX_SPECIAL_LISTEN_SOCKETS 64
-
-#define MAX_TCP_RECV_BUFFERS 128
-#define TCP_RECV_BUFFER_SIZE 1024
-
-#define MAX_NET_RES (1L << 16)
-
-// #define BUFF_SIZE	2048
-
-#define CONN_CUSTOM_DATA_BYTES 256
-
-#define NEED_MORE_BYTES (~(-1 << 31))
-#define SKIP_ALL_BYTES (-1 << 31)
+enum {
+  MAX_CONNECTIONS = 65536,
+  MAX_TARGETS = 65536,
+  PRIME_TARGETS = 99961,
+  MAX_SPECIAL_LISTEN_SOCKETS = 64,
+  MAX_TCP_RECV_BUFFERS = 128,
+  TCP_RECV_BUFFER_SIZE = 1024,
+  MAX_NET_RES = (1 << 16),
+  CONN_CUSTOM_DATA_BYTES = 256,
+  NEED_MORE_BYTES = 0x7fffffff,
+  SKIP_ALL_BYTES = (-0x7fffffff - 1),
+};
 
 /* for connection flags */
-#define C_WANTRD 1
-#define C_WANTWR 2
-#define C_WANTRW (C_WANTRD | C_WANTWR)
-#define C_INCONN 4
-#define C_ERROR 8
-#define C_NORD 0x10
-#define C_NOWR 0x20
-#define C_NORW (C_NORD | C_NOWR)
-#define C_INQUERY 0x40
-#define C_FAILED 0x80
-#define C_ALARM 0x100
-#define C_AIO 0x200
-#define C_INTIMEOUT 0x400
-#define C_STOPREAD 0x800
-#define C_REPARSE 0x1000
-#define C_DFLUSH 0x2000
-#define C_IPV6 0x4000
-#define C_EXTERNAL 0x8000
-#define C_SPECIAL 0x10000
-#define C_NOQACK 0x20000
-#define C_RAWMSG 0x40000
-#define C_NET_FAILED 0x80000
-#define C_CRYPTOIN 0x100000
-#define C_CRYPTOOUT 0x200000
-#define C_STOPPARSE 0x400000
-#define C_ISDH 0x800000
-#define C_READY_PENDING 0x1000000
-#define C_CONNECTED 0x2000000
-#define C_STOPWRITE 0x4000000
-#define C_IS_TLS 0x8000000
-
-#define C_PERMANENT (C_IPV6 | C_RAWMSG)
+enum {
+  C_WANTRD = 1,
+  C_WANTWR = 2,
+  C_WANTRW = C_WANTRD | C_WANTWR,
+  C_INCONN = 4,
+  C_ERROR = 8,
+  C_NORD = 0x10,
+  C_NOWR = 0x20,
+  C_NORW = C_NORD | C_NOWR,
+  C_INQUERY = 0x40,
+  C_FAILED = 0x80,
+  C_ALARM = 0x100,
+  C_AIO = 0x200,
+  C_INTIMEOUT = 0x400,
+  C_STOPREAD = 0x800,
+  C_REPARSE = 0x1000,
+  C_DFLUSH = 0x2000,
+  C_IPV6 = 0x4000,
+  C_EXTERNAL = 0x8000,
+  C_SPECIAL = 0x10000,
+  C_NOQACK = 0x20000,
+  C_RAWMSG = 0x40000,
+  C_NET_FAILED = 0x80000,
+  C_CRYPTOIN = 0x100000,
+  C_CRYPTOOUT = 0x200000,
+  C_STOPPARSE = 0x400000,
+  C_ISDH = 0x800000,
+  C_READY_PENDING = 0x1000000,
+  C_CONNECTED = 0x2000000,
+  C_STOPWRITE = 0x4000000,
+  C_IS_TLS = 0x8000000,
+  C_PERMANENT = C_IPV6 | C_RAWMSG,
+};
 /* for connection status */
 enum {
   conn_none, // closed/uninitialized
@@ -125,7 +122,9 @@ struct query_info;
 
 /* connection function table */
 
-#define CONN_FUNC_MAGIC 0x11ef55aa
+enum {
+  CONN_FUNC_MAGIC = 0x11ef55aa,
+};
 
 typedef struct conn_functions {
   int magic;

@@ -27,33 +27,48 @@
 
 #include "common/mp-queue.h"
 #include <assert.h>
+#include <stddef.h>
 
-#define MSG_STD_BUFFER 2048
-#define MSG_SMALL_BUFFER 512
-#define MSG_TINY_BUFFER 48
+enum {
+  MSG_STD_BUFFER = 2048,
+  MSG_SMALL_BUFFER = 512,
+  MSG_TINY_BUFFER = 48,
+};
 
-#define MSG_BUFFERS_CHUNK_SIZE ((1L << 21) - 64)
+enum {
+  MSG_BUFFERS_CHUNK_SIZE = ((1 << 21) - 64),
+};
 
-#define MSG_DEFAULT_MAX_ALLOCATED_BYTES (1L << 28)
+enum {
+  MSG_DEFAULT_MAX_ALLOCATED_BYTES = (1 << 28),
+};
 
 #ifdef _LP64
-#define MSG_MAX_ALLOCATED_BYTES (1L << 40)
+enum {
+  MSG_MAX_ALLOCATED_BYTES = (1LL << 40),
+};
 #else
-#define MSG_MAX_ALLOCATED_BYTES (1L << 30)
+enum {
+  MSG_MAX_ALLOCATED_BYTES = (1LL << 30),
+};
 #endif
 
-#define MSG_BUFFER_FREE_MAGIC 0x4abdc351
-#define MSG_BUFFER_USED_MAGIC 0x72e39317
-#define MSG_BUFFER_SPECIAL_MAGIC 0x683caad3
+enum {
+  MSG_BUFFER_FREE_MAGIC = 0x4abdc351,
+  MSG_BUFFER_USED_MAGIC = 0x72e39317,
+  MSG_BUFFER_SPECIAL_MAGIC = 0x683caad3,
+};
 
-#define MSG_CHUNK_USED_MAGIC 0x5c75e681
-#define MSG_CHUNK_USED_LOCKED_MAGIC (~MSG_CHUNK_USED_MAGIC)
-#define MSG_CHUNK_HEAD_MAGIC 0x2dfecca3
-#define MSG_CHUNK_HEAD_LOCKED_MAGIC (~MSG_CHUNK_HEAD_MAGIC)
+enum {
+  MSG_CHUNK_USED_MAGIC = 0x5c75e681,
+  MSG_CHUNK_USED_LOCKED_MAGIC = ~MSG_CHUNK_USED_MAGIC,
+  MSG_CHUNK_HEAD_MAGIC = 0x2dfecca3,
+  MSG_CHUNK_HEAD_LOCKED_MAGIC = ~MSG_CHUNK_HEAD_MAGIC,
+};
 
-#define MAX_BUFFER_SIZE_VALUES 16
-
-#define BUFF_HD_BYTES (offsetof(struct msg_buffer, data))
+enum {
+  MAX_BUFFER_SIZE_VALUES = 16,
+};
 
 struct msg_buffer {
   struct msg_buffers_chunk *chunk;
@@ -63,6 +78,10 @@ struct msg_buffer {
   int refcnt;
   int magic;
   char data[0];
+};
+
+enum {
+  BUFF_HD_BYTES = offsetof(struct msg_buffer, data),
 };
 
 struct msg_buffers_chunk {

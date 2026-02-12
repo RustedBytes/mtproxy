@@ -21,17 +21,23 @@
 
 #pragma once
 
-#define MAX_PWD_CONFIG_LEN 16384
+enum {
+  MAX_PWD_CONFIG_LEN = 16384,
+};
 
+/* Kept as macros for compatibility with net-tcp-rpc-common.h aliases. */
 #define RPCF_ALLOW_UNENC 1
 #define RPCF_ALLOW_ENC 2
 #define RPCF_REQ_DH 4
 #define RPCF_ALLOW_SKIP_DH 8
-#define RPCF_DISABLE_RPC 0x1000
-#define RPCF_ALLOW_MC 0x2000
-#define RPCF_ALLOW_SQL 0x4000
-#define RPCF_ALLOW_HTTP 0x8000
-#define RPCF_RESULT_VALID 0x80000000
+
+enum {
+  RPCF_DISABLE_RPC = 0x1000,
+  RPCF_ALLOW_MC = 0x2000,
+  RPCF_ALLOW_SQL = 0x4000,
+  RPCF_ALLOW_HTTP = 0x8000,
+  RPCF_RESULT_VALID = 0x80000000,
+};
 
 extern char pwd_config_buf[MAX_PWD_CONFIG_LEN + 128];
 extern int pwd_config_len;

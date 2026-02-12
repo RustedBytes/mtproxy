@@ -28,7 +28,9 @@
 
 #include "net/net-connections.h"
 
-#define MAX_HTTP_HEADER_SIZE 16384
+enum {
+  MAX_HTTP_HEADER_SIZE = 16384,
+};
 
 struct http_server_functions {
   void *info;
@@ -39,9 +41,11 @@ struct http_server_functions {
   int (*ht_close)(connection_job_t c, int who);
 };
 
-#define HTTP_V09 9
-#define HTTP_V10 0x100
-#define HTTP_V11 0x101
+enum {
+  HTTP_V09 = 9,
+  HTTP_V10 = 0x100,
+  HTTP_V11 = 0x101,
+};
 
 /* in conn->custom_data, 104 bytes */
 struct hts_data {
@@ -79,14 +83,16 @@ enum hts_query_type {
   htqt_empty
 };
 
-#define QF_ERROR 1
-#define QF_HOST 2
-#define QF_DATASIZE 4
-#define QF_CONNECTION 8
-#define QF_TRANSFER_ENCODING 16
-#define QF_TRANSFER_ENCODING_CHUNKED 32
-#define QF_KEEPALIVE 0x100
-#define QF_EXTRA_HEADERS 0x200
+enum {
+  QF_ERROR = 1,
+  QF_HOST = 2,
+  QF_DATASIZE = 4,
+  QF_CONNECTION = 8,
+  QF_TRANSFER_ENCODING = 16,
+  QF_TRANSFER_ENCODING_CHUNKED = 32,
+  QF_KEEPALIVE = 0x100,
+  QF_EXTRA_HEADERS = 0x200,
+};
 
 static inline struct hts_data *HTS_DATA(connection_job_t c) {
   return (struct hts_data *)CONN_INFO(c)->custom_data;
@@ -116,8 +122,10 @@ extern char *extra_http_response_headers;
 int get_http_header(const char *qHeaders, const int qHeadersLen, char *buffer,
                     int b_len, const char *arg_name, const int arg_len);
 
-#define HTTP_DATE_LEN 29
-void gen_http_date(char date_buffer[29], int time);
+enum {
+  HTTP_DATE_LEN = 29,
+};
+void gen_http_date(char date_buffer[HTTP_DATE_LEN], int time);
 char *cur_http_date(void);
 // int write_basic_http_header (connection_job_t c, int code, int date, int len,
 // const char *add_header, const char *content_type);

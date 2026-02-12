@@ -22,7 +22,9 @@
 
 #pragma once
 
-#define CRYPTO_TEMP_DH_PARAMS_MAGIC 0xab45ccd3
+enum {
+  CRYPTO_TEMP_DH_PARAMS_MAGIC = 0xab45ccd3,
+};
 
 struct crypto_temp_dh_params {
   int magic;

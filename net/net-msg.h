@@ -73,8 +73,10 @@ struct msg_part {
 extern int rwm_total_msg_parts;
 extern int rwm_total_msgs;
 
-#define MSG_PART_MAGIC 0x8341aa7
-#define MSG_PART_LOCKED_MAGIC (~MSG_PART_MAGIC)
+enum {
+  MSG_PART_MAGIC = 0x8341aa7,
+  MSG_PART_LOCKED_MAGIC = ~MSG_PART_MAGIC,
+};
 struct msg_part *new_msg_part(struct msg_part *neighbor, struct msg_buffer *X);
 
 /*
@@ -82,12 +84,18 @@ struct msg_part *new_msg_part(struct msg_part *neighbor, struct msg_buffer *X);
  */
 
 // ordinary raw message (changing refcnt of pointed msg_parts)
-#define RM_INIT_MAGIC 0x23513473
+enum {
+  RM_INIT_MAGIC = 0x23513473,
+};
 // temp raw message (doesn't change refcnts of pointed msg_parts), used for fast
 // read iterators
-#define RM_TMP_MAGIC 0x52a717f3
+enum {
+  RM_TMP_MAGIC = 0x52a717f3,
+};
 
-#define RM_PREPEND_RESERVE 128
+enum {
+  RM_PREPEND_RESERVE = 128,
+};
 
 struct raw_message {
   struct msg_part *first,
@@ -146,8 +154,10 @@ int rwm_process(struct raw_message *raw, int bytes,
                 int (*process_block)(void *extra, const void *data, int len),
                 void *extra);
 
-#define RMPF_ADVANCE 1
-#define RMPF_TRUNCATE 2
+enum {
+  RMPF_ADVANCE = 1,
+  RMPF_TRUNCATE = 2,
+};
 int rwm_process_ex(struct raw_message *raw, int bytes, int offset, int flags,
                    int (*process_block)(void *extra, const void *data, int len),
                    void *extra);

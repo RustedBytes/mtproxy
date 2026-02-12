@@ -45,7 +45,9 @@ struct tcp_rpc_nonce_packet {
   char crypto_nonce[16];
 };
 
-#define RPC_MAX_EXTRA_KEYS 8
+enum {
+  RPC_MAX_EXTRA_KEYS = 8,
+};
 
 struct tcp_rpc_nonce_ext_packet {
   int type;          /* type = RPC_NONCE */
@@ -100,26 +102,31 @@ int tcp_rpc_default_execute(connection_job_t C, int op,
                             struct raw_message *raw);
 
 /* for crypto_flags in struct tcp_rpc_data */
+/* Kept as macros for compatibility with net-config.h aliases. */
 #define RPCF_ALLOW_UNENC 1   // allow unencrypted
 #define RPCF_ALLOW_ENC 2     // allow encrypted
 #define RPCF_REQ_DH 4        // require DH
 #define RPCF_ALLOW_SKIP_DH 8 // crypto NONCE packet sent
-#define RPCF_ENC_SENT 16
-#define RPCF_SEQNO_HOLES 256  // packet numbers not sequential
-#define RPCF_QUICKACK 512     // allow quick ack packets
-#define RPCF_COMPACT_OFF 1024 // compact mode off
-#define RPCF_USE_CRC32C 2048  // use CRC32-C instead of CRC32
+enum {
+  RPCF_ENC_SENT = 16,
+  RPCF_SEQNO_HOLES = 256, // packet numbers not sequential
+  RPCF_QUICKACK = 512,    // allow quick ack packets
+  RPCF_COMPACT_OFF = 1024, // compact mode off
+  RPCF_USE_CRC32C = 2048,  // use CRC32-C instead of CRC32
+};
 
 /* for flags in struct tcp_rpc_data */
-#define RPC_F_PAD 0x8000000
-#define RPC_F_DROPPED 0x10000000
-#define RPC_F_MEDIUM 0x20000000
-#define RPC_F_COMPACT 0x40000000
-#define RPC_F_COMPACT_MEDIUM (RPC_F_COMPACT | RPC_F_MEDIUM)
-#define RPC_F_QUICKACK 0x80000000
-#define RPC_F_EXTMODE1 0x10000
-#define RPC_F_EXTMODE2 0x20000
-#define RPC_F_EXTMODE3 0x30000
+enum {
+  RPC_F_PAD = 0x8000000,
+  RPC_F_DROPPED = 0x10000000,
+  RPC_F_MEDIUM = 0x20000000,
+  RPC_F_COMPACT = 0x40000000,
+  RPC_F_COMPACT_MEDIUM = RPC_F_COMPACT | RPC_F_MEDIUM,
+  RPC_F_QUICKACK = 0x80000000,
+  RPC_F_EXTMODE1 = 0x10000,
+  RPC_F_EXTMODE2 = 0x20000,
+  RPC_F_EXTMODE3 = 0x30000,
+};
 
 /* in conn->custom_data */
 struct tcp_rpc_data {
@@ -150,19 +157,25 @@ struct tcp_rpc_data {
 // extern int default_rpc_flags;  /* 0 = compatibility mode, RPC_USE_CRC32C =
 // allow both CRC32C and CRC32 */
 
-#define RPC_NONCE 0x7acb87aa
-#define RPC_HANDSHAKE 0x7682eef5
-#define RPC_HANDSHAKE_ERROR 0x6a27beda
+enum {
+  RPC_NONCE = 0x7acb87aa,
+  RPC_HANDSHAKE = 0x7682eef5,
+  RPC_HANDSHAKE_ERROR = 0x6a27beda,
+};
 
-#define RPC_CRYPTO_NONE 0
-#define RPC_CRYPTO_AES 1
-#define RPC_CRYPTO_AES_EXT 2
-#define RPC_CRYPTO_AES_DH 3
+enum {
+  RPC_CRYPTO_NONE = 0,
+  RPC_CRYPTO_AES = 1,
+  RPC_CRYPTO_AES_EXT = 2,
+  RPC_CRYPTO_AES_DH = 3,
+};
 
-#define RPC_MF_COMPACT_ALLOW 1
-#define RPC_MF_COMPACT_FORCE 2
-#define RPC_MF_IGNORE_PID 4
-#define RPC_MF_OPPORT_CRYPTO 8
+enum {
+  RPC_MF_COMPACT_ALLOW = 1,
+  RPC_MF_COMPACT_FORCE = 2,
+  RPC_MF_IGNORE_PID = 4,
+  RPC_MF_OPPORT_CRYPTO = 8,
+};
 
 static inline struct tcp_rpc_data *TCP_RPC_DATA(connection_job_t c) {
   return (struct tcp_rpc_data *)CONN_INFO(c)->custom_data;

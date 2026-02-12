@@ -31,10 +31,12 @@
 #include "crypto/aesni256.h"
 #include "net/net-connections.h"
 
-#define MIN_PWD_LEN 32
-#define MAX_PWD_LEN 256
+enum {
+  MIN_PWD_LEN = 32,
+  MAX_PWD_LEN = 256,
+};
 
-#define DEFAULT_PWD_FILE "secret"
+static const char DEFAULT_PWD_FILE[] = "secret";
 
 int aes_crypto_init(connection_job_t c, void *key_data,
                     int key_data_len); /* < 0 = error */
@@ -64,7 +66,9 @@ struct aes_key_data {
   unsigned char write_iv[16];
 };
 
-#define AES_KEY_DATA_LEN sizeof(struct aes_key_data)
+enum {
+  AES_KEY_DATA_LEN = sizeof(struct aes_key_data),
+};
 
 /* for c->crypto */
 struct aes_crypto {
