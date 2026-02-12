@@ -18,7 +18,7 @@ CFLAGS = $(ARCH) -O3 -std=gnu2x -Wall -Wno-array-bounds -mpclmul -march=core2 -m
 LDFLAGS = $(ARCH) -ggdb -rdynamic -lm -lrt -lpthread
 
 LIB = ${OBJ}/lib
-CINCLUDE = -iquote common -iquote .
+CINCLUDE = -iquote common -iquote . -iquote rust/mtproxy-ffi/include
 
 LIBLIST = ${LIB}/libkdb.a
 

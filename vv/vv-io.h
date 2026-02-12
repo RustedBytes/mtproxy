@@ -21,6 +21,25 @@
 
 #pragma once
 
+#ifdef USE_RUST_FFI
+// Use Rust FFI implementation
+#include "vv_io_ffi.h"
+
+// Provide compatibility aliases for existing code
+#define IP_PRINT_STR VV_IP_PRINT_STR
+#define IP_TO_PRINT VV_IP_TO_PRINT
+#define PID_PRINT_STR "[" IP_PRINT_STR ":%d:%d:%d]"
+#define PID_TO_PRINT(a) IP_TO_PRINT((a)->ip), (int)(a)->port, (int)(a)->pid, (a)->utime
+#define IPV6_PRINT_STR "%s"
+
+// Wrapper for IPv6 formatting using FFI
+static inline char *IPV6_TO_PRINT(void *ip) {
+  return (char *)vv_format_ipv6(ip);
+}
+
+#else
+// Use legacy C implementation
+
 #include <arpa/inet.h>
 #include <stdio.h>
 
@@ -81,3 +100,5 @@ static inline char *IPV6_TO_PRINT(void *ip) {
 
   return s;
 }
+
+#endif // USE_RUST_FFI
