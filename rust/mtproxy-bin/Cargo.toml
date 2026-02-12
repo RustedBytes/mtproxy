@@ -9,8 +9,12 @@ publish.workspace = true
 name = "mtproxy-rust"
 path = "src/main.rs"
 
+[lib]
+path = "src/lib.rs"
+
 [dependencies]
 mtproxy-core = { path = "../mtproxy-core" }
+libc = "0.2"
 
 [lints]
 workspace = true
