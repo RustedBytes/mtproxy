@@ -37,8 +37,12 @@ extern "C" {
 /**
  * Formats an IPv4 address into a static buffer.
  *
- * This function is thread-unsafe due to the static buffer.
- * Multiple calls will overwrite the buffer.
+ * WARNING: This function is NOT thread-safe due to the use of a static buffer.
+ * Multiple concurrent calls will cause undefined behavior (data races).
+ * The buffer is reused on each call, so the returned pointer is only valid
+ * until the next call to this function.
+ *
+ * This behavior matches the original C implementation from vv/vv-io.h.
  *
  * @param addr IPv4 address as a 32-bit integer in host byte order.
  * @return A pointer to a null-terminated string in a static buffer.
@@ -49,8 +53,12 @@ const char *vv_format_ipv4(uint32_t addr);
 /**
  * Formats an IPv6 address into a static buffer.
  *
- * This function is thread-unsafe due to the static buffer.
- * Multiple calls will overwrite the buffer.
+ * WARNING: This function is NOT thread-safe due to the use of a static buffer.
+ * Multiple concurrent calls will cause undefined behavior (data races).
+ * The buffer is reused on each call, so the returned pointer is only valid
+ * until the next call to this function.
+ *
+ * This behavior matches the original C implementation from vv/vv-io.h.
  *
  * @param ipv6_bytes Pointer to 16 bytes representing an IPv6 address.
  * @return A pointer to a null-terminated string in a static buffer,

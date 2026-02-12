@@ -22,7 +22,7 @@ pub struct VvTreeHandle {
 ///
 /// Since we need to manage treap lifetimes across FFI, we maintain a
 /// registry that maps handles (pointers) to actual treap instances.
-static TREE_REGISTRY: Mutex<Option<HashMap<usize, Box<dyn std::any::Any + Send>>>> =
+static TREE_REGISTRY: Mutex<Option<HashMap<usize, Box<ThreadSafeTreap<usize, i32>>>>> =
     Mutex::new(None);
 
 /// Initialize the tree registry if needed.
@@ -32,12 +32,6 @@ fn ensure_registry() {
         *registry = Some(HashMap::new());
     }
 }
-
-/// Type-erased function pointer for comparison.
-type CompareFn = unsafe extern "C" fn(*const c_void, *const c_void) -> c_int;
-
-/// Type-erased function pointer for hash/priority generation.
-type HashFn = unsafe extern "C" fn(*const c_void) -> c_int;
 
 /// Creates a new treap tree.
 ///
@@ -54,7 +48,10 @@ pub unsafe extern "C" fn vv_tree_create() -> *mut VvTreeHandle {
     
     let mut registry = TREE_REGISTRY.lock().unwrap();
     let reg = registry.as_mut().unwrap();
-    reg.insert(handle, Box::new(handle));
+    
+    // Store the actual treap in the registry
+    let treap_for_registry: ThreadSafeTreap<usize, i32> = ThreadSafeTreap::new();
+    reg.insert(handle, Box::new(treap_for_registry));
     
     handle as *mut VvTreeHandle
 }

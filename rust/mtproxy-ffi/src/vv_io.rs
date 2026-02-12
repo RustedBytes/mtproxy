@@ -2,6 +2,13 @@
 //!
 //! This module provides C-compatible FFI functions that replace the
 //! functionality from `vv/vv-io.h`.
+//!
+//! # Thread Safety
+//!
+//! The FFI functions use static buffers to match the C implementation behavior.
+//! **These functions are NOT thread-safe** and should only be called from a
+//! single thread or with external synchronization. This matches the original
+//! C implementation which also used static buffers.
 
 use core::ffi::{c_char, c_void};
 use core::ptr;
@@ -11,18 +18,26 @@ use mtproxy_core::runtime::collections::ip_format;
 /// Thread-local buffer for IPv4 formatting to avoid heap allocation.
 ///
 /// This matches the static buffer behavior of the C implementation.
+/// **WARNING**: This is NOT thread-safe across multiple threads without
+/// external synchronization.
 #[no_mangle]
 static mut VV_IPV4_FORMAT_BUFFER: [c_char; 16] = [0; 16];
 
 /// Thread-local buffer for IPv6 formatting.
+///
+/// **WARNING**: This is NOT thread-safe across multiple threads without
+/// external synchronization.
 #[no_mangle]
 static mut VV_IPV6_FORMAT_BUFFER: [c_char; 100] = [0; 100];
 
 /// Formats an IPv4 address into a static buffer.
 ///
 /// # Safety
-/// This function is thread-unsafe due to the static buffer.
-/// Multiple calls will overwrite the buffer.
+/// - This function uses a mutable static buffer and is NOT thread-safe
+/// - Multiple concurrent calls will cause undefined behavior (data races)
+/// - The buffer is reused on each call, so the returned pointer is only
+///   valid until the next call to this function
+/// - This matches the behavior of the original C implementation
 ///
 /// # Arguments
 /// * `addr` - IPv4 address as a 32-bit integer in host byte order
@@ -50,8 +65,11 @@ pub unsafe extern "C" fn vv_format_ipv4(addr: u32) -> *const c_char {
 ///
 /// # Safety
 /// - `ipv6_bytes` must point to a valid 16-byte array
-/// - This function is thread-unsafe due to the static buffer
-/// - Multiple calls will overwrite the buffer
+/// - This function uses a mutable static buffer and is NOT thread-safe
+/// - Multiple concurrent calls will cause undefined behavior (data races)
+/// - The buffer is reused on each call, so the returned pointer is only
+///   valid until the next call to this function
+/// - This matches the behavior of the original C implementation
 ///
 /// # Arguments
 /// * `ipv6_bytes` - Pointer to 16 bytes representing an IPv6 address

@@ -41,27 +41,23 @@ pub fn format_ipv6(addr: &[u8; 16]) -> heapless::String<64> {
         segments[i] = u16::from_be_bytes([chunk[0], chunk[1]]);
     }
     
-    // Format with zero compression
+    // Simple formatting without zero compression to match C implementation
+    // The C version doesn't do full RFC-compliant compression either
     let _ = format_ipv6_segments(&mut s, &segments);
     s
 }
 
-/// Helper function to format IPv6 segments with zero compression.
+/// Helper function to format IPv6 segments.
+///
+/// This implementation matches the behavior of the original C code in vv-io.h,
+/// which outputs colons for zero segments without full RFC 5952 compression.
 fn format_ipv6_segments(s: &mut heapless::String<64>, segments: &[u16; 8]) -> core::fmt::Result {
-    // Simple formatting without full zero compression for now
-    // This matches the behavior of the C implementation which doesn't
-    // do full RFC-compliant zero compression
-    
     for (i, &seg) in segments.iter().enumerate() {
         if i > 0 {
             write!(s, ":")?;
         }
         if seg == 0 {
-            // Just write empty for zero segments
-            if i + 1 < segments.len() && segments[i + 1] == 0 {
-                // Skip writing for consecutive zeros except last
-                continue;
-            }
+            // Write nothing for zero segments (matches C behavior)
         } else {
             write!(s, "{:x}", seg)?;
         }
