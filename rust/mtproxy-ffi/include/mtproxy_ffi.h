@@ -1213,6 +1213,29 @@ int32_t rust_raise_file_rlimit(int32_t maxfiles);
 // Print stack backtrace to stderr.
 void rust_print_backtrace(void);
 
+// server-functions parser/runtime helpers implemented in Rust
+void rust_sf_init_parse_options(
+  uint32_t keep_mask,
+  const uint32_t *keep_options_custom_list,
+  size_t keep_options_custom_list_len
+);
+int32_t rust_sf_parse_option_add(
+  const char *name,
+  int32_t arg,
+  int32_t val,
+  uint32_t flags,
+  int32_t (*func)(int32_t),
+  const char *help
+);
+int32_t rust_sf_parse_option_alias(const char *name, int32_t val);
+int32_t rust_sf_parse_option_long_alias(const char *name, const char *alias_name);
+int32_t rust_sf_remove_parse_option(int32_t val);
+int32_t rust_sf_parse_usage(void);
+int32_t rust_sf_parse_engine_options_long(int32_t argc, char **argv);
+int32_t rust_sf_add_builtin_parse_options(void);
+void rust_sf_ksignal(int32_t sig, void (*handler)(int32_t));
+void rust_sf_set_debug_handlers(void);
+
 #ifdef __cplusplus
 }
 #endif
