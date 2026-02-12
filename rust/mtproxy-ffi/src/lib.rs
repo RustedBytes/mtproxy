@@ -909,6 +909,7 @@ mod crypto;
 mod jobs;
 mod kprintf;
 mod mtproto;
+mod net_events;
 mod net_msg;
 mod net_timers;
 mod server_functions;

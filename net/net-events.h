@@ -107,7 +107,6 @@ extern volatile int main_thread_interrupt_status;
 #define PRIVILEGED_TCP_PORTS 1024
 
 extern int tcp_maximize_buffers;
-extern struct in_addr settings_addr;
 
 #define SM_UDP 1
 #define SM_IPV6 2
