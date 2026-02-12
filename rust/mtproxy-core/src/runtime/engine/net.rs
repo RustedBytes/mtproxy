@@ -35,6 +35,34 @@ pub enum PortOpenPlan {
     },
 }
 
+/// Attempts to open one listener port using C `try_open_port()` semantics.
+///
+/// Returns selected port on success. When `quit_on_fail` is false, failures
+/// return `Ok(None)`; otherwise an error is returned.
+pub fn try_open_port_with<F>(
+    port: i32,
+    tcp_enabled: bool,
+    quit_on_fail: bool,
+    mut try_open: F,
+) -> Result<Option<i32>, String>
+where
+    F: FnMut(i32) -> bool,
+{
+    if !tcp_enabled {
+        return Ok(Some(port));
+    }
+
+    if try_open(port) {
+        return Ok(Some(port));
+    }
+
+    if quit_on_fail {
+        Err(format!("cannot open server socket at port {port}"))
+    } else {
+        Ok(None)
+    }
+}
+
 #[inline]
 const fn mod_match(port: i32, mod_port: i32, rem_port: i32) -> bool {
     if mod_port == 0 || rem_port < 0 {
@@ -109,6 +137,47 @@ where
     }
 }
 
+/// Selects and opens runtime listener port using `engine-net.c` flow:
+/// direct `port` first, otherwise configured `[start_port, end_port]` range.
+pub fn select_listener_port_with<F>(
+    port: i32,
+    start_port: i32,
+    end_port: i32,
+    port_mod: i32,
+    tcp_enabled: bool,
+    quit_on_fail: bool,
+    mut try_open: F,
+) -> Result<Option<i32>, String>
+where
+    F: FnMut(i32) -> bool,
+{
+    if port > 0 {
+        return try_open_port_with(port, tcp_enabled, quit_on_fail, try_open);
+    }
+
+    if start_port <= end_port {
+        return try_open_port_range_with(
+            start_port,
+            end_port,
+            100,
+            port_mod,
+            quit_on_fail,
+            |candidate| {
+                matches!(
+                    try_open_port_with(candidate, tcp_enabled, false, &mut try_open),
+                    Ok(Some(_))
+                )
+            },
+        );
+    }
+
+    if quit_on_fail {
+        Err("port isn't defined".to_string())
+    } else {
+        Ok(None)
+    }
+}
+
 /// Returns whether engine network integration is initialized.
 #[must_use]
 pub fn engine_net_initialized() -> bool {
@@ -177,5 +246,35 @@ mod tests {
 
         let quit = try_open_port_range_with(10, 12, 0, -1, true, |_port| false);
         assert!(quit.is_err());
+    }
+
+    #[test]
+    fn test_try_open_port_with_matches_tcp_enabled_behavior() {
+        assert_eq!(
+            try_open_port_with(443, false, true, |_port| false).expect("tcp-disabled should pass"),
+            Some(443)
+        );
+        assert_eq!(
+            try_open_port_with(443, true, false, |_port| false)
+                .expect("non-quit failure should not error"),
+            None
+        );
+        assert!(try_open_port_with(443, true, true, |_port| false).is_err());
+    }
+
+    #[test]
+    fn test_select_listener_port_with_direct_and_range() {
+        assert_eq!(
+            select_listener_port_with(443, 0, -1, DEFAULT_PORT_MOD, true, true, |_p| true)
+                .expect("direct should pass"),
+            Some(443)
+        );
+
+        let picked =
+            select_listener_port_with(0, 1000, 1010, DEFAULT_PORT_MOD, true, true, |port| {
+                port == 1002
+            })
+            .expect("range should pass");
+        assert_eq!(picked, Some(1002));
     }
 }

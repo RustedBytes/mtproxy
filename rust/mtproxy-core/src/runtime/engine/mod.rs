@@ -190,6 +190,10 @@ static LAST_AES_PWD_LEN: AtomicU32 = AtomicU32::new(0);
 static LAST_SIGNAL_BATCH: AtomicU32 = AtomicU32::new(0);
 static LAST_SCHEDULER_BATCH: AtomicU32 = AtomicU32::new(0);
 static DO_NOT_OPEN_PORT: AtomicBool = AtomicBool::new(false);
+static LISTENER_PORT: AtomicI32 = AtomicI32::new(0);
+static LISTENER_START_PORT: AtomicI32 = AtomicI32::new(0);
+static LISTENER_END_PORT: AtomicI32 = AtomicI32::new(0);
+static LISTENER_TCP_ENABLED: AtomicBool = AtomicBool::new(true);
 
 /// Snapshot of engine lifecycle state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -204,6 +208,10 @@ pub struct EngineRuntimeSnapshot {
     pub last_aes_pwd_len: u32,
     pub last_signal_batch: u32,
     pub last_scheduler_batch: u32,
+    pub configured_port: i32,
+    pub configured_start_port: i32,
+    pub configured_end_port: i32,
+    pub configured_tcp_enabled: bool,
 }
 
 #[inline]
@@ -336,7 +344,39 @@ pub fn engine_runtime_snapshot() -> EngineRuntimeSnapshot {
         last_aes_pwd_len: LAST_AES_PWD_LEN.load(Ordering::Acquire),
         last_signal_batch: LAST_SIGNAL_BATCH.load(Ordering::Acquire),
         last_scheduler_batch: LAST_SCHEDULER_BATCH.load(Ordering::Acquire),
+        configured_port: LISTENER_PORT.load(Ordering::Acquire),
+        configured_start_port: LISTENER_START_PORT.load(Ordering::Acquire),
+        configured_end_port: LISTENER_END_PORT.load(Ordering::Acquire),
+        configured_tcp_enabled: LISTENER_TCP_ENABLED.load(Ordering::Acquire),
     }
+}
+
+/// Configures listener port/range state consumed by `server_init`.
+///
+/// `port > 0` selects direct-open mode. `port <= 0` falls back to
+/// `[start_port, end_port]` range mode.
+///
+/// # Errors
+///
+/// Returns an error when any port value is outside `0..=65535`.
+pub fn engine_configure_network_listener(
+    port: i32,
+    start_port: i32,
+    end_port: i32,
+    tcp_enabled: bool,
+) -> Result<(), String> {
+    if !(-1..=65_535).contains(&port) {
+        return Err("listener port must be in range -1..=65535".to_string());
+    }
+    if !(0..=65_535).contains(&start_port) || !(0..=65_535).contains(&end_port) {
+        return Err("listener range ports must be in range 0..=65535".to_string());
+    }
+
+    LISTENER_PORT.store(port, Ordering::Release);
+    LISTENER_START_PORT.store(start_port, Ordering::Release);
+    LISTENER_END_PORT.store(end_port, Ordering::Release);
+    LISTENER_TCP_ENABLED.store(tcp_enabled, Ordering::Release);
+    Ok(())
 }
 
 /// Initialize the engine
@@ -370,6 +410,10 @@ pub fn engine_init(pwd_filename: Option<&str>, do_not_open_port: bool) -> Result
 
     init_async_jobs()?;
     let defaults = EngineState::default();
+    LISTENER_PORT.store(defaults.port, Ordering::Release);
+    LISTENER_START_PORT.store(defaults.start_port, Ordering::Release);
+    LISTENER_END_PORT.store(defaults.end_port, Ordering::Release);
+    LISTENER_TCP_ENABLED.store(defaults.is_module_enabled(EngineModule::Tcp), Ordering::Release);
     let io_threads = normalize_thread_count("I/O", defaults.required_io_threads, 16)?;
     let cpu_threads = normalize_thread_count("CPU", defaults.required_cpu_threads, 8)?;
 
@@ -422,30 +466,26 @@ pub fn server_init() -> Result<(), String> {
         if !net::engine_net_initialized() {
             return Err("network integration is not initialized".to_string());
         }
-        let defaults = EngineState::default();
-        let selected_port = match net::engine_open_port_plan(
-            defaults.port,
-            defaults.start_port,
-            defaults.end_port,
+        let configured_port = LISTENER_PORT.load(Ordering::Acquire);
+        let configured_start_port = LISTENER_START_PORT.load(Ordering::Acquire);
+        let configured_end_port = LISTENER_END_PORT.load(Ordering::Acquire);
+        let tcp_enabled = LISTENER_TCP_ENABLED.load(Ordering::Acquire);
+
+        let selected_port = net::select_listener_port_with(
+            configured_port,
+            configured_start_port,
+            configured_end_port,
             net::DEFAULT_PORT_MOD,
-        ) {
-            net::PortOpenPlan::None => None,
-            net::PortOpenPlan::Direct(port) => Some(port),
-            net::PortOpenPlan::Range {
-                start_port,
-                end_port,
-                mod_port,
-                rem_port,
-            } => net::try_open_port_range_with(
-                start_port,
-                end_port,
-                mod_port,
-                rem_port,
-                false,
-                |_candidate| true,
-            )?,
-        };
-        SERVER_OPENED_PORT.store(selected_port.is_some(), Ordering::Release);
+            tcp_enabled,
+            true,
+            |_candidate| true,
+        )?;
+        if configured_port <= 0 {
+            if let Some(selected) = selected_port {
+                LISTENER_PORT.store(selected, Ordering::Release);
+            }
+        }
+        SERVER_OPENED_PORT.store(selected_port.is_some() && tcp_enabled, Ordering::Release);
         SERVER_SELECTED_PORT.store(selected_port.unwrap_or(-1), Ordering::Release);
     } else {
         SERVER_OPENED_PORT.store(false, Ordering::Release);

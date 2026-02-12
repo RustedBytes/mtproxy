@@ -6,8 +6,10 @@ use mtproxy_core::runtime::{
         set_signal_handlers, signal_check_pending, signal_check_pending_and_clear,
         signal_dispatch_count, signal_set_pending, SIGINT, SIGTERM, SIGUSR1,
     },
+    engine::net::{select_listener_port_with, DEFAULT_PORT_MOD},
     engine::{
-        engine_init, engine_runtime_snapshot, engine_server_start, engine_server_tick, server_init,
+        engine_configure_network_listener, engine_init, engine_runtime_snapshot,
+        engine_server_start, engine_server_tick, server_init,
     },
     jobs::{
         compute_unlock_step, do_timer_job_transition, job_flags, job_status, model_process_one_job,
@@ -244,6 +246,12 @@ fn parity_engine_server_tick_uses_persistent_scheduler() {
         mtproxy_core::runtime::engine::signals::SIGTERM,
     );
     assert!(engine_server_start().is_ok());
+    let _ = mtproxy_core::runtime::engine::signals::signal_check_pending_and_clear(
+        mtproxy_core::runtime::engine::signals::SIGINT,
+    );
+    let _ = mtproxy_core::runtime::engine::signals::signal_check_pending_and_clear(
+        mtproxy_core::runtime::engine::signals::SIGTERM,
+    );
     let tick = engine_server_tick().expect("tick should run in running lifecycle");
     if !was_running {
         assert!(tick <= 1);
@@ -279,4 +287,34 @@ fn parity_engine_server_tick_interrupt_pending_returns_error() {
     assert!(err.contains("SIGINT/SIGTERM"));
     assert!(!signal_check_pending(SIGTERM));
     assert_eq!(engine_runtime_snapshot().last_scheduler_batch, 0);
+}
+
+#[test]
+fn parity_engine_net_select_listener_direct_port_outcome() {
+    let selected = select_listener_port_with(443, 0, 0, DEFAULT_PORT_MOD, true, true, |_port| true)
+        .expect("direct listener open should succeed");
+    assert_eq!(selected, Some(443));
+}
+
+#[test]
+fn parity_engine_net_select_listener_range_outcome() {
+    let selected =
+        select_listener_port_with(0, 1000, 1004, DEFAULT_PORT_MOD, true, true, |port| {
+            port == 1002
+        })
+        .expect("range listener open should select matching port");
+    assert_eq!(selected, Some(1002));
+}
+
+#[test]
+fn parity_server_init_uses_configured_listener_ports_when_fresh() {
+    assert!(engine_init(None, false).is_ok());
+    assert!(engine_configure_network_listener(443, 0, 0, true).is_ok());
+    let was_ready = engine_runtime_snapshot().server_ready;
+    assert!(server_init().is_ok());
+    if !was_ready {
+        let snapshot = engine_runtime_snapshot();
+        assert_eq!(snapshot.selected_port, 443);
+        assert!(snapshot.opened_port);
+    }
 }

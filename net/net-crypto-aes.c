@@ -77,8 +77,6 @@ int aes_crypto_free(connection_job_t c) {
   return rc == 0 ? 0 : -1;
 }
 
-// filename = 0 -- use DEFAULT_PWD_FILE
-// 1 = init ok, else < 0
 int aes_load_pwd_file(const char *filename) {
   int32_t rc = mtproxy_ffi_crypto_aes_load_pwd_file(
       filename, (uint8_t *)pwd_config_buf, (int32_t)sizeof(pwd_config_buf),
@@ -95,10 +93,6 @@ int aes_generate_nonce(char res[16]) {
   return rc == 0 ? 0 : -1;
 }
 
-// str :=
-// nonce_server.nonce_client.client_timestamp.server_ip.client_port.("SERVER"/"CLIENT").client_ip.server_port.master_key.nonce_server.[client_ipv6.server_ipv6].nonce_client
-// key := SUBSTR(MD5(str+1),0,12).SHA1(str)
-// iv  := MD5(str+2)
 int aes_create_keys(struct aes_key_data *R, int am_client,
                     const char nonce_server[16], const char nonce_client[16],
                     int client_timestamp, unsigned server_ip,

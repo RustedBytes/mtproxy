@@ -328,6 +328,12 @@ fn runtime_init(args: &Args) -> Result<(), String> {
         .transpose()?;
 
     engine::engine_init(aes_pwd, do_not_open_port)?;
+    let (port, start_port, end_port) = match processed.tcp_port_range {
+        Some((start, end)) if start == end => (i32::from(start), 0, 0),
+        Some((start, end)) => (0, i32::from(start), i32::from(end)),
+        None => (0, 0, 0),
+    };
+    engine::engine_configure_network_listener(port, start_port, end_port, true)?;
     engine::server_init()?;
     Ok(())
 }
