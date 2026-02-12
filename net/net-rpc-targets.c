@@ -77,7 +77,6 @@ static struct tree_rpc_target *rpc_target_tree;
 struct tree_rpc_target *get_rpc_target_tree_ptr(struct tree_rpc_target **T);
 void free_rpc_target_tree_ptr(struct tree_rpc_target *T);
 
-/* {{{ STAT */
 #define MODULE rpc_targets
 
 MODULE_STAT_TYPE {

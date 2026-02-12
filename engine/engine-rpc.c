@@ -243,8 +243,6 @@ struct ifeq_extra {
 
 static int process_act_atom_subjob(job_t job, int op, struct job_thread *JT);
 
-/* {{{ auto TL parse functions weak declaration */
-
 void paramed_type_free(struct paramed_type *P) __attribute__((weak));
 void paramed_type_free(struct paramed_type *P) {}
 

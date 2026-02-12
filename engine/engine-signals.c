@@ -40,8 +40,6 @@ volatile static unsigned long long pending_signals;
 void engine_set_terminal_attributes(void) __attribute__((weak));
 void engine_set_terminal_attributes(void) {}
 
-/* {{{ PENDING SIGNALS */
-
 void signal_set_pending(int sig) {
   __sync_fetch_and_or(&pending_signals, SIG2INT(sig));
 }

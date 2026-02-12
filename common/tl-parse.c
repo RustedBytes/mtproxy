@@ -276,7 +276,6 @@ int tls_set_error_format(struct tl_out_state *tlio_out, int errnum,
   return 0;
 }
 
-/* {{{ Raw msg methods */
 static inline void __tl_raw_msg_fetch_raw_data(struct tl_in_state *tlio_in,
                                                void *buf, int len) {
   assert(rwm_fetch_data(TL_IN_RAW_MSG, buf, len) == len);
@@ -413,22 +412,11 @@ static inline void __tl_raw_msg_store_clear(struct tl_out_state *tlio_out) {
 }
 
 static inline void __tl_raw_msg_store_flush(struct tl_out_state *tlio_out) {
-  //  struct udp_target *S = (struct udp_target *)TL_OUT_EXTRA;
   assert(TL_OUT_RAW_MSG);
-  /*#ifdef TIME_DEBUG
-  long long r = rdtsc ();
-  #endif*/
   assert(0);
-  /*#ifdef TIME_DEBUG
-  MODULE_STAT->tl_udp_flush_rdtsc += (rdtsc () - r);
-  MODULE_STAT->tl_udp_flush_cnt ++;
-  #endif*/
   free(TL_OUT_RAW_MSG);
   TL_OUT = 0;
-  // udp_target_flush ((struct udp_target *)TL_OUT_EXTRA);
 }
-
-/* {{{ Tcp raw msg methods */
 
 static inline void __tl_tcp_raw_msg_store_clear(struct tl_out_state *tlio_out) {
   if (TL_OUT_RAW_MSG) {
@@ -455,7 +443,6 @@ __tl_tcp_raw_msg_store_flush_unaligned(struct tl_out_state *tlio_out) {
   TL_OUT = NULL;
 }
 
-/* {{{ Str methods */
 static inline void __tl_str_fetch_raw_data(struct tl_in_state *tlio_in,
                                            void *buf, int len) {
   memcpy(buf, TL_IN_STR, len);

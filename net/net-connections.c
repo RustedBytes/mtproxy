@@ -285,7 +285,6 @@ static inline int connection_is_active(int flags) {
   return active;
 }
 
-/* {{{ compute_conn_events */
 #if USE_EPOLLET
 static inline int compute_conn_events(socket_connection_job_t c) {
   int32_t events =
@@ -313,16 +312,12 @@ void connection_write_close(connection_job_t C) {
   }
 }
 
-/* qack {{{ */
 static inline void disable_qack(int fd) {
   vkprintf(2, "disable TCP_QUICKACK for %d\n", fd);
   assert(setsockopt(fd, IPPROTO_TCP, TCP_QUICKACK, (int[]){0}, sizeof(int)) >=
          0);
 }
 
-/* {{{ CPU PART OF CONNECTION */
-
-/* {{{ TIMEOUT */
 int set_connection_timeout(connection_job_t C, double timeout) {
   struct connection_info *c = CONN_INFO(C);
 
@@ -783,8 +778,6 @@ connection_job_t alloc_new_connection(int cfd, conn_target_job_t CTJ,
     return NULL;
   }
 }
-
-/* {{{ IO PART OF CONNECTION */
 
 /*
   Have to have lock on socket_connection to run this method
@@ -1248,8 +1241,6 @@ socket_connection_job_t alloc_new_socket_connection(connection_job_t C) {
   return S;
 }
 
-/* {{{ LISTENING CONNECTION */
-
 /*
   accepts new connections
   executes alloc_new_connection ()
@@ -1419,7 +1410,6 @@ int init_listening_tcpv6_connection(int fd, conn_type_t *type, void *extra,
   return init_listening_connection_ext(fd, type, extra, mode, -10);
 }
 
-/* {{{ connection refcnt */
 void connection_event_incref(int fd, long long val) {
   struct event_descr *ev = &Events[fd];
 
@@ -1479,8 +1469,6 @@ connection_job_t connection_get_by_fd_generation(int fd, int generation) {
     return C;
   }
 }
-
-/* {{{ Sample server functions */
 
 int server_check_ready(connection_job_t C) {
   struct connection_info *c = CONN_INFO(C);
@@ -1938,7 +1926,6 @@ int destroy_target(JOB_REF_ARG(CTJ)) {
   }
   return r;
 }
-/*}}} */
 
 int do_conn_target_job(job_t job, int op, struct job_thread *JT) {
   if (epoll_fd <= 0) {
@@ -2066,38 +2053,12 @@ void tcp_set_max_connections(int maxconn) {
 
 int create_all_outbound_connections_limited(int limit) {
   return 0;
-  /*int count = 0;
-  get_utime_monotonic ();
-  //close_some_unneeded_connections ();
-  //ready_outbound_connections = ready_targets = 0;
-  int new_ready_outbound_connections = 0;
-  int new_ready_targets = 0;
-
-  pthread_mutex_lock (&TargetsLock);
-  conn_target_job_t S;
-  for (S = CONN_TARGET_INFO(ActiveTargets)->next_target; S != ActiveTargets &&
-  count < limit; S = CONN_TARGET_INFO(S)->next_target) { struct conn_target_info
-  *s = CONN_TARGET_INFO (S);
-
-    assert (s->type && s->refcnt > 0);
-    count += create_new_connections (S);
-
-    if (s->ready_outbound_connections) {
-      new_ready_outbound_connections += s->ready_outbound_connections;
-      new_ready_targets++;
-    }
-  }
-  pthread_mutex_unlock (&TargetsLock);
-  MODULE_STAT->ready_targets = new_ready_targets;
-  MODULE_STAT->ready_outbound_connections = new_ready_outbound_connections;
-  return count;    */
 }
 
 int create_all_outbound_connections(void) {
   return create_all_outbound_connections_limited(0x7fffffff);
 }
 
-/* {{{ conn_target_get_connection */
 static void check_connection(connection_job_t C, void *x) {
   connection_job_t *P = x;
   if (*P) {

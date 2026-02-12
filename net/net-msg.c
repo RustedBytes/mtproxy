@@ -1170,7 +1170,6 @@ int rwm_sha1(struct raw_message *raw, int bytes, unsigned char output[20]) {
   return res;
 }
 
-/* {{{ crc32c */
 static int crc32c_process(void *extra, const void *data, int len) {
   unsigned crc32c = *(unsigned *)extra;
   *(unsigned *)extra = crc32c_partial(data, len, crc32c);
@@ -1185,7 +1184,6 @@ unsigned rwm_crc32c(struct raw_message *raw, int bytes) {
   return ~crc32c;
 }
 
-/* {{{ crc32 */
 static int crc32_process(void *extra, const void *data, int len) {
   unsigned crc32 = *(unsigned *)extra;
   *(unsigned *)extra = crc32_partial(data, len, crc32);
@@ -1312,7 +1310,6 @@ void rwm_from_tl_string(struct raw_message *raw) {
   rwm_trunc(raw, x);
 }
 
-/*{{{ encrypt_decrypt */
 struct rwm_encrypt_decrypt_tmp {
   int bp;
   int buf_left;

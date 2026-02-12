@@ -82,7 +82,6 @@ static void default_nop(void) {}
 
 static int default_parse_option(int val) { return -1; }
 
-/* {{{ SIGNAL ACTIONS */
 static void default_sighup(void) {}
 
 static void default_sigusr1(void) {
@@ -106,7 +105,6 @@ void set_signals_handlers(void) {
   set_debug_handlers();
 }
 
-/* {{{ PIPE TO WAKEUP MAIN THREAD */
 static int pipe_read_end;
 static int pipe_write_end;
 
@@ -183,8 +181,6 @@ static void raise_file_limit(int maxconn) {
     }
   }
 }
-
-/* {{{ engine_init */
 
 void engine_init(const char *const pwd_filename, int do_not_open_port) {
   engine_t *E = engine_state;
@@ -322,8 +318,6 @@ void server_exit(void) {
     kprintf("Terminated by SIGINT.\n");
   }
 }
-
-/* {{{ precise cron */
 
 struct event_precise_cron precise_cron_events = {.next = &precise_cron_events,
                                                  .prev = &precise_cron_events};
@@ -727,7 +721,6 @@ void default_parse_extra_args(int argc, char *argv[]) {
     usage();
   }
 }
-/*}}}*/
 
 int default_parse_option_func(int a) {
   if (engine_state) {

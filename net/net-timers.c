@@ -30,7 +30,6 @@
 #include "jobs/jobs.h"
 #include <stdint.h>
 
-/* {{{ STAT */
 #define MODULE timers
 
 MODULE_STAT_TYPE {
