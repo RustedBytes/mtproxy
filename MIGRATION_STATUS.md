@@ -9,7 +9,7 @@ This document tracks the progress of migrating the MTProxy C codebase to Rust (S
 **Current Status**: 
 - **Rust binary**: `mtproxy-rust` with full CLI interface ✅
 - **C units migrated**: 15 complete + 25 partial of 44 total modules (91% in progress or complete)
-- **Tests passing**: 246 (all Rust tests passing)
+- **Tests passing**: 303 (all Rust tests passing)
 - **Build system**: Hybrid C/Rust with FFI bridge ✅
 
 ## Migration Strategy
@@ -107,16 +107,16 @@ This document tracks the progress of migrating the MTProxy C codebase to Rust (S
 | C File | Lines | Rust Module | Status | Priority | Notes |
 |--------|-------|-------------|--------|----------|-------|
 | `engine/engine.c` | ~2000 | `mtproxy-core::runtime::engine` | 🟡 Partial | **CRITICAL** | Lifecycle + initialization flow ported; full event loop parity pending |
-| `engine/engine-net.c` | ~800 | `mtproxy-core::runtime::engine::net` | 🟡 Partial | **CRITICAL** | Engine network bootstrap path implemented; socket parity pending |
+| `engine/engine-net.c` | ~800 | `mtproxy-core::runtime::engine::net` | 🟡 Partial | **CRITICAL** | Bootstrap + privileged port/range selection helpers ported; socket parity pending |
 | `engine/engine-rpc.c` | ~600 | `mtproxy-core::runtime::engine::rpc` | 🟡 Partial | HIGH | Custom op registration and RPC bootstrap ported |
 | `engine/engine-rpc-common.c` | ~400 | `mtproxy-core::runtime::engine::rpc_common` | 🟡 Partial | HIGH | RPC common init path ported |
-| `engine/engine-signals.c` | ~300 | `mtproxy-core::runtime::engine::signals` | 🟡 Partial | MED | Pending/allowed/installed signal tracking and processing ported |
+| `engine/engine-signals.c` | ~300 | `mtproxy-core::runtime::engine::signals` | 🟡 Partial | MED | Pending/allowed/installed masks + callback dispatch loop semantics ported |
 
 ### Job System
 
 | C File | Lines | Rust Module | Status | Priority | Notes |
 |--------|-------|-------------|--------|----------|-------|
-| `jobs/jobs.c` | ~900 | `mtproxy-core::runtime::jobs` | 🟡 Partial | HIGH | Core class/timer bootstrap and validation logic ported; scheduler parity pending |
+| `jobs/jobs.c` | ~900 | `mtproxy-core::runtime::jobs` | 🟡 Partial | HIGH | Core class/timer bootstrap + unlock/signal progression + process/retry + subclass token + completion propagation + process_job_list/insert/timer transitions + executable runtime lock/unlock + runtime dequeue scheduler path ported; persistent atomic-backed scheduler queue/tick path, handler-table callback dispatch, timer callback kind, and runtime job constructors added; integration parity tests added for multi-signal/timer/retry/scheduler flows; full scheduler parity pending |
 
 ## Status Legend
 

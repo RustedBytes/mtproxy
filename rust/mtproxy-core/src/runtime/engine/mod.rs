@@ -46,10 +46,15 @@ use alloc::{
     format,
     string::{String, ToString},
 };
-use core::sync::atomic::{AtomicBool, AtomicU32, AtomicU8, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, AtomicU8, Ordering};
 
 use crate::runtime::jobs::{
-    alloc_timer_manager, create_new_job_class, init_async_jobs, is_job_class_configured, JobClass,
+    alloc_timer_manager, create_new_job_class, init_async_jobs, is_job_class_configured,
+    queued_class_flag, runtime_execute_callback, runtime_job_engine_signal_drain,
+    runtime_job_process_job_list, runtime_job_timer_alarm, runtime_scheduler_persistent_enqueue,
+    runtime_scheduler_persistent_process_next_with_handlers, runtime_scheduler_persistent_reset,
+    JobClass, JobSignal, RuntimeJobCallbackKind, RuntimeJobHandler, RuntimeJobState,
+    RuntimeSchedulerTick,
 };
 
 /// Engine configuration flags
@@ -179,9 +184,11 @@ enum EngineLifecycle {
 
 static ENGINE_LIFECYCLE: AtomicU8 = AtomicU8::new(EngineLifecycle::Cold as u8);
 static SERVER_OPENED_PORT: AtomicBool = AtomicBool::new(false);
+static SERVER_SELECTED_PORT: AtomicI32 = AtomicI32::new(-1);
 static ENGINE_INIT_CALLS: AtomicU32 = AtomicU32::new(0);
 static LAST_AES_PWD_LEN: AtomicU32 = AtomicU32::new(0);
 static LAST_SIGNAL_BATCH: AtomicU32 = AtomicU32::new(0);
+static LAST_SCHEDULER_BATCH: AtomicU32 = AtomicU32::new(0);
 static DO_NOT_OPEN_PORT: AtomicBool = AtomicBool::new(false);
 
 /// Snapshot of engine lifecycle state.
@@ -191,10 +198,12 @@ pub struct EngineRuntimeSnapshot {
     pub server_ready: bool,
     pub running: bool,
     pub opened_port: bool,
+    pub selected_port: i32,
     pub do_not_open_port: bool,
     pub init_calls: u32,
     pub last_aes_pwd_len: u32,
     pub last_signal_batch: u32,
+    pub last_scheduler_batch: u32,
 }
 
 #[inline]
@@ -245,6 +254,69 @@ fn normalize_thread_count(name: &str, requested: i32, fallback: u32) -> Result<u
     Ok(normalized)
 }
 
+fn engine_signal_drain_runtime_handler(job: &mut RuntimeJobState, signal: u32) -> i32 {
+    if signal == JobSignal::Run as u32 {
+        let drained = signals::engine_process_signals_with(|_| {});
+        job.error = i32::try_from(drained).unwrap_or(i32::MAX);
+    }
+    0
+}
+
+fn process_job_list_runtime_handler(job: &mut RuntimeJobState, signal: u32) -> i32 {
+    runtime_execute_callback(job, signal)
+}
+
+fn timer_transition_runtime_handler(job: &mut RuntimeJobState, signal: u32) -> i32 {
+    runtime_execute_callback(job, signal)
+}
+
+const ENGINE_RUNTIME_HANDLERS: [RuntimeJobHandler; 3] = [
+    RuntimeJobHandler {
+        kind: RuntimeJobCallbackKind::EngineSignalDrain,
+        handler: engine_signal_drain_runtime_handler,
+    },
+    RuntimeJobHandler {
+        kind: RuntimeJobCallbackKind::ProcessJobList,
+        handler: process_job_list_runtime_handler,
+    },
+    RuntimeJobHandler {
+        kind: RuntimeJobCallbackKind::TimerTransition,
+        handler: timer_transition_runtime_handler,
+    },
+];
+
+fn enqueue_engine_bootstrap_jobs() -> Result<(), String> {
+    runtime_scheduler_persistent_enqueue(
+        JobClass::Engine as u32,
+        runtime_job_engine_signal_drain(),
+    )
+    .map_err(|err| format!("runtime scheduler enqueue failed: {err}"))?;
+
+    runtime_scheduler_persistent_enqueue(JobClass::Engine as u32, runtime_job_process_job_list())
+        .map_err(|err| format!("runtime scheduler enqueue failed: {err}"))?;
+
+    runtime_scheduler_persistent_enqueue(
+        JobClass::Engine as u32,
+        runtime_job_timer_alarm(true, 0.25, true),
+    )
+    .map_err(|err| format!("runtime scheduler enqueue failed: {err}"))?;
+
+    Ok(())
+}
+
+fn process_engine_scheduler_batch(max_steps: u32) -> u32 {
+    let mut processed = 0_u32;
+    for _ in 0..max_steps {
+        match runtime_scheduler_persistent_process_next_with_handlers(&ENGINE_RUNTIME_HANDLERS) {
+            RuntimeSchedulerTick::Processed { .. } => {
+                processed = processed.saturating_add(1);
+            }
+            RuntimeSchedulerTick::Idle => break,
+        }
+    }
+    processed
+}
+
 /// Returns a snapshot of runtime engine lifecycle state.
 #[must_use]
 pub fn engine_runtime_snapshot() -> EngineRuntimeSnapshot {
@@ -254,10 +326,12 @@ pub fn engine_runtime_snapshot() -> EngineRuntimeSnapshot {
         server_ready: lifecycle >= EngineLifecycle::ServerReady,
         running: lifecycle >= EngineLifecycle::Running,
         opened_port: SERVER_OPENED_PORT.load(Ordering::Acquire),
+        selected_port: SERVER_SELECTED_PORT.load(Ordering::Acquire),
         do_not_open_port: DO_NOT_OPEN_PORT.load(Ordering::Acquire),
         init_calls: ENGINE_INIT_CALLS.load(Ordering::Acquire),
         last_aes_pwd_len: LAST_AES_PWD_LEN.load(Ordering::Acquire),
         last_signal_batch: LAST_SIGNAL_BATCH.load(Ordering::Acquire),
+        last_scheduler_batch: LAST_SCHEDULER_BATCH.load(Ordering::Acquire),
     }
 }
 
@@ -287,6 +361,8 @@ pub fn engine_init(pwd_filename: Option<&str>, do_not_open_port: bool) -> Result
 
     DO_NOT_OPEN_PORT.store(do_not_open_port, Ordering::Release);
     ENGINE_INIT_CALLS.fetch_add(1, Ordering::AcqRel);
+    LAST_SCHEDULER_BATCH.store(0, Ordering::Release);
+    runtime_scheduler_persistent_reset(queued_class_flag(JobClass::Engine as u32));
 
     init_async_jobs()?;
     let defaults = EngineState::default();
@@ -338,10 +414,39 @@ pub fn server_init() -> Result<(), String> {
 
     signals::set_signal_handlers()?;
     let should_open_port = !DO_NOT_OPEN_PORT.load(Ordering::Acquire);
-    if should_open_port && !net::engine_net_initialized() {
-        return Err("network integration is not initialized".to_string());
+    if should_open_port {
+        if !net::engine_net_initialized() {
+            return Err("network integration is not initialized".to_string());
+        }
+        let defaults = EngineState::default();
+        let selected_port = match net::engine_open_port_plan(
+            defaults.port,
+            defaults.start_port,
+            defaults.end_port,
+            net::DEFAULT_PORT_MOD,
+        ) {
+            net::PortOpenPlan::None => None,
+            net::PortOpenPlan::Direct(port) => Some(port),
+            net::PortOpenPlan::Range {
+                start_port,
+                end_port,
+                mod_port,
+                rem_port,
+            } => net::try_open_port_range_with(
+                start_port,
+                end_port,
+                mod_port,
+                rem_port,
+                false,
+                |_candidate| true,
+            )?,
+        };
+        SERVER_OPENED_PORT.store(selected_port.is_some(), Ordering::Release);
+        SERVER_SELECTED_PORT.store(selected_port.unwrap_or(-1), Ordering::Release);
+    } else {
+        SERVER_OPENED_PORT.store(false, Ordering::Release);
+        SERVER_SELECTED_PORT.store(-1, Ordering::Release);
     }
-    SERVER_OPENED_PORT.store(should_open_port, Ordering::Release);
     advance_lifecycle(EngineLifecycle::ServerReady);
     Ok(())
 }
@@ -373,13 +478,37 @@ pub fn engine_server_start() -> Result<(), String> {
     }
 
     if signals::interrupt_signal_raised() {
-        LAST_SIGNAL_BATCH.store(signals::process_pending_signals(), Ordering::Release);
+        LAST_SIGNAL_BATCH.store(
+            signals::engine_process_signals_with(|_| {}),
+            Ordering::Release,
+        );
+        LAST_SCHEDULER_BATCH.store(0, Ordering::Release);
         return Err("startup interrupted by pending SIGINT/SIGTERM".to_string());
     }
 
-    LAST_SIGNAL_BATCH.store(signals::process_pending_signals(), Ordering::Release);
+    LAST_SIGNAL_BATCH.store(
+        signals::engine_process_signals_with(|_| {}),
+        Ordering::Release,
+    );
+    enqueue_engine_bootstrap_jobs()?;
+    let processed = process_engine_scheduler_batch(4);
+    LAST_SCHEDULER_BATCH.store(processed, Ordering::Release);
     advance_lifecycle(EngineLifecycle::Running);
     Ok(())
+}
+
+/// Processes one runtime scheduler tick while server is running.
+///
+/// # Errors
+///
+/// Returns an error when server is not in running lifecycle state.
+pub fn engine_server_tick() -> Result<u32, String> {
+    if lifecycle() != EngineLifecycle::Running {
+        return Err("server must be running before scheduler tick".to_string());
+    }
+    let processed = process_engine_scheduler_batch(1);
+    LAST_SCHEDULER_BATCH.store(processed, Ordering::Release);
+    Ok(processed)
 }
 
 #[cfg(test)]
@@ -441,15 +570,36 @@ mod tests {
         let snapshot = engine_runtime_snapshot();
         assert!(snapshot.server_ready);
         assert!(!snapshot.opened_port);
+        assert_eq!(snapshot.selected_port, -1);
     }
 
     #[test]
     fn test_engine_server_start_returns_ok() {
         assert!(engine_init(None, true).is_ok());
         assert!(server_init().is_ok());
+        let was_running = engine_runtime_snapshot().running;
         let result = engine_server_start();
         assert!(result.is_ok());
-        assert!(engine_runtime_snapshot().running);
+        let snapshot = engine_runtime_snapshot();
+        assert!(snapshot.running);
+        if !was_running {
+            assert!(snapshot.last_scheduler_batch >= 1);
+        }
+    }
+
+    #[test]
+    fn test_engine_server_tick_returns_idle_after_startup_batch() {
+        assert!(engine_init(None, true).is_ok());
+        assert!(server_init().is_ok());
+        let was_running = engine_runtime_snapshot().running;
+        let _ = signals::signal_check_pending_and_clear(signals::SIGINT);
+        let _ = signals::signal_check_pending_and_clear(signals::SIGTERM);
+        assert!(engine_server_start().is_ok());
+        let processed = engine_server_tick().expect("tick should run");
+        if !was_running {
+            assert!(processed <= 1);
+            assert_eq!(engine_runtime_snapshot().last_scheduler_batch, processed);
+        }
     }
 
     #[test]

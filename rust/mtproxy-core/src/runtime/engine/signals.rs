@@ -23,6 +23,8 @@ static ALLOWED_SIGNALS: AtomicU64 = AtomicU64::new(0);
 static INSTALLED_SIGNALS: AtomicU64 = AtomicU64::new(0);
 static SIGNAL_HANDLERS_INITIALIZED: AtomicBool = AtomicBool::new(false);
 static PROCESSED_SIGNALS: AtomicU32 = AtomicU32::new(0);
+static DISPATCHED_SIGNALS: [AtomicU32; OUR_SIGRTMAX + 1] =
+    [const { AtomicU32::new(0) }; OUR_SIGRTMAX + 1];
 
 /// Signal handler callback type
 pub type SignalHandler = fn();
@@ -116,17 +118,48 @@ pub fn register_runtime_signal(sig: u32) -> Result<(), String> {
 
 /// Drains pending allowed signals and returns number of processed entries.
 pub fn process_pending_signals() -> u32 {
+    engine_process_signals_with(|_| {})
+}
+
+#[inline]
+const fn next_signal_from_mask(mask: u64) -> u32 {
+    let bit = mask.trailing_zeros();
+    if bit == 0 {
+        OUR_SIGRTMAX as u32
+    } else {
+        bit
+    }
+}
+
+/// C-style signal processing loop: process each allowed signal at most once per
+/// pass, even if a callback re-raises it.
+pub fn engine_process_signals_with<F>(mut callback: F) -> u32
+where
+    F: FnMut(u32),
+{
     let mut processed = 0_u32;
     let allowed = ALLOWED_SIGNALS.load(Ordering::Acquire);
-    for sig in 1_u32..=(OUR_SIGRTMAX as u32) {
+    let mut forbidden = 0_u64;
+
+    loop {
+        let pending = PENDING_SIGNALS.load(Ordering::Acquire);
+        let candidates = allowed & pending & !forbidden;
+        if candidates == 0 {
+            break;
+        }
+
+        let sig = next_signal_from_mask(candidates);
         let mask = sig_to_int(sig);
-        if (allowed & mask) == 0 {
-            continue;
-        }
         if signal_check_pending_and_clear(sig) {
+            callback(sig);
             processed = processed.saturating_add(1);
+            if let Some(slot) = DISPATCHED_SIGNALS.get(sig as usize) {
+                slot.fetch_add(1, Ordering::AcqRel);
+            }
         }
+        forbidden |= mask;
     }
+
     if processed > 0 {
         PROCESSED_SIGNALS.fetch_add(processed, Ordering::AcqRel);
     }
@@ -137,6 +170,15 @@ pub fn process_pending_signals() -> u32 {
 #[must_use]
 pub fn processed_signals_count() -> u32 {
     PROCESSED_SIGNALS.load(Ordering::Acquire)
+}
+
+/// Returns number of times a concrete signal was dispatched.
+#[must_use]
+pub fn signal_dispatch_count(sig: u32) -> u32 {
+    DISPATCHED_SIGNALS
+        .get(sig as usize)
+        .map(|v| v.load(Ordering::Acquire))
+        .unwrap_or(0)
 }
 
 /// Initialize signal handlers
@@ -152,7 +194,7 @@ pub fn set_signal_handlers() -> Result<(), String> {
     }
 
     ALLOWED_SIGNALS.store(DEFAULT_ALLOWED_SIGNALS, Ordering::Release);
-    INSTALLED_SIGNALS.store(SIG_INTERRUPT_MASK, Ordering::Release);
+    INSTALLED_SIGNALS.store(DEFAULT_ALLOWED_SIGNALS, Ordering::Release);
     SIGNAL_HANDLERS_INITIALIZED.store(true, Ordering::Release);
     Ok(())
 }
@@ -208,5 +250,24 @@ mod tests {
         assert!(register_runtime_signal(12).is_ok());
         assert_ne!(installed_signals_mask() & sig_to_int(12), 0);
         assert_ne!(allowed_signals_mask() & sig_to_int(12), 0);
+    }
+
+    #[test]
+    fn test_engine_process_signals_forbids_double_processing_in_single_pass() {
+        assert!(set_signal_handlers().is_ok());
+        assert!(register_runtime_signal(SIGUSR1).is_ok());
+        PENDING_SIGNALS.store(0, Ordering::SeqCst);
+
+        let before = signal_dispatch_count(SIGUSR1);
+        signal_set_pending(SIGUSR1);
+
+        let processed = engine_process_signals_with(|sig| {
+            if sig == SIGUSR1 {
+                signal_set_pending(SIGUSR1);
+            }
+        });
+        assert_eq!(processed, 1);
+        assert!(signal_check_pending(SIGUSR1));
+        assert_eq!(signal_dispatch_count(SIGUSR1), before + 1);
     }
 }

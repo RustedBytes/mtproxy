@@ -64,7 +64,7 @@ LIB_OBJS_NORMAL := \
 	${OBJ}/engine/engine-rpc.o \
 	${OBJ}/engine/engine-rpc-common.o \
 	${OBJ}/net/net-thread.o ${OBJ}/net/net-stats.o ${OBJ}/common/proc-stat.o \
-	${OBJ}/common/kprintf_wrapper.o \
+	${OBJ}/common/kprintf.o \
 	${OBJ}/common/precise-time.o ${OBJ}/common/cpuid.o \
 	${OBJ}/common/server-functions.o ${OBJ}/crypto/crc32.o \
 	${OBJ}/common/rust-ffi-bridge.o \
