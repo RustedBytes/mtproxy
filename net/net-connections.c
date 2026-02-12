@@ -322,13 +322,61 @@ extern int32_t mtproxy_ffi_net_connections_target_pick_should_skip(
 extern int32_t mtproxy_ffi_net_connections_target_pick_should_select(
     int32_t allow_stopped, int32_t candidate_ready, int32_t has_selected,
     int32_t selected_unreliability, int32_t candidate_unreliability);
+extern int32_t mtproxy_ffi_net_connections_connection_write_close_action(
+    int32_t status, int32_t has_io_conn);
+extern int32_t mtproxy_ffi_net_connections_connection_timeout_action(
+    int32_t flags, double timeout);
+extern int32_t mtproxy_ffi_net_connections_fail_connection_action(
+    int32_t previous_flags, int32_t current_error);
+extern int32_t mtproxy_ffi_net_connections_free_connection_allocated_deltas(
+    int32_t basic_type, int32_t *out_allocated_outbound_delta,
+    int32_t *out_allocated_inbound_delta);
+extern int32_t mtproxy_ffi_net_connections_close_connection_failure_deltas(
+    int32_t error, int32_t flags, int32_t *out_total_failed_delta,
+    int32_t *out_total_connect_failures_delta, int32_t *out_unused_closed_delta);
+extern int32_t mtproxy_ffi_net_connections_close_connection_has_isdh(
+    int32_t flags);
+extern int32_t mtproxy_ffi_net_connections_close_connection_basic_deltas(
+    int32_t basic_type, int32_t flags, int32_t has_target,
+    int32_t *out_outbound_delta, int32_t *out_inbound_delta,
+    int32_t *out_active_outbound_delta, int32_t *out_active_inbound_delta,
+    int32_t *out_active_connections_delta, int32_t *out_signal_target);
+extern int32_t mtproxy_ffi_net_connections_close_connection_has_special(
+    int32_t flags);
+extern int32_t
+mtproxy_ffi_net_connections_close_connection_should_signal_special_aux(
+    int32_t orig_special_connections, int32_t max_special_connections);
+extern int32_t
+mtproxy_ffi_net_connections_alloc_connection_basic_type_policy(
+    int32_t basic_type, int32_t *out_initial_flags,
+    int32_t *out_initial_status, int32_t *out_is_outbound_path);
+extern int32_t mtproxy_ffi_net_connections_alloc_connection_success_deltas(
+    int32_t basic_type, int32_t has_target, int32_t *out_outbound_delta,
+    int32_t *out_allocated_outbound_delta, int32_t *out_outbound_created_delta,
+    int32_t *out_inbound_accepted_delta, int32_t *out_allocated_inbound_delta,
+    int32_t *out_inbound_delta, int32_t *out_active_inbound_delta,
+    int32_t *out_active_connections_delta, int32_t *out_target_outbound_delta,
+    int32_t *out_should_incref_target);
+extern int32_t mtproxy_ffi_net_connections_alloc_connection_listener_flags(
+    int32_t listening_flags);
+extern int32_t mtproxy_ffi_net_connections_alloc_connection_special_action(
+    int32_t active_special_connections, int32_t max_special_connections);
+extern int32_t mtproxy_ffi_net_connections_alloc_connection_failure_action(
+    int32_t flags);
+extern int32_t mtproxy_ffi_net_connections_socket_job_action(
+    int32_t op, int32_t js_abort, int32_t js_run, int32_t js_aux,
+    int32_t js_finish);
+extern int32_t mtproxy_ffi_net_connections_socket_job_abort_error(void);
+extern int32_t mtproxy_ffi_net_connections_fail_socket_connection_action(
+    int32_t previous_flags);
+extern int32_t mtproxy_ffi_net_connections_alloc_socket_connection_plan(
+    int32_t conn_flags, int32_t use_epollet, int32_t *out_socket_flags,
+    int32_t *out_initial_epoll_status, int32_t *out_allocated_socket_delta);
+extern int32_t mtproxy_ffi_net_connections_socket_free_plan(
+    int32_t has_conn, int32_t *out_fail_error,
+    int32_t *out_allocated_socket_delta);
 
 void tcp_set_max_accept_rate(int rate) { max_accept_rate = rate; }
-
-int set_write_timer(connection_job_t C);
-
-int prealloc_tcp_buffers(void);
-int clear_connection_write_timeout(connection_job_t c);
 
 static int tcp_recv_buffers_num;
 static int tcp_recv_buffers_total_size;
@@ -406,15 +454,40 @@ static inline int compute_conn_events(connection_job_t c) {
 #endif
 
 void connection_write_close(connection_job_t C) {
-  struct connection_info *c = CONN_INFO(C);
-  if (c->status == conn_working) {
-    socket_connection_job_t S = c->io_conn;
-    if (S) {
-      __sync_fetch_and_or(&SOCKET_CONN_INFO(S)->flags, C_STOPREAD);
-    }
-    __sync_fetch_and_or(&c->flags, C_STOPREAD);
-    c->status = conn_write_close;
+  enum {
+    CONNECTION_WRITE_CLOSE_ACTION_NOOP = 0,
+    CONNECTION_WRITE_CLOSE_ACTION_SET_IO_STOPREAD = 1 << 0,
+    CONNECTION_WRITE_CLOSE_ACTION_SET_CONN_STOPREAD = 1 << 1,
+    CONNECTION_WRITE_CLOSE_ACTION_SET_STATUS_WRITE_CLOSE = 1 << 2,
+    CONNECTION_WRITE_CLOSE_ACTION_SIGNAL_RUN = 1 << 3,
+  };
 
+  struct connection_info *c = CONN_INFO(C);
+  socket_connection_job_t S = c->io_conn;
+
+  int32_t action = mtproxy_ffi_net_connections_connection_write_close_action(
+      c->status, S != NULL);
+  assert((action &
+          ~(CONNECTION_WRITE_CLOSE_ACTION_SET_IO_STOPREAD |
+            CONNECTION_WRITE_CLOSE_ACTION_SET_CONN_STOPREAD |
+            CONNECTION_WRITE_CLOSE_ACTION_SET_STATUS_WRITE_CLOSE |
+            CONNECTION_WRITE_CLOSE_ACTION_SIGNAL_RUN)) == 0);
+  if (action == CONNECTION_WRITE_CLOSE_ACTION_NOOP) {
+    return;
+  }
+
+  if (action & CONNECTION_WRITE_CLOSE_ACTION_SET_IO_STOPREAD) {
+    assert(S);
+    __sync_fetch_and_or(&SOCKET_CONN_INFO(S)->flags, C_STOPREAD);
+  }
+  if (action & CONNECTION_WRITE_CLOSE_ACTION_SET_CONN_STOPREAD) {
+    __sync_fetch_and_or(&c->flags, C_STOPREAD);
+  }
+  if (action & CONNECTION_WRITE_CLOSE_ACTION_SET_STATUS_WRITE_CLOSE) {
+    c->status = conn_write_close;
+  }
+
+  if (action & CONNECTION_WRITE_CLOSE_ACTION_SIGNAL_RUN) {
     job_signal(JOB_REF_CREATE_PASS(C), JS_RUN);
   }
 }
@@ -426,21 +499,31 @@ static inline void disable_qack(int fd) {
 }
 
 int set_connection_timeout(connection_job_t C, double timeout) {
+  enum {
+    CONNECTION_TIMEOUT_ACTION_SKIP_ERROR = 0,
+    CONNECTION_TIMEOUT_ACTION_INSERT_TIMER = 1,
+    CONNECTION_TIMEOUT_ACTION_REMOVE_TIMER = 2,
+  };
+
   struct connection_info *c = CONN_INFO(C);
 
-  if (c->flags & C_ERROR) {
+  int32_t timeout_action = mtproxy_ffi_net_connections_connection_timeout_action(
+      c->flags, timeout);
+  assert(timeout_action == CONNECTION_TIMEOUT_ACTION_SKIP_ERROR ||
+         timeout_action == CONNECTION_TIMEOUT_ACTION_INSERT_TIMER ||
+         timeout_action == CONNECTION_TIMEOUT_ACTION_REMOVE_TIMER);
+  if (timeout_action == CONNECTION_TIMEOUT_ACTION_SKIP_ERROR) {
     return 0;
   }
 
   __sync_fetch_and_and(&c->flags, ~C_ALARM);
 
-  if (timeout > 0) {
+  if (timeout_action == CONNECTION_TIMEOUT_ACTION_INSERT_TIMER) {
     job_timer_insert(C, precise_now + timeout);
-    return 0;
   } else {
     job_timer_remove(C);
-    return 0;
   }
+  return 0;
 }
 
 int clear_connection_timeout(connection_job_t C) {
@@ -453,14 +536,30 @@ int clear_connection_timeout(connection_job_t C) {
   just sets error code and sends JS_ABORT to connection job
 */
 void fail_connection(connection_job_t C, int err) {
+  enum {
+    FAIL_CONNECTION_ACTION_NOOP = 0,
+    FAIL_CONNECTION_ACTION_SET_STATUS_ERROR = 1 << 0,
+    FAIL_CONNECTION_ACTION_SET_ERROR_CODE = 1 << 1,
+    FAIL_CONNECTION_ACTION_SIGNAL_ABORT = 1 << 2,
+  };
+
   struct connection_info *c = CONN_INFO(C);
 
-  if (!(__sync_fetch_and_or(&c->flags, C_ERROR) & C_ERROR)) {
-    c->status = conn_error;
-    if (c->error >= 0) {
-      c->error = err;
-    }
+  int32_t previous_flags = __sync_fetch_and_or(&c->flags, C_ERROR);
+  int32_t action = mtproxy_ffi_net_connections_fail_connection_action(
+      previous_flags, c->error);
+  assert((action &
+          ~(FAIL_CONNECTION_ACTION_SET_STATUS_ERROR |
+            FAIL_CONNECTION_ACTION_SET_ERROR_CODE |
+            FAIL_CONNECTION_ACTION_SIGNAL_ABORT)) == 0);
 
+  if (action & FAIL_CONNECTION_ACTION_SET_STATUS_ERROR) {
+    c->status = conn_error;
+  }
+  if (action & FAIL_CONNECTION_ACTION_SET_ERROR_CODE) {
+    c->error = err;
+  }
+  if (action & FAIL_CONNECTION_ACTION_SIGNAL_ABORT) {
     job_signal(JOB_REF_CREATE_PASS(C), JS_ABORT);
   }
 }
@@ -525,13 +624,15 @@ int cpu_server_free_connection(connection_job_t C) {
   close(c->fd);
   c->fd = -1;
 
+  int32_t allocated_outbound_delta = 0;
+  int32_t allocated_inbound_delta = 0;
+  int32_t free_stats_rc = mtproxy_ffi_net_connections_free_connection_allocated_deltas(
+      c->basic_type, &allocated_outbound_delta, &allocated_inbound_delta);
+  assert(free_stats_rc == 0);
+
   MODULE_STAT->allocated_connections--;
-  if (c->basic_type == ct_outbound) {
-    MODULE_STAT->allocated_outbound_connections--;
-  }
-  if (c->basic_type == ct_inbound) {
-    MODULE_STAT->allocated_inbound_connections--;
-  }
+  MODULE_STAT->allocated_outbound_connections += allocated_outbound_delta;
+  MODULE_STAT->allocated_inbound_connections += allocated_inbound_delta;
 
   return c->type->free_buffers(C);
 }
@@ -550,16 +651,22 @@ int cpu_server_close_connection(connection_job_t C, int who) {
   assert(c->status == conn_error);
   assert(c->flags & C_FAILED);
 
-  if (c->error != -17) {
-    MODULE_STAT->total_failed_connections++;
-    if (!connection_is_active(c->flags)) {
-      MODULE_STAT->total_connect_failures++;
-    }
-  } else {
-    MODULE_STAT->unused_connections_closed++;
-  }
+  int32_t total_failed_delta = 0;
+  int32_t total_connect_failures_delta = 0;
+  int32_t unused_closed_delta = 0;
+  int32_t close_failure_rc =
+      mtproxy_ffi_net_connections_close_connection_failure_deltas(
+          c->error, c->flags, &total_failed_delta, &total_connect_failures_delta,
+          &unused_closed_delta);
+  assert(close_failure_rc == 0);
+  MODULE_STAT->total_failed_connections += total_failed_delta;
+  MODULE_STAT->total_connect_failures += total_connect_failures_delta;
+  MODULE_STAT->unused_connections_closed += unused_closed_delta;
 
-  if (c->flags & C_ISDH) {
+  int32_t has_isdh =
+      mtproxy_ffi_net_connections_close_connection_has_isdh(c->flags);
+  assert(has_isdh == 0 || has_isdh == 1);
+  if (has_isdh) {
     MODULE_STAT->active_dh_connections--;
     __sync_fetch_and_and(&c->flags, ~C_ISDH);
   }
@@ -567,33 +674,42 @@ int cpu_server_close_connection(connection_job_t C, int who) {
   assert(c->io_conn);
   job_signal(JOB_REF_PASS(c->io_conn), JS_ABORT);
 
-  if (c->basic_type == ct_outbound) {
-    MODULE_STAT->outbound_connections--;
+  int32_t outbound_delta = 0;
+  int32_t inbound_delta = 0;
+  int32_t active_outbound_delta = 0;
+  int32_t active_inbound_delta = 0;
+  int32_t active_connections_delta = 0;
+  int32_t signal_target = 0;
+  int32_t close_basic_rc = mtproxy_ffi_net_connections_close_connection_basic_deltas(
+      c->basic_type, c->flags, c->target != NULL, &outbound_delta, &inbound_delta,
+      &active_outbound_delta, &active_inbound_delta, &active_connections_delta,
+      &signal_target);
+  assert(close_basic_rc == 0);
+  assert(signal_target == 0 || signal_target == 1);
 
-    if (connection_is_active(c->flags)) {
-      MODULE_STAT->active_outbound_connections--;
-    }
+  MODULE_STAT->outbound_connections += outbound_delta;
+  MODULE_STAT->inbound_connections += inbound_delta;
+  MODULE_STAT->active_outbound_connections += active_outbound_delta;
+  MODULE_STAT->active_inbound_connections += active_inbound_delta;
+  MODULE_STAT->active_connections += active_connections_delta;
 
-    if (c->target) {
-      job_signal(JOB_REF_PASS(c->target), JS_RUN);
-    }
-  } else {
-    MODULE_STAT->inbound_connections--;
-
-    if (connection_is_active(c->flags)) {
-      MODULE_STAT->active_inbound_connections--;
-    }
+  if (signal_target) {
+    assert(c->target);
+    job_signal(JOB_REF_PASS(c->target), JS_RUN);
   }
 
-  if (connection_is_active(c->flags)) {
-    MODULE_STAT->active_connections--;
-  }
-
-  if (c->flags & C_SPECIAL) {
+  int32_t has_special =
+      mtproxy_ffi_net_connections_close_connection_has_special(c->flags);
+  assert(has_special == 0 || has_special == 1);
+  if (has_special) {
     c->flags &= ~C_SPECIAL;
     int orig_special_connections =
         __sync_fetch_and_add(&active_special_connections, -1);
-    if (orig_special_connections == max_special_connections) {
+    int32_t signal_special_aux =
+        mtproxy_ffi_net_connections_close_connection_should_signal_special_aux(
+            orig_special_connections, max_special_connections);
+    assert(signal_special_aux == 0 || signal_special_aux == 1);
+    if (signal_special_aux) {
       int i;
       for (i = 0; i < special_listen_sockets; i++) {
         connection_job_t LC = connection_get_by_fd_generation(
@@ -702,6 +818,12 @@ connection_job_t alloc_new_connection(int cfd, conn_target_job_t CTJ,
                                       void *conn_extra, unsigned peer,
                                       unsigned char peer_ipv6[16],
                                       int peer_port) {
+  enum {
+    ALLOC_CONNECTION_SPECIAL_ACTION_LOG_LEVEL1 = 1 << 0,
+    ALLOC_CONNECTION_SPECIAL_ACTION_LOG_LEVEL0 = 1 << 1,
+    ALLOC_CONNECTION_SPECIAL_ACTION_EPOLL_REMOVE = 1 << 2,
+  };
+
   if (cfd < 0) {
     return NULL;
   }
@@ -726,16 +848,18 @@ connection_job_t alloc_new_connection(int cfd, conn_target_job_t CTJ,
     maximize_rcvbuf(cfd, 0);
   }
 
-  if (cfd >= max_connection_fd) {
+  int32_t fd_action = mtproxy_ffi_net_connections_listening_init_fd_action(
+      cfd, max_connection_fd);
+  assert(fd_action == 0 || fd_action == 1);
+  if (fd_action) {
     vkprintf(2, "cfd = %d, max_connection_fd = %d\n", cfd, max_connection_fd);
     MODULE_STAT->accept_connection_limit_failed++;
     close(cfd);
     return NULL;
   }
 
-  if (cfd > max_connection) {
-    max_connection = cfd;
-  }
+  max_connection = mtproxy_ffi_net_connections_listening_init_update_max_connection(
+      cfd, max_connection);
 
   connection_job_t C = create_async_job(
       do_connection_job,
@@ -751,10 +875,16 @@ connection_job_t alloc_new_connection(int cfd, conn_target_job_t CTJ,
   c->target = CTJ;
   c->generation = new_conn_generation();
 
-  c->flags = 0; // SS ? C_WANTWR : C_WANTRD;
-  if (basic_type == ct_inbound) {
-    c->flags = C_CONNECTED;
-  }
+  int32_t initial_flags = 0;
+  int32_t initial_status = conn_none;
+  int32_t is_outbound_path = 0;
+  int32_t basic_policy_rc =
+      mtproxy_ffi_net_connections_alloc_connection_basic_type_policy(
+          basic_type, &initial_flags, &initial_status, &is_outbound_path);
+  assert(basic_policy_rc == 0);
+  assert(is_outbound_path == 0 || is_outbound_path == 1);
+
+  c->flags = initial_flags; // SS ? C_WANTWR : C_WANTRD;
 
   int raw = C_RAWMSG;
 
@@ -773,7 +903,7 @@ connection_job_t alloc_new_connection(int cfd, conn_target_job_t CTJ,
   assert(c->type);
 
   c->basic_type = basic_type;
-  c->status = (basic_type == ct_outbound) ? conn_connecting : conn_working;
+  c->status = initial_status;
 
   c->flags |= c->type->flags & C_EXTERNAL;
   if (LC) {
@@ -812,7 +942,7 @@ connection_job_t alloc_new_connection(int cfd, conn_target_job_t CTJ,
   c->out_queue = alloc_mp_queue_w();
   // c->out_packet_queue = alloc_mp_queue_w ();
 
-  if (basic_type == ct_outbound) {
+  if (is_outbound_path) {
     vkprintf(1, "New outbound connection #%d %s:%d -> %s:%d\n", c->fd,
              show_our_ip(C), c->our_port, show_remote_ip(C), c->remote_port);
   } else {
@@ -820,52 +950,85 @@ connection_job_t alloc_new_connection(int cfd, conn_target_job_t CTJ,
              show_remote_ip(C), c->remote_port, show_our_ip(C), c->our_port);
   }
 
-  int (*func)(connection_job_t) = (basic_type == ct_outbound)
-                                      ? c->type->init_outbound
-                                      : c->type->init_accepted;
+  int (*func)(connection_job_t) =
+      is_outbound_path ? c->type->init_outbound : c->type->init_accepted;
 
   vkprintf(3, "func = %p\n", func);
 
   if (func(C) >= 0) {
-    if (basic_type == ct_outbound) {
+    int32_t outbound_delta = 0;
+    int32_t allocated_outbound_delta = 0;
+    int32_t outbound_created_delta = 0;
+    int32_t inbound_accepted_delta = 0;
+    int32_t allocated_inbound_delta = 0;
+    int32_t inbound_delta = 0;
+    int32_t active_inbound_delta = 0;
+    int32_t active_connections_delta = 0;
+    int32_t target_outbound_delta = 0;
+    int32_t should_incref_target = 0;
+    int32_t success_deltas_rc =
+        mtproxy_ffi_net_connections_alloc_connection_success_deltas(
+            basic_type, CTJ != NULL, &outbound_delta, &allocated_outbound_delta,
+            &outbound_created_delta, &inbound_accepted_delta,
+            &allocated_inbound_delta, &inbound_delta, &active_inbound_delta,
+            &active_connections_delta, &target_outbound_delta,
+            &should_incref_target);
+    assert(success_deltas_rc == 0);
+    assert(should_incref_target == 0 || should_incref_target == 1);
 
-      MODULE_STAT->outbound_connections++;
-      MODULE_STAT->allocated_outbound_connections++;
-      MODULE_STAT->outbound_connections_created++;
+    MODULE_STAT->outbound_connections += outbound_delta;
+    MODULE_STAT->allocated_outbound_connections += allocated_outbound_delta;
+    MODULE_STAT->outbound_connections_created += outbound_created_delta;
+    MODULE_STAT->inbound_connections_accepted += inbound_accepted_delta;
+    MODULE_STAT->allocated_inbound_connections += allocated_inbound_delta;
+    MODULE_STAT->inbound_connections += inbound_delta;
+    MODULE_STAT->active_inbound_connections += active_inbound_delta;
+    MODULE_STAT->active_connections += active_connections_delta;
 
-      if (CTJ) {
-        job_incref(CTJ);
-        CT->outbound_connections++;
-      }
-    } else {
-      MODULE_STAT->inbound_connections_accepted++;
-      MODULE_STAT->allocated_inbound_connections++;
-      MODULE_STAT->inbound_connections++;
-      MODULE_STAT->active_inbound_connections++;
-      MODULE_STAT->active_connections++;
+    if (should_incref_target) {
+      assert(CTJ && CT);
+      job_incref(CTJ);
+    }
+    if (target_outbound_delta != 0) {
+      assert(CT);
+      CT->outbound_connections += target_outbound_delta;
+    }
 
+    if (!is_outbound_path) {
       if (LCJ) {
         c->listening = LC->fd;
         c->listening_generation = LC->generation;
-        if (LC->flags & C_NOQACK) {
-          c->flags |= C_NOQACK;
-        }
+        int32_t listener_flags =
+            mtproxy_ffi_net_connections_alloc_connection_listener_flags(
+                LC->flags);
+        assert((listener_flags & ~(C_NOQACK | C_SPECIAL)) == 0);
+        c->flags |= listener_flags;
 
         c->window_clamp = LC->window_clamp;
 
-        if (LC->flags & C_SPECIAL) {
-          c->flags |= C_SPECIAL;
+        if (listener_flags & C_SPECIAL) {
           __sync_fetch_and_add(&active_special_connections, 1);
+          int32_t special_action =
+              mtproxy_ffi_net_connections_alloc_connection_special_action(
+                  active_special_connections, max_special_connections);
+          assert((special_action &
+                  ~(ALLOC_CONNECTION_SPECIAL_ACTION_LOG_LEVEL1 |
+                    ALLOC_CONNECTION_SPECIAL_ACTION_LOG_LEVEL0 |
+                    ALLOC_CONNECTION_SPECIAL_ACTION_EPOLL_REMOVE)) == 0);
 
-          if (active_special_connections > max_special_connections) {
-            vkprintf(active_special_connections >= max_special_connections + 16
-                         ? 0
-                         : 1,
+          if (special_action & ALLOC_CONNECTION_SPECIAL_ACTION_LOG_LEVEL1) {
+            vkprintf(1,
                      "ERROR: forced to accept connection when special "
                      "connections limit was reached (%d of %d)\n",
                      active_special_connections, max_special_connections);
           }
-          if (active_special_connections >= max_special_connections) {
+          if (special_action & ALLOC_CONNECTION_SPECIAL_ACTION_LOG_LEVEL0) {
+            vkprintf(0,
+                     "ERROR: forced to accept connection when special "
+                     "connections limit was reached (%d of %d)\n",
+                     active_special_connections, max_special_connections);
+          }
+          if (special_action & ALLOC_CONNECTION_SPECIAL_ACTION_EPOLL_REMOVE) {
             vkprintf(2, "**Invoking epoll_remove(%d)\n", LC->fd);
             epoll_remove(LC->fd);
           }
@@ -895,21 +1058,44 @@ connection_job_t alloc_new_connection(int cfd, conn_target_job_t CTJ,
 
     return C;
   } else {
-    MODULE_STAT->accept_init_accepted_failed++;
-    if (c->flags & C_RAWMSG) {
+    enum {
+      ALLOC_CONNECTION_FAILURE_ACTION_NONE = 0,
+      ALLOC_CONNECTION_FAILURE_ACTION_INC_ACCEPT_INIT_FAILED = 1 << 0,
+      ALLOC_CONNECTION_FAILURE_ACTION_FREE_RAWMSG = 1 << 1,
+      ALLOC_CONNECTION_FAILURE_ACTION_SET_BASIC_TYPE_NONE = 1 << 2,
+      ALLOC_CONNECTION_FAILURE_ACTION_DEC_JOBS_ACTIVE = 1 << 3,
+    };
+
+    int32_t failure_action =
+        mtproxy_ffi_net_connections_alloc_connection_failure_action(c->flags);
+    assert((failure_action &
+            ~(ALLOC_CONNECTION_FAILURE_ACTION_INC_ACCEPT_INIT_FAILED |
+              ALLOC_CONNECTION_FAILURE_ACTION_FREE_RAWMSG |
+              ALLOC_CONNECTION_FAILURE_ACTION_SET_BASIC_TYPE_NONE |
+              ALLOC_CONNECTION_FAILURE_ACTION_DEC_JOBS_ACTIVE)) == 0);
+    assert(failure_action != ALLOC_CONNECTION_FAILURE_ACTION_NONE);
+
+    if (failure_action & ALLOC_CONNECTION_FAILURE_ACTION_INC_ACCEPT_INIT_FAILED) {
+      MODULE_STAT->accept_init_accepted_failed++;
+    }
+    if (failure_action & ALLOC_CONNECTION_FAILURE_ACTION_FREE_RAWMSG) {
       rwm_free(&c->in);
       rwm_free(&c->out);
       rwm_free(&c->in_u);
       rwm_free(&c->out_p);
     }
-    c->basic_type = ct_none;
+    if (failure_action & ALLOC_CONNECTION_FAILURE_ACTION_SET_BASIC_TYPE_NONE) {
+      c->basic_type = ct_none;
+    }
     close(cfd);
 
     free_mp_queue(c->in_queue);
     free_mp_queue(c->out_queue);
 
     job_free(JOB_REF_PASS(C));
-    this_job_thread->jobs_active--;
+    if (failure_action & ALLOC_CONNECTION_FAILURE_ACTION_DEC_JOBS_ACTIVE) {
+      this_job_thread->jobs_active--;
+    }
 
     return NULL;
   }
@@ -921,12 +1107,22 @@ connection_job_t alloc_new_connection(int cfd, conn_target_job_t CTJ,
   removes event from evemt heap and epoll
 */
 void fail_socket_connection(socket_connection_job_t C, int who) {
+  enum {
+    FAIL_SOCKET_CONNECTION_ACTION_NOOP = 0,
+    FAIL_SOCKET_CONNECTION_ACTION_CLEANUP = 1,
+  };
+
   assert_main_thread();
 
   struct socket_connection_info *c = SOCKET_CONN_INFO(C);
   assert(C->j_flags & JF_LOCKED);
 
-  if (!(__sync_fetch_and_or(&c->flags, C_ERROR) & C_ERROR)) {
+  int32_t previous_flags = __sync_fetch_and_or(&c->flags, C_ERROR);
+  int32_t action =
+      mtproxy_ffi_net_connections_fail_socket_connection_action(previous_flags);
+  assert(action == FAIL_SOCKET_CONNECTION_ACTION_NOOP ||
+         action == FAIL_SOCKET_CONNECTION_ACTION_CLEANUP);
+  if (action == FAIL_SOCKET_CONNECTION_ACTION_CLEANUP) {
     job_timer_remove(C);
 
     remove_event_from_heap(c->ev, 0);
@@ -945,6 +1141,11 @@ void fail_socket_connection(socket_connection_job_t C, int who) {
   Removes link to cpu_connection
 */
 int net_server_socket_free(socket_connection_job_t C) {
+  enum {
+    SOCKET_FREE_ACTION_NONE = 0,
+    SOCKET_FREE_ACTION_FAIL_CONN = 1,
+  };
+
   assert_net_net_thread();
 
   struct socket_connection_info *c = SOCKET_CONN_INFO(C);
@@ -952,8 +1153,15 @@ int net_server_socket_free(socket_connection_job_t C) {
   assert(!c->ev);
   assert(c->flags & C_ERROR);
 
-  if (c->conn) {
-    fail_connection(c->conn, -201);
+  int32_t fail_error = 0;
+  int32_t allocated_socket_delta = 0;
+  int32_t socket_free_action = mtproxy_ffi_net_connections_socket_free_plan(
+      c->conn != NULL, &fail_error, &allocated_socket_delta);
+  assert(socket_free_action == SOCKET_FREE_ACTION_NONE ||
+         socket_free_action == SOCKET_FREE_ACTION_FAIL_CONN);
+  if (socket_free_action == SOCKET_FREE_ACTION_FAIL_CONN) {
+    assert(c->conn);
+    fail_connection(c->conn, fail_error);
     job_decref(JOB_REF_PASS(c->conn));
   }
 
@@ -970,7 +1178,7 @@ int net_server_socket_free(socket_connection_job_t C) {
 
   rwm_free(&c->out);
 
-  MODULE_STAT->allocated_socket_connections--;
+  MODULE_STAT->allocated_socket_connections += allocated_socket_delta;
   return 0;
 }
 
@@ -1361,15 +1569,31 @@ int net_server_socket_read_write_gateway(int fd, void *data, event_t *ev) {
 }
 
 int do_socket_connection_job(job_t job, int op, struct job_thread *JT) {
+  enum {
+    SOCKET_JOB_ACTION_ERROR = 0,
+    SOCKET_JOB_ACTION_ABORT = 1,
+    SOCKET_JOB_ACTION_RUN = 2,
+    SOCKET_JOB_ACTION_AUX = 3,
+    SOCKET_JOB_ACTION_FINISH = 4,
+  };
+
   socket_connection_job_t C = job;
 
   struct socket_connection_info *c = SOCKET_CONN_INFO(C);
 
-  if (op == JS_ABORT) { // MAIN THREAD
-    fail_socket_connection(C, -200);
+  int32_t action = mtproxy_ffi_net_connections_socket_job_action(
+      op, JS_ABORT, JS_RUN, JS_AUX, JS_FINISH);
+  assert(action == SOCKET_JOB_ACTION_ERROR ||
+         action == SOCKET_JOB_ACTION_ABORT || action == SOCKET_JOB_ACTION_RUN ||
+         action == SOCKET_JOB_ACTION_AUX ||
+         action == SOCKET_JOB_ACTION_FINISH);
+
+  if (action == SOCKET_JOB_ACTION_ABORT) { // MAIN THREAD
+    int32_t abort_who = mtproxy_ffi_net_connections_socket_job_abort_error();
+    fail_socket_connection(C, abort_who);
     return JOB_COMPLETED;
   }
-  if (op == JS_RUN) { // IO THREAD
+  if (action == SOCKET_JOB_ACTION_RUN) { // IO THREAD
     int32_t run_flags = c->flags;
     int32_t should_call_read_write =
         mtproxy_ffi_net_connections_socket_job_run_should_call_read_write(
@@ -1388,7 +1612,7 @@ int do_socket_connection_job(job_t job, int op, struct job_thread *JT) {
     }
     return 0;
   }
-  if (op == JS_AUX) { // MAIN THREAD
+  if (action == SOCKET_JOB_ACTION_AUX) { // MAIN THREAD
     int32_t should_update_epoll =
         mtproxy_ffi_net_connections_socket_job_aux_should_update_epoll(
             c->flags);
@@ -1399,7 +1623,7 @@ int do_socket_connection_job(job_t job, int op, struct job_thread *JT) {
     return 0;
   }
 
-  if (op == JS_FINISH) { // ANY THREAD
+  if (action == SOCKET_JOB_ACTION_FINISH) { // ANY THREAD
     assert(C->j_refcnt == 1);
     c->type->socket_free(C);
     return job_free(JOB_REF_PASS(C));
@@ -1427,10 +1651,17 @@ socket_connection_job_t alloc_new_socket_connection(connection_job_t C) {
   struct socket_connection_info *s = SOCKET_CONN_INFO(S);
   // memset (s, 0, sizeof (*s)); /* no need, create_async_job memsets itself */
 
+  int32_t socket_flags = 0;
+  int32_t initial_epoll_status = 0;
+  int32_t allocated_socket_delta = 0;
+  int32_t alloc_plan_rc = mtproxy_ffi_net_connections_alloc_socket_connection_plan(
+      c->flags, 1, &socket_flags, &initial_epoll_status, &allocated_socket_delta);
+  assert(alloc_plan_rc == 0);
+
   s->fd = c->fd;
   s->type = c->type;
   s->conn = job_incref(C);
-  s->flags = C_WANTWR | C_WANTRD | (c->flags & C_CONNECTED);
+  s->flags = socket_flags;
 
   s->our_ip = c->our_ip;
   s->our_port = c->our_port;
@@ -1450,7 +1681,7 @@ socket_connection_job_t alloc_new_socket_connection(connection_job_t C) {
 
   epoll_sethandler(s->fd, 0, net_server_socket_read_write_gateway, S);
 
-  s->current_epoll_status = compute_conn_events(S);
+  s->current_epoll_status = initial_epoll_status;
   epoll_insert(s->fd, s->current_epoll_status);
 
   c->io_conn = S;
@@ -1458,7 +1689,7 @@ socket_connection_job_t alloc_new_socket_connection(connection_job_t C) {
   rwm_init(&s->out, 0);
   unlock_job(JOB_REF_CREATE_PASS(S));
 
-  MODULE_STAT->allocated_socket_connections++;
+  MODULE_STAT->allocated_socket_connections += allocated_socket_delta;
   return S;
 }
 

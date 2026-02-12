@@ -9,6 +9,10 @@ const C_NORD: u32 = 0x10;
 const C_NOWR: u32 = 0x20;
 const C_FAILED: u32 = 0x80;
 const C_STOPREAD: u32 = 0x800;
+const C_SPECIAL: u32 = 0x10_000;
+const C_NOQACK: u32 = 0x20_000;
+const C_RAWMSG: u32 = 0x40_000;
+const C_ISDH: u32 = 0x80_0000;
 const C_NET_FAILED: u32 = 0x80_000;
 const C_READY_PENDING: u32 = 0x0100_0000;
 const C_CONNECTED: u32 = 0x0200_0000;
@@ -22,7 +26,11 @@ const MAX_RECONNECT_INTERVAL: f64 = 20.0;
 
 const CONN_NONE: i32 = 0;
 const CONN_CONNECTING: i32 = 1;
+const CONN_WORKING: i32 = 2;
 const CONN_ERROR: i32 = 3;
+const CT_INBOUND: i32 = 2;
+const CT_OUTBOUND: i32 = 3;
+const UNUSED_CONNECTION_CLOSE_ERROR: i32 = -17;
 
 const CR_NOTYET: i32 = 0;
 const CR_OK: i32 = 1;
@@ -50,6 +58,12 @@ const CONN_JOB_RUN_HANDLE_READY_PENDING: i32 = 2;
 const SOCKET_GATEWAY_ABORT_NONE: i32 = 0;
 const SOCKET_GATEWAY_ABORT_EPOLLERR: i32 = 1;
 const SOCKET_GATEWAY_ABORT_DISCONNECT: i32 = 2;
+const SOCKET_JOB_ACTION_ERROR: i32 = 0;
+const SOCKET_JOB_ACTION_ABORT: i32 = 1;
+const SOCKET_JOB_ACTION_RUN: i32 = 2;
+const SOCKET_JOB_ACTION_AUX: i32 = 3;
+const SOCKET_JOB_ACTION_FINISH: i32 = 4;
+const SOCKET_JOB_ABORT_ERROR: i32 = -200;
 const LISTENING_JOB_ACTION_ERROR: i32 = 0;
 const LISTENING_JOB_ACTION_RUN: i32 = 1;
 const LISTENING_JOB_ACTION_AUX: i32 = 2;
@@ -102,6 +116,36 @@ const SOCKET_READ_WRITE_CONNECT_RETURN_COMPUTE_EVENTS: i32 = 1;
 const SOCKET_READ_WRITE_CONNECT_MARK_CONNECTED: i32 = 2;
 const SOCKET_READ_WRITE_CONNECT_CONTINUE_IO: i32 = 3;
 
+const CONNECTION_TIMEOUT_ACTION_SKIP_ERROR: i32 = 0;
+const CONNECTION_TIMEOUT_ACTION_INSERT_TIMER: i32 = 1;
+const CONNECTION_TIMEOUT_ACTION_REMOVE_TIMER: i32 = 2;
+
+const CONNECTION_WRITE_CLOSE_ACTION_NOOP: i32 = 0;
+const CONNECTION_WRITE_CLOSE_ACTION_SET_IO_STOPREAD: i32 = 1 << 0;
+const CONNECTION_WRITE_CLOSE_ACTION_SET_CONN_STOPREAD: i32 = 1 << 1;
+const CONNECTION_WRITE_CLOSE_ACTION_SET_STATUS_WRITE_CLOSE: i32 = 1 << 2;
+const CONNECTION_WRITE_CLOSE_ACTION_SIGNAL_RUN: i32 = 1 << 3;
+
+const FAIL_CONNECTION_ACTION_NOOP: i32 = 0;
+const FAIL_CONNECTION_ACTION_SET_STATUS_ERROR: i32 = 1 << 0;
+const FAIL_CONNECTION_ACTION_SET_ERROR_CODE: i32 = 1 << 1;
+const FAIL_CONNECTION_ACTION_SIGNAL_ABORT: i32 = 1 << 2;
+const FAIL_SOCKET_CONNECTION_ACTION_NOOP: i32 = 0;
+const FAIL_SOCKET_CONNECTION_ACTION_CLEANUP: i32 = 1;
+const SOCKET_FREE_ACTION_NONE: i32 = 0;
+const SOCKET_FREE_ACTION_FAIL_CONN: i32 = 1;
+const SOCKET_FREE_FAIL_ERROR: i32 = -201;
+const ALLOC_SOCKET_CONNECTION_DELTA: i32 = 1;
+
+const ALLOC_CONNECTION_SPECIAL_ACTION_NONE: i32 = 0;
+const ALLOC_CONNECTION_SPECIAL_ACTION_LOG_LEVEL1: i32 = 1 << 0;
+const ALLOC_CONNECTION_SPECIAL_ACTION_LOG_LEVEL0: i32 = 1 << 1;
+const ALLOC_CONNECTION_SPECIAL_ACTION_EPOLL_REMOVE: i32 = 1 << 2;
+const ALLOC_CONNECTION_FAILURE_ACTION_INC_ACCEPT_INIT_FAILED: i32 = 1 << 0;
+const ALLOC_CONNECTION_FAILURE_ACTION_FREE_RAWMSG: i32 = 1 << 1;
+const ALLOC_CONNECTION_FAILURE_ACTION_SET_BASIC_TYPE_NONE: i32 = 1 << 2;
+const ALLOC_CONNECTION_FAILURE_ACTION_DEC_JOBS_ACTIVE: i32 = 1 << 3;
+
 static NAT_INFO_RULES: AtomicUsize = AtomicUsize::new(0);
 static NAT_INFO_LOCAL: [AtomicU32; MAX_NAT_INFO_RULES] =
     [const { AtomicU32::new(0) }; MAX_NAT_INFO_RULES];
@@ -130,6 +174,278 @@ const fn u32_to_i32(v: u32) -> i32 {
 pub fn connection_is_active(flags: i32) -> bool {
     let f = i32_to_u32(flags);
     (f & C_CONNECTED) != 0 && (f & C_READY_PENDING) == 0
+}
+
+/// Selects actions for `connection_write_close`.
+///
+/// Returns bitmask:
+/// - `1`: set `io_conn` `C_STOPREAD`
+/// - `2`: set connection `C_STOPREAD`
+/// - `4`: set status to `conn_write_close`
+/// - `8`: signal `JS_RUN`
+#[must_use]
+pub fn connection_write_close_action(status: i32, has_io_conn: bool) -> i32 {
+    if status != CONN_WORKING {
+        return CONNECTION_WRITE_CLOSE_ACTION_NOOP;
+    }
+
+    let mut action = CONNECTION_WRITE_CLOSE_ACTION_SET_CONN_STOPREAD
+        | CONNECTION_WRITE_CLOSE_ACTION_SET_STATUS_WRITE_CLOSE
+        | CONNECTION_WRITE_CLOSE_ACTION_SIGNAL_RUN;
+    if has_io_conn {
+        action |= CONNECTION_WRITE_CLOSE_ACTION_SET_IO_STOPREAD;
+    }
+    action
+}
+
+/// Selects timeout operation for `set_connection_timeout`.
+///
+/// Returns:
+/// - `0`: skip (`C_ERROR` set)
+/// - `1`: insert timer
+/// - `2`: remove timer
+#[must_use]
+pub fn connection_timeout_action(flags: i32, timeout: f64) -> i32 {
+    let f = i32_to_u32(flags);
+    if (f & C_ERROR) != 0 {
+        CONNECTION_TIMEOUT_ACTION_SKIP_ERROR
+    } else if timeout > 0.0 {
+        CONNECTION_TIMEOUT_ACTION_INSERT_TIMER
+    } else {
+        CONNECTION_TIMEOUT_ACTION_REMOVE_TIMER
+    }
+}
+
+/// Selects actions for `fail_connection`.
+///
+/// Returns bitmask:
+/// - `1`: set status `conn_error`
+/// - `2`: write `error` field
+/// - `4`: signal `JS_ABORT`
+#[must_use]
+pub fn fail_connection_action(previous_flags: i32, current_error: i32) -> i32 {
+    if (i32_to_u32(previous_flags) & C_ERROR) != 0 {
+        return FAIL_CONNECTION_ACTION_NOOP;
+    }
+
+    let mut action = FAIL_CONNECTION_ACTION_SET_STATUS_ERROR | FAIL_CONNECTION_ACTION_SIGNAL_ABORT;
+    if current_error >= 0 {
+        action |= FAIL_CONNECTION_ACTION_SET_ERROR_CODE;
+    }
+    action
+}
+
+/// Computes allocated connection stat deltas for `cpu_server_free_connection`.
+#[must_use]
+pub fn free_connection_allocated_deltas(basic_type: i32) -> (i32, i32) {
+    let outbound_delta = if basic_type == CT_OUTBOUND { -1 } else { 0 };
+    let inbound_delta = if basic_type == CT_INBOUND { -1 } else { 0 };
+    (outbound_delta, inbound_delta)
+}
+
+/// Computes close-error stat deltas for `cpu_server_close_connection`.
+#[must_use]
+pub fn close_connection_failure_deltas(error: i32, flags: i32) -> (i32, i32, i32) {
+    if error == UNUSED_CONNECTION_CLOSE_ERROR {
+        (0, 0, 1)
+    } else if connection_is_active(flags) {
+        (1, 0, 0)
+    } else {
+        (1, 1, 0)
+    }
+}
+
+/// Returns whether `C_ISDH` cleanup should run in close path.
+#[must_use]
+pub fn close_connection_has_isdh(flags: i32) -> bool {
+    (i32_to_u32(flags) & C_ISDH) != 0
+}
+
+/// Computes connection-counter deltas for `cpu_server_close_connection`.
+///
+/// Returns tuple:
+/// `(outbound_delta, inbound_delta, active_outbound_delta, active_inbound_delta, active_connections_delta, signal_target)`
+#[must_use]
+pub fn close_connection_basic_deltas(
+    basic_type: i32,
+    flags: i32,
+    has_target: bool,
+) -> (i32, i32, i32, i32, i32, bool) {
+    let active = connection_is_active(flags);
+    let mut outbound_delta = 0;
+    let mut inbound_delta = 0;
+    let mut active_outbound_delta = 0;
+    let mut active_inbound_delta = 0;
+    let active_connections_delta = if active { -1 } else { 0 };
+    let mut signal_target = false;
+
+    if basic_type == CT_OUTBOUND {
+        outbound_delta = -1;
+        if active {
+            active_outbound_delta = -1;
+        }
+        signal_target = has_target;
+    } else {
+        inbound_delta = -1;
+        if active {
+            active_inbound_delta = -1;
+        }
+    }
+
+    (
+        outbound_delta,
+        inbound_delta,
+        active_outbound_delta,
+        active_inbound_delta,
+        active_connections_delta,
+        signal_target,
+    )
+}
+
+/// Returns whether `C_SPECIAL` cleanup should run in close path.
+#[must_use]
+pub fn close_connection_has_special(flags: i32) -> bool {
+    (i32_to_u32(flags) & C_SPECIAL) != 0
+}
+
+/// Returns whether special-listener `JS_AUX` fanout should run.
+#[must_use]
+pub fn close_connection_should_signal_special_aux(
+    orig_special_connections: i32,
+    max_special_connections: i32,
+) -> bool {
+    orig_special_connections == max_special_connections
+}
+
+/// Computes initial connection fields from `basic_type`.
+///
+/// Returns tuple `(initial_flags, initial_status, is_outbound_path)`.
+#[must_use]
+pub fn alloc_connection_basic_type_policy(basic_type: i32) -> (i32, i32, bool) {
+    let is_outbound = basic_type == CT_OUTBOUND;
+    let initial_flags = if basic_type == CT_INBOUND {
+        u32_to_i32(C_CONNECTED)
+    } else {
+        0
+    };
+    let initial_status = if is_outbound {
+        CONN_CONNECTING
+    } else {
+        CONN_WORKING
+    };
+    (initial_flags, initial_status, is_outbound)
+}
+
+/// Computes module-stat deltas after successful connection init.
+///
+/// Returns tuple:
+/// `(outbound_delta, allocated_outbound_delta, outbound_created_delta, inbound_accepted_delta, allocated_inbound_delta, inbound_delta, active_inbound_delta, active_connections_delta, target_outbound_delta, should_incref_target)`.
+#[must_use]
+pub fn alloc_connection_success_deltas(
+    basic_type: i32,
+    has_target: bool,
+) -> (i32, i32, i32, i32, i32, i32, i32, i32, i32, bool) {
+    if basic_type == CT_OUTBOUND {
+        let target_delta = if has_target { 1 } else { 0 };
+        (
+            1, 1, 1, 0, 0, 0, 0, 0, target_delta, has_target,
+        )
+    } else {
+        (
+            0, 0, 0, 1, 1, 1, 1, 1, 0, false,
+        )
+    }
+}
+
+/// Selects which listening-socket flags should be propagated to a new inbound connection.
+///
+/// Returned bitmask can only contain `C_NOQACK` and `C_SPECIAL`.
+#[must_use]
+pub fn alloc_connection_listener_flags(listening_flags: i32) -> i32 {
+    let lf = i32_to_u32(listening_flags);
+    u32_to_i32(lf & (C_NOQACK | C_SPECIAL))
+}
+
+/// Selects special-listener saturation behavior.
+///
+/// Returns action bitmask:
+/// - `1`: emit limit warning with `vkprintf(1, ...)`
+/// - `2`: emit limit warning with `vkprintf(0, ...)`
+/// - `4`: run `epoll_remove`
+#[must_use]
+pub fn alloc_connection_special_action(
+    active_special_connections: i32,
+    max_special_connections: i32,
+) -> i32 {
+    let mut action = ALLOC_CONNECTION_SPECIAL_ACTION_NONE;
+    if active_special_connections > max_special_connections {
+        let hard_limit = max_special_connections.saturating_add(16);
+        if active_special_connections >= hard_limit {
+            action |= ALLOC_CONNECTION_SPECIAL_ACTION_LOG_LEVEL0;
+        } else {
+            action |= ALLOC_CONNECTION_SPECIAL_ACTION_LOG_LEVEL1;
+        }
+    }
+    if active_special_connections >= max_special_connections {
+        action |= ALLOC_CONNECTION_SPECIAL_ACTION_EPOLL_REMOVE;
+    }
+    action
+}
+
+/// Selects failure-cleanup actions for `alloc_new_connection` when init callback fails.
+///
+/// Returns action bitmask:
+/// - `1`: increment `accept_init_accepted_failed`
+/// - `2`: free RAWMSG buffers
+/// - `4`: set `basic_type = ct_none`
+/// - `8`: decrement `jobs_active`
+#[must_use]
+pub fn alloc_connection_failure_action(flags: i32) -> i32 {
+    let mut action = ALLOC_CONNECTION_FAILURE_ACTION_INC_ACCEPT_INIT_FAILED
+        | ALLOC_CONNECTION_FAILURE_ACTION_SET_BASIC_TYPE_NONE
+        | ALLOC_CONNECTION_FAILURE_ACTION_DEC_JOBS_ACTIVE;
+    if (i32_to_u32(flags) & C_RAWMSG) != 0 {
+        action |= ALLOC_CONNECTION_FAILURE_ACTION_FREE_RAWMSG;
+    }
+    action
+}
+
+/// Selects action for `fail_socket_connection`.
+///
+/// Returns:
+/// - `0`: no-op (already failed)
+/// - `1`: run cleanup + close path
+#[must_use]
+pub fn fail_socket_connection_action(previous_flags: i32) -> i32 {
+    if (i32_to_u32(previous_flags) & C_ERROR) != 0 {
+        FAIL_SOCKET_CONNECTION_ACTION_NOOP
+    } else {
+        FAIL_SOCKET_CONNECTION_ACTION_CLEANUP
+    }
+}
+
+/// Computes socket-free plan for `net_server_socket_free`.
+///
+/// Returns tuple `(action, fail_error, allocated_socket_delta)`.
+#[must_use]
+pub fn socket_free_plan(has_conn: bool) -> (i32, i32, i32) {
+    let action = if has_conn {
+        SOCKET_FREE_ACTION_FAIL_CONN
+    } else {
+        SOCKET_FREE_ACTION_NONE
+    };
+    (action, SOCKET_FREE_FAIL_ERROR, -1)
+}
+
+/// Computes setup plan for `alloc_new_socket_connection`.
+///
+/// Returns tuple `(socket_flags, initial_epoll_status, allocated_socket_delta)`.
+#[must_use]
+pub fn alloc_socket_connection_plan(conn_flags: i32, use_epollet: bool) -> (i32, i32, i32) {
+    let cf = i32_to_u32(conn_flags);
+    let socket_flags = u32_to_i32(C_WANTRD | C_WANTWR | (cf & C_CONNECTED));
+    let initial_epoll_status = compute_conn_events(socket_flags, use_epollet);
+    (socket_flags, initial_epoll_status, ALLOC_SOCKET_CONNECTION_DELTA)
 }
 
 /// Computes epoll event mask for a connection, matching C policy.
@@ -209,6 +525,35 @@ pub fn conn_job_abort_has_error(flags: i32) -> bool {
 #[must_use]
 pub fn conn_job_abort_should_close(previous_flags: i32) -> bool {
     (i32_to_u32(previous_flags) & C_FAILED) == 0
+}
+
+/// Selects action for socket-connection job by op code.
+///
+/// Returns:
+/// - `0`: `JOB_ERROR`
+/// - `1`: abort path
+/// - `2`: run path
+/// - `3`: aux path
+/// - `4`: finish path
+#[must_use]
+pub fn socket_job_action(op: i32, js_abort: i32, js_run: i32, js_aux: i32, js_finish: i32) -> i32 {
+    if op == js_abort {
+        SOCKET_JOB_ACTION_ABORT
+    } else if op == js_run {
+        SOCKET_JOB_ACTION_RUN
+    } else if op == js_aux {
+        SOCKET_JOB_ACTION_AUX
+    } else if op == js_finish {
+        SOCKET_JOB_ACTION_FINISH
+    } else {
+        SOCKET_JOB_ACTION_ERROR
+    }
+}
+
+/// Returns error code passed to `fail_socket_connection` from socket-job abort path.
+#[must_use]
+pub fn socket_job_abort_error() -> i32 {
+    SOCKET_JOB_ABORT_ERROR
 }
 
 /// Returns whether `JS_RUN` should invoke `socket_read_write`.
@@ -943,13 +1288,26 @@ pub fn nat_translate_ip(local_ip: u32) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::{
-        accept_rate_decide, compute_conn_events, compute_next_reconnect, conn_job_abort_has_error,
+        accept_rate_decide, alloc_connection_basic_type_policy,
+        alloc_connection_failure_action, alloc_socket_connection_plan,
+        alloc_connection_listener_flags, alloc_connection_special_action,
+        alloc_connection_success_deltas, check_conn_functions_accept_mask,
+        check_conn_functions_default_mask, check_conn_functions_raw_policy,
+        close_connection_basic_deltas,
+        close_connection_failure_deltas, close_connection_has_isdh,
+        close_connection_has_special, close_connection_should_signal_special_aux,
+        compute_conn_events, compute_next_reconnect, conn_job_abort_has_error,
         conn_job_abort_should_close, conn_job_alarm_should_call,
         conn_job_ready_pending_cas_failure_expected, conn_job_ready_pending_should_promote_status,
-        conn_job_run_actions, connection_is_active, create_target_transition,
+        conn_job_run_actions, connection_event_should_release, connection_generation_matches,
+        connection_get_by_fd_action, connection_is_active, connection_timeout_action,
+        connection_write_close_action, create_target_transition,
         destroy_target_transition, listening_init_fd_action, listening_init_mode_policy,
-        listening_init_update_max_connection, nat_add_rule, nat_translate_ip, server_check_ready,
-        listening_job_action, socket_job_aux_should_update_epoll,
+        listening_init_update_max_connection, listening_job_action, nat_add_rule,
+        nat_translate_ip, server_check_ready, fail_connection_action,
+        fail_socket_connection_action, free_connection_allocated_deltas, socket_free_plan,
+        socket_job_abort_error, socket_job_action,
+        socket_job_aux_should_update_epoll,
         socket_job_run_should_call_read_write, socket_job_run_should_signal_aux,
         socket_gateway_abort_action, socket_gateway_clear_flags, socket_reader_io_action,
         socket_reader_should_run, socket_read_write_connect_action, socket_writer_io_action,
@@ -961,12 +1319,27 @@ mod tests {
         target_pick_allow_stopped_should_skip, target_pick_basic_should_select,
         target_pick_basic_should_skip, target_pick_should_select, target_pick_should_skip,
         target_ready_transition, target_should_attempt_reconnect, NatAddRuleError,
-        C_CONNECTED, C_ERROR, C_FAILED, C_NET_FAILED, C_NORD, C_NOWR, C_READY_PENDING,
-        C_STOPREAD, C_WANTRD, C_WANTWR, EVT_LEVEL, EVT_READ, EVT_SPEC, EVT_WRITE,
-        MAX_NAT_INFO_RULES, NAT_INFO_RULES, connection_event_should_release,
-        connection_get_by_fd_action, connection_generation_matches,
-        check_conn_functions_default_mask, check_conn_functions_accept_mask,
-        check_conn_functions_raw_policy,
+        ALLOC_CONNECTION_SPECIAL_ACTION_EPOLL_REMOVE,
+        ALLOC_CONNECTION_SPECIAL_ACTION_LOG_LEVEL0,
+        ALLOC_CONNECTION_SPECIAL_ACTION_LOG_LEVEL1,
+        ALLOC_CONNECTION_FAILURE_ACTION_DEC_JOBS_ACTIVE,
+        ALLOC_CONNECTION_FAILURE_ACTION_FREE_RAWMSG,
+        ALLOC_CONNECTION_FAILURE_ACTION_INC_ACCEPT_INIT_FAILED,
+        ALLOC_CONNECTION_FAILURE_ACTION_SET_BASIC_TYPE_NONE, C_CONNECTED, C_ERROR, C_FAILED,
+        C_ISDH, C_NET_FAILED, C_NORD, C_NOQACK, C_NOWR, C_READY_PENDING, C_SPECIAL,
+        C_STOPREAD, C_WANTRD, C_WANTWR, C_RAWMSG, CONNECTION_TIMEOUT_ACTION_INSERT_TIMER,
+        CONNECTION_TIMEOUT_ACTION_REMOVE_TIMER, CONNECTION_TIMEOUT_ACTION_SKIP_ERROR,
+        CONNECTION_WRITE_CLOSE_ACTION_SET_CONN_STOPREAD,
+        CONNECTION_WRITE_CLOSE_ACTION_SET_IO_STOPREAD,
+        CONNECTION_WRITE_CLOSE_ACTION_SET_STATUS_WRITE_CLOSE,
+        CONNECTION_WRITE_CLOSE_ACTION_SIGNAL_RUN, CT_INBOUND, CT_OUTBOUND, EVT_LEVEL,
+        EVT_READ, EVT_SPEC, EVT_WRITE, FAIL_CONNECTION_ACTION_NOOP,
+        FAIL_CONNECTION_ACTION_SET_ERROR_CODE, FAIL_CONNECTION_ACTION_SET_STATUS_ERROR,
+        FAIL_CONNECTION_ACTION_SIGNAL_ABORT, FAIL_SOCKET_CONNECTION_ACTION_CLEANUP,
+        FAIL_SOCKET_CONNECTION_ACTION_NOOP, MAX_NAT_INFO_RULES, NAT_INFO_RULES, CONN_CONNECTING,
+        CONN_WORKING, SOCKET_FREE_ACTION_FAIL_CONN, SOCKET_FREE_ACTION_NONE,
+        SOCKET_JOB_ACTION_ABORT, SOCKET_JOB_ACTION_AUX, SOCKET_JOB_ACTION_ERROR,
+        SOCKET_JOB_ACTION_FINISH, SOCKET_JOB_ACTION_RUN,
     };
     use core::sync::atomic::Ordering;
 
@@ -979,6 +1352,195 @@ mod tests {
             (C_CONNECTED | C_READY_PENDING).to_ne_bytes()
         )));
         assert!(!connection_is_active(0));
+    }
+
+    #[test]
+    fn close_timeout_and_fail_helpers_match_c_rules() {
+        let action_with_io = connection_write_close_action(CONN_WORKING, true);
+        assert_eq!(
+            action_with_io,
+            CONNECTION_WRITE_CLOSE_ACTION_SET_IO_STOPREAD
+                | CONNECTION_WRITE_CLOSE_ACTION_SET_CONN_STOPREAD
+                | CONNECTION_WRITE_CLOSE_ACTION_SET_STATUS_WRITE_CLOSE
+                | CONNECTION_WRITE_CLOSE_ACTION_SIGNAL_RUN
+        );
+        assert_eq!(connection_write_close_action(CONN_WORKING, false), 0b1110);
+        assert_eq!(connection_write_close_action(CONN_CONNECTING, true), 0);
+
+        let error = i32::from_ne_bytes(C_ERROR.to_ne_bytes());
+        assert_eq!(
+            connection_timeout_action(error, 1.0),
+            CONNECTION_TIMEOUT_ACTION_SKIP_ERROR
+        );
+        assert_eq!(
+            connection_timeout_action(0x100, 1.0),
+            CONNECTION_TIMEOUT_ACTION_INSERT_TIMER
+        );
+        assert_eq!(connection_timeout_action(0, 0.0), CONNECTION_TIMEOUT_ACTION_REMOVE_TIMER);
+
+        assert_eq!(
+            fail_connection_action(0, 7),
+            FAIL_CONNECTION_ACTION_SET_STATUS_ERROR
+                | FAIL_CONNECTION_ACTION_SET_ERROR_CODE
+                | FAIL_CONNECTION_ACTION_SIGNAL_ABORT
+        );
+        assert_eq!(
+            fail_connection_action(0, -1),
+            FAIL_CONNECTION_ACTION_SET_STATUS_ERROR | FAIL_CONNECTION_ACTION_SIGNAL_ABORT
+        );
+        assert_eq!(fail_connection_action(error, 7), FAIL_CONNECTION_ACTION_NOOP);
+
+        assert_eq!(free_connection_allocated_deltas(CT_OUTBOUND), (-1, 0));
+        assert_eq!(free_connection_allocated_deltas(CT_INBOUND), (0, -1));
+        assert_eq!(free_connection_allocated_deltas(0), (0, 0));
+
+        let connected = i32::from_ne_bytes(C_CONNECTED.to_ne_bytes());
+        assert_eq!(close_connection_failure_deltas(-17, connected), (0, 0, 1));
+        assert_eq!(close_connection_failure_deltas(-18, connected), (1, 0, 0));
+        assert_eq!(close_connection_failure_deltas(-18, 0), (1, 1, 0));
+
+        assert!(close_connection_has_isdh(i32::from_ne_bytes(C_ISDH.to_ne_bytes())));
+        assert!(!close_connection_has_isdh(0));
+        assert!(close_connection_has_special(i32::from_ne_bytes(C_SPECIAL.to_ne_bytes())));
+        assert!(!close_connection_has_special(0));
+        assert!(close_connection_should_signal_special_aux(11, 11));
+        assert!(!close_connection_should_signal_special_aux(10, 11));
+
+        assert_eq!(
+            close_connection_basic_deltas(CT_OUTBOUND, connected, true),
+            (-1, 0, -1, 0, -1, true)
+        );
+        assert_eq!(
+            close_connection_basic_deltas(CT_OUTBOUND, 0, true),
+            (-1, 0, 0, 0, 0, true)
+        );
+        assert_eq!(
+            close_connection_basic_deltas(CT_INBOUND, connected, false),
+            (0, -1, 0, -1, -1, false)
+        );
+    }
+
+    #[test]
+    fn alloc_connection_helpers_match_c_rules() {
+        let (inbound_flags, inbound_status, inbound_outbound_path) =
+            alloc_connection_basic_type_policy(CT_INBOUND);
+        assert_eq!(u32::from_ne_bytes(inbound_flags.to_ne_bytes()), C_CONNECTED);
+        assert_eq!(inbound_status, CONN_WORKING);
+        assert!(!inbound_outbound_path);
+
+        let (outbound_flags, outbound_status, outbound_outbound_path) =
+            alloc_connection_basic_type_policy(CT_OUTBOUND);
+        assert_eq!(outbound_flags, 0);
+        assert_eq!(outbound_status, CONN_CONNECTING);
+        assert!(outbound_outbound_path);
+
+        assert_eq!(
+            alloc_connection_success_deltas(CT_OUTBOUND, true),
+            (1, 1, 1, 0, 0, 0, 0, 0, 1, true)
+        );
+        assert_eq!(
+            alloc_connection_success_deltas(CT_OUTBOUND, false),
+            (1, 1, 1, 0, 0, 0, 0, 0, 0, false)
+        );
+        assert_eq!(
+            alloc_connection_success_deltas(CT_INBOUND, true),
+            (0, 0, 0, 1, 1, 1, 1, 1, 0, false)
+        );
+
+        let listener_flags = alloc_connection_listener_flags(i32::from_ne_bytes(
+            (C_NOQACK | C_SPECIAL | C_CONNECTED).to_ne_bytes(),
+        ));
+        assert_eq!(
+            u32::from_ne_bytes(listener_flags.to_ne_bytes()),
+            C_NOQACK | C_SPECIAL
+        );
+
+        assert_eq!(alloc_connection_special_action(8, 10), 0);
+        assert_eq!(
+            alloc_connection_special_action(11, 10),
+            ALLOC_CONNECTION_SPECIAL_ACTION_LOG_LEVEL1
+                | ALLOC_CONNECTION_SPECIAL_ACTION_EPOLL_REMOVE
+        );
+        assert_eq!(
+            alloc_connection_special_action(30, 10),
+            ALLOC_CONNECTION_SPECIAL_ACTION_LOG_LEVEL0
+                | ALLOC_CONNECTION_SPECIAL_ACTION_EPOLL_REMOVE
+        );
+        assert_eq!(
+            alloc_connection_special_action(10, 10),
+            ALLOC_CONNECTION_SPECIAL_ACTION_EPOLL_REMOVE
+        );
+    }
+
+    #[test]
+    fn fail_socket_and_socket_free_helpers_match_c_rules() {
+        let error = i32::from_ne_bytes(C_ERROR.to_ne_bytes());
+        assert_eq!(
+            fail_socket_connection_action(0),
+            FAIL_SOCKET_CONNECTION_ACTION_CLEANUP
+        );
+        assert_eq!(
+            fail_socket_connection_action(error),
+            FAIL_SOCKET_CONNECTION_ACTION_NOOP
+        );
+
+        assert_eq!(
+            socket_free_plan(false),
+            (SOCKET_FREE_ACTION_NONE, -201, -1)
+        );
+        assert_eq!(
+            socket_free_plan(true),
+            (SOCKET_FREE_ACTION_FAIL_CONN, -201, -1)
+        );
+    }
+
+    #[test]
+    fn socket_job_and_alloc_socket_helpers_match_c_rules() {
+        assert_eq!(socket_job_action(11, 11, 12, 13, 14), SOCKET_JOB_ACTION_ABORT);
+        assert_eq!(socket_job_action(12, 11, 12, 13, 14), SOCKET_JOB_ACTION_RUN);
+        assert_eq!(socket_job_action(13, 11, 12, 13, 14), SOCKET_JOB_ACTION_AUX);
+        assert_eq!(socket_job_action(14, 11, 12, 13, 14), SOCKET_JOB_ACTION_FINISH);
+        assert_eq!(socket_job_action(15, 11, 12, 13, 14), SOCKET_JOB_ACTION_ERROR);
+        assert_eq!(socket_job_abort_error(), -200);
+
+        let connected = i32::from_ne_bytes(C_CONNECTED.to_ne_bytes());
+        let (flags_connected, epoll_connected, delta_connected) =
+            alloc_socket_connection_plan(connected, true);
+        assert_eq!(
+            u32::from_ne_bytes(flags_connected.to_ne_bytes()),
+            C_WANTRD | C_WANTWR | C_CONNECTED
+        );
+        assert_eq!(epoll_connected, 7);
+        assert_eq!(delta_connected, 1);
+
+        let (flags_plain, epoll_plain, delta_plain) = alloc_socket_connection_plan(0, false);
+        assert_eq!(
+            u32::from_ne_bytes(flags_plain.to_ne_bytes()),
+            C_WANTRD | C_WANTWR
+        );
+        assert_eq!(
+            u32::from_ne_bytes(epoll_plain.to_ne_bytes()),
+            EVT_SPEC | EVT_READ | EVT_WRITE
+        );
+        assert_eq!(delta_plain, 1);
+    }
+
+    #[test]
+    fn alloc_connection_failure_helper_matches_c_rules() {
+        let rawmsg = i32::from_ne_bytes(C_RAWMSG.to_ne_bytes());
+        assert_eq!(
+            alloc_connection_failure_action(0),
+            ALLOC_CONNECTION_FAILURE_ACTION_INC_ACCEPT_INIT_FAILED
+                | ALLOC_CONNECTION_FAILURE_ACTION_SET_BASIC_TYPE_NONE
+                | ALLOC_CONNECTION_FAILURE_ACTION_DEC_JOBS_ACTIVE
+        );
+        assert_eq!(
+            alloc_connection_failure_action(rawmsg),
+            ALLOC_CONNECTION_FAILURE_ACTION_INC_ACCEPT_INIT_FAILED
+                | ALLOC_CONNECTION_FAILURE_ACTION_FREE_RAWMSG
+                | ALLOC_CONNECTION_FAILURE_ACTION_SET_BASIC_TYPE_NONE
+                | ALLOC_CONNECTION_FAILURE_ACTION_DEC_JOBS_ACTIVE
+        );
     }
 
     #[test]

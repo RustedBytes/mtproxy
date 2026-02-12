@@ -224,6 +224,362 @@ pub unsafe extern "C" fn mtproxy_ffi_net_connections_create_target_transition(
     0
 }
 
+/// Selects actions for `connection_write_close`.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_connections_connection_write_close_action(
+    status: c_int,
+    has_io_conn: c_int,
+) -> c_int {
+    mtproxy_core::runtime::net::connections::connection_write_close_action(status, has_io_conn != 0)
+}
+
+/// Selects timeout operation for `set_connection_timeout`.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_connections_connection_timeout_action(
+    flags: c_int,
+    timeout: c_double,
+) -> c_int {
+    mtproxy_core::runtime::net::connections::connection_timeout_action(flags, timeout)
+}
+
+/// Selects actions for `fail_connection`.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_connections_fail_connection_action(
+    previous_flags: c_int,
+    current_error: c_int,
+) -> c_int {
+    mtproxy_core::runtime::net::connections::fail_connection_action(previous_flags, current_error)
+}
+
+/// Computes allocated connection stat deltas for `cpu_server_free_connection`.
+///
+/// # Safety
+/// `out_allocated_outbound_delta` and `out_allocated_inbound_delta` must be writable pointers.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_connections_free_connection_allocated_deltas(
+    basic_type: c_int,
+    out_allocated_outbound_delta: *mut c_int,
+    out_allocated_inbound_delta: *mut c_int,
+) -> c_int {
+    if out_allocated_outbound_delta.is_null() || out_allocated_inbound_delta.is_null() {
+        return -1;
+    }
+
+    let (allocated_outbound_delta, allocated_inbound_delta) =
+        mtproxy_core::runtime::net::connections::free_connection_allocated_deltas(basic_type);
+    *out_allocated_outbound_delta = allocated_outbound_delta;
+    *out_allocated_inbound_delta = allocated_inbound_delta;
+    0
+}
+
+/// Computes close-error stat deltas for `cpu_server_close_connection`.
+///
+/// # Safety
+/// `out_total_failed_delta`, `out_total_connect_failures_delta`, and
+/// `out_unused_closed_delta` must be writable pointers.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_connections_close_connection_failure_deltas(
+    error: c_int,
+    flags: c_int,
+    out_total_failed_delta: *mut c_int,
+    out_total_connect_failures_delta: *mut c_int,
+    out_unused_closed_delta: *mut c_int,
+) -> c_int {
+    if out_total_failed_delta.is_null()
+        || out_total_connect_failures_delta.is_null()
+        || out_unused_closed_delta.is_null()
+    {
+        return -1;
+    }
+
+    let (total_failed_delta, total_connect_failures_delta, unused_closed_delta) =
+        mtproxy_core::runtime::net::connections::close_connection_failure_deltas(error, flags);
+    *out_total_failed_delta = total_failed_delta;
+    *out_total_connect_failures_delta = total_connect_failures_delta;
+    *out_unused_closed_delta = unused_closed_delta;
+    0
+}
+
+/// Returns whether `C_ISDH` cleanup should run in close path.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_connections_close_connection_has_isdh(flags: c_int) -> c_int {
+    if mtproxy_core::runtime::net::connections::close_connection_has_isdh(flags) {
+        1
+    } else {
+        0
+    }
+}
+
+/// Computes connection-counter deltas for `cpu_server_close_connection`.
+///
+/// # Safety
+/// All output pointers must be writable.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_connections_close_connection_basic_deltas(
+    basic_type: c_int,
+    flags: c_int,
+    has_target: c_int,
+    out_outbound_delta: *mut c_int,
+    out_inbound_delta: *mut c_int,
+    out_active_outbound_delta: *mut c_int,
+    out_active_inbound_delta: *mut c_int,
+    out_active_connections_delta: *mut c_int,
+    out_signal_target: *mut c_int,
+) -> c_int {
+    if out_outbound_delta.is_null()
+        || out_inbound_delta.is_null()
+        || out_active_outbound_delta.is_null()
+        || out_active_inbound_delta.is_null()
+        || out_active_connections_delta.is_null()
+        || out_signal_target.is_null()
+    {
+        return -1;
+    }
+
+    let (
+        outbound_delta,
+        inbound_delta,
+        active_outbound_delta,
+        active_inbound_delta,
+        active_connections_delta,
+        signal_target,
+    ) = mtproxy_core::runtime::net::connections::close_connection_basic_deltas(
+        basic_type,
+        flags,
+        has_target != 0,
+    );
+
+    *out_outbound_delta = outbound_delta;
+    *out_inbound_delta = inbound_delta;
+    *out_active_outbound_delta = active_outbound_delta;
+    *out_active_inbound_delta = active_inbound_delta;
+    *out_active_connections_delta = active_connections_delta;
+    *out_signal_target = if signal_target { 1 } else { 0 };
+    0
+}
+
+/// Returns whether `C_SPECIAL` cleanup should run in close path.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_connections_close_connection_has_special(flags: c_int) -> c_int {
+    if mtproxy_core::runtime::net::connections::close_connection_has_special(flags) {
+        1
+    } else {
+        0
+    }
+}
+
+/// Returns whether special-listener `JS_AUX` fanout should run.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_connections_close_connection_should_signal_special_aux(
+    orig_special_connections: c_int,
+    max_special_connections: c_int,
+) -> c_int {
+    if mtproxy_core::runtime::net::connections::close_connection_should_signal_special_aux(
+        orig_special_connections,
+        max_special_connections,
+    ) {
+        1
+    } else {
+        0
+    }
+}
+
+/// Computes initial connection fields from `basic_type`.
+///
+/// # Safety
+/// All output pointers must be writable.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_connections_alloc_connection_basic_type_policy(
+    basic_type: c_int,
+    out_initial_flags: *mut c_int,
+    out_initial_status: *mut c_int,
+    out_is_outbound_path: *mut c_int,
+) -> c_int {
+    if out_initial_flags.is_null() || out_initial_status.is_null() || out_is_outbound_path.is_null()
+    {
+        return -1;
+    }
+
+    let (initial_flags, initial_status, is_outbound_path) =
+        mtproxy_core::runtime::net::connections::alloc_connection_basic_type_policy(basic_type);
+    *out_initial_flags = initial_flags;
+    *out_initial_status = initial_status;
+    *out_is_outbound_path = if is_outbound_path { 1 } else { 0 };
+    0
+}
+
+/// Computes module-stat deltas after successful connection init.
+///
+/// # Safety
+/// All output pointers must be writable.
+#[no_mangle]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn mtproxy_ffi_net_connections_alloc_connection_success_deltas(
+    basic_type: c_int,
+    has_target: c_int,
+    out_outbound_delta: *mut c_int,
+    out_allocated_outbound_delta: *mut c_int,
+    out_outbound_created_delta: *mut c_int,
+    out_inbound_accepted_delta: *mut c_int,
+    out_allocated_inbound_delta: *mut c_int,
+    out_inbound_delta: *mut c_int,
+    out_active_inbound_delta: *mut c_int,
+    out_active_connections_delta: *mut c_int,
+    out_target_outbound_delta: *mut c_int,
+    out_should_incref_target: *mut c_int,
+) -> c_int {
+    if out_outbound_delta.is_null()
+        || out_allocated_outbound_delta.is_null()
+        || out_outbound_created_delta.is_null()
+        || out_inbound_accepted_delta.is_null()
+        || out_allocated_inbound_delta.is_null()
+        || out_inbound_delta.is_null()
+        || out_active_inbound_delta.is_null()
+        || out_active_connections_delta.is_null()
+        || out_target_outbound_delta.is_null()
+        || out_should_incref_target.is_null()
+    {
+        return -1;
+    }
+
+    let (
+        outbound_delta,
+        allocated_outbound_delta,
+        outbound_created_delta,
+        inbound_accepted_delta,
+        allocated_inbound_delta,
+        inbound_delta,
+        active_inbound_delta,
+        active_connections_delta,
+        target_outbound_delta,
+        should_incref_target,
+    ) = mtproxy_core::runtime::net::connections::alloc_connection_success_deltas(
+        basic_type,
+        has_target != 0,
+    );
+
+    *out_outbound_delta = outbound_delta;
+    *out_allocated_outbound_delta = allocated_outbound_delta;
+    *out_outbound_created_delta = outbound_created_delta;
+    *out_inbound_accepted_delta = inbound_accepted_delta;
+    *out_allocated_inbound_delta = allocated_inbound_delta;
+    *out_inbound_delta = inbound_delta;
+    *out_active_inbound_delta = active_inbound_delta;
+    *out_active_connections_delta = active_connections_delta;
+    *out_target_outbound_delta = target_outbound_delta;
+    *out_should_incref_target = if should_incref_target { 1 } else { 0 };
+    0
+}
+
+/// Selects which listening-socket flags should be propagated to a new inbound connection.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_connections_alloc_connection_listener_flags(
+    listening_flags: c_int,
+) -> c_int {
+    mtproxy_core::runtime::net::connections::alloc_connection_listener_flags(listening_flags)
+}
+
+/// Selects special-listener saturation behavior.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_connections_alloc_connection_special_action(
+    active_special_connections: c_int,
+    max_special_connections: c_int,
+) -> c_int {
+    mtproxy_core::runtime::net::connections::alloc_connection_special_action(
+        active_special_connections,
+        max_special_connections,
+    )
+}
+
+/// Selects failure-cleanup actions for `alloc_new_connection` init failure.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_connections_alloc_connection_failure_action(
+    flags: c_int,
+) -> c_int {
+    mtproxy_core::runtime::net::connections::alloc_connection_failure_action(flags)
+}
+
+/// Selects action for socket-connection job by op code.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_connections_socket_job_action(
+    op: c_int,
+    js_abort: c_int,
+    js_run: c_int,
+    js_aux: c_int,
+    js_finish: c_int,
+) -> c_int {
+    mtproxy_core::runtime::net::connections::socket_job_action(
+        op,
+        js_abort,
+        js_run,
+        js_aux,
+        js_finish,
+    )
+}
+
+/// Returns error code passed to `fail_socket_connection` from socket-job abort path.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_connections_socket_job_abort_error() -> c_int {
+    mtproxy_core::runtime::net::connections::socket_job_abort_error()
+}
+
+/// Selects action for `fail_socket_connection`.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_connections_fail_socket_connection_action(
+    previous_flags: c_int,
+) -> c_int {
+    mtproxy_core::runtime::net::connections::fail_socket_connection_action(previous_flags)
+}
+
+/// Computes setup plan for `alloc_new_socket_connection`.
+///
+/// # Safety
+/// All output pointers must be writable.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_connections_alloc_socket_connection_plan(
+    conn_flags: c_int,
+    use_epollet: c_int,
+    out_socket_flags: *mut c_int,
+    out_initial_epoll_status: *mut c_int,
+    out_allocated_socket_delta: *mut c_int,
+) -> c_int {
+    if out_socket_flags.is_null()
+        || out_initial_epoll_status.is_null()
+        || out_allocated_socket_delta.is_null()
+    {
+        return -1;
+    }
+    let (socket_flags, initial_epoll_status, allocated_socket_delta) =
+        mtproxy_core::runtime::net::connections::alloc_socket_connection_plan(
+            conn_flags,
+            use_epollet != 0,
+        );
+    *out_socket_flags = socket_flags;
+    *out_initial_epoll_status = initial_epoll_status;
+    *out_allocated_socket_delta = allocated_socket_delta;
+    0
+}
+
+/// Computes socket-free plan for `net_server_socket_free`.
+///
+/// # Safety
+/// `out_fail_error` and `out_allocated_socket_delta` must be writable pointers.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_connections_socket_free_plan(
+    has_conn: c_int,
+    out_fail_error: *mut c_int,
+    out_allocated_socket_delta: *mut c_int,
+) -> c_int {
+    if out_fail_error.is_null() || out_allocated_socket_delta.is_null() {
+        return -1;
+    }
+    let (action, fail_error, allocated_socket_delta) =
+        mtproxy_core::runtime::net::connections::socket_free_plan(has_conn != 0);
+    *out_fail_error = fail_error;
+    *out_allocated_socket_delta = allocated_socket_delta;
+    action
+}
+
 /// Selects `JS_RUN` actions for connection job.
 #[no_mangle]
 pub extern "C" fn mtproxy_ffi_net_connections_conn_job_run_actions(flags: c_int) -> c_int {

@@ -401,7 +401,6 @@ void fail_socket_connection(socket_connection_job_t C, int who);
 int destroy_target(JOB_REF_ARG(CTJ));
 conn_target_job_t create_target(struct conn_target_info *source,
                                 int *was_created);
-void compute_next_reconnect(conn_target_job_t CT);
 
 static inline connection_job_t connection_incref(connection_job_t C) {
   return job_incref(C);
@@ -426,9 +425,6 @@ int net_server_socket_writer(connection_job_t C);
 int net_server_socket_read_write(connection_job_t C);
 
 int net_accept_new_connections(connection_job_t C);
-
-int set_connection_timeout(connection_job_t C, double timeout);
-int clear_connection_timeout(connection_job_t C);
 
 int server_check_ready(connection_job_t C);
 int server_noop(connection_job_t C);
