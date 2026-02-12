@@ -27,9 +27,8 @@
 #include <assert.h>
 #include <string.h>
 
-#include "net/net-connections.h"
-
 #include "jobs/jobs.h"
+#include "pid.h"
 #include "rpc-const.h"
 
 // #define RPC_INVOKE_REQ 0x2374df3d

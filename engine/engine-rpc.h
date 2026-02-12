@@ -30,6 +30,7 @@
 
 #include "common/precise-time.h"
 #include "common/tl-parse.h"
+#include "net/net-connections.h"
 
 struct stats_buffer;
 struct tl_act_extra;
