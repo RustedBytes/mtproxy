@@ -8,8 +8,8 @@ This document tracks the progress of migrating the MTProxy C codebase to Rust (S
 
 **Current Status**: 
 - **Rust binary**: `mtproxy-rust` with full CLI interface ✅
-- **C units remaining**: 43 of 43 (see breakdown below)
-- **Tests passing**: 212 (all Rust tests passing)
+- **C units migrated**: 12 complete + 19 partial of 44 total modules
+- **Tests passing**: 205 (all Rust tests passing)
 - **Build system**: Hybrid C/Rust with FFI bridge ✅
 
 ## Migration Strategy
@@ -51,7 +51,7 @@ This document tracks the progress of migrating the MTProxy C codebase to Rust (S
 | C File | Lines | Rust Module | Status | Priority | Notes |
 |--------|-------|-------------|--------|----------|-------|
 | `common/server-functions.c` | ~750 | `mtproxy-bin::runtime::bootstrap::server_functions` | 🟡 Partial | HIGH | 6/15 functions ported |
-| `common/kprintf.c` | 303 | `mtproxy-core::runtime::common::kprintf` | 🔴 Not Started | HIGH | Logging infrastructure |
+| `common/kprintf.c` | 303 | `mtproxy-ffi::kprintf` | 🟢 Complete | HIGH | Logging infrastructure (FFI layer) |
 | `common/pid.c` | ~200 | `mtproxy-core::runtime::common::pid` | 🟢 Complete | MED | FFI bridge active |
 | `common/precise-time.c` | ~150 | `mtproxy-core::runtime::common::precise_time` | 🟢 Complete | MED | FFI bridge active |
 | `common/cpuid.c` | ~100 | `mtproxy-core::runtime::common::cpuid` | 🟢 Complete | MED | FFI bridge active |
@@ -59,8 +59,8 @@ This document tracks the progress of migrating the MTProxy C codebase to Rust (S
 | `common/parse-config.c` | ~500 | `mtproxy-core::runtime::config::parse_config` | 🔴 Not Started | MED | Generic config parser |
 | `common/tl-parse.c` | ~400 | `mtproxy-core::runtime::config::tl_parse` | 🟢 Complete | MED | TL protocol parsing |
 | `common/resolver.c` | ~600 | `mtproxy-core::runtime::net::resolver` | 🟡 Partial | MED | DNS resolution |
-| `common/common-stats.c` | ~200 | `mtproxy-core::runtime::common::stats` | 🔴 Not Started | LOW | Statistics aggregation |
-| `common/proc-stat.c` | 85 | `mtproxy-core::runtime::common::proc_stat` | 🔴 Not Started | LOW | Process stats from /proc |
+| `common/common-stats.c` | ~200 | `mtproxy-ffi::stats` | 🟢 Complete | LOW | Statistics aggregation (FFI layer) |
+| `common/proc-stat.c` | 85 | `mtproxy-ffi::time_cfg_observability` | 🟢 Complete | LOW | Process stats from /proc (FFI layer) |
 | `common/rust-ffi-bridge.c` | ~300 | `mtproxy-bin::runtime::bootstrap::legacy_bridge` | 🔴 Not Started | LOW | FFI helpers; will be removed |
 
 ### Cryptography
@@ -129,9 +129,9 @@ This document tracks the progress of migrating the MTProxy C codebase to Rust (S
 
 ### Immediate (Week 1-2)
 1. ✅ Complete Rust CLI argument parsing
-2. Port critical engine framework (`engine.c`, `engine-net.c`)
-3. Port job system (`jobs/jobs.c`)
-4. Port logging infrastructure (`common/kprintf.c`)
+2. ✅ Port logging infrastructure (`common/kprintf.c`) - Complete in FFI layer
+3. Port critical engine framework (`engine.c`, `engine-net.c`)
+4. Port job system (`jobs/jobs.c`)
 
 ### Short-term (Week 3-4)
 5. Port remaining network stack modules
