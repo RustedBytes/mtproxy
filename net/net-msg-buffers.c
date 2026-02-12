@@ -37,39 +37,87 @@
 #include "jobs/jobs.h"
 #include "kprintf.h"
 
-#define MODULE raw_msg_buffer
-
 int allocated_buffer_chunks, max_allocated_buffer_chunks, max_buffer_chunks;
 long long max_allocated_buffer_bytes;
 
-MODULE_STAT_TYPE {
+struct raw_msg_buffer_module_stat {
   long long total_used_buffers_size;
   int total_used_buffers;
   long long allocated_buffer_bytes;
   long long buffer_chunk_alloc_ops;
 };
 
-MODULE_INIT
+static struct raw_msg_buffer_module_stat
+    *raw_msg_buffer_module_stat_array[MAX_JOB_THREADS];
+static __thread struct raw_msg_buffer_module_stat *raw_msg_buffer_module_stat_tls;
 
-MODULE_STAT_FUNCTION
-SB_SUM_ONE_LL(total_used_buffers_size);
-SB_SUM_ONE_I(total_used_buffers);
-SB_SUM_ONE_LL(allocated_buffer_bytes);
-SB_SUM_ONE_LL(buffer_chunk_alloc_ops);
-sb_printf(sb,
-          "allocated_buffer_chunks\t%d\n"
-          "max_allocated_buffer_chunks\t%d\n"
-          "max_buffer_chunks\t%d\n"
-          "max_allocated_buffer_bytes\t%lld\n",
-          allocated_buffer_chunks, max_allocated_buffer_chunks,
-          max_buffer_chunks, max_allocated_buffer_bytes);
-MODULE_STAT_FUNCTION_END
+static void raw_msg_buffer_module_thread_init(void) {
+  int id = get_this_thread_id();
+  assert(id >= 0 && id < MAX_JOB_THREADS);
+  raw_msg_buffer_module_stat_tls =
+      calloc(1, sizeof(*raw_msg_buffer_module_stat_tls));
+  raw_msg_buffer_module_stat_array[id] = raw_msg_buffer_module_stat_tls;
+}
+
+static struct thread_callback raw_msg_buffer_module_thread_callback = {
+    .new_thread = raw_msg_buffer_module_thread_init,
+    .next = NULL,
+};
+
+__attribute__((constructor)) static void raw_msg_buffer_module_register(void) {
+  register_thread_callback(&raw_msg_buffer_module_thread_callback);
+}
+
+static inline int raw_msg_buffer_stat_sum_i(size_t field_offset) {
+  return sb_sum_i((void **)raw_msg_buffer_module_stat_array,
+                  max_job_thread_id + 1, field_offset);
+}
+
+static inline long long raw_msg_buffer_stat_sum_ll(size_t field_offset) {
+  return sb_sum_ll((void **)raw_msg_buffer_module_stat_array,
+                   max_job_thread_id + 1, field_offset);
+}
+
+int raw_msg_buffer_prepare_stat(stats_buffer_t *sb) {
+  sb_print_i64_key(sb, "total_used_buffers_size",
+                   raw_msg_buffer_stat_sum_ll(
+                       offsetof(struct raw_msg_buffer_module_stat,
+                                total_used_buffers_size)));
+  sb_print_i32_key(sb, "total_used_buffers",
+                   raw_msg_buffer_stat_sum_i(
+                       offsetof(struct raw_msg_buffer_module_stat,
+                                total_used_buffers)));
+  sb_print_i64_key(sb, "allocated_buffer_bytes",
+                   raw_msg_buffer_stat_sum_ll(
+                       offsetof(struct raw_msg_buffer_module_stat,
+                                allocated_buffer_bytes)));
+  sb_print_i64_key(sb, "buffer_chunk_alloc_ops",
+                   raw_msg_buffer_stat_sum_ll(
+                       offsetof(struct raw_msg_buffer_module_stat,
+                                buffer_chunk_alloc_ops)));
+  sb_printf(sb,
+            "allocated_buffer_chunks\t%d\n"
+            "max_allocated_buffer_chunks\t%d\n"
+            "max_buffer_chunks\t%d\n"
+            "max_allocated_buffer_bytes\t%lld\n",
+            allocated_buffer_chunks, max_allocated_buffer_chunks,
+            max_buffer_chunks, max_allocated_buffer_bytes);
+  return sb->pos;
+}
 
 void fetch_buffers_stat(struct buffers_stat *bs) {
-  bs->total_used_buffers_size = SB_SUM_LL(total_used_buffers_size);
-  bs->allocated_buffer_bytes = SB_SUM_LL(allocated_buffer_bytes);
-  bs->buffer_chunk_alloc_ops = SB_SUM_LL(buffer_chunk_alloc_ops);
-  bs->total_used_buffers = SB_SUM_I(total_used_buffers);
+  bs->total_used_buffers_size =
+      raw_msg_buffer_stat_sum_ll(
+          offsetof(struct raw_msg_buffer_module_stat, total_used_buffers_size));
+  bs->allocated_buffer_bytes =
+      raw_msg_buffer_stat_sum_ll(
+          offsetof(struct raw_msg_buffer_module_stat, allocated_buffer_bytes));
+  bs->buffer_chunk_alloc_ops =
+      raw_msg_buffer_stat_sum_ll(
+          offsetof(struct raw_msg_buffer_module_stat, buffer_chunk_alloc_ops));
+  bs->total_used_buffers =
+      raw_msg_buffer_stat_sum_i(
+          offsetof(struct raw_msg_buffer_module_stat, total_used_buffers));
   bs->allocated_buffer_chunks = allocated_buffer_chunks;
   bs->max_allocated_buffer_chunks = max_allocated_buffer_chunks;
   bs->max_allocated_buffer_bytes = max_allocated_buffer_bytes;
@@ -246,10 +294,11 @@ alloc_new_msg_buffers_chunk(struct msg_buffers_chunk *CH) {
 
   unlock_chunk_head(CH);
 
-  MODULE_STAT->allocated_buffer_bytes += MSG_BUFFERS_CHUNK_SIZE;
+  raw_msg_buffer_module_stat_tls->allocated_buffer_bytes +=
+      MSG_BUFFERS_CHUNK_SIZE;
   __sync_fetch_and_add(&allocated_buffer_chunks, 1);
 
-  MODULE_STAT->buffer_chunk_alloc_ops++;
+  raw_msg_buffer_module_stat_tls->buffer_chunk_alloc_ops++;
 
   while (1) {
     barrier();
@@ -315,7 +364,8 @@ void free_msg_buffers_chunk_internal(struct msg_buffers_chunk *C,
   assert(CH->tot_chunks >= 0);
 
   __sync_fetch_and_add(&allocated_buffer_chunks, -1);
-  MODULE_STAT->allocated_buffer_bytes -= MSG_BUFFERS_CHUNK_SIZE;
+  raw_msg_buffer_module_stat_tls->allocated_buffer_bytes -=
+      MSG_BUFFERS_CHUNK_SIZE;
 
   int si = buffer_size_values - 1;
   while (si > 0 && &ChunkHeaders[si - 1] != CH) {
@@ -516,8 +566,8 @@ struct msg_buffer *alloc_msg_buffer_internal(struct msg_buffer *neighbor,
   X->magic = MSG_BUFFER_USED_MAGIC;
 
   //__sync_fetch_and_add (&total_used_buffers, 1);
-  MODULE_STAT->total_used_buffers_size += C->buffer_size;
-  MODULE_STAT->total_used_buffers++;
+  raw_msg_buffer_module_stat_tls->total_used_buffers_size += C->buffer_size;
+  raw_msg_buffer_module_stat_tls->total_used_buffers++;
 
   return X;
 }
@@ -549,8 +599,8 @@ int free_std_msg_buffer(struct msg_buffers_chunk *C, struct msg_buffer *X) {
   X->refcnt = -0x40000000;
   //++ C->ch_head->free_buffers;
 
-  MODULE_STAT->total_used_buffers--;
-  MODULE_STAT->total_used_buffers_size -= C->buffer_size;
+  raw_msg_buffer_module_stat_tls->total_used_buffers--;
+  raw_msg_buffer_module_stat_tls->total_used_buffers_size -= C->buffer_size;
 
   // if (C->free_cnt[1] == C->tot_buffers && C->ch_head->free_buffers * 4 >=
   // C->tot_buffers * 5) {
@@ -618,11 +668,13 @@ int free_msg_buffer(struct msg_buffer *X) {
 }
 
 int msg_buffer_reach_limit(double ratio) {
-  return SB_SUM_LL(total_used_buffers_size) >=
+  return raw_msg_buffer_stat_sum_ll(
+             offsetof(struct raw_msg_buffer_module_stat, total_used_buffers_size)) >=
          ratio * max_allocated_buffer_bytes;
 }
 
 double msg_buffer_usage(void) {
-  return (double)SB_SUM_LL(total_used_buffers_size) /
+  return (double)raw_msg_buffer_stat_sum_ll(
+             offsetof(struct raw_msg_buffer_module_stat, total_used_buffers_size)) /
          (double)max_allocated_buffer_bytes;
 }

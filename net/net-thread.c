@@ -30,13 +30,15 @@
 
 #include "common/mp-queue.h"
 
-#define NEV_TCP_CONN_READY 1
-#define NEV_TCP_CONN_CLOSE 2
-#define NEV_TCP_CONN_ALARM 3
-#define NEV_TCP_CONN_WAKEUP 4
+enum notification_event_type {
+  NOTIFICATION_EVENT_TCP_CONN_READY = 1,
+  NOTIFICATION_EVENT_TCP_CONN_CLOSE = 2,
+  NOTIFICATION_EVENT_TCP_CONN_ALARM = 3,
+  NOTIFICATION_EVENT_TCP_CONN_WAKEUP = 4,
+};
 
 struct notification_event {
-  int type;
+  enum notification_event_type type;
   void *who;
 };
 
@@ -126,7 +128,8 @@ void notification_event_job_create(void) {
   unlock_job(JOB_REF_CREATE_PASS(notification_job));
 }
 
-void notification_event_insert_conn(connection_job_t C, int type) {
+void notification_event_insert_conn(connection_job_t C,
+                                    enum notification_event_type type) {
   struct notification_event *ev = malloc(sizeof(*ev));
   ev->who = job_incref(C);
   ev->type = type;
@@ -137,17 +140,17 @@ void notification_event_insert_conn(connection_job_t C, int type) {
 }
 
 void notification_event_insert_tcp_conn_close(connection_job_t C) {
-  notification_event_insert_conn(C, NEV_TCP_CONN_CLOSE);
+  notification_event_insert_conn(C, NOTIFICATION_EVENT_TCP_CONN_CLOSE);
 }
 
 void notification_event_insert_tcp_conn_ready(connection_job_t C) {
-  notification_event_insert_conn(C, NEV_TCP_CONN_READY);
+  notification_event_insert_conn(C, NOTIFICATION_EVENT_TCP_CONN_READY);
 }
 
 void notification_event_insert_tcp_conn_alarm(connection_job_t C) {
-  notification_event_insert_conn(C, NEV_TCP_CONN_ALARM);
+  notification_event_insert_conn(C, NOTIFICATION_EVENT_TCP_CONN_ALARM);
 }
 
 void notification_event_insert_tcp_conn_wakeup(connection_job_t C) {
-  notification_event_insert_conn(C, NEV_TCP_CONN_WAKEUP);
+  notification_event_insert_conn(C, NOTIFICATION_EVENT_TCP_CONN_WAKEUP);
 }

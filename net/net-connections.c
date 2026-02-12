@@ -60,9 +60,9 @@
 
 #include "common/common-stats.h"
 
-#define USE_EPOLLET 1
-
-#define MODULE connections
+enum {
+  CONNECTIONS_USE_EPOLLET = 1,
+};
 
 static int max_accept_rate;
 static double cur_accept_rate_remaining;
@@ -81,7 +81,7 @@ static struct {
 
 static struct mp_queue *free_later_queue;
 
-MODULE_STAT_TYPE {
+struct connections_module_stat {
   int active_connections, active_dh_connections;
   int outbound_connections, active_outbound_connections,
       ready_outbound_connections, listening_connections;
@@ -107,88 +107,243 @@ MODULE_STAT_TYPE {
   long long free_later_total;
 };
 
-MODULE_INIT
+static struct connections_module_stat
+    *connections_module_stat_array[MAX_JOB_THREADS];
+static __thread struct connections_module_stat *connections_module_stat_tls;
 
-MODULE_STAT_FUNCTION
-SB_SUM_ONE_I(active_connections);
-SB_SUM_ONE_I(active_dh_connections);
+static void connections_module_thread_init(void) {
+  int id = get_this_thread_id();
+  assert(id >= 0 && id < MAX_JOB_THREADS);
+  connections_module_stat_tls = calloc(1, sizeof(*connections_module_stat_tls));
+  connections_module_stat_array[id] = connections_module_stat_tls;
+}
 
-SB_SUM_ONE_I(outbound_connections);
-SB_SUM_ONE_I(ready_outbound_connections);
-SB_SUM_ONE_I(active_outbound_connections);
-SB_SUM_ONE_LL(outbound_connections_created);
-SB_SUM_ONE_LL(total_connect_failures);
+static struct thread_callback connections_module_thread_callback = {
+    .new_thread = connections_module_thread_init,
+    .next = NULL,
+};
 
-SB_SUM_ONE_I(inbound_connections);
-// SB_SUM_ONE_I (ready_inbound_connections);
-SB_SUM_ONE_I(active_inbound_connections);
-SB_SUM_ONE_LL(inbound_connections_accepted);
+__attribute__((constructor)) static void connections_module_register(void) {
+  register_thread_callback(&connections_module_thread_callback);
+}
 
-SB_SUM_ONE_I(listening_connections);
-SB_SUM_ONE_LL(unused_connections_closed);
-SB_SUM_ONE_I(ready_targets);
-SB_SUM_ONE_I(allocated_targets);
-SB_SUM_ONE_I(active_targets);
-SB_SUM_ONE_I(inactive_targets);
-SB_SUM_ONE_I(free_targets);
-sb_printf(sb,
-          "max_connections\t%d\n"
-          "active_special_connections\t%d\n"
-          "max_special_connections\t%d\n",
-          max_connection_fd, active_special_connections,
-          max_special_connections);
-SBP_PRINT_I32(max_accept_rate);
-SBP_PRINT_DOUBLE(cur_accept_rate_remaining);
-SBP_PRINT_I32(max_connection);
-SBP_PRINT_I32(conn_generation);
+static inline int connections_stat_sum_i(size_t field_offset) {
+  return sb_sum_i((void **)connections_module_stat_array, max_job_thread_id + 1,
+                  field_offset);
+}
 
-SB_SUM_ONE_I(allocated_connections);
-SB_SUM_ONE_I(allocated_outbound_connections);
-SB_SUM_ONE_I(allocated_inbound_connections);
-SB_SUM_ONE_I(allocated_socket_connections);
-SB_SUM_ONE_LL(tcp_readv_calls);
-SB_SUM_ONE_LL(tcp_readv_intr);
-SB_SUM_ONE_LL(tcp_readv_bytes);
-SB_SUM_ONE_LL(tcp_writev_calls);
-SB_SUM_ONE_LL(tcp_writev_intr);
-SB_SUM_ONE_LL(tcp_writev_bytes);
-SB_SUM_ONE_I(free_later_size);
-SB_SUM_ONE_LL(free_later_total);
+static inline long long connections_stat_sum_ll(size_t field_offset) {
+  return sb_sum_ll((void **)connections_module_stat_array,
+                   max_job_thread_id + 1, field_offset);
+}
 
-SB_SUM_ONE_LL(accept_calls_failed);
-SB_SUM_ONE_LL(accept_nonblock_set_failed);
-SB_SUM_ONE_LL(accept_connection_limit_failed);
-SB_SUM_ONE_LL(accept_rate_limit_failed);
-SB_SUM_ONE_LL(accept_init_accepted_failed);
-MODULE_STAT_FUNCTION_END
+int connections_prepare_stat(stats_buffer_t *sb) {
+  sb_print_i32_key(
+      sb, "active_connections",
+      connections_stat_sum_i(
+          offsetof(struct connections_module_stat, active_connections)));
+  sb_print_i32_key(
+      sb, "active_dh_connections",
+      connections_stat_sum_i(
+          offsetof(struct connections_module_stat, active_dh_connections)));
+
+  sb_print_i32_key(
+      sb, "outbound_connections",
+      connections_stat_sum_i(
+          offsetof(struct connections_module_stat, outbound_connections)));
+  sb_print_i32_key(
+      sb, "ready_outbound_connections",
+      connections_stat_sum_i(
+          offsetof(struct connections_module_stat, ready_outbound_connections)));
+  sb_print_i32_key(
+      sb, "active_outbound_connections",
+      connections_stat_sum_i(
+          offsetof(struct connections_module_stat, active_outbound_connections)));
+  sb_print_i64_key(
+      sb, "outbound_connections_created",
+      connections_stat_sum_ll(offsetof(struct connections_module_stat,
+                                       outbound_connections_created)));
+  sb_print_i64_key(
+      sb, "total_connect_failures",
+      connections_stat_sum_ll(
+          offsetof(struct connections_module_stat, total_connect_failures)));
+
+  sb_print_i32_key(
+      sb, "inbound_connections",
+      connections_stat_sum_i(
+          offsetof(struct connections_module_stat, inbound_connections)));
+  sb_print_i32_key(
+      sb, "active_inbound_connections",
+      connections_stat_sum_i(
+          offsetof(struct connections_module_stat, active_inbound_connections)));
+  sb_print_i64_key(
+      sb, "inbound_connections_accepted",
+      connections_stat_sum_ll(
+          offsetof(struct connections_module_stat, inbound_connections_accepted)));
+
+  sb_print_i32_key(
+      sb, "listening_connections",
+      connections_stat_sum_i(
+          offsetof(struct connections_module_stat, listening_connections)));
+  sb_print_i64_key(
+      sb, "unused_connections_closed",
+      connections_stat_sum_ll(
+          offsetof(struct connections_module_stat, unused_connections_closed)));
+  sb_print_i32_key(
+      sb, "ready_targets",
+      connections_stat_sum_i(
+          offsetof(struct connections_module_stat, ready_targets)));
+  sb_print_i32_key(
+      sb, "allocated_targets",
+      connections_stat_sum_i(
+          offsetof(struct connections_module_stat, allocated_targets)));
+  sb_print_i32_key(
+      sb, "active_targets",
+      connections_stat_sum_i(
+          offsetof(struct connections_module_stat, active_targets)));
+  sb_print_i32_key(
+      sb, "inactive_targets",
+      connections_stat_sum_i(
+          offsetof(struct connections_module_stat, inactive_targets)));
+  sb_print_i32_key(
+      sb, "free_targets",
+      connections_stat_sum_i(
+          offsetof(struct connections_module_stat, free_targets)));
+  sb_printf(sb,
+            "max_connections\t%d\n"
+            "active_special_connections\t%d\n"
+            "max_special_connections\t%d\n",
+            max_connection_fd, active_special_connections,
+            max_special_connections);
+  sb_print_i32_key(sb, "max_accept_rate", max_accept_rate);
+  sb_print_double_key(sb, "cur_accept_rate_remaining",
+                      cur_accept_rate_remaining);
+  sb_print_i32_key(sb, "max_connection", max_connection);
+  sb_print_i32_key(sb, "conn_generation", conn_generation);
+
+  sb_print_i32_key(
+      sb, "allocated_connections",
+      connections_stat_sum_i(
+          offsetof(struct connections_module_stat, allocated_connections)));
+  sb_print_i32_key(
+      sb, "allocated_outbound_connections",
+      connections_stat_sum_i(offsetof(struct connections_module_stat,
+                                      allocated_outbound_connections)));
+  sb_print_i32_key(
+      sb, "allocated_inbound_connections",
+      connections_stat_sum_i(offsetof(struct connections_module_stat,
+                                      allocated_inbound_connections)));
+  sb_print_i32_key(
+      sb, "allocated_socket_connections",
+      connections_stat_sum_i(offsetof(struct connections_module_stat,
+                                      allocated_socket_connections)));
+  sb_print_i64_key(
+      sb, "tcp_readv_calls",
+      connections_stat_sum_ll(
+          offsetof(struct connections_module_stat, tcp_readv_calls)));
+  sb_print_i64_key(
+      sb, "tcp_readv_intr",
+      connections_stat_sum_ll(
+          offsetof(struct connections_module_stat, tcp_readv_intr)));
+  sb_print_i64_key(
+      sb, "tcp_readv_bytes",
+      connections_stat_sum_ll(
+          offsetof(struct connections_module_stat, tcp_readv_bytes)));
+  sb_print_i64_key(
+      sb, "tcp_writev_calls",
+      connections_stat_sum_ll(
+          offsetof(struct connections_module_stat, tcp_writev_calls)));
+  sb_print_i64_key(
+      sb, "tcp_writev_intr",
+      connections_stat_sum_ll(
+          offsetof(struct connections_module_stat, tcp_writev_intr)));
+  sb_print_i64_key(
+      sb, "tcp_writev_bytes",
+      connections_stat_sum_ll(
+          offsetof(struct connections_module_stat, tcp_writev_bytes)));
+  sb_print_i32_key(
+      sb, "free_later_size",
+      connections_stat_sum_i(
+          offsetof(struct connections_module_stat, free_later_size)));
+  sb_print_i64_key(
+      sb, "free_later_total",
+      connections_stat_sum_ll(
+          offsetof(struct connections_module_stat, free_later_total)));
+
+  sb_print_i64_key(
+      sb, "accept_calls_failed",
+      connections_stat_sum_ll(
+          offsetof(struct connections_module_stat, accept_calls_failed)));
+  sb_print_i64_key(
+      sb, "accept_nonblock_set_failed",
+      connections_stat_sum_ll(offsetof(struct connections_module_stat,
+                                       accept_nonblock_set_failed)));
+  sb_print_i64_key(
+      sb, "accept_connection_limit_failed",
+      connections_stat_sum_ll(offsetof(struct connections_module_stat,
+                                       accept_connection_limit_failed)));
+  sb_print_i64_key(
+      sb, "accept_rate_limit_failed",
+      connections_stat_sum_ll(
+          offsetof(struct connections_module_stat, accept_rate_limit_failed)));
+  sb_print_i64_key(
+      sb, "accept_init_accepted_failed",
+      connections_stat_sum_ll(offsetof(struct connections_module_stat,
+                                       accept_init_accepted_failed)));
+  return sb->pos;
+}
 
 void fetch_connections_stat(struct connections_stat *st) {
-  st->active_connections = SB_SUM_I(active_connections);
-  st->active_dh_connections = SB_SUM_I(active_dh_connections);
-  st->outbound_connections = SB_SUM_I(outbound_connections);
-  st->active_outbound_connections = SB_SUM_I(active_outbound_connections);
-  st->ready_outbound_connections = SB_SUM_I(ready_outbound_connections);
+  st->active_connections = connections_stat_sum_i(
+      offsetof(struct connections_module_stat, active_connections));
+  st->active_dh_connections = connections_stat_sum_i(
+      offsetof(struct connections_module_stat, active_dh_connections));
+  st->outbound_connections = connections_stat_sum_i(
+      offsetof(struct connections_module_stat, outbound_connections));
+  st->active_outbound_connections = connections_stat_sum_i(
+      offsetof(struct connections_module_stat, active_outbound_connections));
+  st->ready_outbound_connections = connections_stat_sum_i(
+      offsetof(struct connections_module_stat, ready_outbound_connections));
   st->max_special_connections = max_special_connections;
   st->active_special_connections = active_special_connections;
-  st->allocated_connections = SB_SUM_I(allocated_connections);
-  st->allocated_outbound_connections = SB_SUM_I(allocated_outbound_connections);
-  st->allocated_inbound_connections = SB_SUM_I(allocated_inbound_connections);
-  st->allocated_socket_connections = SB_SUM_I(allocated_socket_connections);
-  st->allocated_targets = SB_SUM_I(allocated_targets);
-  st->ready_targets = SB_SUM_I(ready_targets);
-  st->active_targets = SB_SUM_I(active_targets);
-  st->inactive_targets = SB_SUM_I(inactive_targets);
-  st->tcp_readv_calls = SB_SUM_LL(tcp_readv_calls);
-  st->tcp_readv_intr = SB_SUM_LL(tcp_readv_intr);
-  st->tcp_readv_bytes = SB_SUM_LL(tcp_readv_bytes);
-  st->tcp_writev_calls = SB_SUM_LL(tcp_writev_calls);
-  st->tcp_writev_intr = SB_SUM_LL(tcp_writev_intr);
-  st->tcp_writev_bytes = SB_SUM_LL(tcp_writev_bytes);
-  st->accept_calls_failed = SB_SUM_LL(accept_calls_failed);
-  st->accept_nonblock_set_failed = SB_SUM_LL(accept_nonblock_set_failed);
-  st->accept_rate_limit_failed = SB_SUM_LL(accept_rate_limit_failed);
-  st->accept_init_accepted_failed = SB_SUM_LL(accept_init_accepted_failed);
-  st->accept_connection_limit_failed = SB_SUM_LL(accept_connection_limit_failed);
+  st->allocated_connections = connections_stat_sum_i(
+      offsetof(struct connections_module_stat, allocated_connections));
+  st->allocated_outbound_connections = connections_stat_sum_i(
+      offsetof(struct connections_module_stat, allocated_outbound_connections));
+  st->allocated_inbound_connections = connections_stat_sum_i(
+      offsetof(struct connections_module_stat, allocated_inbound_connections));
+  st->allocated_socket_connections = connections_stat_sum_i(
+      offsetof(struct connections_module_stat, allocated_socket_connections));
+  st->allocated_targets = connections_stat_sum_i(
+      offsetof(struct connections_module_stat, allocated_targets));
+  st->ready_targets =
+      connections_stat_sum_i(offsetof(struct connections_module_stat, ready_targets));
+  st->active_targets = connections_stat_sum_i(
+      offsetof(struct connections_module_stat, active_targets));
+  st->inactive_targets = connections_stat_sum_i(
+      offsetof(struct connections_module_stat, inactive_targets));
+  st->tcp_readv_calls = connections_stat_sum_ll(
+      offsetof(struct connections_module_stat, tcp_readv_calls));
+  st->tcp_readv_intr = connections_stat_sum_ll(
+      offsetof(struct connections_module_stat, tcp_readv_intr));
+  st->tcp_readv_bytes = connections_stat_sum_ll(
+      offsetof(struct connections_module_stat, tcp_readv_bytes));
+  st->tcp_writev_calls = connections_stat_sum_ll(
+      offsetof(struct connections_module_stat, tcp_writev_calls));
+  st->tcp_writev_intr = connections_stat_sum_ll(
+      offsetof(struct connections_module_stat, tcp_writev_intr));
+  st->tcp_writev_bytes = connections_stat_sum_ll(
+      offsetof(struct connections_module_stat, tcp_writev_bytes));
+  st->accept_calls_failed = connections_stat_sum_ll(
+      offsetof(struct connections_module_stat, accept_calls_failed));
+  st->accept_nonblock_set_failed = connections_stat_sum_ll(
+      offsetof(struct connections_module_stat, accept_nonblock_set_failed));
+  st->accept_rate_limit_failed = connections_stat_sum_ll(
+      offsetof(struct connections_module_stat, accept_rate_limit_failed));
+  st->accept_init_accepted_failed = connections_stat_sum_ll(
+      offsetof(struct connections_module_stat, accept_init_accepted_failed));
+  st->accept_connection_limit_failed = connections_stat_sum_ll(
+      offsetof(struct connections_module_stat, accept_connection_limit_failed));
 }
 
 void connection_event_incref(int fd, long long val);
@@ -448,18 +603,13 @@ void assert_engine_thread(void) {
 
 socket_connection_job_t alloc_new_socket_connection(connection_job_t C);
 
-#if USE_EPOLLET
 static inline int compute_conn_events(socket_connection_job_t c) {
   int32_t events =
-      mtproxy_ffi_net_compute_conn_events(SOCKET_CONN_INFO(c)->flags, 1);
+      mtproxy_ffi_net_compute_conn_events(SOCKET_CONN_INFO(c)->flags,
+                                          CONNECTIONS_USE_EPOLLET);
   assert(events == 0 || events == (EVT_READ | EVT_WRITE | EVT_SPEC));
   return events;
 }
-#else
-static inline int compute_conn_events(connection_job_t c) {
-  return mtproxy_ffi_net_compute_conn_events(CONN_INFO(c)->flags, 0);
-}
-#endif
 
 void connection_write_close(connection_job_t C) {
   enum {
@@ -638,9 +788,9 @@ int cpu_server_free_connection(connection_job_t C) {
       c->basic_type, &allocated_outbound_delta, &allocated_inbound_delta);
   assert(free_stats_rc == 0);
 
-  MODULE_STAT->allocated_connections--;
-  MODULE_STAT->allocated_outbound_connections += allocated_outbound_delta;
-  MODULE_STAT->allocated_inbound_connections += allocated_inbound_delta;
+  connections_module_stat_tls->allocated_connections--;
+  connections_module_stat_tls->allocated_outbound_connections += allocated_outbound_delta;
+  connections_module_stat_tls->allocated_inbound_connections += allocated_inbound_delta;
 
   return c->type->free_buffers(C);
 }
@@ -667,15 +817,15 @@ int cpu_server_close_connection(connection_job_t C, int who) {
           c->error, c->flags, &total_failed_delta, &total_connect_failures_delta,
           &unused_closed_delta);
   assert(close_failure_rc == 0);
-  MODULE_STAT->total_failed_connections += total_failed_delta;
-  MODULE_STAT->total_connect_failures += total_connect_failures_delta;
-  MODULE_STAT->unused_connections_closed += unused_closed_delta;
+  connections_module_stat_tls->total_failed_connections += total_failed_delta;
+  connections_module_stat_tls->total_connect_failures += total_connect_failures_delta;
+  connections_module_stat_tls->unused_connections_closed += unused_closed_delta;
 
   int32_t has_isdh =
       mtproxy_ffi_net_connections_close_connection_has_isdh(c->flags);
   assert(has_isdh == 0 || has_isdh == 1);
   if (has_isdh) {
-    MODULE_STAT->active_dh_connections--;
+    connections_module_stat_tls->active_dh_connections--;
     __sync_fetch_and_and(&c->flags, ~C_ISDH);
   }
 
@@ -695,11 +845,11 @@ int cpu_server_close_connection(connection_job_t C, int who) {
   assert(close_basic_rc == 0);
   assert(signal_target == 0 || signal_target == 1);
 
-  MODULE_STAT->outbound_connections += outbound_delta;
-  MODULE_STAT->inbound_connections += inbound_delta;
-  MODULE_STAT->active_outbound_connections += active_outbound_delta;
-  MODULE_STAT->active_inbound_connections += active_inbound_delta;
-  MODULE_STAT->active_connections += active_connections_delta;
+  connections_module_stat_tls->outbound_connections += outbound_delta;
+  connections_module_stat_tls->inbound_connections += inbound_delta;
+  connections_module_stat_tls->active_outbound_connections += active_outbound_delta;
+  connections_module_stat_tls->active_inbound_connections += active_inbound_delta;
+  connections_module_stat_tls->active_connections += active_connections_delta;
 
   if (signal_target) {
     assert(c->target);
@@ -755,8 +905,8 @@ int do_connection_job(job_t job, int op, struct job_thread *JT) {
       if (run_actions & CONN_JOB_RUN_HANDLE_READY_PENDING) {
         assert(c->flags & C_CONNECTED);
         __sync_fetch_and_and(&c->flags, ~C_READY_PENDING);
-        MODULE_STAT->active_outbound_connections++;
-        MODULE_STAT->active_connections++;
+        connections_module_stat_tls->active_outbound_connections++;
+        connections_module_stat_tls->active_connections++;
         if (c->target) {
           __sync_fetch_and_add(
               &CONN_TARGET_INFO(c->target)->active_outbound_connections, 1);
@@ -844,7 +994,7 @@ connection_job_t alloc_new_connection(int cfd, conn_target_job_t CTJ,
   if ((flags = fcntl(cfd, F_GETFL, 0) < 0) ||
       fcntl(cfd, F_SETFL, flags | O_NONBLOCK) < 0) {
     kprintf("cannot set O_NONBLOCK on accepted socket #%d: %m\n", cfd);
-    MODULE_STAT->accept_nonblock_set_failed++;
+    connections_module_stat_tls->accept_nonblock_set_failed++;
     close(cfd);
     return NULL;
   }
@@ -861,7 +1011,7 @@ connection_job_t alloc_new_connection(int cfd, conn_target_job_t CTJ,
   assert(fd_action == 0 || fd_action == 1);
   if (fd_action) {
     vkprintf(2, "cfd = %d, max_connection_fd = %d\n", cfd, max_connection_fd);
-    MODULE_STAT->accept_connection_limit_failed++;
+    connections_module_stat_tls->accept_connection_limit_failed++;
     close(cfd);
     return NULL;
   }
@@ -984,14 +1134,14 @@ connection_job_t alloc_new_connection(int cfd, conn_target_job_t CTJ,
     assert(success_deltas_rc == 0);
     assert(should_incref_target == 0 || should_incref_target == 1);
 
-    MODULE_STAT->outbound_connections += outbound_delta;
-    MODULE_STAT->allocated_outbound_connections += allocated_outbound_delta;
-    MODULE_STAT->outbound_connections_created += outbound_created_delta;
-    MODULE_STAT->inbound_connections_accepted += inbound_accepted_delta;
-    MODULE_STAT->allocated_inbound_connections += allocated_inbound_delta;
-    MODULE_STAT->inbound_connections += inbound_delta;
-    MODULE_STAT->active_inbound_connections += active_inbound_delta;
-    MODULE_STAT->active_connections += active_connections_delta;
+    connections_module_stat_tls->outbound_connections += outbound_delta;
+    connections_module_stat_tls->allocated_outbound_connections += allocated_outbound_delta;
+    connections_module_stat_tls->outbound_connections_created += outbound_created_delta;
+    connections_module_stat_tls->inbound_connections_accepted += inbound_accepted_delta;
+    connections_module_stat_tls->allocated_inbound_connections += allocated_inbound_delta;
+    connections_module_stat_tls->inbound_connections += inbound_delta;
+    connections_module_stat_tls->active_inbound_connections += active_inbound_delta;
+    connections_module_stat_tls->active_connections += active_connections_delta;
 
     if (should_incref_target) {
       assert(CTJ && CT);
@@ -1062,7 +1212,7 @@ connection_job_t alloc_new_connection(int cfd, conn_target_job_t CTJ,
 
     alloc_new_socket_connection(C);
 
-    MODULE_STAT->allocated_connections++;
+    connections_module_stat_tls->allocated_connections++;
 
     return C;
   } else {
@@ -1084,7 +1234,7 @@ connection_job_t alloc_new_connection(int cfd, conn_target_job_t CTJ,
     assert(failure_action != ALLOC_CONNECTION_FAILURE_ACTION_NONE);
 
     if (failure_action & ALLOC_CONNECTION_FAILURE_ACTION_INC_ACCEPT_INIT_FAILED) {
-      MODULE_STAT->accept_init_accepted_failed++;
+      connections_module_stat_tls->accept_init_accepted_failed++;
     }
     if (failure_action & ALLOC_CONNECTION_FAILURE_ACTION_FREE_RAWMSG) {
       rwm_free(&c->in);
@@ -1186,7 +1336,7 @@ int net_server_socket_free(socket_connection_job_t C) {
 
   rwm_free(&c->out);
 
-  MODULE_STAT->allocated_socket_connections += allocated_socket_delta;
+  connections_module_stat_tls->allocated_socket_connections += allocated_socket_delta;
   return 0;
 }
 
@@ -1228,7 +1378,7 @@ int net_server_socket_reader(socket_connection_job_t C) {
     __sync_fetch_and_or(&c->flags, C_NORD);
     int r = readv(c->fd, tcp_recv_iovec + p, MAX_TCP_RECV_BUFFERS + 1 - p);
     int read_errno = (r < 0) ? errno : 0;
-    MODULE_STAT->tcp_readv_calls++;
+    connections_module_stat_tls->tcp_readv_calls++;
 
     int32_t io_action = mtproxy_ffi_net_connections_socket_reader_io_action(
         r, read_errno, EAGAIN, EINTR);
@@ -1239,7 +1389,7 @@ int net_server_socket_reader(socket_connection_job_t C) {
 
     if (io_action == SOCKET_READER_IO_CONTINUE_INTR) {
       __sync_fetch_and_and(&c->flags, ~C_NORD);
-      MODULE_STAT->tcp_readv_intr++;
+      connections_module_stat_tls->tcp_readv_intr++;
       continue;
     }
     if (io_action == SOCKET_READER_IO_FATAL_ABORT) {
@@ -1269,7 +1419,7 @@ int net_server_socket_reader(socket_connection_job_t C) {
     }
     assert(io_action == SOCKET_READER_IO_HAVE_DATA);
 
-    MODULE_STAT->tcp_readv_bytes += r;
+    connections_module_stat_tls->tcp_readv_bytes += r;
     struct msg_part *mp = 0;
     assert(p == 1);
     mp = new_msg_part(0, tcp_recv_buffers[p - 1]);
@@ -1362,7 +1512,7 @@ int net_server_socket_writer(socket_connection_job_t C) {
 
     __sync_fetch_and_or(&c->flags, C_NOWR);
     int r = writev(c->fd, iov, iovcnt);
-    MODULE_STAT->tcp_writev_calls++;
+    connections_module_stat_tls->tcp_writev_calls++;
 
     int32_t next_eagain_count = c->eagain_count;
     int32_t io_action = mtproxy_ffi_net_connections_socket_writer_io_action(
@@ -1377,7 +1527,7 @@ int net_server_socket_writer(socket_connection_job_t C) {
 
     if (io_action == SOCKET_WRITER_IO_CONTINUE_INTR) {
       __sync_fetch_and_and(&c->flags, ~C_NOWR);
-      MODULE_STAT->tcp_writev_intr++;
+      connections_module_stat_tls->tcp_writev_intr++;
       continue;
     }
     if (io_action == SOCKET_WRITER_IO_FATAL_EAGAIN_LIMIT) {
@@ -1395,7 +1545,7 @@ int net_server_socket_writer(socket_connection_job_t C) {
     }
     if (io_action == SOCKET_WRITER_IO_HAVE_DATA) {
       __sync_fetch_and_and(&c->flags, ~C_NOWR);
-      MODULE_STAT->tcp_writev_bytes += r;
+      connections_module_stat_tls->tcp_writev_bytes += r;
       t += r;
     }
 
@@ -1697,7 +1847,7 @@ socket_connection_job_t alloc_new_socket_connection(connection_job_t C) {
   rwm_init(&s->out, 0);
   unlock_job(JOB_REF_CREATE_PASS(S));
 
-  MODULE_STAT->allocated_socket_connections += allocated_socket_delta;
+  connections_module_stat_tls->allocated_socket_connections += allocated_socket_delta;
   return S;
 }
 
@@ -1720,7 +1870,7 @@ int net_accept_new_connections(listening_connection_job_t LCJ) {
     vkprintf(2, "%s: cfd = %d\n", __func__, cfd);
     if (cfd < 0) {
       if (errno != EAGAIN) {
-        MODULE_STAT->accept_calls_failed++;
+        connections_module_stat_tls->accept_calls_failed++;
       }
       if (!acc) {
         vkprintf((errno == EAGAIN) * 2,
@@ -1730,7 +1880,7 @@ int net_accept_new_connections(listening_connection_job_t LCJ) {
     }
 
     acc++;
-    MODULE_STAT->inbound_connections_accepted++;
+    connections_module_stat_tls->inbound_connections_accepted++;
 
     if (max_accept_rate) {
       double new_remaining = cur_accept_rate_remaining;
@@ -1743,7 +1893,7 @@ int net_accept_new_connections(listening_connection_job_t LCJ) {
       cur_accept_rate_time = new_time;
 
       if (!allow) {
-        MODULE_STAT->accept_rate_limit_failed++;
+        connections_module_stat_tls->accept_rate_limit_failed++;
         close(cfd);
         continue;
       }
@@ -1885,7 +2035,7 @@ int init_listening_connection_ext(int fd, conn_type_t *type, void *extra,
   epoll_sethandler(fd, prio, net_server_socket_read_write_gateway, LCJ);
   epoll_insert(fd, EVT_RWX);
 
-  MODULE_STAT->listening_connections++;
+  connections_module_stat_tls->listening_connections++;
 
   unlock_job(JOB_REF_PASS(LCJ));
 
@@ -2263,8 +2413,8 @@ void destroy_dead_target_connections(conn_target_job_t CTJ) {
       was_ready, CT->ready_outbound_connections, &ready_outbound_delta,
       &ready_targets_delta);
   assert(rc == 0);
-  MODULE_STAT->ready_outbound_connections += ready_outbound_delta;
-  MODULE_STAT->ready_targets += ready_targets_delta;
+  connections_module_stat_tls->ready_outbound_connections += ready_outbound_delta;
+  connections_module_stat_tls->ready_targets += ready_targets_delta;
 
   int32_t tree_update_action = mtproxy_ffi_net_connections_target_tree_update_action(
       T != CT->conn_tree);
@@ -2305,8 +2455,8 @@ int create_new_connections(conn_target_job_t CTJ) {
       was_ready, CT->ready_outbound_connections, &ready_outbound_delta,
       &ready_targets_delta);
   assert(rc == 0);
-  MODULE_STAT->ready_outbound_connections += ready_outbound_delta;
-  MODULE_STAT->ready_targets += ready_targets_delta;
+  connections_module_stat_tls->ready_outbound_connections += ready_outbound_delta;
+  connections_module_stat_tls->ready_targets += ready_targets_delta;
 
   need_c = mtproxy_ffi_net_connections_target_needed_connections(
       CT->min_connections, CT->max_connections, bad_c, stopped_c);
@@ -2543,8 +2693,8 @@ static int free_target(conn_target_job_t CTJ) {
 
   pthread_mutex_unlock(&TargetsLock);
 
-  MODULE_STAT->inactive_targets--;
-  MODULE_STAT->free_targets++;
+  connections_module_stat_tls->inactive_targets--;
+  connections_module_stat_tls->free_targets++;
 
   job_decref(JOB_REF_PASS(CTJ));
 
@@ -2580,8 +2730,8 @@ int destroy_target(JOB_REF_ARG(CTJ)) {
   int32_t signal_run = mtproxy_ffi_net_connections_destroy_target_transition(
       r, &active_targets_delta, &inactive_targets_delta);
   assert(signal_run == 0 || signal_run == 1);
-  MODULE_STAT->active_targets += active_targets_delta;
-  MODULE_STAT->inactive_targets += inactive_targets_delta;
+  connections_module_stat_tls->active_targets += active_targets_delta;
+  connections_module_stat_tls->inactive_targets += inactive_targets_delta;
 
   if (signal_run) {
     job_signal(JOB_REF_PASS(CTJ), JS_RUN);
@@ -2661,7 +2811,7 @@ int do_conn_target_job(job_t job, int op, struct job_thread *JT) {
   }
   if (op == JS_FINISH) {
     assert(CTJ->j_flags & JF_COMPLETED);
-    MODULE_STAT->allocated_targets--;
+    connections_module_stat_tls->allocated_targets--;
     return job_free(JOB_REF_PASS(job));
   }
 
@@ -2697,15 +2847,15 @@ conn_target_job_t create_target(struct conn_target_info *source,
         1, old_global_refcnt, &active_targets_delta, &inactive_targets_delta,
         &created_state);
     assert(rc == 0);
-    MODULE_STAT->active_targets += active_targets_delta;
-    MODULE_STAT->inactive_targets += inactive_targets_delta;
+    connections_module_stat_tls->active_targets += active_targets_delta;
+    connections_module_stat_tls->inactive_targets += inactive_targets_delta;
     if (was_created) {
       *was_created = created_state;
     }
 
     job_incref(T);
   } else {
-    // assert (MODULE_STAT->allocated_targets < MAX_TARGETS);
+    // assert (connections_module_stat_tls->allocated_targets < MAX_TARGETS);
     T = create_async_job(
         do_conn_target_job,
         JSC_ALLOW(JC_EPOLL, JS_RUN) | JSC_ALLOW(JC_EPOLL, JS_ABORT) |
@@ -2724,9 +2874,9 @@ conn_target_job_t create_target(struct conn_target_info *source,
     int32_t rc = mtproxy_ffi_net_connections_create_target_transition(
         0, 0, &active_targets_delta, &inactive_targets_delta, &created_state);
     assert(rc == 0);
-    MODULE_STAT->active_targets += active_targets_delta;
-    MODULE_STAT->inactive_targets += inactive_targets_delta;
-    MODULE_STAT->allocated_targets++;
+    connections_module_stat_tls->active_targets += active_targets_delta;
+    connections_module_stat_tls->inactive_targets += inactive_targets_delta;
+    connections_module_stat_tls->allocated_targets++;
 
     if (source->target.s_addr) {
       find_target(source->target, source->port, source->type, source->extra, 1,
@@ -2823,8 +2973,8 @@ void insert_free_later_struct(struct free_later *F) {
     free_later_queue = alloc_mp_queue_w();
   }
   mpq_push_w(free_later_queue, F, 0);
-  MODULE_STAT->free_later_size++;
-  MODULE_STAT->free_later_total++;
+  connections_module_stat_tls->free_later_size++;
+  connections_module_stat_tls->free_later_total++;
 }
 
 void free_later_act(void) {
@@ -2836,7 +2986,7 @@ void free_later_act(void) {
     if (!F) {
       return;
     }
-    MODULE_STAT->free_later_size--;
+    connections_module_stat_tls->free_later_size--;
     F->free(F->ptr);
     free(F);
   }
@@ -2846,7 +2996,7 @@ void free_connection_tree_ptr(struct tree_connection *T) {
   free_tree_ptr_connection(T);
 }
 
-void incr_active_dh_connections(void) { MODULE_STAT->active_dh_connections++; }
+void incr_active_dh_connections(void) { connections_module_stat_tls->active_dh_connections++; }
 
 int new_conn_generation(void) {
   return __sync_fetch_and_add(&conn_generation, 1);

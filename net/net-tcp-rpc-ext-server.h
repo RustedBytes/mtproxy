@@ -21,7 +21,9 @@
 
 #pragma once
 
-#define __ALLOW_UNOBFS__ 0
+enum {
+  TCP_RPCS_ALLOW_UNOBFS = 0,
+};
 
 #include "net/net-connections.h"
 

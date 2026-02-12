@@ -1091,38 +1091,38 @@ int tcp_rpcs_compact_parse_execute(connection_job_t C) {
     if (D->in_packet_num == -3) {
       vkprintf(1, "trying to determine type of connection from %s:%d\n",
                show_remote_ip(C), c->remote_port);
-#if __ALLOW_UNOBFS__
-      if ((packet_len & 0xff) == 0xef) {
-        D->flags |= RPC_F_COMPACT;
-        assert(rwm_skip_data(&c->in, 1) == 1);
-        D->in_packet_num = 0;
-        vkprintf(1, "Short type\n");
-        continue;
-      }
-      if (packet_len == 0xeeeeeeee) {
-        D->flags |= RPC_F_MEDIUM;
-        assert(rwm_skip_data(&c->in, 4) == 4);
-        D->in_packet_num = 0;
-        vkprintf(1, "Medium type\n");
-        continue;
-      }
-      if (packet_len == 0xdddddddd) {
-        D->flags |= RPC_F_MEDIUM | RPC_F_PAD;
-        assert(rwm_skip_data(&c->in, 4) == 4);
-        D->in_packet_num = 0;
-        vkprintf(1, "Medium type\n");
-        continue;
-      }
+      if (TCP_RPCS_ALLOW_UNOBFS) {
+        if ((packet_len & 0xff) == 0xef) {
+          D->flags |= RPC_F_COMPACT;
+          assert(rwm_skip_data(&c->in, 1) == 1);
+          D->in_packet_num = 0;
+          vkprintf(1, "Short type\n");
+          continue;
+        }
+        if (packet_len == 0xeeeeeeee) {
+          D->flags |= RPC_F_MEDIUM;
+          assert(rwm_skip_data(&c->in, 4) == 4);
+          D->in_packet_num = 0;
+          vkprintf(1, "Medium type\n");
+          continue;
+        }
+        if (packet_len == 0xdddddddd) {
+          D->flags |= RPC_F_MEDIUM | RPC_F_PAD;
+          assert(rwm_skip_data(&c->in, 4) == 4);
+          D->in_packet_num = 0;
+          vkprintf(1, "Medium type\n");
+          continue;
+        }
 
-      // http
-      if ((packet_len == *(int *)"HEAD" || packet_len == *(int *)"POST" ||
-           packet_len == *(int *)"GET " || packet_len == *(int *)"OPTI") &&
-          TCP_RPCS_FUNC(C)->http_fallback_type) {
-        D->crypto_flags |= RPCF_COMPACT_OFF;
-        vkprintf(1, "HTTP type\n");
-        return tcp_rpcs_parse_execute(C);
+        // http
+        if ((packet_len == *(int *)"HEAD" || packet_len == *(int *)"POST" ||
+             packet_len == *(int *)"GET " || packet_len == *(int *)"OPTI") &&
+            TCP_RPCS_FUNC(C)->http_fallback_type) {
+          D->crypto_flags |= RPCF_COMPACT_OFF;
+          vkprintf(1, "HTTP type\n");
+          return tcp_rpcs_parse_execute(C);
+        }
       }
-#endif
 
       // fake tls
       if (c->flags & C_IS_TLS) {
@@ -1329,29 +1329,29 @@ int tcp_rpcs_compact_parse_execute(connection_job_t C) {
         return proxy_connection(C, default_domain_info);
       }
 
-#if __ALLOW_UNOBFS__
-      int tmp[2];
-      assert(rwm_fetch_lookup(&c->in, &tmp, 8) == 8);
-      if (!tmp[1] && !(c->flags & C_IS_TLS)) {
-        D->crypto_flags |= RPCF_COMPACT_OFF;
-        vkprintf(1, "Long type\n");
-        return tcp_rpcs_parse_execute(C);
+      int tmp[2] = {0, 0};
+      if (TCP_RPCS_ALLOW_UNOBFS) {
+        assert(rwm_fetch_lookup(&c->in, &tmp, 8) == 8);
+        if (!tmp[1] && !(c->flags & C_IS_TLS)) {
+          D->crypto_flags |= RPCF_COMPACT_OFF;
+          vkprintf(1, "Long type\n");
+          return tcp_rpcs_parse_execute(C);
+        }
       }
-#endif
 
       if (len < 64) {
         assert(!(c->flags & C_IS_TLS));
-#if __ALLOW_UNOBFS__
-        vkprintf(1,
-                 "random 64-byte header: first 0x%08x 0x%08x, need %d more "
-                 "bytes to distinguish\n",
-                 tmp[0], tmp[1], 64 - len);
-#else
-        vkprintf(1,
-                 "\"random\" 64-byte header: have %d bytes, need %d more bytes "
-                 "to distinguish\n",
-                 len, 64 - len);
-#endif
+        if (TCP_RPCS_ALLOW_UNOBFS) {
+          vkprintf(1,
+                   "random 64-byte header: first 0x%08x 0x%08x, need %d more "
+                   "bytes to distinguish\n",
+                   tmp[0], tmp[1], 64 - len);
+        } else {
+          vkprintf(1,
+                   "\"random\" 64-byte header: have %d bytes, need %d more "
+                   "bytes to distinguish\n",
+                   len, 64 - len);
+        }
         return 64 - len;
       }
 
@@ -1445,20 +1445,19 @@ int tcp_rpcs_compact_parse_execute(connection_job_t C) {
         return (-1 << 28);
       }
 
-#if __ALLOW_UNOBFS__
-      vkprintf(1, "short type with 64-byte header: first 0x%08x 0x%08x\n",
-               tmp[0], tmp[1]);
-      D->flags |= RPC_F_COMPACT | RPC_F_EXTMODE1;
-      D->in_packet_num = 0;
+      if (TCP_RPCS_ALLOW_UNOBFS) {
+        vkprintf(1, "short type with 64-byte header: first 0x%08x 0x%08x\n",
+                 tmp[0], tmp[1]);
+        D->flags |= RPC_F_COMPACT | RPC_F_EXTMODE1;
+        D->in_packet_num = 0;
 
-      assert(len >= 64);
-      assert(rwm_skip_data(&c->in, 64) == 64);
-      continue;
-#else
+        assert(len >= 64);
+        assert(rwm_skip_data(&c->in, 64) == 64);
+        continue;
+      }
       vkprintf(
           1, "invalid \"random\" 64-byte header, entering global skip mode\n");
       return (-1 << 28);
-#endif
     }
 
     int packet_len_bytes = 4;

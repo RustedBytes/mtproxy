@@ -30,7 +30,9 @@
 #include "net/net-crypto-dh.h"
 #include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 
-#define RPC_PARAM_HASH 0x00620b93
+enum {
+  DH_RPC_PARAM_HASH = 0x00620b93,
+};
 
 int dh_params_select;
 
@@ -56,7 +58,7 @@ int init_dh_params(void) {
     return -1;
   }
   dh_params_select = select;
-  assert(dh_params_select == RPC_PARAM_HASH);
+  assert(dh_params_select == DH_RPC_PARAM_HASH);
   return rc;
 }
 

@@ -26,6 +26,7 @@
 #include "net/net-rpc-targets.h"
 #include "vv/vv-tree.h"
 #include <assert.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -63,19 +64,48 @@ rpc_target_pid_to_ffi(const struct process_id *pid) {
 
 static mtproxy_ffi_rpc_target_tree_t *rpc_target_tree;
 
-#define MODULE rpc_targets
-
-MODULE_STAT_TYPE {
+struct rpc_targets_module_stat {
   long long total_rpc_targets;
   long long total_connections_in_rpc_targets;
 };
 
-MODULE_INIT
+static struct rpc_targets_module_stat
+    *rpc_targets_module_stat_array[MAX_JOB_THREADS];
+static __thread struct rpc_targets_module_stat *rpc_targets_module_stat_tls;
 
-MODULE_STAT_FUNCTION
-SB_SUM_ONE_LL(total_rpc_targets);
-SB_SUM_ONE_LL(total_connections_in_rpc_targets);
-MODULE_STAT_FUNCTION_END
+static void rpc_targets_module_thread_init(void) {
+  int id = get_this_thread_id();
+  assert(id >= 0 && id < MAX_JOB_THREADS);
+  rpc_targets_module_stat_tls =
+      calloc(1, sizeof(*rpc_targets_module_stat_tls));
+  rpc_targets_module_stat_array[id] = rpc_targets_module_stat_tls;
+}
+
+static struct thread_callback rpc_targets_module_thread_callback = {
+    .new_thread = rpc_targets_module_thread_init,
+    .next = NULL,
+};
+
+__attribute__((constructor)) static void rpc_targets_module_register(void) {
+  register_thread_callback(&rpc_targets_module_thread_callback);
+}
+
+static inline long long rpc_targets_stat_sum_ll(size_t field_offset) {
+  return sb_sum_ll((void **)rpc_targets_module_stat_array, max_job_thread_id + 1,
+                   field_offset);
+}
+
+int rpc_targets_prepare_stat(stats_buffer_t *sb) {
+  sb_print_i64_key(sb, "total_rpc_targets",
+                   rpc_targets_stat_sum_ll(
+                       offsetof(struct rpc_targets_module_stat, total_rpc_targets)));
+  sb_print_i64_key(
+      sb, "total_connections_in_rpc_targets",
+      rpc_targets_stat_sum_ll(
+          offsetof(struct rpc_targets_module_stat,
+                   total_connections_in_rpc_targets)));
+  return sb->pos;
+}
 
 static rpc_target_job_t rpc_target_alloc(struct process_id PID) {
   assert_engine_thread();
@@ -91,7 +121,7 @@ static rpc_target_job_t rpc_target_alloc(struct process_id PID) {
   mtproxy_ffi_process_id_t pid_key = rpc_target_pid_to_ffi(&PID);
   rpc_target_tree =
       mtproxy_ffi_rpc_target_tree_insert(rpc_target_tree, &pid_key, SS);
-  MODULE_STAT->total_rpc_targets++;
+  rpc_targets_module_stat_tls->total_rpc_targets++;
   mtproxy_ffi_rpc_target_tree_release(old);
 
   return SS;
@@ -134,7 +164,7 @@ void rpc_target_insert_conn(connection_job_t C) {
 
   S->conn_tree =
       tree_insert_connection(S->conn_tree, job_incref(C), lrand48_j());
-  MODULE_STAT->total_connections_in_rpc_targets++;
+  rpc_targets_module_stat_tls->total_connections_in_rpc_targets++;
 
   __sync_synchronize();
   free_tree_ptr_connection(old);
@@ -174,7 +204,7 @@ void rpc_target_delete_conn(connection_job_t C) {
 
   struct tree_connection *old = get_tree_ptr_connection(&S->conn_tree);
   S->conn_tree = tree_delete_connection(S->conn_tree, C);
-  MODULE_STAT->total_connections_in_rpc_targets--;
+  rpc_targets_module_stat_tls->total_connections_in_rpc_targets--;
 
   __sync_synchronize();
 

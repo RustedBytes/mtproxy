@@ -24,36 +24,11 @@
 
 #pragma once
 
+#include <stddef.h>
 #include <sys/types.h>
 
 #define AM_GET_MEMORY_USAGE_SELF 1
 #define AM_GET_MEMORY_USAGE_OVERALL 2
-
-#define SB_PRINT_I64(x) sb_printf(&sb, "%s\t%lld\n", #x, x)
-#define SB_PRINT_I32(x) sb_printf(&sb, "%s\t%d\n", #x, x)
-#define SB_PRINT_QUERIES(x) sb_print_queries(&sb, #x, x)
-#define SB_PRINT_DOUBLE(x) sb_printf(&sb, "%s\t%.6lf\n", #x, x)
-#define SB_PRINT_TIME(x) sb_printf(&sb, "%s\t%.6lfs\n", #x, x)
-#define SB_PRINT_PERCENT(x) sb_printf(&sb, "%s\t%.3lf%%\n", #x, x)
-
-#define SBP_PRINT_I32(x) sb_printf(sb, "%s\t%d\n", #x, x)
-#define SBP_PRINT_I64(x) sb_printf(sb, "%s\t%lld\n", #x, x)
-#define SBP_PRINT_QUERIES(x) sb_print_queries(sb, #x, x)
-#define SBP_PRINT_DOUBLE(x) sb_printf(sb, "%s\t%.6lf\n", #x, x)
-#define SBP_PRINT_TIME(x) sb_printf(sb, "%s\t%.6lfs\n", #x, x)
-#define SBP_PRINT_PERCENT(x) sb_printf(sb, "%s\t%.3lf%%\n", #x, x)
-#define SBP_PRINT_DATE(x) sbp_print_date(sb, #x, x)
-
-#define SBM_PRINT_I32(x)                                                       \
-  sb_printf(sb, "%s%s\t%d\n", MODULE_STAT_PREFIX_NAME ?: "", #x, x)
-#define SBM_PRINT_I64(x)                                                       \
-  sb_printf(sb, "%s%s\t%lld\n", MODULE_STAT_PREFIX_NAME ?: "", #x, x)
-#define SBM_PRINT_DOUBLE(x)                                                    \
-  sb_printf(sb, "%s%s\t%.6lf\n", MODULE_STAT_PREFIX_NAME ?: "", #x, x)
-#define SBM_PRINT_TIME(x)                                                      \
-  sb_printf(sb, "%s%s\t%.6lfs\n", MODULE_STAT_PREFIX_NAME ?: "", #x, x)
-#define SBM_PRINT_PERCENT(x)                                                   \
-  sb_printf(sb, "%s%s\t%.3lf%%\n", MODULE_STAT_PREFIX_NAME ?: "", #x, x)
 
 static inline double safe_div(double x, double y) { return y > 0 ? x / y : 0; }
 
@@ -89,31 +64,34 @@ void sb_memory(stats_buffer_t *sb, int flags);
 void sb_print_queries(stats_buffer_t *sb, const char *const desc, long long q);
 void sbp_print_date(stats_buffer_t *sb, const char *key, time_t unix_time);
 
+static inline void sb_print_i32_key(stats_buffer_t *sb, const char *key,
+                                    int value) {
+  sb_printf(sb, "%s\t%d\n", key, value);
+}
+
+static inline void sb_print_i64_key(stats_buffer_t *sb, const char *key,
+                                    long long value) {
+  sb_printf(sb, "%s\t%lld\n", key, value);
+}
+
+static inline void sb_print_double_key(stats_buffer_t *sb, const char *key,
+                                       double value) {
+  sb_printf(sb, "%s\t%.6lf\n", key, value);
+}
+
+static inline void sb_print_time_key(stats_buffer_t *sb, const char *key,
+                                     double value) {
+  sb_printf(sb, "%s\t%.6lfs\n", key, value);
+}
+
+static inline void sb_print_percent_key(stats_buffer_t *sb, const char *key,
+                                        double value) {
+  sb_printf(sb, "%s\t%.3lf%%\n", key, value);
+}
+
 typedef void (*stat_fun_t)(stats_buffer_t *sb);
 int sb_register_stat_fun(stat_fun_t fun);
 
 int sb_sum_i(void **base, int len, int offset);
 long long sb_sum_ll(void **base, int len, int offset);
 double sb_sum_f(void **base, int len, int offset);
-
-#define SB_SUM_I(name)                                                         \
-  sb_sum_i((void **)MODULE_STAT_ARR, max_job_thread_id + 1,                    \
-           offsetof(MODULE_STAT_TYPE, name))
-
-#define SB_SUM_LL(name)                                                        \
-  sb_sum_ll((void **)MODULE_STAT_ARR, max_job_thread_id + 1,                   \
-            offsetof(MODULE_STAT_TYPE, name))
-
-#define SB_SUM_F(name)                                                         \
-  sb_sum_f((void **)MODULE_STAT_ARR, max_job_thread_id + 1,                    \
-           offsetof(MODULE_STAT_TYPE, name))
-
-#define SB_SUM_ONE_I(name)                                                     \
-  sb_printf(sb, "%s%s\t%d\n", MODULE_STAT_PREFIX_NAME ?: "", #name,            \
-            SB_SUM_I(name))
-#define SB_SUM_ONE_LL(name)                                                    \
-  sb_printf(sb, "%s%s\t%lld\n", MODULE_STAT_PREFIX_NAME ?: "", #name,          \
-            SB_SUM_LL(name))
-#define SB_SUM_ONE_F(name)                                                     \
-  sb_printf(sb, "%s%s\t%lf\n", MODULE_STAT_PREFIX_NAME ?: "", #name,           \
-            SB_SUM_F(name))

@@ -44,7 +44,12 @@
  *
  */
 
-#define SERVER_VERSION "MTProxy/1.0"
+static const char http_server_version[] = "MTProxy/1.0";
+
+enum {
+  HTTP_HEADER_BUFFER_SIZE = 4096,
+  HTTP_HEADER_BUFFER_SLACK = 64,
+};
 
 int http_connections;
 long long http_queries, http_bad_headers, http_queries_size;
@@ -149,13 +154,13 @@ static inline const char *http_get_error_msg_text(int *code) {
   return message;
 }
 
-static char error_text_pattern[] = "<html>\r\n"
-                                   "<head><title>%d %s</title></head>\r\n"
-                                   "<body bgcolor=\"white\">\r\n"
-                                   "<center><h1>%d %s</h1></center>\r\n"
-                                   "<hr><center>" SERVER_VERSION "</center>\r\n"
-                                   "</body>\r\n"
-                                   "</html>\r\n";
+static const char error_text_pattern[] = "<html>\r\n"
+                                         "<head><title>%d %s</title></head>\r\n"
+                                         "<body bgcolor=\"white\">\r\n"
+                                         "<center><h1>%d %s</h1></center>\r\n"
+                                         "<hr><center>%s</center>\r\n"
+                                         "</body>\r\n"
+                                         "</html>\r\n";
 
 int write_http_error_raw(connection_job_t C, struct raw_message *raw,
                          int code) {
@@ -167,7 +172,7 @@ int write_http_error_raw(connection_job_t C, struct raw_message *raw,
     char *ptr = buff;
     const char *error_message = http_get_error_msg_text(&code);
     ptr += sprintf(ptr, error_text_pattern, code, error_message, code,
-                   error_message);
+                   error_message, http_server_version);
     write_basic_http_header_raw(C, raw, code, 0, ptr - buff, 0, 0);
     assert(rwm_push_data(raw, buff, ptr - buff) == ptr - buff);
     return ptr - buff;
@@ -670,11 +675,10 @@ int hts_do_wakeup(connection_job_t c) {
  *
  */
 
-#define HTTP_DATE_LEN 29
 char now_date_string[] = "Thu, 01 Jan 1970 00:00:00 GMT";
 int now_date_utime;
 
-void gen_http_date(char date_buffer[29], int time) {
+void gen_http_date(char date_buffer[HTTP_DATE_LEN], int time) {
   int32_t rc = mtproxy_ffi_net_http_gen_date(date_buffer, HTTP_DATE_LEN, time);
   assert(rc == 0);
 }
@@ -692,11 +696,11 @@ int get_http_header(const char *qHeaders, const int qHeadersLen, char *buffer,
                                          arg_name, arg_len);
 }
 
-static char header_pattern[] = "HTTP/1.1 %d %s\r\n"
-                               "Server: " SERVER_VERSION "\r\n"
-                               "Date: %s\r\n"
-                               "Content-Type: %.256s\r\n"
-                               "Connection: %s\r\n%.1024s%.1024s";
+static const char header_pattern[] = "HTTP/1.1 %d %s\r\n"
+                                     "Server: %s\r\n"
+                                     "Date: %s\r\n"
+                                     "Content-Type: %.256s\r\n"
+                                     "Connection: %s\r\n%.1024s%.1024s";
 
 int write_basic_http_header_raw(connection_job_t C, struct raw_message *raw,
                                 int code, int date, int len,
@@ -705,14 +709,14 @@ int write_basic_http_header_raw(connection_job_t C, struct raw_message *raw,
   struct hts_data *D = HTS_DATA(C);
 
   if (D->http_ver >= HTTP_V10 || D->http_ver == 0) {
-#define B_SZ 4096
-    static char buff[B_SZ], date_buff[32];
+    static char buff[HTTP_HEADER_BUFFER_SIZE], date_buff[32];
     char *ptr = buff;
     const char *error_message = http_get_error_msg_text(&code);
     if (date) {
       gen_http_date(date_buff, date);
     }
-    ptr += snprintf(ptr, B_SZ - 64, header_pattern, code, error_message,
+    ptr += snprintf(ptr, HTTP_HEADER_BUFFER_SIZE - HTTP_HEADER_BUFFER_SLACK,
+                    header_pattern, code, error_message, http_server_version,
                     date ? date_buff : cur_http_date(),
                     content_type ? content_type : "text/html",
                     (D->query_flags & QF_KEEPALIVE) ? "keep-alive" : "close",
@@ -722,7 +726,7 @@ int write_basic_http_header_raw(connection_job_t C, struct raw_message *raw,
                         : "",
                     add_header ?: "");
     D->query_flags &= ~QF_EXTRA_HEADERS;
-    assert(ptr < buff + B_SZ - 64);
+    assert(ptr < buff + HTTP_HEADER_BUFFER_SIZE - HTTP_HEADER_BUFFER_SLACK);
     if (len >= 0) {
       ptr += sprintf(ptr, "Content-Length: %d\r\n", len);
     }

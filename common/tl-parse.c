@@ -25,6 +25,7 @@
 #include "common/tl-parse.h"
 
 #include <assert.h>
+#include <stddef.h>
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -43,8 +44,6 @@
 
 #include "common/common-stats.h"
 #include "jobs/jobs.h"
-
-#define MODULE tl_parse
 
 extern void mtproxy_ffi_tl_query_header_delete(struct tl_query_header *h);
 extern struct tl_query_header *
@@ -172,31 +171,86 @@ extern int32_t mtproxy_ffi_tl_copy_through(struct tl_in_state *tlio_in,
                                            struct tl_out_state *tlio_out,
                                            int32_t len, int32_t advance);
 
-MODULE_STAT_TYPE {
+struct tl_parse_module_stat {
   long long rpc_queries_received, rpc_answers_error, rpc_answers_received;
   long long rpc_sent_errors, rpc_sent_answers, rpc_sent_queries;
   int tl_in_allocated, tl_out_allocated;
 };
 
-MODULE_INIT
+static struct tl_parse_module_stat *tl_parse_module_stat_array[MAX_JOB_THREADS];
+static __thread struct tl_parse_module_stat *tl_parse_module_stat_tls;
 
-MODULE_STAT_FUNCTION
-double uptime = time(0) - start_time;
-SB_SUM_ONE_LL(rpc_queries_received);
-SB_SUM_ONE_LL(rpc_answers_error);
-SB_SUM_ONE_LL(rpc_answers_received);
-SB_SUM_ONE_LL(rpc_sent_errors);
-SB_SUM_ONE_LL(rpc_sent_answers);
-SB_SUM_ONE_LL(rpc_sent_queries);
-SB_SUM_ONE_I(tl_in_allocated);
-SB_SUM_ONE_I(tl_out_allocated);
+static void tl_parse_module_thread_init(void) {
+  int id = get_this_thread_id();
+  assert(id >= 0 && id < MAX_JOB_THREADS);
+  tl_parse_module_stat_tls = calloc(1, sizeof(*tl_parse_module_stat_tls));
+  tl_parse_module_stat_array[id] = tl_parse_module_stat_tls;
+}
 
-sb_printf(sb,
-          "rpc_qps\t%lf\n"
-          "default_rpc_flags\t%u\n",
-          safe_div(SB_SUM_LL(rpc_queries_received), uptime),
-          tcp_get_default_rpc_flags());
-MODULE_STAT_FUNCTION_END
+static struct thread_callback tl_parse_module_thread_callback = {
+    .new_thread = tl_parse_module_thread_init,
+    .next = NULL,
+};
+
+__attribute__((constructor)) static void tl_parse_module_register(void) {
+  register_thread_callback(&tl_parse_module_thread_callback);
+}
+
+static inline int tl_parse_stat_sum_i(size_t field_offset) {
+  return sb_sum_i((void **)tl_parse_module_stat_array, max_job_thread_id + 1,
+                  field_offset);
+}
+
+static inline long long tl_parse_stat_sum_ll(size_t field_offset) {
+  return sb_sum_ll((void **)tl_parse_module_stat_array, max_job_thread_id + 1,
+                   field_offset);
+}
+
+int tl_parse_prepare_stat(stats_buffer_t *sb) {
+  double uptime = time(0) - start_time;
+  sb_print_i64_key(
+      sb, "rpc_queries_received",
+      tl_parse_stat_sum_ll(
+          offsetof(struct tl_parse_module_stat, rpc_queries_received)));
+  sb_print_i64_key(
+      sb, "rpc_answers_error",
+      tl_parse_stat_sum_ll(
+          offsetof(struct tl_parse_module_stat, rpc_answers_error)));
+  sb_print_i64_key(
+      sb, "rpc_answers_received",
+      tl_parse_stat_sum_ll(
+          offsetof(struct tl_parse_module_stat, rpc_answers_received)));
+  sb_print_i64_key(
+      sb, "rpc_sent_errors",
+      tl_parse_stat_sum_ll(
+          offsetof(struct tl_parse_module_stat, rpc_sent_errors)));
+  sb_print_i64_key(
+      sb, "rpc_sent_answers",
+      tl_parse_stat_sum_ll(
+          offsetof(struct tl_parse_module_stat, rpc_sent_answers)));
+  sb_print_i64_key(
+      sb, "rpc_sent_queries",
+      tl_parse_stat_sum_ll(
+          offsetof(struct tl_parse_module_stat, rpc_sent_queries)));
+  sb_print_i32_key(
+      sb, "tl_in_allocated",
+      tl_parse_stat_sum_i(
+          offsetof(struct tl_parse_module_stat, tl_in_allocated)));
+  sb_print_i32_key(
+      sb, "tl_out_allocated",
+      tl_parse_stat_sum_i(
+          offsetof(struct tl_parse_module_stat, tl_out_allocated)));
+
+  sb_printf(sb,
+            "rpc_qps\t%lf\n"
+            "default_rpc_flags\t%u\n",
+            safe_div(
+                tl_parse_stat_sum_ll(
+                    offsetof(struct tl_parse_module_stat, rpc_queries_received)),
+                uptime),
+            tcp_get_default_rpc_flags());
+  return sb->pos;
+}
 
 void tl_query_header_delete(struct tl_query_header *h) {
   mtproxy_ffi_tl_query_header_delete(h);
@@ -474,7 +528,7 @@ int tlf_query_header(struct tl_in_state *tlio_in,
   if (rc <= 0) {
     return -1;
   }
-  MODULE_STAT->rpc_queries_received++;
+  tl_parse_module_stat_tls->rpc_queries_received++;
   return rc;
 }
 
@@ -485,9 +539,9 @@ int tlf_query_answer_header(struct tl_in_state *tlio_in,
     return -1;
   }
   if (header->op == RPC_REQ_ERROR || header->op == RPC_REQ_ERROR_WRAPPED) {
-    MODULE_STAT->rpc_answers_error++;
+    tl_parse_module_stat_tls->rpc_answers_error++;
   } else {
-    MODULE_STAT->rpc_answers_received++;
+    tl_parse_module_stat_tls->rpc_answers_received++;
   }
   return rc;
 }
@@ -529,11 +583,11 @@ int tls_end_ext(struct tl_out_state *tlio_out, int op) {
     return rc;
   }
   if (sent_kind == 1) {
-    MODULE_STAT->rpc_sent_errors++;
+    tl_parse_module_stat_tls->rpc_sent_errors++;
   } else if (sent_kind == 2) {
-    MODULE_STAT->rpc_sent_answers++;
+    tl_parse_module_stat_tls->rpc_sent_answers++;
   } else if (sent_kind == 3) {
-    MODULE_STAT->rpc_sent_queries++;
+    tl_parse_module_stat_tls->rpc_sent_queries++;
   }
   return 0;
 }
@@ -571,12 +625,12 @@ int tls_init(struct tl_out_state *tlio_out, enum tl_type type,
 }
 
 struct tl_in_state *tl_in_state_alloc(void) {
-  MODULE_STAT->tl_in_allocated++;
+  tl_parse_module_stat_tls->tl_in_allocated++;
   return calloc(sizeof(struct tl_in_state), 1);
 }
 
 void tl_in_state_free(struct tl_in_state *tlio_in) {
-  MODULE_STAT->tl_in_allocated--;
+  tl_parse_module_stat_tls->tl_in_allocated--;
   if (tlio_in->in_methods && tlio_in->in_methods->fetch_clear) {
     tlio_in->in_methods->fetch_clear(tlio_in);
   }
@@ -587,12 +641,12 @@ void tl_in_state_free(struct tl_in_state *tlio_in) {
 }
 
 struct tl_out_state *tl_out_state_alloc(void) {
-  MODULE_STAT->tl_out_allocated++;
+  tl_parse_module_stat_tls->tl_out_allocated++;
   return calloc(sizeof(struct tl_out_state), 1);
 }
 
 void tl_out_state_free(struct tl_out_state *tlio_out) {
-  MODULE_STAT->tl_out_allocated--;
+  tl_parse_module_stat_tls->tl_out_allocated--;
   if (tlio_out->out_methods && tlio_out->out_methods->store_clear) {
     tlio_out->out_methods->store_clear(tlio_out);
   }

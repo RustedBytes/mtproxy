@@ -37,6 +37,7 @@ const TL_ERROR_TOO_LONG_STRING: c_int =
 const TL_ERROR_VALUE_NOT_IN_RANGE: c_int =
     mtproxy_core::runtime::config::tl_parse::TL_ERROR_VALUE_NOT_IN_RANGE;
 const TL_ERROR_INTERNAL: c_int = mtproxy_core::runtime::config::tl_parse::TL_ERROR_INTERNAL;
+const TL_PARSE_ERROR_FALLBACK: &[u8] = b"TL parse error\0";
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -571,10 +572,13 @@ unsafe fn tl_set_error_once(tlio_in: *mut TlInState, errnum: c_int, message: &st
     if tlio_in.is_null() || !(*tlio_in).error.is_null() {
         return;
     }
-    let msg = CString::new(message)
-        .ok()
-        .unwrap_or_else(|| CString::new("TL parse error").expect("valid static c string"));
-    (*tlio_in).error = strdup(msg.as_ptr());
+    let msg = CString::new(message).ok();
+    let msg_ptr = msg
+        .as_ref()
+        .map_or(TL_PARSE_ERROR_FALLBACK.as_ptr().cast(), |value| {
+            value.as_ptr()
+        });
+    (*tlio_in).error = strdup(msg_ptr);
     (*tlio_in).errnum = errnum;
 }
 

@@ -62,9 +62,7 @@ struct job_thread_stat {
 struct job_thread_stat JobThreadsStats[MAX_JOB_THREADS]
     __attribute__((aligned(128)));
 
-#define MODULE jobs
-
-MODULE_STAT_TYPE {
+struct jobs_module_stat {
   double tot_idle_time, a_idle_time, a_idle_quotient;
   long long jobs_allocated_memory;
   int jobs_ran;
@@ -74,9 +72,36 @@ MODULE_STAT_TYPE {
   long long timer_ops_scheduler;
 };
 
-MODULE_INIT
+static struct jobs_module_stat *jobs_module_stat_array[MAX_JOB_THREADS];
+static __thread struct jobs_module_stat *jobs_module_stat_tls;
 
-MODULE_STAT_FUNCTION
+static void jobs_module_thread_init(void) {
+  int id = get_this_thread_id();
+  assert(id >= 0 && id < MAX_JOB_THREADS);
+  jobs_module_stat_tls = calloc(1, sizeof(*jobs_module_stat_tls));
+  jobs_module_stat_array[id] = jobs_module_stat_tls;
+}
+
+static struct thread_callback jobs_module_thread_callback = {
+    .new_thread = jobs_module_thread_init,
+    .next = NULL,
+};
+
+__attribute__((constructor)) static void jobs_module_register(void) {
+  register_thread_callback(&jobs_module_thread_callback);
+}
+
+static inline int jobs_stat_sum_i(size_t field_offset) {
+  return sb_sum_i((void **)jobs_module_stat_array, max_job_thread_id + 1,
+                  field_offset);
+}
+
+static inline long long jobs_stat_sum_ll(size_t field_offset) {
+  return sb_sum_ll((void **)jobs_module_stat_array, max_job_thread_id + 1,
+                   field_offset);
+}
+
+int jobs_prepare_stat(stats_buffer_t *sb) {
 int uptime = time(0) - start_time;
 double tm = get_utime_monotonic();
 double tot_recent_idle[16];
@@ -94,14 +119,14 @@ tot_idle[JC_MAIN] = tot_idle_time;
 
 int i, j;
 for (i = 0; i < max_job_thread_id + 1; i++) {
-  if (MODULE_STAT_ARR[i]) {
+  if (jobs_module_stat_array[i]) {
     assert(JobThreads[i].id == i);
     int class = JobThreads[i].thread_class & JC_MASK;
-    tot_recent_idle[class] += MODULE_STAT_ARR[i]->a_idle_time;
-    tot_recent_q[class] += MODULE_STAT_ARR[i]->a_idle_quotient;
-    tot_idle[class] += MODULE_STAT_ARR[i]->tot_idle_time;
-    if (MODULE_STAT_ARR[i]->locked_since) {
-      double lt = MODULE_STAT_ARR[i]->locked_since;
+    tot_recent_idle[class] += jobs_module_stat_array[i]->a_idle_time;
+    tot_recent_q[class] += jobs_module_stat_array[i]->a_idle_quotient;
+    tot_idle[class] += jobs_module_stat_array[i]->tot_idle_time;
+    if (jobs_module_stat_array[i]->locked_since) {
+      double lt = jobs_module_stat_array[i]->locked_since;
       tot_recent_idle[class] += (tm - lt);
       tot_recent_q[class] += (tm - lt);
       tot_idle[class] += (tm - lt);
@@ -171,7 +196,7 @@ double max_cpu_load_ru = 0;
 double max_cpu_load_rs = 0;
 double max_cpu_load_rt = 0;
 for (i = 0; i < max_job_thread_id + 1; i++) {
-  if (MODULE_STAT_ARR[i]) {
+  if (jobs_module_stat_array[i]) {
     assert(JobThreads[i].id == i);
     int class = JobThreads[i].thread_class & JC_MASK;
     jb_cpu_load_u[class] += JobThreadsStats[i].tot_user;
@@ -280,7 +305,9 @@ sb_printf(sb,
           m_clk_to_ts *max_cpu_load_ru, m_clk_to_ts *max_cpu_load_rs,
           m_clk_to_ts *max_cpu_load_rt);
 
-SB_SUM_ONE_I(job_timers_allocated);
+sb_print_i32_key(
+    sb, "job_timers_allocated",
+    jobs_stat_sum_i(offsetof(struct jobs_module_stat, job_timers_allocated)));
 
 int jb_running[16], jb_active = 0;
 long long jb_created = 0;
@@ -312,13 +339,20 @@ for (i = 0; i < 16; i++) {
 }
 sb_printf(sb, "\n");
 
-SB_SUM_ONE_LL(jobs_allocated_memory);
-SB_SUM_ONE_LL(timer_ops);
-SB_SUM_ONE_LL(timer_ops_scheduler);
-MODULE_STAT_FUNCTION_END
+sb_print_i64_key(
+    sb, "jobs_allocated_memory",
+    jobs_stat_sum_ll(offsetof(struct jobs_module_stat, jobs_allocated_memory)));
+sb_print_i64_key(sb, "timer_ops",
+                 jobs_stat_sum_ll(offsetof(struct jobs_module_stat, timer_ops)));
+sb_print_i64_key(
+    sb, "timer_ops_scheduler",
+    jobs_stat_sum_ll(offsetof(struct jobs_module_stat, timer_ops_scheduler)));
+return sb->pos;
+}
 
 long long jobs_get_allocated_memoty(void) {
-  return SB_SUM_LL(jobs_allocated_memory);
+  return jobs_stat_sum_ll(
+      offsetof(struct jobs_module_stat, jobs_allocated_memory));
 }
 
 void update_thread_stat(int pid, int tid, int id) {
@@ -374,7 +408,7 @@ size_t jobs_async_job_header_size_c_impl(void) {
 }
 
 struct job_thread *jobs_prepare_async_create_c_impl(int custom_bytes) {
-  MODULE_STAT->jobs_allocated_memory += sizeof(struct async_job) + custom_bytes;
+  jobs_module_stat_tls->jobs_allocated_memory += sizeof(struct async_job) + custom_bytes;
   struct job_thread *JT = this_job_thread;
   assert(JT);
   JT->jobs_created++;
@@ -691,7 +725,7 @@ int unlock_job(JOB_REF_ARG(job)) {
         continue;
       } else {
         assert(0 && "unhandled JS_FINISH\n");
-        MODULE_STAT->jobs_allocated_memory -=
+        jobs_module_stat_tls->jobs_allocated_memory -=
             sizeof(struct async_job) + job->j_custom_bytes;
         job_free(JOB_REF_PASS(job));
         JT->jobs_active--;
@@ -723,7 +757,7 @@ int unlock_job(JOB_REF_ARG(job)) {
       }
       JT->jobs_running[req_class]--;
       if (res == JOB_DESTROYED) {
-        MODULE_STAT->jobs_allocated_memory -= sizeof(struct async_job) + custom;
+        jobs_module_stat_tls->jobs_allocated_memory -= sizeof(struct async_job) + custom;
         vkprintf(JOBS_DEBUG, "JOB %p DESTROYED: RES = %d\n", job, res);
         JT->jobs_active--;
         return res;
@@ -963,12 +997,12 @@ void *job_thread_ex(void *arg, void (*work_one)(void *, int)) {
     int32_t rc = mtproxy_ffi_jobs_tokio_dequeue_class(thread_class, 0, &job);
     if (rc <= 0 || !job) {
       double wait_start = get_utime_monotonic();
-      MODULE_STAT->locked_since = wait_start;
+      jobs_module_stat_tls->locked_since = wait_start;
       rc = mtproxy_ffi_jobs_tokio_dequeue_class(thread_class, 1, &job);
       double wait_time = get_utime_monotonic() - wait_start;
-      MODULE_STAT->locked_since = 0;
-      MODULE_STAT->tot_idle_time += wait_time;
-      MODULE_STAT->a_idle_time += wait_time;
+      jobs_module_stat_tls->locked_since = 0;
+      jobs_module_stat_tls->tot_idle_time += wait_time;
+      jobs_module_stat_tls->a_idle_time += wait_time;
     }
     if (rc < 0) {
       kprintf("fatal: rust tokio class dequeue failed (class=%d rc=%d)\n",
@@ -985,13 +1019,13 @@ void *job_thread_ex(void *arg, void (*work_one)(void *, int)) {
       now = time(0);
       if (now > prev_now && now < prev_now + 60) {
         while (prev_now < now) {
-          MODULE_STAT->a_idle_time *= 100.0 / 101;
-          MODULE_STAT->a_idle_quotient = a_idle_quotient * (100.0 / 101) + 1;
+          jobs_module_stat_tls->a_idle_time *= 100.0 / 101;
+          jobs_module_stat_tls->a_idle_quotient = a_idle_quotient * (100.0 / 101) + 1;
           prev_now++;
         }
       } else {
         if (now >= prev_now + 60) {
-          MODULE_STAT->a_idle_time = MODULE_STAT->a_idle_quotient;
+          jobs_module_stat_tls->a_idle_time = jobs_module_stat_tls->a_idle_quotient;
         }
         prev_now = now;
       }
@@ -1246,7 +1280,7 @@ int insert_event_timer(event_timer_t *et);
 int remove_event_timer(event_timer_t *et);
 
 void do_immediate_timer_insert(job_t W) {
-  MODULE_STAT->timer_ops++;
+  jobs_module_stat_tls->timer_ops++;
   struct event_timer *ev = (void *)W->j_custom;
   int active = ev->h_idx > 0;
 
@@ -1362,7 +1396,7 @@ int do_timer_job(job_t job, int op, [[maybe_unused]] struct job_thread *JT) {
     return JOB_COMPLETED;
   }
   if (op == JS_FINISH) {
-    MODULE_STAT->job_timers_allocated--;
+    jobs_module_stat_tls->job_timers_allocated--;
     return job_free(JOB_REF_PASS(job));
   }
   return JOB_ERROR;
@@ -1380,7 +1414,7 @@ job_t job_timer_alloc(int thread_class, double (*alarm)(void *), void *extra) {
   e->wakeup = alarm;
   e->extra = extra;
   unlock_job(JOB_REF_CREATE_PASS(t));
-  MODULE_STAT->job_timers_allocated++;
+  jobs_module_stat_tls->job_timers_allocated++;
   return t;
 }
 
@@ -1433,7 +1467,7 @@ void job_timer_insert(job_t job, double timeout) {
   } else {
     m = JobThreads[ev->flags & 255].timer_manager;
   }
-  MODULE_STAT->timer_ops_scheduler++;
+  jobs_module_stat_tls->timer_ops_scheduler++;
   assert(m);
   struct job_timer_manager_extra *e = (void *)m->j_custom;
   int32_t rc = mtproxy_ffi_jobs_tokio_timer_queue_push(e->tokio_queue_id,

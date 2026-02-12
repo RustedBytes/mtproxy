@@ -2,6 +2,16 @@
 
 use core::ffi::{c_double, c_int, c_longlong};
 
+#[inline]
+const fn as_bool(value: c_int) -> bool {
+    value != 0
+}
+
+#[inline]
+fn as_c_int(value: bool) -> c_int {
+    value as c_int
+}
+
 /// Computes outbound connection `ready` state.
 #[no_mangle]
 pub extern "C" fn mtproxy_ffi_net_connections_server_check_ready(
@@ -38,11 +48,7 @@ pub unsafe extern "C" fn mtproxy_ffi_net_connections_accept_rate_decide(
 
     *out_remaining = remaining;
     *out_time = time_value;
-    if allow {
-        1
-    } else {
-        0
-    }
+    as_c_int(allow)
 }
 
 /// Computes next reconnect timestamp and timeout update.
@@ -84,14 +90,18 @@ pub extern "C" fn mtproxy_ffi_net_connections_target_bucket_ipv4(
     port: c_int,
     prime_targets: c_int,
 ) -> c_int {
-    if prime_targets <= 0 {
+    let Ok(prime_targets) = u32::try_from(prime_targets) else {
+        return -1;
+    };
+    if prime_targets == 0 {
         return -1;
     }
+
     mtproxy_core::runtime::net::connections::target_bucket_ipv4(
         type_addr,
         addr_s_addr,
         port,
-        u32::try_from(prime_targets).unwrap_or_default(),
+        prime_targets,
     )
 }
 
@@ -106,7 +116,10 @@ pub unsafe extern "C" fn mtproxy_ffi_net_connections_target_bucket_ipv6(
     port: c_int,
     prime_targets: c_int,
 ) -> c_int {
-    if prime_targets <= 0 || addr_ipv6.is_null() {
+    let Ok(prime_targets) = u32::try_from(prime_targets) else {
+        return -1;
+    };
+    if prime_targets == 0 || addr_ipv6.is_null() {
         return -1;
     }
 
@@ -116,7 +129,7 @@ pub unsafe extern "C" fn mtproxy_ffi_net_connections_target_bucket_ipv6(
         type_addr,
         &addr,
         port,
-        u32::try_from(prime_targets).unwrap_or_default(),
+        prime_targets,
     )
 }
 
@@ -165,15 +178,13 @@ pub extern "C" fn mtproxy_ffi_net_connections_target_should_attempt_reconnect(
     next_reconnect: c_double,
     active_outbound_connections: c_int,
 ) -> c_int {
-    if mtproxy_core::runtime::net::connections::target_should_attempt_reconnect(
-        now,
-        next_reconnect,
-        active_outbound_connections,
-    ) {
-        1
-    } else {
-        0
-    }
+    as_c_int(
+        mtproxy_core::runtime::net::connections::target_should_attempt_reconnect(
+            now,
+            next_reconnect,
+            active_outbound_connections,
+        ),
+    )
 }
 
 /// Maps `check_ready()` result to counting bucket for target-connection stats.
@@ -188,14 +199,12 @@ pub extern "C" fn mtproxy_ffi_net_connections_target_find_bad_should_select(
     has_selected: c_int,
     flags: c_int,
 ) -> c_int {
-    if mtproxy_core::runtime::net::connections::target_find_bad_should_select(
-        has_selected != 0,
-        flags,
-    ) {
-        1
-    } else {
-        0
-    }
+    as_c_int(
+        mtproxy_core::runtime::net::connections::target_find_bad_should_select(
+            as_bool(has_selected),
+            flags,
+        ),
+    )
 }
 
 /// Computes stat deltas when removing a dead connection from target tree.
@@ -223,7 +232,7 @@ pub unsafe extern "C" fn mtproxy_ffi_net_connections_target_remove_dead_connecti
 pub extern "C" fn mtproxy_ffi_net_connections_target_tree_update_action(
     tree_changed: c_int,
 ) -> c_int {
-    mtproxy_core::runtime::net::connections::target_tree_update_action(tree_changed != 0)
+    mtproxy_core::runtime::net::connections::target_tree_update_action(as_bool(tree_changed))
 }
 
 /// Selects socket-family path for outbound target connection attempt.
@@ -231,7 +240,7 @@ pub extern "C" fn mtproxy_ffi_net_connections_target_tree_update_action(
 pub extern "C" fn mtproxy_ffi_net_connections_target_connect_socket_action(
     has_ipv4_target: c_int,
 ) -> c_int {
-    mtproxy_core::runtime::net::connections::target_connect_socket_action(has_ipv4_target != 0)
+    mtproxy_core::runtime::net::connections::target_connect_socket_action(as_bool(has_ipv4_target))
 }
 
 /// Returns whether outbound target connection creation should insert into tree.
@@ -239,13 +248,11 @@ pub extern "C" fn mtproxy_ffi_net_connections_target_connect_socket_action(
 pub extern "C" fn mtproxy_ffi_net_connections_target_create_insert_should_insert(
     has_connection: c_int,
 ) -> c_int {
-    if mtproxy_core::runtime::net::connections::target_create_insert_should_insert(
-        has_connection != 0,
-    ) {
-        1
-    } else {
-        0
-    }
+    as_c_int(
+        mtproxy_core::runtime::net::connections::target_create_insert_should_insert(as_bool(
+            has_connection,
+        )),
+    )
 }
 
 /// Selects action when target hash lookup found a matching entry.
@@ -269,8 +276,8 @@ pub extern "C" fn mtproxy_ffi_net_connections_target_free_action(
 ) -> c_int {
     mtproxy_core::runtime::net::connections::target_free_action(
         global_refcnt,
-        has_conn_tree != 0,
-        has_ipv4_target != 0,
+        as_bool(has_conn_tree),
+        as_bool(has_ipv4_target),
     )
 }
 
@@ -292,11 +299,7 @@ pub unsafe extern "C" fn mtproxy_ffi_net_connections_destroy_target_transition(
         mtproxy_core::runtime::net::connections::destroy_target_transition(new_global_refcnt);
     *out_active_targets_delta = active_delta;
     *out_inactive_targets_delta = inactive_delta;
-    if should_signal_run {
-        1
-    } else {
-        0
-    }
+    as_c_int(should_signal_run)
 }
 
 /// Computes lifecycle transition for `create_target()`.
@@ -321,7 +324,7 @@ pub unsafe extern "C" fn mtproxy_ffi_net_connections_create_target_transition(
 
     let (active_delta, inactive_delta, was_created) =
         mtproxy_core::runtime::net::connections::create_target_transition(
-            target_found != 0,
+            as_bool(target_found),
             old_global_refcnt,
         );
     *out_active_targets_delta = active_delta;
@@ -336,7 +339,10 @@ pub extern "C" fn mtproxy_ffi_net_connections_connection_write_close_action(
     status: c_int,
     has_io_conn: c_int,
 ) -> c_int {
-    mtproxy_core::runtime::net::connections::connection_write_close_action(status, has_io_conn != 0)
+    mtproxy_core::runtime::net::connections::connection_write_close_action(
+        status,
+        as_bool(has_io_conn),
+    )
 }
 
 /// Selects timeout operation for `set_connection_timeout`.
@@ -409,11 +415,7 @@ pub unsafe extern "C" fn mtproxy_ffi_net_connections_close_connection_failure_de
 /// Returns whether `C_ISDH` cleanup should run in close path.
 #[no_mangle]
 pub extern "C" fn mtproxy_ffi_net_connections_close_connection_has_isdh(flags: c_int) -> c_int {
-    if mtproxy_core::runtime::net::connections::close_connection_has_isdh(flags) {
-        1
-    } else {
-        0
-    }
+    as_c_int(mtproxy_core::runtime::net::connections::close_connection_has_isdh(flags))
 }
 
 /// Computes connection-counter deltas for `cpu_server_close_connection`.
@@ -452,7 +454,7 @@ pub unsafe extern "C" fn mtproxy_ffi_net_connections_close_connection_basic_delt
     ) = mtproxy_core::runtime::net::connections::close_connection_basic_deltas(
         basic_type,
         flags,
-        has_target != 0,
+        as_bool(has_target),
     );
 
     *out_outbound_delta = outbound_delta;
@@ -460,18 +462,14 @@ pub unsafe extern "C" fn mtproxy_ffi_net_connections_close_connection_basic_delt
     *out_active_outbound_delta = active_outbound_delta;
     *out_active_inbound_delta = active_inbound_delta;
     *out_active_connections_delta = active_connections_delta;
-    *out_signal_target = if signal_target { 1 } else { 0 };
+    *out_signal_target = as_c_int(signal_target);
     0
 }
 
 /// Returns whether `C_SPECIAL` cleanup should run in close path.
 #[no_mangle]
 pub extern "C" fn mtproxy_ffi_net_connections_close_connection_has_special(flags: c_int) -> c_int {
-    if mtproxy_core::runtime::net::connections::close_connection_has_special(flags) {
-        1
-    } else {
-        0
-    }
+    as_c_int(mtproxy_core::runtime::net::connections::close_connection_has_special(flags))
 }
 
 /// Returns whether special-listener `JS_AUX` fanout should run.
@@ -480,14 +478,12 @@ pub extern "C" fn mtproxy_ffi_net_connections_close_connection_should_signal_spe
     orig_special_connections: c_int,
     max_special_connections: c_int,
 ) -> c_int {
-    if mtproxy_core::runtime::net::connections::close_connection_should_signal_special_aux(
-        orig_special_connections,
-        max_special_connections,
-    ) {
-        1
-    } else {
-        0
-    }
+    as_c_int(
+        mtproxy_core::runtime::net::connections::close_connection_should_signal_special_aux(
+            orig_special_connections,
+            max_special_connections,
+        ),
+    )
 }
 
 /// Computes initial connection fields from `basic_type`.
@@ -510,7 +506,7 @@ pub unsafe extern "C" fn mtproxy_ffi_net_connections_alloc_connection_basic_type
         mtproxy_core::runtime::net::connections::alloc_connection_basic_type_policy(basic_type);
     *out_initial_flags = initial_flags;
     *out_initial_status = initial_status;
-    *out_is_outbound_path = if is_outbound_path { 1 } else { 0 };
+    *out_is_outbound_path = as_c_int(is_outbound_path);
     0
 }
 
@@ -561,7 +557,7 @@ pub unsafe extern "C" fn mtproxy_ffi_net_connections_alloc_connection_success_de
         should_incref_target,
     ) = mtproxy_core::runtime::net::connections::alloc_connection_success_deltas(
         basic_type,
-        has_target != 0,
+        as_bool(has_target),
     );
 
     *out_outbound_delta = outbound_delta;
@@ -573,7 +569,7 @@ pub unsafe extern "C" fn mtproxy_ffi_net_connections_alloc_connection_success_de
     *out_active_inbound_delta = active_inbound_delta;
     *out_active_connections_delta = active_connections_delta;
     *out_target_outbound_delta = target_outbound_delta;
-    *out_should_incref_target = if should_incref_target { 1 } else { 0 };
+    *out_should_incref_target = as_c_int(should_incref_target);
     0
 }
 
@@ -654,7 +650,7 @@ pub unsafe extern "C" fn mtproxy_ffi_net_connections_alloc_socket_connection_pla
     let (socket_flags, initial_epoll_status, allocated_socket_delta) =
         mtproxy_core::runtime::net::connections::alloc_socket_connection_plan(
             conn_flags,
-            use_epollet != 0,
+            as_bool(use_epollet),
         );
     *out_socket_flags = socket_flags;
     *out_initial_epoll_status = initial_epoll_status;
@@ -676,7 +672,7 @@ pub unsafe extern "C" fn mtproxy_ffi_net_connections_socket_free_plan(
         return -1;
     }
     let (action, fail_error, allocated_socket_delta) =
-        mtproxy_core::runtime::net::connections::socket_free_plan(has_conn != 0);
+        mtproxy_core::runtime::net::connections::socket_free_plan(as_bool(has_conn));
     *out_fail_error = fail_error;
     *out_allocated_socket_delta = allocated_socket_delta;
     action
@@ -693,12 +689,11 @@ pub extern "C" fn mtproxy_ffi_net_connections_conn_job_run_actions(flags: c_int)
 pub extern "C" fn mtproxy_ffi_net_connections_conn_job_ready_pending_should_promote_status(
     status: c_int,
 ) -> c_int {
-    if mtproxy_core::runtime::net::connections::conn_job_ready_pending_should_promote_status(status)
-    {
-        1
-    } else {
-        0
-    }
+    as_c_int(
+        mtproxy_core::runtime::net::connections::conn_job_ready_pending_should_promote_status(
+            status,
+        ),
+    )
 }
 
 /// Returns whether CAS failure status is expected in `ready_pending` flow.
@@ -706,12 +701,11 @@ pub extern "C" fn mtproxy_ffi_net_connections_conn_job_ready_pending_should_prom
 pub extern "C" fn mtproxy_ffi_net_connections_conn_job_ready_pending_cas_failure_expected(
     status: c_int,
 ) -> c_int {
-    if mtproxy_core::runtime::net::connections::conn_job_ready_pending_cas_failure_expected(status)
-    {
-        1
-    } else {
-        0
-    }
+    as_c_int(
+        mtproxy_core::runtime::net::connections::conn_job_ready_pending_cas_failure_expected(
+            status,
+        ),
+    )
 }
 
 /// Returns whether `JS_ALARM` should invoke `type->alarm`.
@@ -720,24 +714,18 @@ pub extern "C" fn mtproxy_ffi_net_connections_conn_job_alarm_should_call(
     timer_check_ok: c_int,
     flags: c_int,
 ) -> c_int {
-    if mtproxy_core::runtime::net::connections::conn_job_alarm_should_call(
-        timer_check_ok != 0,
-        flags,
-    ) {
-        1
-    } else {
-        0
-    }
+    as_c_int(
+        mtproxy_core::runtime::net::connections::conn_job_alarm_should_call(
+            as_bool(timer_check_ok),
+            flags,
+        ),
+    )
 }
 
 /// Returns whether `JS_ABORT` precondition (`C_ERROR`) holds.
 #[no_mangle]
 pub extern "C" fn mtproxy_ffi_net_connections_conn_job_abort_has_error(flags: c_int) -> c_int {
-    if mtproxy_core::runtime::net::connections::conn_job_abort_has_error(flags) {
-        1
-    } else {
-        0
-    }
+    as_c_int(mtproxy_core::runtime::net::connections::conn_job_abort_has_error(flags))
 }
 
 /// Returns whether `JS_ABORT` should invoke `type->close`.
@@ -745,11 +733,7 @@ pub extern "C" fn mtproxy_ffi_net_connections_conn_job_abort_has_error(flags: c_
 pub extern "C" fn mtproxy_ffi_net_connections_conn_job_abort_should_close(
     previous_flags: c_int,
 ) -> c_int {
-    if mtproxy_core::runtime::net::connections::conn_job_abort_should_close(previous_flags) {
-        1
-    } else {
-        0
-    }
+    as_c_int(mtproxy_core::runtime::net::connections::conn_job_abort_should_close(previous_flags))
 }
 
 /// Returns whether `JS_RUN` should invoke `socket_read_write`.
@@ -757,11 +741,7 @@ pub extern "C" fn mtproxy_ffi_net_connections_conn_job_abort_should_close(
 pub extern "C" fn mtproxy_ffi_net_connections_socket_job_run_should_call_read_write(
     flags: c_int,
 ) -> c_int {
-    if mtproxy_core::runtime::net::connections::socket_job_run_should_call_read_write(flags) {
-        1
-    } else {
-        0
-    }
+    as_c_int(mtproxy_core::runtime::net::connections::socket_job_run_should_call_read_write(flags))
 }
 
 /// Returns whether `JS_RUN` should send `JS_AUX` after `socket_read_write`.
@@ -771,15 +751,13 @@ pub extern "C" fn mtproxy_ffi_net_connections_socket_job_run_should_signal_aux(
     new_epoll_status: c_int,
     current_epoll_status: c_int,
 ) -> c_int {
-    if mtproxy_core::runtime::net::connections::socket_job_run_should_signal_aux(
-        flags,
-        new_epoll_status,
-        current_epoll_status,
-    ) {
-        1
-    } else {
-        0
-    }
+    as_c_int(
+        mtproxy_core::runtime::net::connections::socket_job_run_should_signal_aux(
+            flags,
+            new_epoll_status,
+            current_epoll_status,
+        ),
+    )
 }
 
 /// Returns whether `JS_AUX` should call `epoll_insert`.
@@ -787,21 +765,13 @@ pub extern "C" fn mtproxy_ffi_net_connections_socket_job_run_should_signal_aux(
 pub extern "C" fn mtproxy_ffi_net_connections_socket_job_aux_should_update_epoll(
     flags: c_int,
 ) -> c_int {
-    if mtproxy_core::runtime::net::connections::socket_job_aux_should_update_epoll(flags) {
-        1
-    } else {
-        0
-    }
+    as_c_int(mtproxy_core::runtime::net::connections::socket_job_aux_should_update_epoll(flags))
 }
 
 /// Returns whether socket reader loop should continue.
 #[no_mangle]
 pub extern "C" fn mtproxy_ffi_net_connections_socket_reader_should_run(flags: c_int) -> c_int {
-    if mtproxy_core::runtime::net::connections::socket_reader_should_run(flags) {
-        1
-    } else {
-        0
-    }
+    as_c_int(mtproxy_core::runtime::net::connections::socket_reader_should_run(flags))
 }
 
 /// Selects action for socket reader IO result.
@@ -823,11 +793,7 @@ pub extern "C" fn mtproxy_ffi_net_connections_socket_reader_io_action(
 /// Returns whether socket writer loop should continue.
 #[no_mangle]
 pub extern "C" fn mtproxy_ffi_net_connections_socket_writer_should_run(flags: c_int) -> c_int {
-    if mtproxy_core::runtime::net::connections::socket_writer_should_run(flags) {
-        1
-    } else {
-        0
-    }
+    as_c_int(mtproxy_core::runtime::net::connections::socket_writer_should_run(flags))
 }
 
 /// Selects action for socket writer IO result and returns next `eagain_count`.
@@ -867,15 +833,13 @@ pub extern "C" fn mtproxy_ffi_net_connections_socket_writer_should_call_ready_to
     total_bytes: c_int,
     write_low_watermark: c_int,
 ) -> c_int {
-    if mtproxy_core::runtime::net::connections::socket_writer_should_call_ready_to_write(
-        check_watermark != 0,
-        total_bytes,
-        write_low_watermark,
-    ) {
-        1
-    } else {
-        0
-    }
+    as_c_int(
+        mtproxy_core::runtime::net::connections::socket_writer_should_call_ready_to_write(
+            as_bool(check_watermark),
+            total_bytes,
+            write_low_watermark,
+        ),
+    )
 }
 
 /// Returns whether write-stop path should trigger abort.
@@ -884,12 +848,12 @@ pub extern "C" fn mtproxy_ffi_net_connections_socket_writer_should_abort_on_stop
     stop: c_int,
     flags: c_int,
 ) -> c_int {
-    if mtproxy_core::runtime::net::connections::socket_writer_should_abort_on_stop(stop != 0, flags)
-    {
-        1
-    } else {
-        0
-    }
+    as_c_int(
+        mtproxy_core::runtime::net::connections::socket_writer_should_abort_on_stop(
+            as_bool(stop),
+            flags,
+        ),
+    )
 }
 
 /// Selects connect-stage action in `net_server_socket_read_write`.
@@ -916,8 +880,8 @@ pub extern "C" fn mtproxy_ffi_net_connections_socket_gateway_abort_action(
     has_disconnect: c_int,
 ) -> c_int {
     mtproxy_core::runtime::net::connections::socket_gateway_abort_action(
-        has_epollerr != 0,
-        has_disconnect != 0,
+        as_bool(has_epollerr),
+        as_bool(has_disconnect),
     )
 }
 
@@ -973,14 +937,12 @@ pub extern "C" fn mtproxy_ffi_net_connections_connection_event_should_release(
     new_refcnt: c_longlong,
     has_data: c_int,
 ) -> c_int {
-    if mtproxy_core::runtime::net::connections::connection_event_should_release(
-        new_refcnt,
-        has_data != 0,
-    ) {
-        1
-    } else {
-        0
-    }
+    as_c_int(
+        mtproxy_core::runtime::net::connections::connection_event_should_release(
+            new_refcnt,
+            as_bool(has_data),
+        ),
+    )
 }
 
 /// Selects post-acquire action for `connection_get_by_fd`.
@@ -991,8 +953,8 @@ pub extern "C" fn mtproxy_ffi_net_connections_connection_get_by_fd_action(
     socket_flags: c_int,
 ) -> c_int {
     mtproxy_core::runtime::net::connections::connection_get_by_fd_action(
-        is_listening_job != 0,
-        is_socket_job != 0,
+        as_bool(is_listening_job),
+        as_bool(is_socket_job),
         socket_flags,
     )
 }
@@ -1003,14 +965,12 @@ pub extern "C" fn mtproxy_ffi_net_connections_connection_generation_matches(
     found_generation: c_int,
     expected_generation: c_int,
 ) -> c_int {
-    if mtproxy_core::runtime::net::connections::connection_generation_matches(
-        found_generation,
-        expected_generation,
-    ) {
-        1
-    } else {
-        0
-    }
+    as_c_int(
+        mtproxy_core::runtime::net::connections::connection_generation_matches(
+            found_generation,
+            expected_generation,
+        ),
+    )
 }
 
 /// Computes default-assignment mask for common conn_type function pointers.
@@ -1035,22 +995,22 @@ pub extern "C" fn mtproxy_ffi_net_connections_check_conn_functions_default_mask(
     has_socket_free: c_int,
 ) -> c_int {
     mtproxy_core::runtime::net::connections::check_conn_functions_default_mask(
-        has_title != 0,
-        has_socket_read_write != 0,
-        has_socket_reader != 0,
-        has_socket_writer != 0,
-        has_socket_close != 0,
-        has_close != 0,
-        has_init_outbound != 0,
-        has_wakeup != 0,
-        has_alarm != 0,
-        has_connected != 0,
-        has_flush != 0,
-        has_check_ready != 0,
-        has_read_write != 0,
-        has_free != 0,
-        has_socket_connected != 0,
-        has_socket_free != 0,
+        as_bool(has_title),
+        as_bool(has_socket_read_write),
+        as_bool(has_socket_reader),
+        as_bool(has_socket_writer),
+        as_bool(has_socket_close),
+        as_bool(has_close),
+        as_bool(has_init_outbound),
+        as_bool(has_wakeup),
+        as_bool(has_alarm),
+        as_bool(has_connected),
+        as_bool(has_flush),
+        as_bool(has_check_ready),
+        as_bool(has_read_write),
+        as_bool(has_free),
+        as_bool(has_socket_connected),
+        as_bool(has_socket_free),
     )
 }
 
@@ -1062,9 +1022,9 @@ pub extern "C" fn mtproxy_ffi_net_connections_check_conn_functions_accept_mask(
     has_init_accepted: c_int,
 ) -> c_int {
     mtproxy_core::runtime::net::connections::check_conn_functions_accept_mask(
-        listening != 0,
-        has_accept != 0,
-        has_init_accepted != 0,
+        as_bool(listening),
+        as_bool(has_accept),
+        as_bool(has_init_accepted),
     )
 }
 
@@ -1088,11 +1048,11 @@ pub unsafe extern "C" fn mtproxy_ffi_net_connections_check_conn_functions_raw_po
 
     let (rc, assign_mask, nonraw_assert_mask) =
         mtproxy_core::runtime::net::connections::check_conn_functions_raw_policy(
-            is_rawmsg != 0,
-            has_free_buffers != 0,
-            has_reader != 0,
-            has_writer != 0,
-            has_parse_execute != 0,
+            as_bool(is_rawmsg),
+            as_bool(has_free_buffers),
+            as_bool(has_reader),
+            as_bool(has_writer),
+            as_bool(has_parse_execute),
         );
     *out_assign_mask = assign_mask;
     *out_nonraw_assert_mask = nonraw_assert_mask;
@@ -1106,15 +1066,13 @@ pub extern "C" fn mtproxy_ffi_net_connections_target_pick_should_skip(
     has_selected: c_int,
     selected_ready: c_int,
 ) -> c_int {
-    if mtproxy_core::runtime::net::connections::target_pick_should_skip(
-        allow_stopped != 0,
-        has_selected != 0,
-        selected_ready,
-    ) {
-        1
-    } else {
-        0
-    }
+    as_c_int(
+        mtproxy_core::runtime::net::connections::target_pick_should_skip(
+            as_bool(allow_stopped),
+            as_bool(has_selected),
+            selected_ready,
+        ),
+    )
 }
 
 /// Returns whether current candidate should be selected.
@@ -1126,17 +1084,15 @@ pub extern "C" fn mtproxy_ffi_net_connections_target_pick_should_select(
     selected_unreliability: c_int,
     candidate_unreliability: c_int,
 ) -> c_int {
-    if mtproxy_core::runtime::net::connections::target_pick_should_select(
-        allow_stopped != 0,
-        candidate_ready,
-        has_selected != 0,
-        selected_unreliability,
-        candidate_unreliability,
-    ) {
-        1
-    } else {
-        0
-    }
+    as_c_int(
+        mtproxy_core::runtime::net::connections::target_pick_should_select(
+            as_bool(allow_stopped),
+            candidate_ready,
+            as_bool(has_selected),
+            selected_unreliability,
+            candidate_unreliability,
+        ),
+    )
 }
 
 /// Returns whether selected target connection should be incref'ed before return.
@@ -1144,11 +1100,9 @@ pub extern "C" fn mtproxy_ffi_net_connections_target_pick_should_select(
 pub extern "C" fn mtproxy_ffi_net_connections_target_pick_should_incref(
     has_selected: c_int,
 ) -> c_int {
-    if mtproxy_core::runtime::net::connections::target_pick_should_incref(has_selected != 0) {
-        1
-    } else {
-        0
-    }
+    as_c_int(
+        mtproxy_core::runtime::net::connections::target_pick_should_incref(as_bool(has_selected)),
+    )
 }
 
 /// Returns timer delay used while epoll is not initialized.
@@ -1169,14 +1123,12 @@ pub extern "C" fn mtproxy_ffi_net_connections_target_job_should_run_tick(
     is_alarm: c_int,
     timer_check_ok: c_int,
 ) -> c_int {
-    if mtproxy_core::runtime::net::connections::target_job_should_run_tick(
-        is_alarm != 0,
-        timer_check_ok != 0,
-    ) {
-        1
-    } else {
-        0
-    }
+    as_c_int(
+        mtproxy_core::runtime::net::connections::target_job_should_run_tick(
+            as_bool(is_alarm),
+            as_bool(timer_check_ok),
+        ),
+    )
 }
 
 /// Selects update path for target job tick.
@@ -1195,9 +1147,9 @@ pub extern "C" fn mtproxy_ffi_net_connections_target_job_post_tick_action(
     has_conn_tree: c_int,
 ) -> c_int {
     mtproxy_core::runtime::net::connections::target_job_post_tick_action(
-        is_completed != 0,
+        as_bool(is_completed),
         global_refcnt,
-        has_conn_tree != 0,
+        as_bool(has_conn_tree),
     )
 }
 

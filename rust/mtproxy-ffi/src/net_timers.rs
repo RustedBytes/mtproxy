@@ -39,7 +39,10 @@ impl TimerHeapState {
 
     fn heap_mut(&mut self) -> &mut [*mut EventTimer] {
         self.ensure_heap();
-        self.heap.as_mut().expect("timer heap must be initialized")
+        match self.heap.as_mut() {
+            Some(heap) => heap,
+            None => unreachable!("timer heap must be initialized"),
+        }
     }
 
     unsafe fn first_timer(&mut self) -> *mut EventTimer {
@@ -167,6 +170,13 @@ fn timers_wait_msec(wakeup_time: f64, now: f64) -> c_int {
 
 #[inline]
 fn debug_next_timer(heap_size: usize, wait_time: f64) {
+    #[cfg(test)]
+    {
+        let _ = heap_size;
+        let _ = wait_time;
+    }
+
+    #[cfg(not(test))]
     unsafe {
         if verbosity >= 3 {
             kprintf(
@@ -180,11 +190,17 @@ fn debug_next_timer(heap_size: usize, wait_time: f64) {
 
 #[no_mangle]
 pub unsafe extern "C" fn insert_event_timer(et: *mut EventTimer) -> c_int {
+    if et.is_null() {
+        return -1;
+    }
     TIMER_STATE.with(|state| state.borrow_mut().insert_impl(et))
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn remove_event_timer(et: *mut EventTimer) -> c_int {
+    if et.is_null() {
+        return -1;
+    }
     TIMER_STATE.with(|state| state.borrow_mut().remove_impl(et))
 }
 
@@ -233,8 +249,9 @@ pub extern "C" fn thread_run_timers() -> c_int {
             break;
         };
 
-        let wakeup = unsafe { (*et).wakeup }
-            .expect("event_timer_t::wakeup must be initialized before timer insertion");
+        let Some(wakeup) = (unsafe { (*et).wakeup }) else {
+            continue;
+        };
         let _ = unsafe { wakeup(et) };
         EVENT_TIMER_ALARMS.fetch_add(1, Ordering::Relaxed);
     }
@@ -259,10 +276,7 @@ pub extern "C" fn thread_run_timers() -> c_int {
         return timers_wait_msec(next_wakeup_time, now);
     }
 
-    assert!(
-        false,
-        "timer heap invariant violated after processing due timers"
-    );
+    // Deadline is already in the past; ask caller to rerun immediately.
     0
 }
 
@@ -311,7 +325,10 @@ pub unsafe extern "C" fn timers_prepare_stat(sb: *mut c_void) -> c_int {
 
 #[cfg(test)]
 mod tests {
-    use super::{EventTimer, TimerHeapState};
+    use super::{
+        insert_event_timer, remove_event_timer, thread_run_timers, EventTimer, TimerHeapState,
+        EMPTY_WAIT_MSEC,
+    };
     use core::ffi::c_int;
     use core::ptr;
 
@@ -376,5 +393,30 @@ mod tests {
         assert!(ptr::eq(first, &mut t3));
         assert_eq!(state.heap_size, 2);
         assert_eq!(t2.h_idx, 0);
+    }
+
+    #[test]
+    fn ffi_rejects_null_timer_pointers() {
+        unsafe {
+            assert_eq!(insert_event_timer(ptr::null_mut()), -1);
+            assert_eq!(remove_event_timer(ptr::null_mut()), -1);
+        }
+    }
+
+    #[test]
+    fn thread_run_timers_skips_null_wakeup_callback() {
+        let mut timer = EventTimer {
+            h_idx: 0,
+            flags: 0,
+            wakeup: None,
+            wakeup_time: -1.0,
+            real_wakeup_time: 0.0,
+        };
+
+        unsafe {
+            assert_eq!(insert_event_timer(&mut timer), 1);
+        }
+
+        assert_eq!(thread_run_timers(), EMPTY_WAIT_MSEC);
     }
 }

@@ -1301,7 +1301,9 @@ unsafe fn rwm_process_ex_impl(
         return 0;
     }
 
-    let process = process_block.unwrap();
+    let Some(process) = process_block else {
+        return -1;
+    };
 
     if (*raw).total_bytes - offset <= (*raw).last_offset - (*(*raw).last).offset {
         let x = (*raw).total_bytes - offset;
@@ -1596,8 +1598,13 @@ unsafe extern "C" fn custom_crc32_process_cb(
     data: *const c_void,
     len: c_int,
 ) -> c_int {
+    if extra.is_null() {
+        return -1;
+    }
     let d = extra.cast::<CustomCrc32Data>();
-    let partial = (*d).partial.unwrap();
+    let Some(partial) = (*d).partial else {
+        return -1;
+    };
     (*d).crc32 = partial(data, c_long::from(len), (*d).crc32);
     0
 }
@@ -1607,8 +1614,11 @@ unsafe fn rwm_custom_crc32_impl(
     bytes: c_int,
     partial: Crc32PartialFunc,
 ) -> u32 {
+    let Some(partial) = partial else {
+        return 0;
+    };
     let mut d = CustomCrc32Data {
-        partial,
+        partial: Some(partial),
         crc32: u32::MAX,
     };
     assert!((*raw).total_bytes >= bytes);

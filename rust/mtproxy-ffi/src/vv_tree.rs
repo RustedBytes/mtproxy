@@ -3,9 +3,33 @@
 use core::ffi::{c_int, c_void};
 use core::sync::atomic::{AtomicUsize, Ordering};
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::{Mutex, RwLock};
+use std::sync::{Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::MtproxyProcessId;
+
+#[inline]
+fn rw_read<T>(lock: &RwLock<T>) -> RwLockReadGuard<'_, T> {
+    match lock.read() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    }
+}
+
+#[inline]
+fn rw_write<T>(lock: &RwLock<T>) -> RwLockWriteGuard<'_, T> {
+    match lock.write() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    }
+}
+
+#[inline]
+fn mutex_lock<T>(lock: &Mutex<T>) -> MutexGuard<'_, T> {
+    match lock.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    }
+}
 
 #[repr(C)]
 pub struct VvTreeHandle {
@@ -50,7 +74,7 @@ pub unsafe extern "C" fn vv_tree_insert(
         return;
     };
 
-    let mut values = tree.values.write().unwrap();
+    let mut values = rw_write(&tree.values);
     values.entry(key as usize).or_insert(priority);
 }
 
@@ -63,7 +87,7 @@ pub unsafe extern "C" fn vv_tree_lookup(
         return core::ptr::null();
     };
 
-    let values = tree.values.read().unwrap();
+    let values = rw_read(&tree.values);
     if values.contains_key(&(key as usize)) {
         key
     } else {
@@ -77,7 +101,7 @@ pub unsafe extern "C" fn vv_tree_delete(handle: *mut VvTreeHandle, key: *const c
         return 0;
     };
 
-    let mut values = tree.values.write().unwrap();
+    let mut values = rw_write(&tree.values);
     i32::from(values.remove(&(key as usize)).is_some())
 }
 
@@ -87,7 +111,7 @@ pub unsafe extern "C" fn vv_tree_clear(handle: *mut VvTreeHandle) {
         return;
     };
 
-    tree.values.write().unwrap().clear();
+    rw_write(&tree.values).clear();
 }
 
 #[no_mangle]
@@ -96,7 +120,7 @@ pub unsafe extern "C" fn vv_tree_count(handle: *mut VvTreeHandle) -> c_int {
         return 0;
     };
 
-    tree.values.read().unwrap().len() as c_int
+    rw_read(&tree.values).len() as c_int
 }
 
 #[no_mangle]
@@ -108,7 +132,7 @@ pub unsafe extern "C" fn vv_tree_traverse(
         return;
     };
 
-    let keys: Vec<usize> = tree.values.read().unwrap().keys().copied().collect();
+    let keys: Vec<usize> = rw_read(&tree.values).keys().copied().collect();
     for key in keys {
         callback(key as *const c_void);
     }
@@ -167,7 +191,7 @@ pub unsafe extern "C" fn tree_insert_connection(
     }
 
     let state = conn_tree_from_raw(tree);
-    (*state).values.write().unwrap().insert(conn as usize);
+    rw_write(&(*state).values).insert(conn as usize);
     tree
 }
 
@@ -181,7 +205,7 @@ pub unsafe extern "C" fn tree_delete_connection(
     }
 
     let state = conn_tree_from_raw(tree);
-    let mut values = (*state).values.write().unwrap();
+    let mut values = rw_write(&(*state).values);
     values.remove(&(conn as usize));
     let empty = values.is_empty();
     drop(values);
@@ -204,7 +228,7 @@ pub unsafe extern "C" fn tree_lookup_ptr_connection(
     }
 
     let state = conn_tree_from_raw(tree);
-    if (*state).values.read().unwrap().contains(&(conn as usize)) {
+    if rw_read(&(*state).values).contains(&(conn as usize)) {
         conn
     } else {
         core::ptr::null_mut()
@@ -221,7 +245,7 @@ pub unsafe extern "C" fn tree_act_connection(
     }
 
     let state = conn_tree_from_raw(tree);
-    let values: Vec<usize> = (*state).values.read().unwrap().iter().copied().collect();
+    let values: Vec<usize> = rw_read(&(*state).values).iter().copied().collect();
     for value in values {
         act(value as *mut c_void);
     }
@@ -238,7 +262,7 @@ pub unsafe extern "C" fn tree_act_ex_connection(
     }
 
     let state = conn_tree_from_raw(tree);
-    let values: Vec<usize> = (*state).values.read().unwrap().iter().copied().collect();
+    let values: Vec<usize> = rw_read(&(*state).values).iter().copied().collect();
     for value in values {
         act(value as *mut c_void, ex);
     }
@@ -256,7 +280,7 @@ pub unsafe extern "C" fn tree_act_ex2_connection(
     }
 
     let state = conn_tree_from_raw(tree);
-    let values: Vec<usize> = (*state).values.read().unwrap().iter().copied().collect();
+    let values: Vec<usize> = rw_read(&(*state).values).iter().copied().collect();
     for value in values {
         act(value as *mut c_void, ex, ex2);
     }
@@ -275,7 +299,7 @@ pub unsafe extern "C" fn tree_act_ex3_connection(
     }
 
     let state = conn_tree_from_raw(tree);
-    let values: Vec<usize> = (*state).values.read().unwrap().iter().copied().collect();
+    let values: Vec<usize> = rw_read(&(*state).values).iter().copied().collect();
     for value in values {
         act(value as *mut c_void, ex, ex2, ex3);
     }
@@ -381,11 +405,7 @@ pub unsafe extern "C" fn mtproxy_ffi_rpc_target_tree_insert(
     }
 
     let state = rpc_target_tree_from_raw(tree);
-    (*state)
-        .values
-        .write()
-        .unwrap()
-        .insert(rpc_target_key(&*pid), target as usize);
+    rw_write(&(*state).values).insert(rpc_target_key(&*pid), target as usize);
     tree
 }
 
@@ -399,10 +419,7 @@ pub unsafe extern "C" fn mtproxy_ffi_rpc_target_tree_lookup(
     }
 
     let state = rpc_target_tree_from_raw(tree);
-    (*state)
-        .values
-        .read()
-        .unwrap()
+    rw_read(&(*state).values)
         .get(&rpc_target_key(&*pid))
         .copied()
         .map_or(core::ptr::null_mut(), |value| value as *mut c_void)
@@ -419,14 +436,14 @@ pub unsafe extern "C" fn mtproxy_ffi_engine_rpc_custom_op_insert(
         return -1;
     }
 
-    let mut guard = RPC_CUSTOM_OPS.lock().unwrap();
+    let mut guard = mutex_lock(&RPC_CUSTOM_OPS);
     guard.insert(op, entry as usize);
     0
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_engine_rpc_custom_op_lookup(op: u32) -> *mut c_void {
-    let guard = RPC_CUSTOM_OPS.lock().unwrap();
+    let guard = mutex_lock(&RPC_CUSTOM_OPS);
     guard
         .get(&op)
         .copied()
@@ -435,7 +452,7 @@ pub unsafe extern "C" fn mtproxy_ffi_engine_rpc_custom_op_lookup(op: u32) -> *mu
 
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_engine_rpc_custom_op_has_any() -> c_int {
-    let guard = RPC_CUSTOM_OPS.lock().unwrap();
+    let guard = mutex_lock(&RPC_CUSTOM_OPS);
     i32::from(!guard.is_empty())
 }
 
