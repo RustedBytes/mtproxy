@@ -141,11 +141,6 @@ systemctl enable MTProxy.service
 ```
 
 ## Additional docs
-- **C-to-Rust migration status**: `MIGRATION_STATUS.md` ⭐
+- **C-to-Rust migration status**: `MIGRATION_STATUS.md`
 - Rust workspace notes: `rust/README.md`
-- Test harness details: `tests/README.md`
 - FFI boundary contract: `rust/mtproxy-ffi/BOUNDARY.md`
-
-## Docker image
-Telegram provides an [official Docker image](https://hub.docker.com/r/telegrammessenger/proxy/).
-Note: the published image may lag behind this repository.
