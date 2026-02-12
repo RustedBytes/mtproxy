@@ -42,9 +42,6 @@
 #include "vv/vv-io.h"
 #include "vv/vv-tree.h"
 
-// #include "auto/TL/common.h"
-// #include "auto/TL/tl-names.h"
-
 #include "common/common-stats.h"
 #include "jobs/jobs.h"
 
@@ -102,10 +99,6 @@ MODULE_STAT_TYPE {
   long long rpc_queries_received, rpc_answers_error, rpc_answers_received;
   long long rpc_sent_errors, rpc_sent_answers, rpc_sent_queries;
   int tl_in_allocated, tl_out_allocated;
-  /*  #ifdef TIME_DEBUG
-    long long tl_udp_flush_rdtsc;
-    long long tl_udp_flush_cnt;
-    #endif*/
 };
 
 MODULE_INIT
@@ -120,10 +113,7 @@ SB_SUM_ONE_LL(rpc_sent_answers);
 SB_SUM_ONE_LL(rpc_sent_queries);
 SB_SUM_ONE_I(tl_in_allocated);
 SB_SUM_ONE_I(tl_out_allocated);
-/*#ifdef TIME_DEBUG
-SB_SUM_ONE_LL (tl_udp_flush_rdtsc);
-SB_SUM_ONE_LL (tl_udp_flush_cnt);
-#endif*/
+
 sb_printf(sb,
           "rpc_qps\t%lf\n"
           "default_rpc_flags\t%u\n",
@@ -252,13 +242,6 @@ int tls_init_str(struct tl_out_state *tlio_out, char *s, long long qid,
 int tls_init_raw_msg_nosend(struct tl_out_state *tlio_out) {
   return mtproxy_ffi_tl_init_raw_msg_nosend(tlio_out);
 }
-/*
-int tls_init_any (struct tl_out_state *tlio_out, enum tl_type type, void *out,
-long long qid) { switch (type) { case tl_type_conn: return tls_init_connection
-(tlio_out, (connection_job_t )out, qid); case tl_type_tcp_raw_msg: return
-tls_init_tcp_raw_msg (tlio_out, out, qid); default: assert (0);
-  }
-}*/
 
 int tls_header(struct tl_out_state *tlio_out, struct tl_query_header *header) {
   return mtproxy_ffi_tl_store_header(tlio_out, header);
