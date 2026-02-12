@@ -47,6 +47,44 @@ const TARGET_JOB_FINALIZE_SCHEDULE_RETRY: i32 = 2;
 const CONN_JOB_RUN_SKIP: i32 = 0;
 const CONN_JOB_RUN_DO_READ_WRITE: i32 = 1;
 const CONN_JOB_RUN_HANDLE_READY_PENDING: i32 = 2;
+const SOCKET_GATEWAY_ABORT_NONE: i32 = 0;
+const SOCKET_GATEWAY_ABORT_EPOLLERR: i32 = 1;
+const SOCKET_GATEWAY_ABORT_DISCONNECT: i32 = 2;
+const LISTENING_JOB_ACTION_ERROR: i32 = 0;
+const LISTENING_JOB_ACTION_RUN: i32 = 1;
+const LISTENING_JOB_ACTION_AUX: i32 = 2;
+const CONN_GET_BY_FD_ACTION_RETURN_SELF: i32 = 1;
+const CONN_GET_BY_FD_ACTION_RETURN_NULL: i32 = 2;
+const CONN_GET_BY_FD_ACTION_RETURN_CONN: i32 = 3;
+const CHECK_CONN_DEFAULT_SET_TITLE: i32 = 1 << 0;
+const CHECK_CONN_DEFAULT_SET_SOCKET_READ_WRITE: i32 = 1 << 1;
+const CHECK_CONN_DEFAULT_SET_SOCKET_READER: i32 = 1 << 2;
+const CHECK_CONN_DEFAULT_SET_SOCKET_WRITER: i32 = 1 << 3;
+const CHECK_CONN_DEFAULT_SET_SOCKET_CLOSE: i32 = 1 << 4;
+const CHECK_CONN_DEFAULT_SET_CLOSE: i32 = 1 << 5;
+const CHECK_CONN_DEFAULT_SET_INIT_OUTBOUND: i32 = 1 << 6;
+const CHECK_CONN_DEFAULT_SET_WAKEUP: i32 = 1 << 7;
+const CHECK_CONN_DEFAULT_SET_ALARM: i32 = 1 << 8;
+const CHECK_CONN_DEFAULT_SET_CONNECTED: i32 = 1 << 9;
+const CHECK_CONN_DEFAULT_SET_FLUSH: i32 = 1 << 10;
+const CHECK_CONN_DEFAULT_SET_CHECK_READY: i32 = 1 << 11;
+const CHECK_CONN_DEFAULT_SET_READ_WRITE: i32 = 1 << 12;
+const CHECK_CONN_DEFAULT_SET_FREE: i32 = 1 << 13;
+const CHECK_CONN_DEFAULT_SET_SOCKET_CONNECTED: i32 = 1 << 14;
+const CHECK_CONN_DEFAULT_SET_SOCKET_FREE: i32 = 1 << 15;
+
+const CHECK_CONN_ACCEPT_SET_ACCEPT_LISTEN: i32 = 1 << 0;
+const CHECK_CONN_ACCEPT_SET_ACCEPT_FAILED: i32 = 1 << 1;
+const CHECK_CONN_ACCEPT_SET_INIT_ACCEPTED_NOOP: i32 = 1 << 2;
+const CHECK_CONN_ACCEPT_SET_INIT_ACCEPTED_FAILED: i32 = 1 << 3;
+
+const CHECK_CONN_RAW_SET_FREE_BUFFERS: i32 = 1 << 0;
+const CHECK_CONN_RAW_SET_READER: i32 = 1 << 1;
+const CHECK_CONN_RAW_SET_WRITER: i32 = 1 << 2;
+
+const CHECK_CONN_NONRAW_ASSERT_FREE_BUFFERS: i32 = 1 << 0;
+const CHECK_CONN_NONRAW_ASSERT_READER: i32 = 1 << 1;
+const CHECK_CONN_NONRAW_ASSERT_WRITER: i32 = 1 << 2;
 
 static NAT_INFO_RULES: AtomicUsize = AtomicUsize::new(0);
 static NAT_INFO_LOCAL: [AtomicU32; MAX_NAT_INFO_RULES] =
@@ -155,6 +193,308 @@ pub fn conn_job_abort_has_error(flags: i32) -> bool {
 #[must_use]
 pub fn conn_job_abort_should_close(previous_flags: i32) -> bool {
     (i32_to_u32(previous_flags) & C_FAILED) == 0
+}
+
+/// Returns whether `JS_RUN` should invoke `socket_read_write`.
+#[must_use]
+pub fn socket_job_run_should_call_read_write(flags: i32) -> bool {
+    (i32_to_u32(flags) & C_ERROR) == 0
+}
+
+/// Returns whether `JS_RUN` should send `JS_AUX` after `socket_read_write`.
+#[must_use]
+pub fn socket_job_run_should_signal_aux(flags: i32, new_epoll_status: i32, current_epoll_status: i32) -> bool {
+    socket_job_run_should_call_read_write(flags) && new_epoll_status != current_epoll_status
+}
+
+/// Returns whether `JS_AUX` should call `epoll_insert`.
+#[must_use]
+pub fn socket_job_aux_should_update_epoll(flags: i32) -> bool {
+    (i32_to_u32(flags) & C_ERROR) == 0
+}
+
+/// Computes socket flag bits to clear in read-write gateway after epoll readiness.
+#[must_use]
+pub fn socket_gateway_clear_flags(event_state: i32, event_ready: i32) -> i32 {
+    let state = i32_to_u32(event_state);
+    let ready = i32_to_u32(event_ready);
+    let mut clear = 0u32;
+    if (state & EVT_READ) != 0 && (ready & EVT_READ) != 0 {
+        clear |= C_NORD;
+    }
+    if (state & EVT_WRITE) != 0 && (ready & EVT_WRITE) != 0 {
+        clear |= C_NOWR;
+    }
+    u32_to_i32(clear)
+}
+
+/// Selects abort/remove action for socket read-write gateway.
+///
+/// Returns:
+/// - `0`: keep processing
+/// - `1`: abort on `EPOLLERR` path
+/// - `2`: abort on disconnect path
+#[must_use]
+pub fn socket_gateway_abort_action(has_epollerr: bool, has_disconnect: bool) -> i32 {
+    if has_epollerr {
+        SOCKET_GATEWAY_ABORT_EPOLLERR
+    } else if has_disconnect {
+        SOCKET_GATEWAY_ABORT_DISCONNECT
+    } else {
+        SOCKET_GATEWAY_ABORT_NONE
+    }
+}
+
+/// Selects action for listening-connection job by op code.
+///
+/// Returns:
+/// - `0`: `JOB_ERROR`
+/// - `1`: run `net_accept_new_connections`
+/// - `2`: run `epoll_insert`
+#[must_use]
+pub fn listening_job_action(op: i32, js_run: i32, js_aux: i32) -> i32 {
+    if op == js_run {
+        LISTENING_JOB_ACTION_RUN
+    } else if op == js_aux {
+        LISTENING_JOB_ACTION_AUX
+    } else {
+        LISTENING_JOB_ACTION_ERROR
+    }
+}
+
+/// Plans listening init fd-bound checks.
+///
+/// Returns:
+/// - `0`: proceed
+/// - `1`: reject (`fd >= max_connection_fd`)
+#[must_use]
+pub fn listening_init_fd_action(fd: i32, max_connection_fd: i32) -> i32 {
+    if fd >= max_connection_fd {
+        1
+    } else {
+        0
+    }
+}
+
+/// Returns updated `max_connection` for listening init.
+#[must_use]
+pub fn listening_init_update_max_connection(fd: i32, max_connection: i32) -> i32 {
+    if fd > max_connection {
+        fd
+    } else {
+        max_connection
+    }
+}
+
+/// Computes mode policy flags for listening init.
+///
+/// Return bitmask:
+/// - bit0: `SM_LOWPRIO`
+/// - bit1: `SM_SPECIAL`
+/// - bit2: `SM_NOQACK`
+/// - bit3: `SM_IPV6`
+/// - bit4: `SM_RAWMSG`
+#[must_use]
+pub fn listening_init_mode_policy(
+    mode: i32,
+    sm_lowprio: i32,
+    sm_special: i32,
+    sm_noqack: i32,
+    sm_ipv6: i32,
+    sm_rawmsg: i32,
+) -> i32 {
+    let mut out = 0;
+    if mode & sm_lowprio != 0 {
+        out |= 1;
+    }
+    if mode & sm_special != 0 {
+        out |= 1 << 1;
+    }
+    if mode & sm_noqack != 0 {
+        out |= 1 << 2;
+    }
+    if mode & sm_ipv6 != 0 {
+        out |= 1 << 3;
+    }
+    if mode & sm_rawmsg != 0 {
+        out |= 1 << 4;
+    }
+    out
+}
+
+/// Returns whether event slot should be released after refcount update.
+#[must_use]
+pub fn connection_event_should_release(new_refcnt: i64, has_data: bool) -> bool {
+    new_refcnt == 0 && has_data
+}
+
+/// Selects post-acquire action for `connection_get_by_fd`.
+///
+/// Returns:
+/// - `1`: return current job (`listening`)
+/// - `2`: decref and return null (`socket` with `C_ERROR`)
+/// - `3`: return attached connection (`socket` without `C_ERROR`)
+#[must_use]
+pub fn connection_get_by_fd_action(
+    is_listening_job: bool,
+    is_socket_job: bool,
+    socket_flags: i32,
+) -> i32 {
+    if is_listening_job {
+        CONN_GET_BY_FD_ACTION_RETURN_SELF
+    } else {
+        debug_assert!(is_socket_job);
+        if (i32_to_u32(socket_flags) & C_ERROR) != 0 {
+            CONN_GET_BY_FD_ACTION_RETURN_NULL
+        } else {
+            CONN_GET_BY_FD_ACTION_RETURN_CONN
+        }
+    }
+}
+
+/// Returns whether fd-generation lookup should keep returned connection.
+#[must_use]
+pub fn connection_generation_matches(found_generation: i32, expected_generation: i32) -> bool {
+    found_generation == expected_generation
+}
+
+/// Computes default-assignment mask for common conn_type function pointers.
+#[must_use]
+#[allow(clippy::too_many_arguments)]
+pub fn check_conn_functions_default_mask(
+    has_title: bool,
+    has_socket_read_write: bool,
+    has_socket_reader: bool,
+    has_socket_writer: bool,
+    has_socket_close: bool,
+    has_close: bool,
+    has_init_outbound: bool,
+    has_wakeup: bool,
+    has_alarm: bool,
+    has_connected: bool,
+    has_flush: bool,
+    has_check_ready: bool,
+    has_read_write: bool,
+    has_free: bool,
+    has_socket_connected: bool,
+    has_socket_free: bool,
+) -> i32 {
+    let mut mask = 0;
+    if !has_title {
+        mask |= CHECK_CONN_DEFAULT_SET_TITLE;
+    }
+    if !has_socket_read_write {
+        mask |= CHECK_CONN_DEFAULT_SET_SOCKET_READ_WRITE;
+    }
+    if !has_socket_reader {
+        mask |= CHECK_CONN_DEFAULT_SET_SOCKET_READER;
+    }
+    if !has_socket_writer {
+        mask |= CHECK_CONN_DEFAULT_SET_SOCKET_WRITER;
+    }
+    if !has_socket_close {
+        mask |= CHECK_CONN_DEFAULT_SET_SOCKET_CLOSE;
+    }
+    if !has_close {
+        mask |= CHECK_CONN_DEFAULT_SET_CLOSE;
+    }
+    if !has_init_outbound {
+        mask |= CHECK_CONN_DEFAULT_SET_INIT_OUTBOUND;
+    }
+    if !has_wakeup {
+        mask |= CHECK_CONN_DEFAULT_SET_WAKEUP;
+    }
+    if !has_alarm {
+        mask |= CHECK_CONN_DEFAULT_SET_ALARM;
+    }
+    if !has_connected {
+        mask |= CHECK_CONN_DEFAULT_SET_CONNECTED;
+    }
+    if !has_flush {
+        mask |= CHECK_CONN_DEFAULT_SET_FLUSH;
+    }
+    if !has_check_ready {
+        mask |= CHECK_CONN_DEFAULT_SET_CHECK_READY;
+    }
+    if !has_read_write {
+        mask |= CHECK_CONN_DEFAULT_SET_READ_WRITE;
+    }
+    if !has_free {
+        mask |= CHECK_CONN_DEFAULT_SET_FREE;
+    }
+    if !has_socket_connected {
+        mask |= CHECK_CONN_DEFAULT_SET_SOCKET_CONNECTED;
+    }
+    if !has_socket_free {
+        mask |= CHECK_CONN_DEFAULT_SET_SOCKET_FREE;
+    }
+    mask
+}
+
+/// Computes assignment mask for `accept`/`init_accepted` defaults.
+#[must_use]
+pub fn check_conn_functions_accept_mask(
+    listening: bool,
+    has_accept: bool,
+    has_init_accepted: bool,
+) -> i32 {
+    let mut mask = 0;
+    if !has_accept {
+        if listening {
+            mask |= CHECK_CONN_ACCEPT_SET_ACCEPT_LISTEN;
+        } else {
+            mask |= CHECK_CONN_ACCEPT_SET_ACCEPT_FAILED;
+        }
+    }
+    if !has_init_accepted {
+        if listening {
+            mask |= CHECK_CONN_ACCEPT_SET_INIT_ACCEPTED_NOOP;
+        } else {
+            mask |= CHECK_CONN_ACCEPT_SET_INIT_ACCEPTED_FAILED;
+        }
+    }
+    mask
+}
+
+/// Computes RAWMSG/non-RAWMSG policy for buffer/parser callbacks.
+///
+/// Returns tuple `(rc, assign_mask, nonraw_assert_mask)`.
+#[must_use]
+pub fn check_conn_functions_raw_policy(
+    is_rawmsg: bool,
+    has_free_buffers: bool,
+    has_reader: bool,
+    has_writer: bool,
+    has_parse_execute: bool,
+) -> (i32, i32, i32) {
+    if is_rawmsg {
+        let mut assign_mask = 0;
+        if !has_free_buffers {
+            assign_mask |= CHECK_CONN_RAW_SET_FREE_BUFFERS;
+        }
+        if !has_reader {
+            assign_mask |= CHECK_CONN_RAW_SET_READER;
+            if !has_parse_execute {
+                return (-1, assign_mask, 0);
+            }
+        }
+        if !has_writer {
+            assign_mask |= CHECK_CONN_RAW_SET_WRITER;
+        }
+        (0, assign_mask, 0)
+    } else {
+        let mut assert_mask = 0;
+        if !has_free_buffers {
+            assert_mask |= CHECK_CONN_NONRAW_ASSERT_FREE_BUFFERS;
+        }
+        if !has_reader {
+            assert_mask |= CHECK_CONN_NONRAW_ASSERT_READER;
+        }
+        if !has_writer {
+            assert_mask |= CHECK_CONN_NONRAW_ASSERT_WRITER;
+        }
+        (0, 0, assert_mask)
+    }
 }
 
 /// Returns whether basic target-connection scan should skip current candidate.
@@ -482,16 +822,23 @@ mod tests {
         accept_rate_decide, compute_conn_events, compute_next_reconnect, conn_job_abort_has_error,
         conn_job_abort_should_close, conn_job_alarm_should_call,
         conn_job_ready_pending_cas_failure_expected, conn_job_ready_pending_should_promote_status,
-        conn_job_run_actions, connection_is_active, create_target_transition, destroy_target_transition,
-        nat_add_rule, nat_translate_ip, server_check_ready, target_bucket_ipv4, target_bucket_ipv6,
-        target_job_boot_delay, target_job_finalize_free_action, target_job_post_tick_action,
-        target_job_retry_delay, target_job_should_run_tick, target_job_update_mode,
-        target_needed_connections, target_pick_allow_stopped_should_select,
+        conn_job_run_actions, connection_is_active, create_target_transition,
+        destroy_target_transition, listening_init_fd_action, listening_init_mode_policy,
+        listening_init_update_max_connection, nat_add_rule, nat_translate_ip, server_check_ready,
+        listening_job_action, socket_job_aux_should_update_epoll,
+        socket_job_run_should_call_read_write, socket_job_run_should_signal_aux,
+        socket_gateway_abort_action, socket_gateway_clear_flags, target_bucket_ipv4,
+        target_bucket_ipv6, target_job_boot_delay, target_job_finalize_free_action,
+        target_job_post_tick_action, target_job_retry_delay, target_job_should_run_tick,
+        target_job_update_mode, target_needed_connections, target_pick_allow_stopped_should_select,
         target_pick_allow_stopped_should_skip, target_pick_basic_should_select,
         target_pick_basic_should_skip, target_pick_should_select, target_pick_should_skip,
-        target_ready_transition, target_should_attempt_reconnect, NatAddRuleError, C_CONNECTED,
-        C_ERROR, C_FAILED, C_NET_FAILED, C_NORD, C_NOWR, C_READY_PENDING, C_WANTRD, C_WANTWR,
-        EVT_LEVEL, EVT_READ, EVT_SPEC, EVT_WRITE, MAX_NAT_INFO_RULES, NAT_INFO_RULES,
+        target_ready_transition, target_should_attempt_reconnect, NatAddRuleError,
+        C_CONNECTED, C_ERROR, C_FAILED, C_NET_FAILED, C_NORD, C_NOWR, C_READY_PENDING,
+        C_WANTRD, C_WANTWR, EVT_LEVEL, EVT_READ, EVT_SPEC, EVT_WRITE, MAX_NAT_INFO_RULES,
+        NAT_INFO_RULES, connection_event_should_release, connection_get_by_fd_action,
+        connection_generation_matches, check_conn_functions_default_mask,
+        check_conn_functions_accept_mask, check_conn_functions_raw_policy,
     };
     use core::sync::atomic::Ordering;
 
@@ -539,6 +886,112 @@ mod tests {
         assert!(conn_job_abort_has_error(error));
         assert!(conn_job_abort_should_close(0));
         assert!(!conn_job_abort_should_close(failed));
+    }
+
+    #[test]
+    fn socket_job_helpers_match_c_rules() {
+        let error = i32::from_ne_bytes(C_ERROR.to_ne_bytes());
+
+        assert!(socket_job_run_should_call_read_write(0));
+        assert!(!socket_job_run_should_call_read_write(error));
+
+        assert!(socket_job_run_should_signal_aux(0, 7, 3));
+        assert!(!socket_job_run_should_signal_aux(0, 7, 7));
+        assert!(!socket_job_run_should_signal_aux(error, 7, 3));
+
+        assert!(socket_job_aux_should_update_epoll(0));
+        assert!(!socket_job_aux_should_update_epoll(error));
+    }
+
+    #[test]
+    fn socket_gateway_helpers_match_c_rules() {
+        let clear_read = socket_gateway_clear_flags(
+            i32::from_ne_bytes(EVT_READ.to_ne_bytes()),
+            i32::from_ne_bytes(EVT_READ.to_ne_bytes()),
+        );
+        assert_eq!(u32::from_ne_bytes(clear_read.to_ne_bytes()), C_NORD);
+
+        let clear_write = socket_gateway_clear_flags(
+            i32::from_ne_bytes(EVT_WRITE.to_ne_bytes()),
+            i32::from_ne_bytes(EVT_WRITE.to_ne_bytes()),
+        );
+        assert_eq!(u32::from_ne_bytes(clear_write.to_ne_bytes()), C_NOWR);
+
+        let clear_both = socket_gateway_clear_flags(
+            i32::from_ne_bytes((EVT_READ | EVT_WRITE).to_ne_bytes()),
+            i32::from_ne_bytes((EVT_READ | EVT_WRITE).to_ne_bytes()),
+        );
+        assert_eq!(u32::from_ne_bytes(clear_both.to_ne_bytes()), C_NORD | C_NOWR);
+
+        assert_eq!(socket_gateway_abort_action(false, false), 0);
+        assert_eq!(socket_gateway_abort_action(false, true), 2);
+        assert_eq!(socket_gateway_abort_action(true, false), 1);
+        assert_eq!(socket_gateway_abort_action(true, true), 1);
+    }
+
+    #[test]
+    fn listening_job_action_matches_c_rules() {
+        assert_eq!(listening_job_action(5, 5, 7), 1);
+        assert_eq!(listening_job_action(7, 5, 7), 2);
+        assert_eq!(listening_job_action(9, 5, 7), 0);
+    }
+
+    #[test]
+    fn listening_init_helpers_match_c_rules() {
+        assert_eq!(listening_init_fd_action(10, 10), 1);
+        assert_eq!(listening_init_fd_action(9, 10), 0);
+        assert_eq!(listening_init_update_max_connection(11, 10), 11);
+        assert_eq!(listening_init_update_max_connection(9, 10), 10);
+
+        let mode_bits = listening_init_mode_policy(0b1_1101, 0b0001, 0b0010, 0b0100, 0b1000, 0b1_0000);
+        assert_eq!(mode_bits, 0b1_1101);
+    }
+
+    #[test]
+    fn connection_lookup_helpers_match_c_rules() {
+        let error = i32::from_ne_bytes(C_ERROR.to_ne_bytes());
+        assert!(connection_event_should_release(0, true));
+        assert!(!connection_event_should_release(1, true));
+        assert!(!connection_event_should_release(0, false));
+
+        assert_eq!(connection_get_by_fd_action(true, false, 0), 1);
+        assert_eq!(connection_get_by_fd_action(false, true, error), 2);
+        assert_eq!(connection_get_by_fd_action(false, true, 0), 3);
+
+        assert!(connection_generation_matches(7, 7));
+        assert!(!connection_generation_matches(7, 8));
+    }
+
+    #[test]
+    fn check_conn_functions_policy_helpers_match_c_rules() {
+        let common = check_conn_functions_default_mask(
+            false, false, false, false, false, false, false, false, false, false, false, false,
+            false, false, false, false,
+        );
+        assert_eq!(common, 0xffff);
+
+        let accept_listen = check_conn_functions_accept_mask(true, false, false);
+        assert_eq!(accept_listen, 0b0101);
+        let accept_client = check_conn_functions_accept_mask(false, false, false);
+        assert_eq!(accept_client, 0b1010);
+
+        let (rc_raw_ok, raw_assign, raw_asserts) =
+            check_conn_functions_raw_policy(true, false, false, false, true);
+        assert_eq!(rc_raw_ok, 0);
+        assert_eq!(raw_assign, 0b0111);
+        assert_eq!(raw_asserts, 0);
+
+        let (rc_raw_err, raw_assign_err, raw_asserts_err) =
+            check_conn_functions_raw_policy(true, true, false, false, false);
+        assert_eq!(rc_raw_err, -1);
+        assert_eq!(raw_assign_err, 0b0010);
+        assert_eq!(raw_asserts_err, 0);
+
+        let (rc_nonraw, nonraw_assign, nonraw_asserts) =
+            check_conn_functions_raw_policy(false, false, true, false, false);
+        assert_eq!(rc_nonraw, 0);
+        assert_eq!(nonraw_assign, 0);
+        assert_eq!(nonraw_asserts, 0b0101);
     }
 
     #[test]

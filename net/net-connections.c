@@ -258,6 +258,46 @@ extern int32_t
 mtproxy_ffi_net_connections_conn_job_abort_has_error(int32_t flags);
 extern int32_t mtproxy_ffi_net_connections_conn_job_abort_should_close(
     int32_t previous_flags);
+extern int32_t
+mtproxy_ffi_net_connections_socket_job_run_should_call_read_write(
+    int32_t flags);
+extern int32_t mtproxy_ffi_net_connections_socket_job_run_should_signal_aux(
+    int32_t flags, int32_t new_epoll_status, int32_t current_epoll_status);
+extern int32_t
+mtproxy_ffi_net_connections_socket_job_aux_should_update_epoll(int32_t flags);
+extern int32_t mtproxy_ffi_net_connections_socket_gateway_clear_flags(
+    int32_t event_state, int32_t event_ready);
+extern int32_t mtproxy_ffi_net_connections_socket_gateway_abort_action(
+    int32_t has_epollerr, int32_t has_disconnect);
+extern int32_t mtproxy_ffi_net_connections_listening_job_action(
+    int32_t op, int32_t js_run, int32_t js_aux);
+extern int32_t mtproxy_ffi_net_connections_listening_init_fd_action(
+    int32_t fd, int32_t max_connection_fd);
+extern int32_t
+mtproxy_ffi_net_connections_listening_init_update_max_connection(
+    int32_t fd, int32_t max_connection);
+extern int32_t mtproxy_ffi_net_connections_listening_init_mode_policy(
+    int32_t mode, int32_t sm_lowprio, int32_t sm_special, int32_t sm_noqack,
+    int32_t sm_ipv6, int32_t sm_rawmsg);
+extern int32_t mtproxy_ffi_net_connections_connection_event_should_release(
+    int64_t new_refcnt, int32_t has_data);
+extern int32_t mtproxy_ffi_net_connections_connection_get_by_fd_action(
+    int32_t is_listening_job, int32_t is_socket_job, int32_t socket_flags);
+extern int32_t mtproxy_ffi_net_connections_connection_generation_matches(
+    int32_t found_generation, int32_t expected_generation);
+extern int32_t mtproxy_ffi_net_connections_check_conn_functions_default_mask(
+    int32_t has_title, int32_t has_socket_read_write,
+    int32_t has_socket_reader, int32_t has_socket_writer,
+    int32_t has_socket_close, int32_t has_close, int32_t has_init_outbound,
+    int32_t has_wakeup, int32_t has_alarm, int32_t has_connected,
+    int32_t has_flush, int32_t has_check_ready, int32_t has_read_write,
+    int32_t has_free, int32_t has_socket_connected, int32_t has_socket_free);
+extern int32_t mtproxy_ffi_net_connections_check_conn_functions_accept_mask(
+    int32_t listening, int32_t has_accept, int32_t has_init_accepted);
+extern int32_t mtproxy_ffi_net_connections_check_conn_functions_raw_policy(
+    int32_t is_rawmsg, int32_t has_free_buffers, int32_t has_reader,
+    int32_t has_writer, int32_t has_parse_execute, int32_t *out_assign_mask,
+    int32_t *out_nonraw_assert_mask);
 extern int32_t mtproxy_ffi_net_connections_target_pick_should_skip(
     int32_t allow_stopped, int32_t has_selected, int32_t selected_ready);
 extern int32_t mtproxy_ffi_net_connections_target_pick_should_select(
@@ -1176,6 +1216,12 @@ int net_server_socket_read_write(socket_connection_job_t C) {
   sends JS_RUN signal to socket_connection
 */
 int net_server_socket_read_write_gateway(int fd, void *data, event_t *ev) {
+  enum {
+    SOCKET_GATEWAY_ABORT_NONE = 0,
+    SOCKET_GATEWAY_ABORT_EPOLLERR = 1,
+    SOCKET_GATEWAY_ABORT_DISCONNECT = 2,
+  };
+
   assert_main_thread();
   if (!data) {
     return EVA_REMOVE;
@@ -1194,16 +1240,19 @@ int net_server_socket_read_write_gateway(int fd, void *data, event_t *ev) {
              ev->ready, ev->epoll_ready);
     ev->ready &= ~EVT_FROM_EPOLL;
 
-    int clear_flags = 0;
-    if ((ev->state & EVT_READ) && (ev->ready & EVT_READ)) {
-      clear_flags |= C_NORD;
-    }
-    if ((ev->state & EVT_WRITE) && (ev->ready & EVT_WRITE)) {
-      clear_flags |= C_NOWR;
-    }
+    int32_t clear_flags = mtproxy_ffi_net_connections_socket_gateway_clear_flags(
+        ev->state, ev->ready);
+    assert((clear_flags & ~(C_NORD | C_NOWR)) == 0);
     __sync_fetch_and_and(&c->flags, ~clear_flags);
 
-    if (ev->epoll_ready & EPOLLERR) {
+    int32_t abort_action = mtproxy_ffi_net_connections_socket_gateway_abort_action(
+        !!(ev->epoll_ready & EPOLLERR),
+        !!(ev->epoll_ready & (EPOLLHUP | EPOLLERR | EPOLLRDHUP | EPOLLPRI)));
+    assert(abort_action == SOCKET_GATEWAY_ABORT_NONE ||
+           abort_action == SOCKET_GATEWAY_ABORT_EPOLLERR ||
+           abort_action == SOCKET_GATEWAY_ABORT_DISCONNECT);
+
+    if (abort_action == SOCKET_GATEWAY_ABORT_EPOLLERR) {
       int error = 0;
       socklen_t errlen = sizeof(error);
       if (getsockopt(c->fd, SOL_SOCKET, SO_ERROR, (void *)&error, &errlen) ==
@@ -1215,7 +1264,7 @@ int net_server_socket_read_write_gateway(int fd, void *data, event_t *ev) {
       job_signal(JOB_REF_CREATE_PASS(C), JS_ABORT);
       return EVA_REMOVE;
     }
-    if (ev->epoll_ready & (EPOLLHUP | EPOLLERR | EPOLLRDHUP | EPOLLPRI)) {
+    if (abort_action == SOCKET_GATEWAY_ABORT_DISCONNECT) {
       vkprintf(!(ev->epoll_ready & EPOLLPRI),
                "socket #%d: disconnected (epoll_ready=%02x), cleaning\n", c->fd,
                ev->epoll_ready);
@@ -1239,9 +1288,18 @@ int do_socket_connection_job(job_t job, int op, struct job_thread *JT) {
     return JOB_COMPLETED;
   }
   if (op == JS_RUN) { // IO THREAD
-    if (!(c->flags & C_ERROR)) {
+    int32_t run_flags = c->flags;
+    int32_t should_call_read_write =
+        mtproxy_ffi_net_connections_socket_job_run_should_call_read_write(
+            run_flags);
+    assert(should_call_read_write == 0 || should_call_read_write == 1);
+    if (should_call_read_write) {
       int res = c->type->socket_read_write(job);
-      if (res != c->current_epoll_status) {
+      int32_t should_signal_aux =
+          mtproxy_ffi_net_connections_socket_job_run_should_signal_aux(
+              run_flags, res, c->current_epoll_status);
+      assert(should_signal_aux == 0 || should_signal_aux == 1);
+      if (should_signal_aux) {
         c->current_epoll_status = res;
         return JOB_SENDSIG(JS_AUX);
       }
@@ -1249,7 +1307,11 @@ int do_socket_connection_job(job_t job, int op, struct job_thread *JT) {
     return 0;
   }
   if (op == JS_AUX) { // MAIN THREAD
-    if (!(c->flags & C_ERROR)) {
+    int32_t should_update_epoll =
+        mtproxy_ffi_net_connections_socket_job_aux_should_update_epoll(
+            c->flags);
+    assert(should_update_epoll == 0 || should_update_epoll == 1);
+    if (should_update_epoll) {
       epoll_insert(c->fd, compute_conn_events(job));
     }
     return 0;
@@ -1393,12 +1455,24 @@ int net_accept_new_connections(listening_connection_job_t LCJ) {
 }
 
 int do_listening_connection_job(job_t job, int op, struct job_thread *JT) {
+  enum {
+    LISTENING_JOB_ACTION_ERROR = 0,
+    LISTENING_JOB_ACTION_RUN = 1,
+    LISTENING_JOB_ACTION_AUX = 2,
+  };
+
   listening_connection_job_t LCJ = job;
 
-  if (op == JS_RUN) {
+  int32_t action = mtproxy_ffi_net_connections_listening_job_action(
+      op, JS_RUN, JS_AUX);
+  assert(action == LISTENING_JOB_ACTION_ERROR ||
+         action == LISTENING_JOB_ACTION_RUN ||
+         action == LISTENING_JOB_ACTION_AUX);
+
+  if (action == LISTENING_JOB_ACTION_RUN) {
     net_accept_new_connections(LCJ);
     return 0;
-  } else if (op == JS_AUX) {
+  } else if (action == LISTENING_JOB_ACTION_AUX) {
     vkprintf(2, "**Invoking epoll_insert(%d,%d)\n", LISTEN_CONN_INFO(LCJ)->fd,
              EVT_RWX);
     epoll_insert(LISTEN_CONN_INFO(LCJ)->fd, EVT_RWX);
@@ -1409,17 +1483,30 @@ int do_listening_connection_job(job_t job, int op, struct job_thread *JT) {
 
 int init_listening_connection_ext(int fd, conn_type_t *type, void *extra,
                                   int mode, int prio) {
+  enum {
+    LISTENING_INIT_FD_OK = 0,
+    LISTENING_INIT_FD_REJECT = 1,
+    LISTENING_MODE_LOWPRIO = 1,
+    LISTENING_MODE_SPECIAL = 1 << 1,
+    LISTENING_MODE_NOQACK = 1 << 2,
+    LISTENING_MODE_IPV6 = 1 << 3,
+    LISTENING_MODE_RAWMSG = 1 << 4,
+  };
+
   if (check_conn_functions(type, 1) < 0) {
     return -1;
   }
-  if (fd >= max_connection_fd) {
+  int32_t fd_action = mtproxy_ffi_net_connections_listening_init_fd_action(
+      fd, max_connection_fd);
+  assert(fd_action == LISTENING_INIT_FD_OK ||
+         fd_action == LISTENING_INIT_FD_REJECT);
+  if (fd_action == LISTENING_INIT_FD_REJECT) {
     vkprintf(0, "TOO big fd for listening connection %d (max %d)\n", fd,
              max_connection_fd);
     return -1;
   }
-  if (fd > max_connection) {
-    max_connection = fd;
-  }
+  max_connection = mtproxy_ffi_net_connections_listening_init_update_max_connection(
+      fd, max_connection);
 
   listening_connection_job_t LCJ = create_async_job(
       do_listening_connection_job,
@@ -1443,11 +1530,17 @@ int init_listening_connection_ext(int fd, conn_type_t *type, void *extra,
 
   LC->generation = new_conn_generation();
 
-  if (mode & SM_LOWPRIO) {
+  int32_t mode_policy = mtproxy_ffi_net_connections_listening_init_mode_policy(
+      mode, SM_LOWPRIO, SM_SPECIAL, SM_NOQACK, SM_IPV6, SM_RAWMSG);
+  assert((mode_policy & ~(LISTENING_MODE_LOWPRIO | LISTENING_MODE_SPECIAL |
+                          LISTENING_MODE_NOQACK | LISTENING_MODE_IPV6 |
+                          LISTENING_MODE_RAWMSG)) == 0);
+
+  if (mode_policy & LISTENING_MODE_LOWPRIO) {
     prio = 10;
   }
 
-  if (mode & SM_SPECIAL) {
+  if (mode_policy & LISTENING_MODE_SPECIAL) {
     LC->flags |= C_SPECIAL;
     int idx = __sync_fetch_and_add(&special_listen_sockets, 1);
     assert(idx < MAX_SPECIAL_LISTEN_SOCKETS);
@@ -1455,16 +1548,16 @@ int init_listening_connection_ext(int fd, conn_type_t *type, void *extra,
     special_socket[idx].generation = LC->generation;
   }
 
-  if (mode & SM_NOQACK) {
+  if (mode_policy & LISTENING_MODE_NOQACK) {
     LC->flags |= C_NOQACK;
     disable_qack(LC->fd);
   }
 
-  if (mode & SM_IPV6) {
+  if (mode_policy & LISTENING_MODE_IPV6) {
     LC->flags |= C_IPV6;
   }
 
-  if (mode & SM_RAWMSG) {
+  if (mode_policy & LISTENING_MODE_RAWMSG) {
     LC->flags |= C_RAWMSG;
   }
 
@@ -1490,7 +1583,11 @@ int init_listening_tcpv6_connection(int fd, conn_type_t *type, void *extra,
 void connection_event_incref(int fd, long long val) {
   struct event_descr *ev = &Events[fd];
 
-  if (!__sync_add_and_fetch(&ev->refcnt, val) && ev->data) {
+  long long new_refcnt = __sync_add_and_fetch(&ev->refcnt, val);
+  int32_t should_release = mtproxy_ffi_net_connections_connection_event_should_release(
+      new_refcnt, ev->data != NULL);
+  assert(should_release == 0 || should_release == 1);
+  if (should_release) {
     socket_connection_job_t C = ev->data;
     ev->data = NULL;
     job_decref(JOB_REF_PASS(C));
@@ -1498,6 +1595,12 @@ void connection_event_incref(int fd, long long val) {
 }
 
 connection_job_t connection_get_by_fd(int fd) {
+  enum {
+    CONN_GET_BY_FD_ACTION_RETURN_SELF = 1,
+    CONN_GET_BY_FD_ACTION_RETURN_NULL = 2,
+    CONN_GET_BY_FD_ACTION_RETURN_CONN = 3,
+  };
+
   struct event_descr *ev = &Events[fd];
   if (!(int)(ev->refcnt) || !ev->data) {
     return NULL;
@@ -1519,32 +1622,47 @@ connection_job_t connection_get_by_fd(int fd) {
 
   connection_event_incref(fd, -1);
 
-  if (C->j_execute == &do_listening_connection_job) {
+  int32_t is_listening_job = (C->j_execute == &do_listening_connection_job);
+  int32_t is_socket_job = (C->j_execute == &do_socket_connection_job);
+  int32_t socket_flags =
+      is_socket_job ? SOCKET_CONN_INFO(C)->flags : 0;
+  int32_t action = mtproxy_ffi_net_connections_connection_get_by_fd_action(
+      is_listening_job, is_socket_job, socket_flags);
+  assert(action == CONN_GET_BY_FD_ACTION_RETURN_SELF ||
+         action == CONN_GET_BY_FD_ACTION_RETURN_NULL ||
+         action == CONN_GET_BY_FD_ACTION_RETURN_CONN);
+
+  if (action == CONN_GET_BY_FD_ACTION_RETURN_SELF) {
     return C;
   }
 
-  assert(C->j_execute == &do_socket_connection_job);
-
+  assert(is_socket_job);
   struct socket_connection_info *c = SOCKET_CONN_INFO(C);
-  if (c->flags & C_ERROR) {
+  if (action == CONN_GET_BY_FD_ACTION_RETURN_NULL) {
     job_decref(JOB_REF_PASS(C));
     return NULL;
-  } else {
-    assert(c->conn);
-    connection_job_t C2 = job_incref(c->conn);
-    job_decref(JOB_REF_PASS(C));
-    return C2;
   }
+
+  assert(action == CONN_GET_BY_FD_ACTION_RETURN_CONN);
+  assert(c->conn);
+  connection_job_t C2 = job_incref(c->conn);
+  job_decref(JOB_REF_PASS(C));
+  return C2;
 }
 
 connection_job_t connection_get_by_fd_generation(int fd, int generation) {
   connection_job_t C = connection_get_by_fd(fd);
-  if (C && CONN_INFO(C)->generation != generation) {
-    job_decref(JOB_REF_PASS(C));
-    return NULL;
-  } else {
-    return C;
+  if (C) {
+    int32_t generation_matches =
+        mtproxy_ffi_net_connections_connection_generation_matches(
+            CONN_INFO(C)->generation, generation);
+    assert(generation_matches == 0 || generation_matches == 1);
+    if (!generation_matches) {
+      job_decref(JOB_REF_PASS(C));
+      return NULL;
+    }
   }
+  return C;
 }
 
 int server_check_ready(connection_job_t C) {
@@ -1570,94 +1688,171 @@ int server_flush(connection_job_t C) {
 }
 
 int check_conn_functions(conn_type_t *type, int listening) {
+  enum {
+    CHECK_CONN_DEFAULT_SET_TITLE = 1 << 0,
+    CHECK_CONN_DEFAULT_SET_SOCKET_READ_WRITE = 1 << 1,
+    CHECK_CONN_DEFAULT_SET_SOCKET_READER = 1 << 2,
+    CHECK_CONN_DEFAULT_SET_SOCKET_WRITER = 1 << 3,
+    CHECK_CONN_DEFAULT_SET_SOCKET_CLOSE = 1 << 4,
+    CHECK_CONN_DEFAULT_SET_CLOSE = 1 << 5,
+    CHECK_CONN_DEFAULT_SET_INIT_OUTBOUND = 1 << 6,
+    CHECK_CONN_DEFAULT_SET_WAKEUP = 1 << 7,
+    CHECK_CONN_DEFAULT_SET_ALARM = 1 << 8,
+    CHECK_CONN_DEFAULT_SET_CONNECTED = 1 << 9,
+    CHECK_CONN_DEFAULT_SET_FLUSH = 1 << 10,
+    CHECK_CONN_DEFAULT_SET_CHECK_READY = 1 << 11,
+    CHECK_CONN_DEFAULT_SET_READ_WRITE = 1 << 12,
+    CHECK_CONN_DEFAULT_SET_FREE = 1 << 13,
+    CHECK_CONN_DEFAULT_SET_SOCKET_CONNECTED = 1 << 14,
+    CHECK_CONN_DEFAULT_SET_SOCKET_FREE = 1 << 15,
+    CHECK_CONN_ACCEPT_SET_ACCEPT_LISTEN = 1 << 0,
+    CHECK_CONN_ACCEPT_SET_ACCEPT_FAILED = 1 << 1,
+    CHECK_CONN_ACCEPT_SET_INIT_ACCEPTED_NOOP = 1 << 2,
+    CHECK_CONN_ACCEPT_SET_INIT_ACCEPTED_FAILED = 1 << 3,
+    CHECK_CONN_RAW_SET_FREE_BUFFERS = 1 << 0,
+    CHECK_CONN_RAW_SET_READER = 1 << 1,
+    CHECK_CONN_RAW_SET_WRITER = 1 << 2,
+    CHECK_CONN_NONRAW_ASSERT_FREE_BUFFERS = 1 << 0,
+    CHECK_CONN_NONRAW_ASSERT_READER = 1 << 1,
+    CHECK_CONN_NONRAW_ASSERT_WRITER = 1 << 2,
+  };
+
   if (type->magic != CONN_FUNC_MAGIC) {
     return -1;
   }
-  if (!type->title) {
+
+  int32_t default_mask =
+      mtproxy_ffi_net_connections_check_conn_functions_default_mask(
+          type->title != NULL, type->socket_read_write != NULL,
+          type->socket_reader != NULL, type->socket_writer != NULL,
+          type->socket_close != NULL, type->close != NULL,
+          type->init_outbound != NULL, type->wakeup != NULL,
+          type->alarm != NULL, type->connected != NULL, type->flush != NULL,
+          type->check_ready != NULL, type->read_write != NULL,
+          type->free != NULL, type->socket_connected != NULL,
+          type->socket_free != NULL);
+  assert((default_mask & ~(CHECK_CONN_DEFAULT_SET_TITLE |
+                           CHECK_CONN_DEFAULT_SET_SOCKET_READ_WRITE |
+                           CHECK_CONN_DEFAULT_SET_SOCKET_READER |
+                           CHECK_CONN_DEFAULT_SET_SOCKET_WRITER |
+                           CHECK_CONN_DEFAULT_SET_SOCKET_CLOSE |
+                           CHECK_CONN_DEFAULT_SET_CLOSE |
+                           CHECK_CONN_DEFAULT_SET_INIT_OUTBOUND |
+                           CHECK_CONN_DEFAULT_SET_WAKEUP |
+                           CHECK_CONN_DEFAULT_SET_ALARM |
+                           CHECK_CONN_DEFAULT_SET_CONNECTED |
+                           CHECK_CONN_DEFAULT_SET_FLUSH |
+                           CHECK_CONN_DEFAULT_SET_CHECK_READY |
+                           CHECK_CONN_DEFAULT_SET_READ_WRITE |
+                           CHECK_CONN_DEFAULT_SET_FREE |
+                           CHECK_CONN_DEFAULT_SET_SOCKET_CONNECTED |
+                           CHECK_CONN_DEFAULT_SET_SOCKET_FREE)) == 0);
+
+  if (default_mask & CHECK_CONN_DEFAULT_SET_TITLE) {
     type->title = "(unknown)";
   }
-  if (!type->socket_read_write) {
+  if (default_mask & CHECK_CONN_DEFAULT_SET_SOCKET_READ_WRITE) {
     type->socket_read_write = net_server_socket_read_write;
   }
-  if (!type->socket_reader) {
+  if (default_mask & CHECK_CONN_DEFAULT_SET_SOCKET_READER) {
     type->socket_reader = net_server_socket_reader;
   }
-  if (!type->socket_writer) {
+  if (default_mask & CHECK_CONN_DEFAULT_SET_SOCKET_WRITER) {
     type->socket_writer = net_server_socket_writer;
   }
-  if (!type->socket_close) {
+  if (default_mask & CHECK_CONN_DEFAULT_SET_SOCKET_CLOSE) {
     type->socket_close = server_noop;
   }
 
-  if (!type->accept) {
-    if (listening) {
-      type->accept = net_accept_new_connections;
-    } else {
-      type->accept = server_failed;
-    }
+  int32_t accept_mask = mtproxy_ffi_net_connections_check_conn_functions_accept_mask(
+      !!listening, type->accept != NULL, type->init_accepted != NULL);
+  assert((accept_mask & ~(CHECK_CONN_ACCEPT_SET_ACCEPT_LISTEN |
+                          CHECK_CONN_ACCEPT_SET_ACCEPT_FAILED |
+                          CHECK_CONN_ACCEPT_SET_INIT_ACCEPTED_NOOP |
+                          CHECK_CONN_ACCEPT_SET_INIT_ACCEPTED_FAILED)) == 0);
+
+  if (accept_mask & CHECK_CONN_ACCEPT_SET_ACCEPT_LISTEN) {
+    type->accept = net_accept_new_connections;
   }
-  if (!type->init_accepted) {
-    if (listening) {
-      type->init_accepted = server_noop;
-    } else {
-      type->init_accepted = server_failed;
-    }
+  if (accept_mask & CHECK_CONN_ACCEPT_SET_ACCEPT_FAILED) {
+    type->accept = server_failed;
+  }
+  if (accept_mask & CHECK_CONN_ACCEPT_SET_INIT_ACCEPTED_NOOP) {
+    type->init_accepted = server_noop;
+  }
+  if (accept_mask & CHECK_CONN_ACCEPT_SET_INIT_ACCEPTED_FAILED) {
+    type->init_accepted = server_failed;
   }
 
-  if (!type->close) {
+  if (default_mask & CHECK_CONN_DEFAULT_SET_CLOSE) {
     type->close = cpu_server_close_connection;
   }
-  if (!type->init_outbound) {
+  if (default_mask & CHECK_CONN_DEFAULT_SET_INIT_OUTBOUND) {
     type->init_outbound = server_noop;
   }
-  if (!type->wakeup) {
+  if (default_mask & CHECK_CONN_DEFAULT_SET_WAKEUP) {
     type->wakeup = server_noop;
   }
-  if (!type->alarm) {
+  if (default_mask & CHECK_CONN_DEFAULT_SET_ALARM) {
     type->alarm = server_noop;
   }
-  if (!type->connected) {
+  if (default_mask & CHECK_CONN_DEFAULT_SET_CONNECTED) {
     type->connected = server_noop;
   }
-  if (!type->flush) {
+  if (default_mask & CHECK_CONN_DEFAULT_SET_FLUSH) {
     type->flush = server_flush;
   }
-  if (!type->check_ready) {
+  if (default_mask & CHECK_CONN_DEFAULT_SET_CHECK_READY) {
     type->check_ready = server_check_ready;
   }
-  if (!type->read_write) {
+  if (default_mask & CHECK_CONN_DEFAULT_SET_READ_WRITE) {
     type->read_write = cpu_server_read_write;
   }
-  if (!type->free) {
+  if (default_mask & CHECK_CONN_DEFAULT_SET_FREE) {
     type->free = cpu_server_free_connection;
   }
-  if (!type->socket_connected) {
+  if (default_mask & CHECK_CONN_DEFAULT_SET_SOCKET_CONNECTED) {
     type->socket_connected = server_noop;
   }
-  if (!type->socket_free) {
+  if (default_mask & CHECK_CONN_DEFAULT_SET_SOCKET_FREE) {
     type->socket_free = net_server_socket_free;
   }
+
+  int32_t raw_assign_mask = 0;
+  int32_t nonraw_assert_mask = 0;
+  int32_t raw_rc = mtproxy_ffi_net_connections_check_conn_functions_raw_policy(
+      !!(type->flags & C_RAWMSG), type->free_buffers != NULL,
+      type->reader != NULL, type->writer != NULL, type->parse_execute != NULL,
+      &raw_assign_mask, &nonraw_assert_mask);
+  assert(raw_rc == 0 || raw_rc == -1);
+  assert((raw_assign_mask & ~(CHECK_CONN_RAW_SET_FREE_BUFFERS |
+                              CHECK_CONN_RAW_SET_READER |
+                              CHECK_CONN_RAW_SET_WRITER)) == 0);
+  assert((nonraw_assert_mask & ~(CHECK_CONN_NONRAW_ASSERT_FREE_BUFFERS |
+                                 CHECK_CONN_NONRAW_ASSERT_READER |
+                                 CHECK_CONN_NONRAW_ASSERT_WRITER)) == 0);
+
   if (type->flags & C_RAWMSG) {
-    if (!type->free_buffers) {
+    if (raw_assign_mask & CHECK_CONN_RAW_SET_FREE_BUFFERS) {
       type->free_buffers = cpu_tcp_free_connection_buffers;
     }
-    if (!type->reader) {
+    if (raw_assign_mask & CHECK_CONN_RAW_SET_READER) {
       type->reader = cpu_tcp_server_reader;
-      if (!type->parse_execute) {
-        return -1;
-      }
     }
-    if (!type->writer) {
+    if (raw_rc < 0) {
+      return -1;
+    }
+    if (raw_assign_mask & CHECK_CONN_RAW_SET_WRITER) {
       type->writer = cpu_tcp_server_writer;
     }
   } else {
-    if (!type->free_buffers) {
+    if (nonraw_assert_mask & CHECK_CONN_NONRAW_ASSERT_FREE_BUFFERS) {
       assert(0);
     }
-    if (!type->reader) {
+    if (nonraw_assert_mask & CHECK_CONN_NONRAW_ASSERT_READER) {
       assert(0);
     }
-    if (!type->writer) {
+    if (nonraw_assert_mask & CHECK_CONN_NONRAW_ASSERT_WRITER) {
       assert(0);
     }
   }
