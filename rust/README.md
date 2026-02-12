@@ -12,12 +12,11 @@ This workspace is the initial Rust scaffold for incremental MTProxy migration.
 
 From repository root:
 
-- `make rust-check`
-- `make rust-fmt`
-- `make rust-fmt-check`
-- `make rust-clippy`
-- `make rust-test`
-- `make rust-ci`
+- `cargo check --workspace`
+- `cargo fmt --all`
+- `cargo fmt --all --check`
+- `cargo clippy --workspace --all-targets -- -D warnings`
+- `cargo test --workspace`
 
 The Rust-enabled binary is now default (`make`, `make test`) at `objs/bin/mtproto-proxy`.
 

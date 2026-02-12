@@ -57,11 +57,10 @@ TEST_INCLUDE_RUST_DIFFERENTIAL=1 make test
 
 Rust-only quality gates:
 ```bash
-make rust-check
-make rust-fmt-check
-make rust-clippy
-make rust-test
-make rust-ci
+cargo check --workspace
+cargo fmt --all --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
 ```
 
 ## Running

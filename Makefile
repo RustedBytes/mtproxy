@@ -29,7 +29,7 @@ DEPDIRS := ${DEP} $(addprefix ${DEP}/,${PROJECTS})
 ALLDIRS := ${DEPDIRS} ${OBJDIRS}
 
 
-.PHONY:	all clean test release release-legacy rust-check rust-fmt rust-fmt-check rust-clippy rust-test rust-ci step15-inventory
+.PHONY:	all clean test release release-legacy step15-inventory
 
 EXELIST	:= ${EXE}/mtproto-proxy
 RUST_OBJECTS	=	\
@@ -126,24 +126,6 @@ force-clean: clean
 
 test: all
 	./tests/run.sh
-
-rust-check:
-	./scripts/rust_tooling.sh check
-
-rust-fmt:
-	./scripts/rust_tooling.sh fmt
-
-rust-fmt-check:
-	./scripts/rust_tooling.sh fmt-check
-
-rust-clippy:
-	./scripts/rust_tooling.sh clippy
-
-rust-test:
-	./scripts/rust_tooling.sh test
-
-rust-ci:
-	./scripts/rust_tooling.sh ci
 
 step15-inventory:
 	./scripts/step15_inventory.sh
