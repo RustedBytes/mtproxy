@@ -180,7 +180,6 @@ make test
 
 ## References
 
-- Full migration plan: `PLAN.md` (Step 15)
 - Server functions migration example: `SERVER_FUNCTIONS_MIGRATION.md`
 - Ownership map: `rust/mtproxy-core/src/step15.rs`
 - Architecture docs: `ARCHITECTURE.md`
