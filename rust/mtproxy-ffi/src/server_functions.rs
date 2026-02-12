@@ -20,13 +20,13 @@ pub unsafe extern "C" fn rust_parse_memory_limit(s: *const c_char) -> c_longlong
     if s.is_null() {
         return -1;
     }
-    
+
     let c_str = unsafe { CStr::from_ptr(s) };
     let rust_str = match c_str.to_str() {
         Ok(s) => s,
         Err(_) => return -1,
     };
-    
+
     // Use the implementation from mtproxy-core
     match mtproxy_core::runtime::bootstrap::server_functions::parse_memory_limit(rust_str) {
         Ok(value) => value,
@@ -58,13 +58,13 @@ pub unsafe extern "C" fn rust_change_user_group(
     } else {
         unsafe { CStr::from_ptr(username) }.to_str().ok()
     };
-    
+
     let groupname_opt = if groupname.is_null() {
         None
     } else {
         unsafe { CStr::from_ptr(groupname) }.to_str().ok()
     };
-    
+
     // Call implementation - but we need to add it here since mtproxy-bin is not a dependency
     // For now, return unimplemented
     match internal_change_user_group(username_opt, groupname_opt) {
@@ -93,7 +93,7 @@ pub unsafe extern "C" fn rust_change_user(username: *const c_char) -> c_int {
     } else {
         unsafe { CStr::from_ptr(username) }.to_str().ok()
     };
-    
+
     match internal_change_user(username_opt) {
         Ok(()) => 0,
         Err(_) => -1,
@@ -133,7 +133,7 @@ pub extern "C" fn rust_print_backtrace() {
 // These are simplified FFI-specific implementations. They differ from the
 // mtproxy-bin implementations by:
 // - Using simple error codes (-1) instead of Result types
-// - Direct libc calls instead of wrapper functions  
+// - Direct libc calls instead of wrapper functions
 // - No detailed error types (just success/failure)
 //
 // This duplication is necessary because mtproxy-ffi cannot depend on mtproxy-bin
@@ -141,14 +141,11 @@ pub extern "C" fn rust_print_backtrace() {
 
 const DEFAULT_ENGINE_USER: &str = "mtproxy";
 
-fn internal_change_user_group(
-    username: Option<&str>,
-    groupname: Option<&str>,
-) -> Result<(), ()> {
+fn internal_change_user_group(username: Option<&str>, groupname: Option<&str>) -> Result<(), ()> {
     // Only change privileges if running as root
     let uid = unsafe { libc::getuid() };
     let euid = unsafe { libc::geteuid() };
-    
+
     if uid != 0 && euid != 0 {
         return Ok(());
     }
@@ -190,7 +187,7 @@ fn internal_change_user(username: Option<&str>) -> Result<(), ()> {
     // Only change privileges if running as root
     let uid = unsafe { libc::getuid() };
     let euid = unsafe { libc::geteuid() };
-    
+
     if uid != 0 && euid != 0 {
         return Ok(());
     }
@@ -217,7 +214,7 @@ fn internal_change_user(username: Option<&str>) -> Result<(), ()> {
     if unsafe { libc::setgid(gid) } != 0 {
         return Err(());
     }
-    
+
     if unsafe { libc::setuid(pw.pw_uid) } != 0 {
         return Err(());
     }
@@ -230,17 +227,17 @@ fn internal_raise_file_rlimit(maxfiles: c_int) -> Result<(), ()> {
         rlim_cur: 0,
         rlim_max: 0,
     };
-    
+
     if unsafe { libc::getrlimit(libc::RLIMIT_NOFILE, &mut rlim) } != 0 {
         return Err(());
     }
 
     let maxfiles_u64 = u64::try_from(maxfiles).unwrap_or(0);
-    
+
     if rlim.rlim_cur < maxfiles_u64 {
         rlim.rlim_cur = maxfiles_u64 + 3;
     }
-    
+
     if rlim.rlim_max < rlim.rlim_cur {
         rlim.rlim_max = rlim.rlim_cur;
     }
@@ -255,21 +252,19 @@ fn internal_raise_file_rlimit(maxfiles: c_int) -> Result<(), ()> {
 fn internal_print_backtrace() {
     const MAX_FRAMES: usize = 64;
     let mut buffer: [*mut std::ffi::c_void; MAX_FRAMES] = [std::ptr::null_mut(); MAX_FRAMES];
-    
-    let nptrs = unsafe {
-        libc::backtrace(buffer.as_mut_ptr(), MAX_FRAMES as c_int)
-    };
-    
+
+    let nptrs = unsafe { libc::backtrace(buffer.as_mut_ptr(), MAX_FRAMES as c_int) };
+
     if nptrs > 0 {
         let msg = b"\n------- Stack Backtrace -------\n";
         unsafe {
             libc::write(2, msg.as_ptr().cast(), msg.len());
         }
-        
+
         unsafe {
             libc::backtrace_symbols_fd(buffer.as_ptr(), nptrs, 2);
         }
-        
+
         let msg2 = b"-------------------------------\n";
         unsafe {
             libc::write(2, msg2.as_ptr().cast(), msg2.len());
@@ -289,7 +284,7 @@ struct GroupInfo {
 
 fn get_passwd_by_name(username: &str) -> Result<PasswdInfo, ()> {
     let c_username = std::ffi::CString::new(username).map_err(|_| ())?;
-    
+
     let pw_ptr = unsafe { libc::getpwnam(c_username.as_ptr()) };
     if pw_ptr.is_null() {
         return Err(());
@@ -297,19 +292,19 @@ fn get_passwd_by_name(username: &str) -> Result<PasswdInfo, ()> {
 
     let pw_uid = unsafe { (*pw_ptr).pw_uid };
     let pw_gid = unsafe { (*pw_ptr).pw_gid };
-    
+
     Ok(PasswdInfo { pw_uid, pw_gid })
 }
 
 fn get_group_by_name(groupname: &str) -> Result<GroupInfo, ()> {
     let c_groupname = std::ffi::CString::new(groupname).map_err(|_| ())?;
-    
+
     let gr_ptr = unsafe { libc::getgrnam(c_groupname.as_ptr()) };
     if gr_ptr.is_null() {
         return Err(());
     }
 
     let gr_gid = unsafe { (*gr_ptr).gr_gid };
-    
+
     Ok(GroupInfo { gr_gid })
 }

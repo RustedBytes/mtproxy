@@ -6,9 +6,7 @@
 use super::*;
 
 // Re-export parsing functions from time_cfg_observability
-use crate::time_cfg_observability::{
-    mtproxy_ffi_parse_meminfo_summary, mtproxy_ffi_parse_statm,
-};
+use crate::time_cfg_observability::{mtproxy_ffi_parse_meminfo_summary, mtproxy_ffi_parse_statm};
 
 unsafe extern "C" {
     fn getpid() -> c_int;
@@ -145,7 +143,7 @@ pub unsafe extern "C" fn mtproxy_ffi_am_get_memory_usage(
     };
 
     let m_clamped = if m > 7 { 7 } else { m };
-    
+
     // Call Rust parsing function
     unsafe {
         mtproxy_ffi_parse_statm(
@@ -256,11 +254,7 @@ pub unsafe extern "C" fn mtproxy_ffi_sb_register_stat_fun(func: StatFunT) -> c_i
 
 /// Initialize stats buffer
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_sb_init(
-    sb: *mut StatsBuffer,
-    buff: *mut c_char,
-    size: c_int,
-) {
+pub unsafe extern "C" fn mtproxy_ffi_sb_init(sb: *mut StatsBuffer, buff: *mut c_char, size: c_int) {
     if sb.is_null() {
         return;
     }
@@ -369,7 +363,7 @@ pub unsafe extern "C" fn mtproxy_ffi_sb_prepare(sb: *mut StatsBuffer) {
     }
 
     let sb_ref = unsafe { &mut *sb };
-    
+
     // Call prepare_stats to get initial content
     sb_ref.pos = unsafe { prepare_stats(sb_ref.buff, sb_ref.size) };
 
@@ -422,12 +416,7 @@ pub unsafe extern "C" fn mtproxy_ffi_sb_vprintf(
 
     // Use vsnprintf
     extern "C" {
-        fn vsnprintf(
-            s: *mut c_char,
-            n: usize,
-            format: *const c_char,
-            arg: *mut c_void,
-        ) -> c_int;
+        fn vsnprintf(s: *mut c_char, n: usize, format: *const c_char, arg: *mut c_void) -> c_int;
     }
 
     let written = vsnprintf(out_ptr, available, format, args);
@@ -504,7 +493,7 @@ unsafe fn append_to_sb(sb: *mut StatsBuffer, text: &str) {
             core::ptr::copy_nonoverlapping(bytes.as_ptr(), dest as *mut u8, to_copy);
         }
         sb_ref.pos += to_copy as c_int;
-        
+
         // Null terminate
         if sb_ref.pos < sb_ref.size {
             unsafe { *sb_ref.buff.offset(sb_ref.pos as isize) = 0 };
@@ -536,10 +525,7 @@ pub unsafe extern "C" fn mtproxy_ffi_sb_print_queries(
         0.0
     };
 
-    let formatted = format!(
-        "{}\t{}\nqps_{}\t{:.3}\n",
-        desc_utf8, q, desc_utf8, qps
-    );
+    let formatted = format!("{}\t{}\nqps_{}\t{:.3}\n", desc_utf8, q, desc_utf8, qps);
     unsafe { append_to_sb(sb, &formatted) };
 }
 
