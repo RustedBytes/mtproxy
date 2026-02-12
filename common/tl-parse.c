@@ -94,6 +94,16 @@ mtproxy_ffi_tl_store_header(struct tl_out_state *tlio_out,
 extern int32_t
 mtproxy_ffi_tl_store_end_ext(struct tl_out_state *tlio_out, int32_t op,
                              int32_t *out_sent_kind);
+extern int32_t
+mtproxy_ffi_tl_init_tcp_raw_msg(struct tl_out_state *tlio_out,
+                                const struct process_id *remote_pid, void *conn,
+                                int64_t qid, int32_t unaligned);
+extern int32_t
+mtproxy_ffi_tl_query_header_parse(struct tl_in_state *tlio_in,
+                                  struct tl_query_header *header);
+extern int32_t
+mtproxy_ffi_tl_query_answer_header_parse(struct tl_in_state *tlio_in,
+                                         struct tl_query_header *header);
 
 MODULE_STAT_TYPE {
   long long rpc_queries_received, rpc_answers_error, rpc_answers_received;
@@ -127,137 +137,6 @@ sb_printf(sb,
           safe_div(SB_SUM_LL(rpc_queries_received), uptime),
           tcp_get_default_rpc_flags());
 MODULE_STAT_FUNCTION_END
-
-static int
-rust_tl_header_set_error(struct tl_in_state *tlio_in,
-                         const mtproxy_ffi_tl_header_parse_result_t *result) {
-  char msg[sizeof(result->error) + 1];
-  int len = result->error_len;
-  if (len < 0) {
-    len = 0;
-  }
-  if (len > (int)sizeof(result->error)) {
-    len = (int)sizeof(result->error);
-  }
-  if (len > 0) {
-    memcpy(msg, result->error, len);
-  }
-  msg[len] = 0;
-  if (!len) {
-    strcpy(msg, "TL parse error");
-  }
-  return tlf_set_error(tlio_in,
-                       result->errnum ? result->errnum : TL_ERROR_HEADER, msg);
-}
-
-static int rust_tl_try_query_header(struct tl_in_state *tlio_in,
-                                    struct tl_query_header *header,
-                                    int total_unread) {
-  int unread = tl_fetch_unread();
-  if (unread < 0) {
-    tl_fetch_set_error(TL_ERROR_HEADER,
-                       "Expected RPC_INVOKE_REQ or RPC_INVOKE_KPHP_REQ");
-    return -1;
-  }
-  unsigned char *buf = unread > 0 ? malloc((size_t)unread) : NULL;
-  if (unread > 0 && !buf) {
-    tl_fetch_set_error(TL_ERROR_HEADER,
-                       "Expected RPC_INVOKE_REQ or RPC_INVOKE_KPHP_REQ");
-    return -1;
-  }
-  if (unread > 0 && tl_fetch_lookup_data(buf, unread) != unread) {
-    free(buf);
-    tl_fetch_set_error(TL_ERROR_HEADER,
-                       "Expected RPC_INVOKE_REQ or RPC_INVOKE_KPHP_REQ");
-    return -1;
-  }
-
-  mtproxy_ffi_tl_header_parse_result_t result = {0};
-  int rc = mtproxy_ffi_tl_parse_query_header(buf, (size_t)unread, &result);
-  free(buf);
-  if (rc != 0) {
-    tl_fetch_set_error(TL_ERROR_HEADER,
-                       "Expected RPC_INVOKE_REQ or RPC_INVOKE_KPHP_REQ");
-    return -1;
-  }
-  if (result.status < 0) {
-    rust_tl_header_set_error(tlio_in, &result);
-    return -1;
-  }
-  if (result.consumed <= 0 || result.consumed > unread) {
-    tl_fetch_set_error(TL_ERROR_HEADER,
-                       "Expected RPC_INVOKE_REQ or RPC_INVOKE_KPHP_REQ");
-    return -1;
-  }
-
-  header->op = result.op;
-  header->real_op = result.real_op;
-  header->flags = result.flags;
-  header->qid = result.qid;
-  header->actor_id = result.actor_id;
-  header->ref_cnt = 1;
-
-  tl_fetch_skip(result.consumed);
-  MODULE_STAT->rpc_queries_received++;
-  return total_unread - tl_fetch_unread();
-}
-
-static int rust_tl_try_answer_header(struct tl_in_state *tlio_in,
-                                     struct tl_query_header *header,
-                                     int total_unread) {
-  int unread = tl_fetch_unread();
-  if (unread < 0) {
-    tl_fetch_set_error(TL_ERROR_HEADER,
-                       "Expected RPC_REQ_ERROR or RPC_REQ_RESULT");
-    return -1;
-  }
-  unsigned char *buf = unread > 0 ? malloc((size_t)unread) : NULL;
-  if (unread > 0 && !buf) {
-    tl_fetch_set_error(TL_ERROR_HEADER,
-                       "Expected RPC_REQ_ERROR or RPC_REQ_RESULT");
-    return -1;
-  }
-  if (unread > 0 && tl_fetch_lookup_data(buf, unread) != unread) {
-    free(buf);
-    tl_fetch_set_error(TL_ERROR_HEADER,
-                       "Expected RPC_REQ_ERROR or RPC_REQ_RESULT");
-    return -1;
-  }
-
-  mtproxy_ffi_tl_header_parse_result_t result = {0};
-  int rc = mtproxy_ffi_tl_parse_answer_header(buf, (size_t)unread, &result);
-  free(buf);
-
-  if (rc != 0) {
-    tl_fetch_set_error(TL_ERROR_HEADER,
-                       "Expected RPC_REQ_ERROR or RPC_REQ_RESULT");
-    return -1;
-  }
-  if (result.status < 0) {
-    rust_tl_header_set_error(tlio_in, &result);
-    return -1;
-  }
-  if (result.consumed <= 0 || result.consumed > unread) {
-    tl_fetch_set_error(TL_ERROR_HEADER,
-                       "Expected RPC_REQ_ERROR or RPC_REQ_RESULT");
-    return -1;
-  }
-
-  header->op = result.op;
-  header->real_op = result.real_op;
-  header->flags = result.flags;
-  header->qid = result.qid;
-  header->actor_id = result.actor_id;
-  header->ref_cnt = 1;
-
-  tl_fetch_skip(result.consumed);
-  if (header->op == RPC_REQ_ERROR || header->op == RPC_REQ_ERROR_WRAPPED) {
-    MODULE_STAT->rpc_answers_error++;
-  } else {
-    MODULE_STAT->rpc_answers_received++;
-  }
-  return total_unread - tl_fetch_unread();
-}
 
 void tl_query_header_delete(struct tl_query_header *h) {
   mtproxy_ffi_tl_query_header_delete(h);
@@ -333,34 +212,26 @@ int tlf_init_str(struct tl_in_state *tlio_in, const char *s, int size) {
 
 int tlf_query_header(struct tl_in_state *tlio_in,
                      struct tl_query_header *header) {
-  assert(header);
-  memset(header, 0, sizeof(*header));
-  int t = tl_fetch_unread();
-  if (TL_IN_METHODS->prepend_bytes) {
-    tl_fetch_skip(TL_IN_METHODS->prepend_bytes);
-  }
-
-  int rust_res = rust_tl_try_query_header(tlio_in, header, t);
-  if (rust_res <= 0) {
+  int rc = mtproxy_ffi_tl_query_header_parse(tlio_in, header);
+  if (rc <= 0) {
     return -1;
   }
-  return rust_res;
+  MODULE_STAT->rpc_queries_received++;
+  return rc;
 }
 
 int tlf_query_answer_header(struct tl_in_state *tlio_in,
                             struct tl_query_header *header) {
-  assert(header);
-  memset(header, 0, sizeof(*header));
-  int t = tl_fetch_unread();
-  if (TL_IN_METHODS->prepend_bytes) {
-    tl_fetch_skip(TL_IN_METHODS->prepend_bytes);
-  }
-
-  int rust_res = rust_tl_try_answer_header(tlio_in, header, t);
-  if (rust_res <= 0) {
+  int rc = mtproxy_ffi_tl_query_answer_header_parse(tlio_in, header);
+  if (rc <= 0) {
     return -1;
   }
-  return rust_res;
+  if (header->op == RPC_REQ_ERROR || header->op == RPC_REQ_ERROR_WRAPPED) {
+    MODULE_STAT->rpc_answers_error++;
+  } else {
+    MODULE_STAT->rpc_answers_received++;
+  }
+  return rc;
 }
 
 static inline int __tl_store_init(struct tl_out_state *tlio_out, void *out,
@@ -388,34 +259,14 @@ int tls_init_raw_msg(struct tl_out_state *tlio_out, struct process_id *pid,
 
 int tls_init_tcp_raw_msg(struct tl_out_state *tlio_out, JOB_REF_ARG(c),
                          long long qid) {
-  if (c) {
-    TL_OUT_PID = &(TCP_RPC_DATA(c)->remote_pid);
-  } else {
-    TL_OUT_PID = 0;
-  }
-  struct raw_message *d = 0;
-  if (c) {
-    d = (struct raw_message *)malloc(sizeof(*d));
-    rwm_init(d, 0);
-  }
-  return __tl_store_init(tlio_out, d, c, tl_type_tcp_raw_msg,
-                         &tl_out_tcp_raw_msg_methods, (1 << 27), qid);
+  struct process_id *pid = c ? &TCP_RPC_DATA(c)->remote_pid : NULL;
+  return mtproxy_ffi_tl_init_tcp_raw_msg(tlio_out, pid, c, qid, 0);
 }
 
 int tls_init_tcp_raw_msg_unaligned(struct tl_out_state *tlio_out,
                                    JOB_REF_ARG(c), long long qid) {
-  if (c) {
-    TL_OUT_PID = &(TCP_RPC_DATA(c)->remote_pid);
-  } else {
-    TL_OUT_PID = 0;
-  }
-  struct raw_message *d = 0;
-  if (c) {
-    d = (struct raw_message *)malloc(sizeof(*d));
-    rwm_init(d, 0);
-  }
-  return __tl_store_init(tlio_out, d, c, tl_type_tcp_raw_msg,
-                         &tl_out_tcp_raw_msg_unaligned_methods, (1 << 27), qid);
+  struct process_id *pid = c ? &TCP_RPC_DATA(c)->remote_pid : NULL;
+  return mtproxy_ffi_tl_init_tcp_raw_msg(tlio_out, pid, c, qid, 1);
 }
 
 int tls_init_str(struct tl_out_state *tlio_out, char *s, long long qid,

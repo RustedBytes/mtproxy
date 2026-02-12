@@ -2,6 +2,7 @@ use super::MtproxyProcessId;
 use core::ffi::{c_int, c_void};
 use core::mem::size_of;
 use core::ptr;
+use std::ffi::CString;
 
 const RM_INIT_MAGIC: c_int = 0x2351_3473;
 const TLF_PERMANENT: c_int = 2;
@@ -12,6 +13,7 @@ const TLF_NO_AUTOFLUSH: c_int = 32;
 const TL_TYPE_NONE: c_int = 0;
 const TL_TYPE_STR: c_int = 1;
 const TL_TYPE_RAW_MSG: c_int = 2;
+const TL_TYPE_TCP_RAW_MSG: c_int = 3;
 const RPC_INVOKE_REQ: c_int = mtproxy_core::runtime::config::tl_parse::RPC_INVOKE_REQ;
 const RPC_REQ_ERROR: c_int = mtproxy_core::runtime::config::tl_parse::RPC_REQ_ERROR;
 const RPC_REQ_RESULT: c_int = mtproxy_core::runtime::config::tl_parse::RPC_REQ_RESULT;
@@ -23,6 +25,7 @@ const TL_SENT_KIND_NONE: c_int = 0;
 const TL_SENT_KIND_ERROR: c_int = 1;
 const TL_SENT_KIND_ANSWER: c_int = 2;
 const TL_SENT_KIND_QUERY: c_int = 3;
+const TL_ERROR_HEADER: c_int = mtproxy_core::runtime::config::tl_parse::TL_ERROR_HEADER;
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -543,6 +546,138 @@ unsafe fn tl_fetch_init_impl(
     0
 }
 
+unsafe fn tl_set_error_once(tlio_in: *mut TlInState, errnum: c_int, message: &str) {
+    if tlio_in.is_null() || !(*tlio_in).error.is_null() {
+        return;
+    }
+    let msg = CString::new(message)
+        .ok()
+        .unwrap_or_else(|| CString::new("TL parse error").expect("valid static c string"));
+    (*tlio_in).error = strdup(msg.as_ptr());
+    (*tlio_in).errnum = errnum;
+}
+
+unsafe fn tl_in_skip(tlio_in: *mut TlInState, len: c_int) -> c_int {
+    if tlio_in.is_null() || len < 0 || (*tlio_in).in_remaining < len || (*tlio_in).in_methods.is_null() {
+        return -1;
+    }
+    let methods = &*(*tlio_in).in_methods;
+    let Some(fetch_move) = methods.fetch_move else {
+        return -1;
+    };
+    fetch_move(tlio_in, len);
+    (*tlio_in).in_pos += len;
+    (*tlio_in).in_remaining -= len;
+    len
+}
+
+unsafe fn tl_in_lookup_data(tlio_in: *mut TlInState, dst: *mut c_void, len: c_int) -> c_int {
+    if tlio_in.is_null()
+        || dst.is_null()
+        || len < 0
+        || (*tlio_in).in_remaining < len
+        || (*tlio_in).in_methods.is_null()
+    {
+        return -1;
+    }
+    let methods = &*(*tlio_in).in_methods;
+    let Some(fetch_lookup) = methods.fetch_lookup else {
+        return -1;
+    };
+    fetch_lookup(tlio_in, dst, len);
+    len
+}
+
+unsafe fn tl_query_header_parse_impl(
+    tlio_in: *mut TlInState,
+    header: *mut TlQueryHeader,
+    is_answer: bool,
+) -> c_int {
+    if tlio_in.is_null() || header.is_null() || (*tlio_in).in_methods.is_null() {
+        return -1;
+    }
+    ptr::write_bytes(header.cast::<u8>(), 0, size_of::<TlQueryHeader>());
+    let total_unread = (*tlio_in).in_remaining;
+    let prepend = (*(*tlio_in).in_methods).prepend_bytes;
+    if prepend > 0 && tl_in_skip(tlio_in, prepend) < 0 {
+        tl_set_error_once(
+            tlio_in,
+            TL_ERROR_HEADER,
+            if is_answer {
+                "Expected RPC_REQ_ERROR or RPC_REQ_RESULT"
+            } else {
+                "Expected RPC_INVOKE_REQ or RPC_INVOKE_KPHP_REQ"
+            },
+        );
+        return -1;
+    }
+
+    let unread = (*tlio_in).in_remaining;
+    if unread < 0 {
+        tl_set_error_once(
+            tlio_in,
+            TL_ERROR_HEADER,
+            if is_answer {
+                "Expected RPC_REQ_ERROR or RPC_REQ_RESULT"
+            } else {
+                "Expected RPC_INVOKE_REQ or RPC_INVOKE_KPHP_REQ"
+            },
+        );
+        return -1;
+    }
+    let unread_usize = usize::try_from(unread).unwrap_or(0);
+    let mut buf = vec![0u8; unread_usize];
+    if unread > 0
+        && tl_in_lookup_data(tlio_in, buf.as_mut_ptr().cast::<c_void>(), unread) != unread
+    {
+        tl_set_error_once(
+            tlio_in,
+            TL_ERROR_HEADER,
+            if is_answer {
+                "Expected RPC_REQ_ERROR or RPC_REQ_RESULT"
+            } else {
+                "Expected RPC_INVOKE_REQ or RPC_INVOKE_KPHP_REQ"
+            },
+        );
+        return -1;
+    }
+
+    let parsed = if is_answer {
+        mtproxy_core::runtime::config::tl_parse::parse_answer_header(&buf)
+    } else {
+        mtproxy_core::runtime::config::tl_parse::parse_query_header(&buf)
+    };
+    let parsed = match parsed {
+        Ok(v) => v,
+        Err(err) => {
+            tl_set_error_once(tlio_in, err.errnum, &err.message);
+            return -1;
+        }
+    };
+
+    let consumed = c_int::try_from(parsed.consumed).unwrap_or(c_int::MAX);
+    if consumed <= 0 || consumed > unread || tl_in_skip(tlio_in, consumed) < 0 {
+        tl_set_error_once(
+            tlio_in,
+            TL_ERROR_HEADER,
+            if is_answer {
+                "Expected RPC_REQ_ERROR or RPC_REQ_RESULT"
+            } else {
+                "Expected RPC_INVOKE_REQ or RPC_INVOKE_KPHP_REQ"
+            },
+        );
+        return -1;
+    }
+
+    (*header).op = parsed.header.op;
+    (*header).real_op = parsed.header.real_op;
+    (*header).flags = parsed.header.flags;
+    (*header).qid = parsed.header.qid;
+    (*header).actor_id = parsed.header.actor_id;
+    (*header).ref_cnt = 1;
+    total_unread - (*tlio_in).in_remaining
+}
+
 unsafe fn tl_store_init_impl(
     tlio_out: *mut TlOutState,
     out: *mut c_void,
@@ -1042,6 +1177,63 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_init_str_out(
         size,
         qid,
     )
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_tl_init_tcp_raw_msg(
+    tlio_out: *mut TlOutState,
+    remote_pid: *const MtproxyProcessId,
+    conn: *mut c_void,
+    qid: i64,
+    unaligned: c_int,
+) -> c_int {
+    if tlio_out.is_null() {
+        return -1;
+    }
+    if !remote_pid.is_null() {
+        (*tlio_out).out_pid_buf = *remote_pid;
+        (*tlio_out).out_pid = &raw mut (*tlio_out).out_pid_buf;
+    } else {
+        (*tlio_out).out_pid = ptr::null_mut();
+    }
+    let mut d: *mut RawMessage = ptr::null_mut();
+    if !conn.is_null() {
+        d = libc::malloc(size_of::<RawMessage>()).cast::<RawMessage>();
+        if d.is_null() {
+            return -1;
+        }
+        let _ = rwm_init(d, 0);
+    }
+    let methods = if unaligned != 0 {
+        core::ptr::addr_of!(tl_out_tcp_raw_msg_unaligned_methods)
+    } else {
+        core::ptr::addr_of!(tl_out_tcp_raw_msg_methods)
+    };
+    tl_store_init_impl(
+        tlio_out,
+        d.cast::<c_void>(),
+        conn,
+        TL_TYPE_TCP_RAW_MSG,
+        methods,
+        1 << 27,
+        qid,
+    )
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_tl_query_header_parse(
+    tlio_in: *mut TlInState,
+    header: *mut TlQueryHeader,
+) -> c_int {
+    tl_query_header_parse_impl(tlio_in, header, false)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_tl_query_answer_header_parse(
+    tlio_in: *mut TlInState,
+    header: *mut TlQueryHeader,
+) -> c_int {
+    tl_query_header_parse_impl(tlio_in, header, true)
 }
 
 #[no_mangle]
