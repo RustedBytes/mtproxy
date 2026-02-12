@@ -1,6 +1,6 @@
-//! MTProxy Rust implementation - Main entry point
+//! `MTProxy` Rust implementation - Main entry point
 //!
-//! This is the Rust-native implementation of MTProxy, migrated from C.
+//! This is the Rust-native implementation of `MTProxy`, migrated from C.
 //! For the migration status, see `PLAN.md` Step 15.
 
 use clap::Parser;
@@ -15,6 +15,7 @@ use std::process;
 #[command(name = "mtproxy-rust")]
 #[command(version = env!("CARGO_PKG_VERSION"))]
 #[command(about = "MTProxy: Simple MT-Proto proxy (Rust implementation)", long_about = None)]
+#[allow(clippy::struct_excessive_bools)]
 struct Args {
     /// Config file path
     #[arg(value_name = "CONFIG_FILE")]
@@ -133,34 +134,40 @@ fn main() {
     let remaining_c_units = mtproxy_core::step15::step15_remaining_c_units();
     
     eprintln!("{signature}");
-    eprintln!("Step 15 migration status: {} C units remaining", remaining_c_units);
+    eprintln!("Step 15 migration status: {remaining_c_units} C units remaining");
     
     if args.verbosity > 0 {
+        let ipv6 = args.ipv6;
+        let port = &args.port;
+        let http_ports = &args.http_ports;
+        let workers = &args.workers;
+        let user = &args.user;
+        let config = &args.config;
+        let secrets_count = args.mtproto_secrets.len();
+        let domains_count = args.domains.len();
+        
         eprintln!("Configuration:");
-        eprintln!("  IPv6: {}", args.ipv6);
-        eprintln!("  Port: {:?}", args.port);
-        eprintln!("  HTTP ports: {:?}", args.http_ports);
-        eprintln!("  Workers: {:?}", args.workers);
-        eprintln!("  User: {:?}", args.user);
-        eprintln!("  Config file: {:?}", args.config);
-        eprintln!("  Secrets count: {}", args.mtproto_secrets.len());
-        eprintln!("  Domains count: {}", args.domains.len());
+        eprintln!("  IPv6: {ipv6}");
+        eprintln!("  Port: {port:?}");
+        eprintln!("  HTTP ports: {http_ports:?}");
+        eprintln!("  Workers: {workers:?}");
+        eprintln!("  User: {user:?}");
+        eprintln!("  Config file: {config:?}");
+        eprintln!("  Secrets count: {secrets_count}");
+        eprintln!("  Domains count: {domains_count}");
     }
     
     // Run configuration parse probe
     let parse_probe = mtproto_config_parse_probe();
-    match parse_probe {
-        Ok((targets, clusters)) => {
-            if args.verbosity > 0 {
-                eprintln!("Config parse probe successful:");
-                eprintln!("  Targets: {targets}");
-                eprintln!("  Clusters: {clusters}");
-            }
+    if let Ok((targets, clusters)) = parse_probe {
+        if args.verbosity > 0 {
+            eprintln!("Config parse probe successful:");
+            eprintln!("  Targets: {targets}");
+            eprintln!("  Clusters: {clusters}");
         }
-        Err(()) => {
-            eprintln!("ERROR: Config parse probe failed");
-            process::exit(1);
-        }
+    } else {
+        eprintln!("ERROR: Config parse probe failed");
+        process::exit(1);
     }
     
     // TODO: Implement actual proxy runtime
