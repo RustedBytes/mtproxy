@@ -134,7 +134,7 @@ pub fn change_user_group(
     // Only change privileges if running as root
     let uid = libc_getuid();
     let euid = libc_geteuid();
-    
+
     if uid != 0 && euid != 0 {
         return Ok(());
     }
@@ -183,7 +183,7 @@ pub fn change_user(username: Option<&str>) -> Result<(), PrivilegeError> {
     // Only change privileges if running as root
     let uid = libc_getuid();
     let euid = libc_geteuid();
-    
+
     if uid != 0 && euid != 0 {
         return Ok(());
     }
@@ -209,7 +209,7 @@ pub fn change_user(username: Option<&str>) -> Result<(), PrivilegeError> {
     if !libc_setgid(gid) {
         return Err(PrivilegeError::SetGidFailed(gid.cast_signed()));
     }
-    
+
     if !libc_setuid(pw.pw_uid) {
         return Err(PrivilegeError::SetUidFailed(pw.pw_uid.cast_signed()));
     }
@@ -227,11 +227,11 @@ pub fn raise_file_rlimit(maxfiles: i32) -> Result<(), ResourceLimitError> {
     let mut rlim = get_rlimit_nofile()?;
 
     let maxfiles_u64 = u64::try_from(maxfiles).unwrap_or(0);
-    
+
     if rlim.rlim_cur < maxfiles_u64 {
         rlim.rlim_cur = maxfiles_u64 + 3;
     }
-    
+
     if rlim.rlim_max < rlim.rlim_cur {
         rlim.rlim_max = rlim.rlim_cur;
     }
@@ -278,10 +278,9 @@ struct GroupInfo {
 }
 
 fn get_passwd_by_name(username: &str) -> Result<PasswdInfo, PrivilegeError> {
-    let c_username = CString::new(username).map_err(|_| {
-        PrivilegeError::UserNotFound(username.to_string())
-    })?;
-    
+    let c_username =
+        CString::new(username).map_err(|_| PrivilegeError::UserNotFound(username.to_string()))?;
+
     let pw_ptr = libc_getpwnam(c_username.as_ptr());
     if pw_ptr.is_null() {
         return Err(PrivilegeError::UserNotFound(username.to_string()));
@@ -289,22 +288,24 @@ fn get_passwd_by_name(username: &str) -> Result<PasswdInfo, PrivilegeError> {
 
     let uid = libc_passwd_get_uid(pw_ptr);
     let gid = libc_passwd_get_gid(pw_ptr);
-    
-    Ok(PasswdInfo { pw_uid: uid, pw_gid: gid })
+
+    Ok(PasswdInfo {
+        pw_uid: uid,
+        pw_gid: gid,
+    })
 }
 
 fn get_group_by_name(groupname: &str) -> Result<GroupInfo, PrivilegeError> {
-    let c_groupname = CString::new(groupname).map_err(|_| {
-        PrivilegeError::GroupNotFound(groupname.to_string())
-    })?;
-    
+    let c_groupname = CString::new(groupname)
+        .map_err(|_| PrivilegeError::GroupNotFound(groupname.to_string()))?;
+
     let gr_ptr = libc_getgrnam(c_groupname.as_ptr());
     if gr_ptr.is_null() {
         return Err(PrivilegeError::GroupNotFound(groupname.to_string()));
     }
 
     let gr_gid = libc_group_get_gid(gr_ptr);
-    
+
     Ok(GroupInfo { gr_gid })
 }
 
@@ -375,20 +376,18 @@ fn libc_group_get_gid(gr: *mut libc::group) -> u32 {
 fn libc_setgroups(groups: &[u32]) -> bool {
     let gid_list: Vec<libc::gid_t> = groups.iter().map(|&g| g as libc::gid_t).collect();
     // SAFETY: setgroups() is safe when passed valid arrays
-    let result = unsafe {
-        libc::setgroups(gid_list.len(), gid_list.as_ptr())
-    };
+    let result = unsafe { libc::setgroups(gid_list.len(), gid_list.as_ptr()) };
     result == 0
 }
 
 #[cfg(unix)]
 fn libc_initgroups(username: &str, gid: u32) -> bool {
-    let Ok(c_username) = CString::new(username) else { return false };
-    
-    // SAFETY: initgroups() is safe when passed valid C string and gid
-    let result = unsafe {
-        libc::initgroups(c_username.as_ptr(), gid as libc::gid_t)
+    let Ok(c_username) = CString::new(username) else {
+        return false;
     };
+
+    // SAFETY: initgroups() is safe when passed valid C string and gid
+    let result = unsafe { libc::initgroups(c_username.as_ptr(), gid as libc::gid_t) };
     result == 0
 }
 
@@ -412,16 +411,14 @@ fn libc_getrlimit_nofile() -> Result<(u64, u64), ResourceLimitError> {
         rlim_cur: 0,
         rlim_max: 0,
     };
-    
+
     // SAFETY: getrlimit() is safe when passed valid rlimit pointer
-    let result = unsafe {
-        libc::getrlimit(libc::RLIMIT_NOFILE, &raw mut rlim)
-    };
-    
+    let result = unsafe { libc::getrlimit(libc::RLIMIT_NOFILE, &raw mut rlim) };
+
     if result != 0 {
         return Err(ResourceLimitError::GetLimitFailed);
     }
-    
+
     Ok((rlim.rlim_cur, rlim.rlim_max))
 }
 
@@ -431,11 +428,9 @@ fn libc_setrlimit_nofile(cur: u64, max: u64) -> bool {
         rlim_cur: cur,
         rlim_max: max,
     };
-    
+
     // SAFETY: setrlimit() is safe when passed valid rlimit pointer
-    let result = unsafe {
-        libc::setrlimit(libc::RLIMIT_NOFILE, &raw const rlim)
-    };
+    let result = unsafe { libc::setrlimit(libc::RLIMIT_NOFILE, &raw const rlim) };
     result == 0
 }
 
@@ -444,31 +439,29 @@ fn libc_setrlimit_nofile(cur: u64, max: u64) -> bool {
 fn libc_print_backtrace() {
     const MAX_FRAMES: usize = 64;
     let mut buffer: [*mut std::ffi::c_void; MAX_FRAMES] = [std::ptr::null_mut(); MAX_FRAMES];
-    
+
     // SAFETY: backtrace() is safe when passed valid buffer
     // We allow the cast since MAX_FRAMES (64) fits comfortably in i32
-    let nptrs = unsafe {
-        libc::backtrace(buffer.as_mut_ptr(), MAX_FRAMES as c_int)
-    };
-    
+    let nptrs = unsafe { libc::backtrace(buffer.as_mut_ptr(), MAX_FRAMES as c_int) };
+
     if nptrs > 0 {
         let msg = b"\n------- Stack Backtrace -------\n";
         // SAFETY: write() is safe with valid buffer
         unsafe {
             libc::write(2, msg.as_ptr().cast(), msg.len());
         }
-        
+
         // SAFETY: backtrace_symbols_fd() is safe with valid buffer
         unsafe {
             libc::backtrace_symbols_fd(buffer.as_ptr(), nptrs, 2);
         }
-        
+
         let msg2 = b"-------------------------------\n";
         // SAFETY: write() is safe with valid buffer
         unsafe {
             libc::write(2, msg2.as_ptr().cast(), msg2.len());
         }
-        
+
         let version = get_version_string();
         let version_bytes = version.as_bytes();
         // SAFETY: write() is safe with valid buffer

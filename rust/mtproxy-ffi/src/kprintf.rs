@@ -230,11 +230,7 @@ fn kwrite_print_int(buf: &mut [u8], pos: &mut usize, name: &[u8], mut value: c_i
 /// # Safety
 /// `buf` must point to `count` readable bytes when `count > 0`.
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_kwrite(
-    fd: c_int,
-    buf: *const c_void,
-    count: c_int,
-) -> c_int {
+pub unsafe extern "C" fn mtproxy_ffi_kwrite(fd: c_int, buf: *const c_void, count: c_int) -> c_int {
     if count < 0 || buf.is_null() {
         return 0;
     }
@@ -259,11 +255,7 @@ pub unsafe extern "C" fn mtproxy_ffi_kwrite(
     let mut remaining = count as usize;
 
     if remaining <= S_DATA_SIZE {
-        core::ptr::copy_nonoverlapping(
-            buf.cast::<u8>(),
-            s.as_mut_ptr().add(S_BUF_SIZE),
-            remaining,
-        );
+        core::ptr::copy_nonoverlapping(buf.cast::<u8>(), s.as_mut_ptr().add(S_BUF_SIZE), remaining);
         s_count += remaining;
         remaining = 0;
     }

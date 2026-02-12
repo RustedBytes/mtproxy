@@ -63,7 +63,7 @@ struct Args {
 
     /// 16-byte secret in hex mode (can be specified multiple times)
     #[arg(short = 'S', long = "mtproto-secret")]
-    mtproto_secrets: Vec<String>,
+    mtproxy_secrets: Vec<String>,
 
     /// 16-byte proxy tag in hex mode
     #[arg(short = 'P', long = "proxy-tag")]
@@ -126,62 +126,185 @@ struct Args {
     max_dh_accept_rate: Option<u32>,
 }
 
+/// Validate command-line arguments
+fn validate_args(args: &Args) -> Result<(), String> {
+    // Check CPU threads range
+    if !(1..=64).contains(&args.cpu_threads) {
+        return Err(format!(
+            "CPU threads must be between 1 and 64, got {}",
+            args.cpu_threads
+        ));
+    }
+
+    // Check I/O threads range
+    if !(1..=64).contains(&args.io_threads) {
+        return Err(format!(
+            "I/O threads must be between 1 and 64, got {}",
+            args.io_threads
+        ));
+    }
+
+    // Validate secrets are 32 hex characters
+    for secret in &args.mtproxy_secrets {
+        if secret.len() != 32 {
+            return Err(format!(
+                "MTProto secret must be exactly 32 hex digits, got {} characters",
+                secret.len()
+            ));
+        }
+        if !secret.chars().all(|c| c.is_ascii_hexdigit()) {
+            return Err(format!(
+                "MTProto secret must contain only hex digits, got '{secret}'"
+            ));
+        }
+    }
+
+    // Validate proxy tag
+    if let Some(tag) = &args.proxy_tag {
+        if tag.len() != 32 {
+            return Err(format!(
+                "Proxy tag must be exactly 32 hex digits, got {} characters",
+                tag.len()
+            ));
+        }
+        if !tag.chars().all(|c| c.is_ascii_hexdigit()) {
+            return Err(format!(
+                "Proxy tag must contain only hex digits, got '{tag}'"
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+/// Print configuration information
+fn print_configuration(args: &Args) {
+    eprintln!("Configuration:");
+    eprintln!("  IPv6: {}", args.ipv6);
+    eprintln!("  Port: {:?}", args.port);
+    eprintln!("  HTTP ports: {:?}", args.http_ports);
+    eprintln!("  Workers: {:?}", args.workers);
+    eprintln!("  User: {:?}", args.user);
+    eprintln!("  Config file: {:?}", args.config);
+    eprintln!("  Secrets count: {}", args.mtproxy_secrets.len());
+    eprintln!("  Domains count: {}", args.domains.len());
+    eprintln!("  CPU threads: {}", args.cpu_threads);
+    eprintln!("  I/O threads: {}", args.io_threads);
+    eprintln!("  Daemonize: {}", args.daemonize);
+    eprintln!("  Verbosity: {}", args.verbosity);
+}
+
+/// Initialize runtime
+#[allow(clippy::unnecessary_wraps)]
+fn runtime_init(_args: &Args) -> Result<(), String> {
+    // Phase 2 (Entry Point) runtime initialization
+    // This is a stub for now - actual engine initialization will be
+    // implemented in Phase 3 (Core Runtime)
+
+    // TODO: Initialize engine state
+    // TODO: Set up signal handlers
+    // TODO: Initialize logging
+    // TODO: Load configuration
+    // TODO: Initialize crypto subsystem
+    // TODO: Set up worker processes if needed
+
+    Ok(())
+}
+
+/// Start main runtime loop
+#[allow(clippy::unnecessary_wraps)]
+fn runtime_start(args: &Args) -> Result<(), String> {
+    // Phase 2 (Entry Point) runtime startup
+    // This is a stub for now - actual event loop will be
+    // implemented in Phase 3 (Core Runtime)
+
+    eprintln!("\n=== MTProxy Rust Runtime ===");
+    eprintln!("Entry Point phase (Phase 2) complete:");
+    eprintln!("  ✓ CLI argument parsing");
+    eprintln!("  ✓ Argument validation");
+    eprintln!("  ✓ Configuration parse probe");
+    eprintln!("  ✓ Runtime initialization structure");
+    eprintln!("\nNext steps (Phase 3 - Core Runtime):");
+    eprintln!("  [ ] Port engine framework (engine.c, engine-net.c)");
+    eprintln!("  [ ] Port job system (jobs/jobs.c)");
+    eprintln!("  [ ] Implement worker process management");
+    eprintln!("  [ ] Implement signal handling");
+    eprintln!("  [ ] Implement main event loop");
+    eprintln!("\nCurrent status:");
+    eprintln!("  This binary demonstrates the Entry Point with full CLI parsing.");
+    eprintln!("  Use the C binary (objs/bin/mtproto-proxy) for actual proxy operation.");
+    eprintln!("  See MIGRATION_STATUS.md for detailed migration status.");
+
+    if args.config.is_none() {
+        eprintln!("\n⚠ WARNING: No config file specified.");
+        eprintln!("  A config file will be required for the full runtime.");
+    }
+
+    Ok(())
+}
+
 fn main() {
     let args = Args::parse();
-    
+
     // Display bootstrap information
     let signature = mtproxy_core::bootstrap_signature();
     let remaining_c_units = mtproxy_core::step15::step15_remaining_c_units();
-    
-    eprintln!("{signature}");
-    eprintln!("Step 15 migration status: {remaining_c_units} C units remaining");
-    
+
     if args.verbosity > 0 {
-        let ipv6 = args.ipv6;
-        let port = &args.port;
-        let http_ports = &args.http_ports;
-        let workers = &args.workers;
-        let user = &args.user;
-        let config = &args.config;
-        let secrets_count = args.mtproto_secrets.len();
-        let domains_count = args.domains.len();
-        
-        eprintln!("Configuration:");
-        eprintln!("  IPv6: {ipv6}");
-        eprintln!("  Port: {port:?}");
-        eprintln!("  HTTP ports: {http_ports:?}");
-        eprintln!("  Workers: {workers:?}");
-        eprintln!("  User: {user:?}");
-        eprintln!("  Config file: {config:?}");
-        eprintln!("  Secrets count: {secrets_count}");
-        eprintln!("  Domains count: {domains_count}");
+        eprintln!("{signature}");
+        eprintln!("Step 15 migration status: {remaining_c_units} C units remaining\n");
     }
-    
-    // Run configuration parse probe
-    let parse_probe = mtproto_config_parse_probe();
-    if let Ok((targets, clusters)) = parse_probe {
-        if args.verbosity > 0 {
-            eprintln!("Config parse probe successful:");
-            eprintln!("  Targets: {targets}");
-            eprintln!("  Clusters: {clusters}");
-        }
-    } else {
-        eprintln!("ERROR: Config parse probe failed");
+
+    // Validate arguments
+    if let Err(e) = validate_args(&args) {
+        eprintln!("ERROR: {e}");
         process::exit(1);
     }
-    
-    // TODO: Implement actual proxy runtime
-    // For now, this is a placeholder that demonstrates argument parsing
-    // The actual runtime will be implemented as C modules are migrated
-    
-    eprintln!("\nNOTE: Full proxy runtime not yet implemented in Rust.");
-    eprintln!("This binary demonstrates the command-line interface and configuration parsing.");
-    eprintln!("Use the C binary (objs/bin/mtproto-proxy) for actual proxy operation.");
-    eprintln!("\nFor migration status, see PLAN.md Step 15.");
-    
-    // Config file will be required once runtime is implemented
-    if args.config.is_none() {
-        eprintln!("\nWARNING: No config file specified. This will be required once runtime is implemented.");
+
+    if args.verbosity > 0 {
+        print_configuration(&args);
+        eprintln!();
+    }
+
+    // Run configuration parse probe if config file is provided
+    if args.config.is_some() {
+        let parse_probe = mtproto_config_parse_probe();
+        if let Ok((targets, clusters)) = parse_probe {
+            if args.verbosity > 0 {
+                eprintln!("Config parse probe successful:");
+                eprintln!("  Targets: {targets}");
+                eprintln!("  Clusters: {clusters}\n");
+            }
+        } else {
+            eprintln!("ERROR: Config parse probe failed");
+            process::exit(1);
+        }
+    }
+
+    // Initialize runtime
+    match runtime_init(&args) {
+        Ok(()) => {
+            if args.verbosity > 1 {
+                eprintln!("Runtime initialization successful\n");
+            }
+        }
+        Err(e) => {
+            eprintln!("ERROR: Runtime initialization failed: {e}");
+            process::exit(1);
+        }
+    }
+
+    // Start main runtime loop
+    match runtime_start(&args) {
+        Ok(()) => {
+            if args.verbosity > 1 {
+                eprintln!("\nRuntime completed successfully");
+            }
+        }
+        Err(e) => {
+            eprintln!("ERROR: Runtime start failed: {e}");
+            process::exit(1);
+        }
     }
 }
 
@@ -204,11 +327,150 @@ fn mtproto_config_parse_probe() -> Result<(usize, usize), ()> {
 
 #[cfg(test)]
 mod tests {
-    use super::mtproto_config_parse_probe;
+    use super::*;
 
     #[test]
     fn parse_probe_uses_core_full_pass_path() {
         let out = mtproto_config_parse_probe().expect("full-pass probe should parse");
         assert_eq!(out, (1, 1));
+    }
+
+    #[test]
+    fn validate_args_accepts_valid_cpu_threads() {
+        let args = Args {
+            config: None,
+            ipv6: false,
+            port: None,
+            http_ports: None,
+            workers: None,
+            user: None,
+            backlog: None,
+            max_connections: None,
+            max_special_connections: None,
+            log_file: None,
+            window_clamp: None,
+            mtproxy_secrets: vec![],
+            proxy_tag: None,
+            domains: vec![],
+            aes_pwd: None,
+            ping_interval: 5.0,
+            daemonize: false,
+            verbosity: 0,
+            nat_info: None,
+            bind_address: None,
+            http_stats: false,
+            cpu_threads: 8,
+            io_threads: 16,
+            allow_skip_dh: false,
+            force_dh: false,
+            max_accept_rate: None,
+            max_dh_accept_rate: None,
+        };
+        assert!(validate_args(&args).is_ok());
+    }
+
+    #[test]
+    fn validate_args_rejects_invalid_cpu_threads() {
+        let mut args = Args {
+            config: None,
+            ipv6: false,
+            port: None,
+            http_ports: None,
+            workers: None,
+            user: None,
+            backlog: None,
+            max_connections: None,
+            max_special_connections: None,
+            log_file: None,
+            window_clamp: None,
+            mtproxy_secrets: vec![],
+            proxy_tag: None,
+            domains: vec![],
+            aes_pwd: None,
+            ping_interval: 5.0,
+            daemonize: false,
+            verbosity: 0,
+            nat_info: None,
+            bind_address: None,
+            http_stats: false,
+            cpu_threads: 0,
+            io_threads: 16,
+            allow_skip_dh: false,
+            force_dh: false,
+            max_accept_rate: None,
+            max_dh_accept_rate: None,
+        };
+        assert!(validate_args(&args).is_err());
+
+        args.cpu_threads = 65;
+        assert!(validate_args(&args).is_err());
+    }
+
+    #[test]
+    fn validate_args_rejects_invalid_secret_length() {
+        let args = Args {
+            config: None,
+            ipv6: false,
+            port: None,
+            http_ports: None,
+            workers: None,
+            user: None,
+            backlog: None,
+            max_connections: None,
+            max_special_connections: None,
+            log_file: None,
+            window_clamp: None,
+            mtproxy_secrets: vec!["abc123".to_string()],
+            proxy_tag: None,
+            domains: vec![],
+            aes_pwd: None,
+            ping_interval: 5.0,
+            daemonize: false,
+            verbosity: 0,
+            nat_info: None,
+            bind_address: None,
+            http_stats: false,
+            cpu_threads: 8,
+            io_threads: 16,
+            allow_skip_dh: false,
+            force_dh: false,
+            max_accept_rate: None,
+            max_dh_accept_rate: None,
+        };
+        assert!(validate_args(&args).is_err());
+    }
+
+    #[test]
+    fn validate_args_accepts_valid_secret() {
+        let args = Args {
+            config: None,
+            ipv6: false,
+            port: None,
+            http_ports: None,
+            workers: None,
+            user: None,
+            backlog: None,
+            max_connections: None,
+            max_special_connections: None,
+            log_file: None,
+            window_clamp: None,
+            mtproxy_secrets: vec!["0123456789abcdef0123456789abcdef".to_string()],
+            proxy_tag: None,
+            domains: vec![],
+            aes_pwd: None,
+            ping_interval: 5.0,
+            daemonize: false,
+            verbosity: 0,
+            nat_info: None,
+            bind_address: None,
+            http_stats: false,
+            cpu_threads: 8,
+            io_threads: 16,
+            allow_skip_dh: false,
+            force_dh: false,
+            max_accept_rate: None,
+            max_dh_accept_rate: None,
+        };
+        assert!(validate_args(&args).is_ok());
     }
 }
