@@ -35,6 +35,7 @@ const UNUSED_CONNECTION_CLOSE_ERROR: i32 = -17;
 const CR_NOTYET: i32 = 0;
 const CR_OK: i32 = 1;
 const CR_STOPPED: i32 = 2;
+const CR_BUSY: i32 = 3;
 const CR_FAILED: i32 = 4;
 const TARGET_HASH_MULT: u64 = 0x0aba_caba;
 const TARGET_HASH_STEP: u64 = 239;
@@ -51,6 +52,23 @@ const TARGET_JOB_POST_ATTEMPT_FREE: i32 = 2;
 
 const TARGET_JOB_FINALIZE_COMPLETED: i32 = 1;
 const TARGET_JOB_FINALIZE_SCHEDULE_RETRY: i32 = 2;
+const TARGET_READY_BUCKET_IGNORE: i32 = 0;
+const TARGET_READY_BUCKET_GOOD: i32 = 1;
+const TARGET_READY_BUCKET_STOPPED: i32 = 2;
+const TARGET_READY_BUCKET_BAD: i32 = 3;
+const TARGET_TREE_UPDATE_FREE_ONLY: i32 = 0;
+const TARGET_TREE_UPDATE_REPLACE_AND_FREE_OLD: i32 = 1;
+const TARGET_CONNECT_SOCKET_IPV4: i32 = 1;
+const TARGET_CONNECT_SOCKET_IPV6: i32 = 2;
+const TARGET_LOOKUP_MATCH_REMOVE_AND_RETURN: i32 = 1;
+const TARGET_LOOKUP_MATCH_RETURN_FOUND: i32 = 2;
+const TARGET_LOOKUP_MATCH_ASSERT_INVALID: i32 = 3;
+const TARGET_LOOKUP_MISS_INSERT_NEW: i32 = 1;
+const TARGET_LOOKUP_MISS_RETURN_NULL: i32 = 2;
+const TARGET_LOOKUP_MISS_ASSERT_INVALID: i32 = 3;
+const TARGET_FREE_ACTION_REJECT: i32 = 0;
+const TARGET_FREE_ACTION_DELETE_IPV4: i32 = 1;
+const TARGET_FREE_ACTION_DELETE_IPV6: i32 = 2;
 
 const CONN_JOB_RUN_SKIP: i32 = 0;
 const CONN_JOB_RUN_DO_READ_WRITE: i32 = 1;
@@ -1167,6 +1185,130 @@ pub fn target_should_attempt_reconnect(now: f64, next_reconnect: f64, active_out
     now >= next_reconnect || active_outbound_connections != 0
 }
 
+/// Maps `check_ready()` result to counting bucket for target-connection stats.
+///
+/// Returns:
+/// - `0`: ignore (`cr_notyet` or `cr_busy`)
+/// - `1`: good (`cr_ok`)
+/// - `2`: stopped (`cr_stopped`)
+/// - `3`: bad (`cr_failed`)
+#[must_use]
+pub fn target_ready_bucket(ready: i32) -> i32 {
+    match ready {
+        CR_NOTYET | CR_BUSY => TARGET_READY_BUCKET_IGNORE,
+        CR_OK => TARGET_READY_BUCKET_GOOD,
+        CR_STOPPED => TARGET_READY_BUCKET_STOPPED,
+        CR_FAILED => TARGET_READY_BUCKET_BAD,
+        _ => -1,
+    }
+}
+
+/// Returns whether dead-connection scan should select this connection.
+#[must_use]
+pub fn target_find_bad_should_select(has_selected: bool, flags: i32) -> bool {
+    !has_selected && (i32_to_u32(flags) & C_ERROR) != 0
+}
+
+/// Computes stat deltas when removing a dead connection from target tree.
+///
+/// Returns tuple `(active_outbound_delta, outbound_delta)`.
+#[must_use]
+pub fn target_remove_dead_connection_deltas(flags: i32) -> (i32, i32) {
+    let active_outbound_delta = if connection_is_active(flags) { -1 } else { 0 };
+    (active_outbound_delta, -1)
+}
+
+/// Selects tree update strategy after mutable target-tree operations.
+///
+/// Returns:
+/// - `0`: free snapshot only
+/// - `1`: replace shared root and free old root ptr
+#[must_use]
+pub fn target_tree_update_action(tree_changed: bool) -> i32 {
+    if tree_changed {
+        TARGET_TREE_UPDATE_REPLACE_AND_FREE_OLD
+    } else {
+        TARGET_TREE_UPDATE_FREE_ONLY
+    }
+}
+
+/// Selects socket-family path for outbound target connection attempt.
+///
+/// Returns:
+/// - `1`: IPv4
+/// - `2`: IPv6
+#[must_use]
+pub fn target_connect_socket_action(has_ipv4_target: bool) -> i32 {
+    if has_ipv4_target {
+        TARGET_CONNECT_SOCKET_IPV4
+    } else {
+        TARGET_CONNECT_SOCKET_IPV6
+    }
+}
+
+/// Returns whether outbound target connection creation should insert into tree.
+#[must_use]
+pub fn target_create_insert_should_insert(has_connection: bool) -> bool {
+    has_connection
+}
+
+/// Returns whether selected target connection should be incref'ed before return.
+#[must_use]
+pub fn target_pick_should_incref(has_selected: bool) -> bool {
+    has_selected
+}
+
+/// Selects action when target hash lookup found a matching entry.
+///
+/// Returns:
+/// - `1`: remove-and-return (`mode < 0`)
+/// - `2`: return found (`mode == 0`)
+/// - `3`: invalid mode for match path (`mode > 0`)
+#[must_use]
+pub fn target_lookup_match_action(mode: i32) -> i32 {
+    if mode < 0 {
+        TARGET_LOOKUP_MATCH_REMOVE_AND_RETURN
+    } else if mode == 0 {
+        TARGET_LOOKUP_MATCH_RETURN_FOUND
+    } else {
+        TARGET_LOOKUP_MATCH_ASSERT_INVALID
+    }
+}
+
+/// Selects action when target hash lookup missed all entries.
+///
+/// Returns:
+/// - `1`: insert new (`mode > 0`)
+/// - `2`: return null (`mode == 0`)
+/// - `3`: invalid miss path (`mode < 0`, delete expected found)
+#[must_use]
+pub fn target_lookup_miss_action(mode: i32) -> i32 {
+    if mode > 0 {
+        TARGET_LOOKUP_MISS_INSERT_NEW
+    } else if mode == 0 {
+        TARGET_LOOKUP_MISS_RETURN_NULL
+    } else {
+        TARGET_LOOKUP_MISS_ASSERT_INVALID
+    }
+}
+
+/// Selects action for `free_target`.
+///
+/// Returns:
+/// - `0`: reject (`global_refcnt > 0` or tree not empty)
+/// - `1`: remove from IPv4 bucket
+/// - `2`: remove from IPv6 bucket
+#[must_use]
+pub fn target_free_action(global_refcnt: i32, has_conn_tree: bool, has_ipv4_target: bool) -> i32 {
+    if global_refcnt > 0 || has_conn_tree {
+        TARGET_FREE_ACTION_REJECT
+    } else if has_ipv4_target {
+        TARGET_FREE_ACTION_DELETE_IPV4
+    } else {
+        TARGET_FREE_ACTION_DELETE_IPV6
+    }
+}
+
 /// Computes lifecycle transition for `destroy_target()` after refcount decrement.
 #[must_use]
 pub fn destroy_target_transition(new_global_refcnt: i32) -> (i32, i32, bool) {
@@ -1318,7 +1460,13 @@ mod tests {
         target_job_update_mode, target_needed_connections, target_pick_allow_stopped_should_select,
         target_pick_allow_stopped_should_skip, target_pick_basic_should_select,
         target_pick_basic_should_skip, target_pick_should_select, target_pick_should_skip,
-        target_ready_transition, target_should_attempt_reconnect, NatAddRuleError,
+        target_ready_bucket, target_ready_transition, target_should_attempt_reconnect,
+        target_connect_socket_action, target_create_insert_should_insert,
+        target_find_bad_should_select, target_lookup_match_action,
+        target_lookup_miss_action, target_pick_should_incref,
+        target_remove_dead_connection_deltas, target_tree_update_action,
+        target_free_action,
+        NatAddRuleError,
         ALLOC_CONNECTION_SPECIAL_ACTION_EPOLL_REMOVE,
         ALLOC_CONNECTION_SPECIAL_ACTION_LOG_LEVEL0,
         ALLOC_CONNECTION_SPECIAL_ACTION_LOG_LEVEL1,
@@ -1337,9 +1485,17 @@ mod tests {
         FAIL_CONNECTION_ACTION_SET_ERROR_CODE, FAIL_CONNECTION_ACTION_SET_STATUS_ERROR,
         FAIL_CONNECTION_ACTION_SIGNAL_ABORT, FAIL_SOCKET_CONNECTION_ACTION_CLEANUP,
         FAIL_SOCKET_CONNECTION_ACTION_NOOP, MAX_NAT_INFO_RULES, NAT_INFO_RULES, CONN_CONNECTING,
-        CONN_WORKING, SOCKET_FREE_ACTION_FAIL_CONN, SOCKET_FREE_ACTION_NONE,
+        CONN_WORKING, CR_BUSY, SOCKET_FREE_ACTION_FAIL_CONN, SOCKET_FREE_ACTION_NONE,
         SOCKET_JOB_ACTION_ABORT, SOCKET_JOB_ACTION_AUX, SOCKET_JOB_ACTION_ERROR,
-        SOCKET_JOB_ACTION_FINISH, SOCKET_JOB_ACTION_RUN,
+        SOCKET_JOB_ACTION_FINISH, SOCKET_JOB_ACTION_RUN, TARGET_CONNECT_SOCKET_IPV4,
+        TARGET_CONNECT_SOCKET_IPV6, TARGET_READY_BUCKET_BAD, TARGET_READY_BUCKET_GOOD,
+        TARGET_READY_BUCKET_IGNORE, TARGET_READY_BUCKET_STOPPED,
+        TARGET_LOOKUP_MATCH_ASSERT_INVALID, TARGET_LOOKUP_MATCH_REMOVE_AND_RETURN,
+        TARGET_LOOKUP_MATCH_RETURN_FOUND, TARGET_LOOKUP_MISS_ASSERT_INVALID,
+        TARGET_LOOKUP_MISS_INSERT_NEW, TARGET_LOOKUP_MISS_RETURN_NULL,
+        TARGET_FREE_ACTION_DELETE_IPV4, TARGET_FREE_ACTION_DELETE_IPV6,
+        TARGET_FREE_ACTION_REJECT,
+        TARGET_TREE_UPDATE_FREE_ONLY, TARGET_TREE_UPDATE_REPLACE_AND_FREE_OLD,
     };
     use core::sync::atomic::Ordering;
 
@@ -1540,6 +1696,84 @@ mod tests {
                 | ALLOC_CONNECTION_FAILURE_ACTION_FREE_RAWMSG
                 | ALLOC_CONNECTION_FAILURE_ACTION_SET_BASIC_TYPE_NONE
                 | ALLOC_CONNECTION_FAILURE_ACTION_DEC_JOBS_ACTIVE
+        );
+    }
+
+    #[test]
+    fn target_tree_and_create_helpers_match_c_rules() {
+        assert_eq!(target_ready_bucket(0), TARGET_READY_BUCKET_IGNORE);
+        assert_eq!(target_ready_bucket(1), TARGET_READY_BUCKET_GOOD);
+        assert_eq!(target_ready_bucket(2), TARGET_READY_BUCKET_STOPPED);
+        assert_eq!(target_ready_bucket(CR_BUSY), TARGET_READY_BUCKET_IGNORE);
+        assert_eq!(target_ready_bucket(4), TARGET_READY_BUCKET_BAD);
+        assert_eq!(target_ready_bucket(99), -1);
+
+        let error = i32::from_ne_bytes(C_ERROR.to_ne_bytes());
+        let connected = i32::from_ne_bytes(C_CONNECTED.to_ne_bytes());
+        assert!(target_find_bad_should_select(false, error));
+        assert!(!target_find_bad_should_select(true, error));
+        assert!(!target_find_bad_should_select(false, 0));
+
+        assert_eq!(target_remove_dead_connection_deltas(connected), (-1, -1));
+        assert_eq!(target_remove_dead_connection_deltas(0), (0, -1));
+
+        assert_eq!(
+            target_tree_update_action(false),
+            TARGET_TREE_UPDATE_FREE_ONLY
+        );
+        assert_eq!(
+            target_tree_update_action(true),
+            TARGET_TREE_UPDATE_REPLACE_AND_FREE_OLD
+        );
+
+        assert_eq!(
+            target_connect_socket_action(true),
+            TARGET_CONNECT_SOCKET_IPV4
+        );
+        assert_eq!(
+            target_connect_socket_action(false),
+            TARGET_CONNECT_SOCKET_IPV6
+        );
+
+        assert!(target_create_insert_should_insert(true));
+        assert!(!target_create_insert_should_insert(false));
+        assert!(target_pick_should_incref(true));
+        assert!(!target_pick_should_incref(false));
+
+        assert_eq!(
+            target_lookup_match_action(-1),
+            TARGET_LOOKUP_MATCH_REMOVE_AND_RETURN
+        );
+        assert_eq!(
+            target_lookup_match_action(0),
+            TARGET_LOOKUP_MATCH_RETURN_FOUND
+        );
+        assert_eq!(
+            target_lookup_match_action(1),
+            TARGET_LOOKUP_MATCH_ASSERT_INVALID
+        );
+        assert_eq!(
+            target_lookup_miss_action(1),
+            TARGET_LOOKUP_MISS_INSERT_NEW
+        );
+        assert_eq!(
+            target_lookup_miss_action(0),
+            TARGET_LOOKUP_MISS_RETURN_NULL
+        );
+        assert_eq!(
+            target_lookup_miss_action(-1),
+            TARGET_LOOKUP_MISS_ASSERT_INVALID
+        );
+
+        assert_eq!(target_free_action(1, false, true), TARGET_FREE_ACTION_REJECT);
+        assert_eq!(target_free_action(0, true, true), TARGET_FREE_ACTION_REJECT);
+        assert_eq!(
+            target_free_action(0, false, true),
+            TARGET_FREE_ACTION_DELETE_IPV4
+        );
+        assert_eq!(
+            target_free_action(0, false, false),
+            TARGET_FREE_ACTION_DELETE_IPV6
         );
     }
 

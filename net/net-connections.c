@@ -228,6 +228,26 @@ extern int32_t mtproxy_ffi_net_connections_target_needed_connections(
     int32_t stopped_connections);
 extern int32_t mtproxy_ffi_net_connections_target_should_attempt_reconnect(
     double now, double next_reconnect, int32_t active_outbound_connections);
+extern int32_t mtproxy_ffi_net_connections_target_ready_bucket(int32_t ready);
+extern int32_t mtproxy_ffi_net_connections_target_find_bad_should_select(
+    int32_t has_selected, int32_t flags);
+extern int32_t
+mtproxy_ffi_net_connections_target_remove_dead_connection_deltas(
+    int32_t flags, int32_t *out_active_outbound_delta,
+    int32_t *out_outbound_delta);
+extern int32_t mtproxy_ffi_net_connections_target_tree_update_action(
+    int32_t tree_changed);
+extern int32_t mtproxy_ffi_net_connections_target_connect_socket_action(
+    int32_t has_ipv4_target);
+extern int32_t
+mtproxy_ffi_net_connections_target_create_insert_should_insert(
+    int32_t has_connection);
+extern int32_t mtproxy_ffi_net_connections_target_lookup_match_action(
+    int32_t mode);
+extern int32_t mtproxy_ffi_net_connections_target_lookup_miss_action(
+    int32_t mode);
+extern int32_t mtproxy_ffi_net_connections_target_free_action(
+    int32_t global_refcnt, int32_t has_conn_tree, int32_t has_ipv4_target);
 extern int32_t mtproxy_ffi_net_connections_destroy_target_transition(
     int32_t new_global_refcnt, int32_t *out_active_targets_delta,
     int32_t *out_inactive_targets_delta);
@@ -322,6 +342,8 @@ extern int32_t mtproxy_ffi_net_connections_target_pick_should_skip(
 extern int32_t mtproxy_ffi_net_connections_target_pick_should_select(
     int32_t allow_stopped, int32_t candidate_ready, int32_t has_selected,
     int32_t selected_unreliability, int32_t candidate_unreliability);
+extern int32_t mtproxy_ffi_net_connections_target_pick_should_incref(
+    int32_t has_selected);
 extern int32_t mtproxy_ffi_net_connections_connection_write_close_action(
     int32_t status, int32_t has_io_conn);
 extern int32_t mtproxy_ffi_net_connections_connection_timeout_action(
@@ -2190,30 +2212,27 @@ void compute_next_reconnect(conn_target_job_t CT) {
 static void count_connection_num(connection_job_t C, void *good_c,
                                  void *stopped_c, void *bad_c) {
   int cr = CONN_INFO(C)->type->check_ready(C);
-  switch (cr) {
-  case cr_notyet:
-  case cr_busy:
-    break;
-  case cr_ok:
+  int32_t bucket = mtproxy_ffi_net_connections_target_ready_bucket(cr);
+  if (bucket == 0) {
+    return;
+  } else if (bucket == 1) {
     (*(int *)good_c)++;
-    break;
-  case cr_stopped:
+  } else if (bucket == 2) {
     (*(int *)stopped_c)++;
-    break;
-  case cr_failed:
+  } else if (bucket == 3) {
     (*(int *)bad_c)++;
-    break;
-  default:
+  } else {
+    assert(bucket == -1);
     assert(0);
   }
 }
 
 static void find_bad_connection(connection_job_t C, void *x) {
   connection_job_t *T = x;
-  if (*T) {
-    return;
-  }
-  if (CONN_INFO(C)->flags & C_ERROR) {
+  int32_t should_select = mtproxy_ffi_net_connections_target_find_bad_should_select(
+      *T != NULL, CONN_INFO(C)->flags);
+  assert(should_select == 0 || should_select == 1);
+  if (should_select) {
     *T = C;
   }
 }
@@ -2233,10 +2252,14 @@ void destroy_dead_target_connections(conn_target_job_t CTJ) {
       break;
     }
 
-    if (connection_is_active(CONN_INFO(CJ)->flags)) {
-      __sync_fetch_and_add(&CT->active_outbound_connections, -1);
-    }
-    __sync_fetch_and_add(&CT->outbound_connections, -1);
+    int32_t active_outbound_delta = 0;
+    int32_t outbound_delta = 0;
+    int32_t rc_deltas =
+        mtproxy_ffi_net_connections_target_remove_dead_connection_deltas(
+            CONN_INFO(CJ)->flags, &active_outbound_delta, &outbound_delta);
+    assert(rc_deltas == 0);
+    __sync_fetch_and_add(&CT->active_outbound_connections, active_outbound_delta);
+    __sync_fetch_and_add(&CT->outbound_connections, outbound_delta);
 
     T = tree_delete_connection(T, CJ);
   }
@@ -2257,7 +2280,10 @@ void destroy_dead_target_connections(conn_target_job_t CTJ) {
   MODULE_STAT->ready_outbound_connections += ready_outbound_delta;
   MODULE_STAT->ready_targets += ready_targets_delta;
 
-  if (T == CT->conn_tree) {
+  int32_t tree_update_action = mtproxy_ffi_net_connections_target_tree_update_action(
+      T != CT->conn_tree);
+  assert(tree_update_action == 0 || tree_update_action == 1);
+  if (tree_update_action == 0) {
     tree_free_connection(T);
   } else {
     struct tree_connection *old = CT->conn_tree;
@@ -2306,7 +2332,11 @@ int create_new_connections(conn_target_job_t CTJ) {
 
     while (CT->outbound_connections < need_c) {
       int cfd = -1;
-      if (CT->target.s_addr) {
+      int32_t connect_action =
+          mtproxy_ffi_net_connections_target_connect_socket_action(
+              CT->target.s_addr != 0);
+      assert(connect_action == 1 || connect_action == 2);
+      if (connect_action == 1) {
         cfd = client_socket(CT->target.s_addr, CT->port, 0);
         vkprintf(1, "Created NEW connection #%d to %s:%d\n", cfd,
                  inet_ntoa(CT->target), CT->port);
@@ -2316,7 +2346,7 @@ int create_new_connections(conn_target_job_t CTJ) {
                  show_ipv6(CT->target_ipv6), CT->port);
       }
       if (cfd < 0) {
-        if (CT->target.s_addr) {
+        if (connect_action == 1) {
           vkprintf(1, "error connecting to %s:%d: %m\n", inet_ntoa(CT->target),
                    CT->port);
         } else {
@@ -2330,7 +2360,12 @@ int create_new_connections(conn_target_job_t CTJ) {
           cfd, CTJ, NULL, ct_outbound, CT->type, CT->extra,
           ntohl(CT->target.s_addr), CT->target_ipv6, CT->port);
 
-      if (C) {
+      int32_t should_insert =
+          mtproxy_ffi_net_connections_target_create_insert_should_insert(
+              C != NULL);
+      assert(should_insert == 0 || should_insert == 1);
+      if (should_insert) {
+        assert(C);
         assert(CONN_INFO(C)->io_conn);
         count++;
         unlock_job(JOB_REF_CREATE_PASS(C));
@@ -2340,7 +2375,10 @@ int create_new_connections(conn_target_job_t CTJ) {
       }
     }
 
-    if (T == CT->conn_tree) {
+    int32_t tree_update_action = mtproxy_ffi_net_connections_target_tree_update_action(
+        T != CT->conn_tree);
+    assert(tree_update_action == 0 || tree_update_action == 1);
+    if (tree_update_action == 0) {
       tree_free_connection(T);
     } else {
       struct tree_connection *old = CT->conn_tree;
@@ -2363,6 +2401,15 @@ pthread_mutex_t TargetsLock = PTHREAD_MUTEX_INITIALIZER;
 static conn_target_job_t find_target(struct in_addr ad, int port,
                                      conn_type_t *type, void *extra, int mode,
                                      conn_target_job_t new_target) {
+  enum {
+    TARGET_LOOKUP_MATCH_REMOVE_AND_RETURN = 1,
+    TARGET_LOOKUP_MATCH_RETURN_FOUND = 2,
+    TARGET_LOOKUP_MATCH_ASSERT_INVALID = 3,
+    TARGET_LOOKUP_MISS_INSERT_NEW = 1,
+    TARGET_LOOKUP_MISS_RETURN_NULL = 2,
+    TARGET_LOOKUP_MISS_ASSERT_INVALID = 3,
+  };
+
   assert(ad.s_addr);
   int32_t h1_i32 = mtproxy_ffi_net_connections_target_bucket_ipv4(
       (size_t)type, ad.s_addr, port, PRIME_TARGETS);
@@ -2373,22 +2420,40 @@ static conn_target_job_t find_target(struct in_addr ad, int port,
     struct conn_target_info *S = CONN_TARGET_INFO(cur);
     if (S->target.s_addr == ad.s_addr && S->port == port && S->type == type &&
         S->extra == extra) {
-      if (mode < 0) {
+      int32_t match_action =
+          mtproxy_ffi_net_connections_target_lookup_match_action(mode);
+      assert(match_action == TARGET_LOOKUP_MATCH_REMOVE_AND_RETURN ||
+             match_action == TARGET_LOOKUP_MATCH_RETURN_FOUND ||
+             match_action == TARGET_LOOKUP_MATCH_ASSERT_INVALID);
+      if (match_action == TARGET_LOOKUP_MATCH_REMOVE_AND_RETURN) {
         *prev = S->hnext;
         S->hnext = 0;
         return cur;
       }
+      if (match_action == TARGET_LOOKUP_MATCH_RETURN_FOUND) {
+        return cur;
+      }
+      assert(match_action == TARGET_LOOKUP_MATCH_ASSERT_INVALID);
       assert(!mode);
-      return cur;
+      return 0;
     }
     prev = &S->hnext;
   }
-  assert(mode >= 0);
-  if (mode > 0) {
+  int32_t miss_action = mtproxy_ffi_net_connections_target_lookup_miss_action(
+      mode);
+  assert(miss_action == TARGET_LOOKUP_MISS_INSERT_NEW ||
+         miss_action == TARGET_LOOKUP_MISS_RETURN_NULL ||
+         miss_action == TARGET_LOOKUP_MISS_ASSERT_INVALID);
+  if (miss_action == TARGET_LOOKUP_MISS_INSERT_NEW) {
     CONN_TARGET_INFO(new_target)->hnext = HTarget[h1];
     HTarget[h1] = new_target;
     return new_target;
   }
+  if (miss_action == TARGET_LOOKUP_MISS_RETURN_NULL) {
+    return 0;
+  }
+  assert(miss_action == TARGET_LOOKUP_MISS_ASSERT_INVALID);
+  assert(mode >= 0);
   return 0;
 }
 
@@ -2398,6 +2463,15 @@ static conn_target_job_t find_target_ipv6(unsigned char ad_ipv6[16], int port,
                                           conn_type_t *type, void *extra,
                                           int mode,
                                           conn_target_job_t new_target) {
+  enum {
+    TARGET_LOOKUP_MATCH_REMOVE_AND_RETURN = 1,
+    TARGET_LOOKUP_MATCH_RETURN_FOUND = 2,
+    TARGET_LOOKUP_MATCH_ASSERT_INVALID = 3,
+    TARGET_LOOKUP_MISS_INSERT_NEW = 1,
+    TARGET_LOOKUP_MISS_RETURN_NULL = 2,
+    TARGET_LOOKUP_MISS_ASSERT_INVALID = 3,
+  };
+
   assert(*(long long *)ad_ipv6 || ((long long *)ad_ipv6)[1]);
   int32_t h1_i32 = mtproxy_ffi_net_connections_target_bucket_ipv6(
       (size_t)type, ad_ipv6, port, PRIME_TARGETS);
@@ -2410,41 +2484,71 @@ static conn_target_job_t find_target_ipv6(unsigned char ad_ipv6[16], int port,
         *(long long *)S->target_ipv6 == *(long long *)ad_ipv6 &&
         S->port == port && S->type == type && !S->target.s_addr &&
         S->extra == extra) {
-      if (mode < 0) {
+      int32_t match_action =
+          mtproxy_ffi_net_connections_target_lookup_match_action(mode);
+      assert(match_action == TARGET_LOOKUP_MATCH_REMOVE_AND_RETURN ||
+             match_action == TARGET_LOOKUP_MATCH_RETURN_FOUND ||
+             match_action == TARGET_LOOKUP_MATCH_ASSERT_INVALID);
+      if (match_action == TARGET_LOOKUP_MATCH_REMOVE_AND_RETURN) {
         *prev = S->hnext;
         S->hnext = 0;
         return cur;
       }
+      if (match_action == TARGET_LOOKUP_MATCH_RETURN_FOUND) {
+        return cur;
+      }
+      assert(match_action == TARGET_LOOKUP_MATCH_ASSERT_INVALID);
       assert(!mode);
-      return cur;
+      return 0;
     }
     prev = &S->hnext;
   }
-  assert(mode >= 0);
-  if (mode > 0) {
+  int32_t miss_action = mtproxy_ffi_net_connections_target_lookup_miss_action(
+      mode);
+  assert(miss_action == TARGET_LOOKUP_MISS_INSERT_NEW ||
+         miss_action == TARGET_LOOKUP_MISS_RETURN_NULL ||
+         miss_action == TARGET_LOOKUP_MISS_ASSERT_INVALID);
+  if (miss_action == TARGET_LOOKUP_MISS_INSERT_NEW) {
     CONN_TARGET_INFO(new_target)->hnext = HTarget[h1];
     HTarget[h1] = new_target;
     return new_target;
   }
+  if (miss_action == TARGET_LOOKUP_MISS_RETURN_NULL) {
+    return 0;
+  }
+  assert(miss_action == TARGET_LOOKUP_MISS_ASSERT_INVALID);
+  assert(mode >= 0);
   return 0;
 }
 
 static int free_target(conn_target_job_t CTJ) {
+  enum {
+    TARGET_FREE_ACTION_REJECT = 0,
+    TARGET_FREE_ACTION_DELETE_IPV4 = 1,
+    TARGET_FREE_ACTION_DELETE_IPV6 = 2,
+  };
+
   pthread_mutex_lock(&TargetsLock);
   struct conn_target_info *CT = CONN_TARGET_INFO(CTJ);
-  if (CT->global_refcnt > 0 || CT->conn_tree) {
+  int32_t free_action = mtproxy_ffi_net_connections_target_free_action(
+      CT->global_refcnt, CT->conn_tree != NULL, CT->target.s_addr != 0);
+  assert(free_action == TARGET_FREE_ACTION_REJECT ||
+         free_action == TARGET_FREE_ACTION_DELETE_IPV4 ||
+         free_action == TARGET_FREE_ACTION_DELETE_IPV6);
+  if (free_action == TARGET_FREE_ACTION_REJECT) {
     pthread_mutex_unlock(&TargetsLock);
     return -1;
   }
 
   assert(CT && CT->type && !CT->global_refcnt);
   assert(!CT->conn_tree);
-  if (CT->target.s_addr) {
+  if (free_action == TARGET_FREE_ACTION_DELETE_IPV4) {
     vkprintf(1, "Freeing unused target to %s:%d\n", inet_ntoa(CT->target),
              CT->port);
     assert(CTJ ==
            find_target(CT->target, CT->port, CT->type, CT->extra, -1, 0));
   } else {
+    assert(free_action == TARGET_FREE_ACTION_DELETE_IPV6);
     vkprintf(1, "Freeing unused ipv6 target to [%s]:%d\n",
              show_ipv6(CT->target_ipv6), CT->port);
     assert(CTJ == find_target_ipv6(CT->target_ipv6, CT->port, CT->type,
@@ -2716,7 +2820,11 @@ connection_job_t conn_target_get_connection(conn_target_job_t CT,
   };
   tree_act_ex_connection(T, target_pick_policy_callback, &ctx);
 
-  if (S) {
+  int32_t should_incref =
+      mtproxy_ffi_net_connections_target_pick_should_incref(S != NULL);
+  assert(should_incref == 0 || should_incref == 1);
+  if (should_incref) {
+    assert(S);
     job_incref(S);
   }
   tree_free_connection(T);

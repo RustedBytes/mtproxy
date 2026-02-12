@@ -168,6 +168,104 @@ pub extern "C" fn mtproxy_ffi_net_connections_target_should_attempt_reconnect(
     }
 }
 
+/// Maps `check_ready()` result to counting bucket for target-connection stats.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_connections_target_ready_bucket(ready: c_int) -> c_int {
+    mtproxy_core::runtime::net::connections::target_ready_bucket(ready)
+}
+
+/// Returns whether dead-connection scan should select this connection.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_connections_target_find_bad_should_select(
+    has_selected: c_int,
+    flags: c_int,
+) -> c_int {
+    if mtproxy_core::runtime::net::connections::target_find_bad_should_select(
+        has_selected != 0,
+        flags,
+    ) {
+        1
+    } else {
+        0
+    }
+}
+
+/// Computes stat deltas when removing a dead connection from target tree.
+///
+/// # Safety
+/// `out_active_outbound_delta` and `out_outbound_delta` must be writable pointers.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_connections_target_remove_dead_connection_deltas(
+    flags: c_int,
+    out_active_outbound_delta: *mut c_int,
+    out_outbound_delta: *mut c_int,
+) -> c_int {
+    if out_active_outbound_delta.is_null() || out_outbound_delta.is_null() {
+        return -1;
+    }
+    let (active_outbound_delta, outbound_delta) =
+        mtproxy_core::runtime::net::connections::target_remove_dead_connection_deltas(flags);
+    *out_active_outbound_delta = active_outbound_delta;
+    *out_outbound_delta = outbound_delta;
+    0
+}
+
+/// Selects tree update strategy after mutable target-tree operations.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_connections_target_tree_update_action(
+    tree_changed: c_int,
+) -> c_int {
+    mtproxy_core::runtime::net::connections::target_tree_update_action(tree_changed != 0)
+}
+
+/// Selects socket-family path for outbound target connection attempt.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_connections_target_connect_socket_action(
+    has_ipv4_target: c_int,
+) -> c_int {
+    mtproxy_core::runtime::net::connections::target_connect_socket_action(has_ipv4_target != 0)
+}
+
+/// Returns whether outbound target connection creation should insert into tree.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_connections_target_create_insert_should_insert(
+    has_connection: c_int,
+) -> c_int {
+    if mtproxy_core::runtime::net::connections::target_create_insert_should_insert(
+        has_connection != 0,
+    ) {
+        1
+    } else {
+        0
+    }
+}
+
+/// Selects action when target hash lookup found a matching entry.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_connections_target_lookup_match_action(mode: c_int) -> c_int {
+    mtproxy_core::runtime::net::connections::target_lookup_match_action(mode)
+}
+
+/// Selects action when target hash lookup missed all entries.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_connections_target_lookup_miss_action(mode: c_int) -> c_int {
+    mtproxy_core::runtime::net::connections::target_lookup_miss_action(mode)
+}
+
+/// Selects action for `free_target`.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_connections_target_free_action(
+    global_refcnt: c_int,
+    has_conn_tree: c_int,
+    has_ipv4_target: c_int,
+) -> c_int {
+    mtproxy_core::runtime::net::connections::target_free_action(
+        global_refcnt,
+        has_conn_tree != 0,
+        has_ipv4_target != 0,
+    )
+}
+
 /// Computes lifecycle transition for `destroy_target()` after refcount decrement.
 ///
 /// # Safety
@@ -1030,6 +1128,18 @@ pub extern "C" fn mtproxy_ffi_net_connections_target_pick_should_select(
         selected_unreliability,
         candidate_unreliability,
     ) {
+        1
+    } else {
+        0
+    }
+}
+
+/// Returns whether selected target connection should be incref'ed before return.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_connections_target_pick_should_incref(
+    has_selected: c_int,
+) -> c_int {
+    if mtproxy_core::runtime::net::connections::target_pick_should_incref(has_selected != 0) {
         1
     } else {
         0
