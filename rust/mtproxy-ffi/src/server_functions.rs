@@ -127,11 +127,17 @@ pub extern "C" fn rust_print_backtrace() {
 }
 
 // ============================================================================
-// Internal implementations (duplicated from mtproxy-bin since it's not a dependency)
+// Internal implementations
 // ============================================================================
-
-// We need to duplicate the implementations here since mtproxy-ffi cannot depend on mtproxy-bin.
-// These are the actual implementations that will be called.
+//
+// These are simplified FFI-specific implementations. They differ from the
+// mtproxy-bin implementations by:
+// - Using simple error codes (-1) instead of Result types
+// - Direct libc calls instead of wrapper functions  
+// - No detailed error types (just success/failure)
+//
+// This duplication is necessary because mtproxy-ffi cannot depend on mtproxy-bin
+// (mtproxy-bin is a binary crate, not a library dependency).
 
 const DEFAULT_ENGINE_USER: &str = "mtproxy";
 
@@ -229,7 +235,7 @@ fn internal_raise_file_rlimit(maxfiles: c_int) -> Result<(), ()> {
         return Err(());
     }
 
-    let maxfiles_u64 = if maxfiles >= 0 { maxfiles as u64 } else { 0 };
+    let maxfiles_u64 = u64::try_from(maxfiles).unwrap_or(0);
     
     if rlim.rlim_cur < maxfiles_u64 {
         rlim.rlim_cur = maxfiles_u64 + 3;

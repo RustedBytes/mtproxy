@@ -112,7 +112,7 @@ fn scale_by_suffix(value: i64, suffix: u8) -> Result<i64, ParseMemoryLimitError>
 pub fn parse_memory_limit(input: &str) -> Result<i64, ParseMemoryLimitError> {
     let bytes = input.as_bytes();
     let (value, cursor) = parse_signed_decimal_prefix(bytes)?;
-    let suffix = bytes.get(cursor).copied().unwrap_or(0);
+    let suffix = bytes.get(cursor).copied().unwrap_or(b' ');
     scale_by_suffix(value, suffix)
 }
 
