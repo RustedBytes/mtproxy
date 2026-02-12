@@ -173,30 +173,6 @@ Phase 3 full-parity checklist (remaining for production-equivalent runtime behav
 12. Production deployment preparation
 13. Remove legacy C files
 
-## How to Contribute
-
-1. Pick a module from the table above (preferably 🔴 Not Started with HIGH priority)
-2. Create the Rust implementation in the designated module path
-3. Add comprehensive tests (unit + integration)
-4. Update this status document
-5. Submit PR with migration notes
-
-## Build Commands
-
-```bash
-# Build Rust binary
-cargo build --release --bin mtproxy-rust
-
-# Run Rust tests
-cargo test --workspace
-
-# Build C binary (legacy)
-make
-
-# Run all tests
-make test
-```
-
 ## References
 
 - Ownership map: `rust/mtproxy-core/src/step15.rs`
