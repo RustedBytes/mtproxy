@@ -289,8 +289,8 @@ fn get_passwd_by_name(username: &str) -> Result<PasswdInfo, ()> {
         return Err(());
     }
 
-    let pw_uid = u32::from(unsafe { (*pw_ptr).pw_uid });
-    let pw_gid = u32::from(unsafe { (*pw_ptr).pw_gid });
+    let pw_uid = unsafe { (*pw_ptr).pw_uid };
+    let pw_gid = unsafe { (*pw_ptr).pw_gid };
     
     Ok(PasswdInfo { pw_uid, pw_gid })
 }
@@ -303,7 +303,7 @@ fn get_group_by_name(groupname: &str) -> Result<GroupInfo, ()> {
         return Err(());
     }
 
-    let gr_gid = u32::from(unsafe { (*gr_ptr).gr_gid });
+    let gr_gid = unsafe { (*gr_ptr).gr_gid };
     
     Ok(GroupInfo { gr_gid })
 }

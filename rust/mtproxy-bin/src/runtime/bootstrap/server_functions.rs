@@ -125,7 +125,7 @@ pub const DEFAULT_ENGINE_USER: &str = "mtproxy";
 /// This function should be called when running as root to drop privileges.
 ///
 /// # Arguments
-/// * `username` - Username to switch to (uses DEFAULT_ENGINE_USER if empty/None)
+/// * `username` - Username to switch to (uses `DEFAULT_ENGINE_USER` if empty/None)
 /// * `groupname` - Optional group name to switch to (uses user's primary group if None)
 pub fn change_user_group(
     username: Option<&str>,
@@ -161,12 +161,12 @@ pub fn change_user_group(
 
     // Set group ID
     if !libc_setgid(gid) {
-        return Err(PrivilegeError::SetGidFailed(gid as i32));
+        return Err(PrivilegeError::SetGidFailed(gid.cast_signed()));
     }
 
     // Set user ID
     if !libc_setuid(pw.pw_uid) {
-        return Err(PrivilegeError::SetUidFailed(pw.pw_uid as i32));
+        return Err(PrivilegeError::SetUidFailed(pw.pw_uid.cast_signed()));
     }
 
     Ok(())
@@ -178,7 +178,7 @@ pub fn change_user_group(
 /// This is similar to `change_user_group()` but initializes all supplementary groups.
 ///
 /// # Arguments
-/// * `username` - Username to switch to (uses DEFAULT_ENGINE_USER if empty/None)
+/// * `username` - Username to switch to (uses `DEFAULT_ENGINE_USER` if empty/None)
 pub fn change_user(username: Option<&str>) -> Result<(), PrivilegeError> {
     // Only change privileges if running as root
     let uid = libc_getuid();
@@ -207,11 +207,11 @@ pub fn change_user(username: Option<&str>) -> Result<(), PrivilegeError> {
 
     // Set group ID and user ID
     if !libc_setgid(gid) {
-        return Err(PrivilegeError::SetGidFailed(gid as i32));
+        return Err(PrivilegeError::SetGidFailed(gid.cast_signed()));
     }
     
     if !libc_setuid(pw.pw_uid) {
-        return Err(PrivilegeError::SetUidFailed(pw.pw_uid as i32));
+        return Err(PrivilegeError::SetUidFailed(pw.pw_uid.cast_signed()));
     }
 
     Ok(())
@@ -254,6 +254,7 @@ pub fn print_backtrace() {
 /// Get the version string.
 ///
 /// Returns a compile-time version string including build date and compiler info.
+#[must_use]
 pub fn get_version_string() -> String {
     format!(
         "Rust port compiled at {} {} by rustc {}",
@@ -286,10 +287,10 @@ fn get_passwd_by_name(username: &str) -> Result<PasswdInfo, PrivilegeError> {
         return Err(PrivilegeError::UserNotFound(username.to_string()));
     }
 
-    let pw_uid = libc_passwd_get_uid(pw_ptr);
-    let pw_gid = libc_passwd_get_gid(pw_ptr);
+    let uid = libc_passwd_get_uid(pw_ptr);
+    let gid = libc_passwd_get_gid(pw_ptr);
     
-    Ok(PasswdInfo { pw_uid, pw_gid })
+    Ok(PasswdInfo { pw_uid: uid, pw_gid: gid })
 }
 
 fn get_group_by_name(groupname: &str) -> Result<GroupInfo, PrivilegeError> {
@@ -331,13 +332,13 @@ fn set_rlimit_nofile(rlim: &RLimit) -> bool {
 #[cfg(unix)]
 fn libc_getuid() -> u32 {
     // SAFETY: getuid() is always safe to call
-    u32::from(unsafe { libc::getuid() })
+    unsafe { libc::getuid() }
 }
 
 #[cfg(unix)]
 fn libc_geteuid() -> u32 {
     // SAFETY: geteuid() is always safe to call
-    u32::from(unsafe { libc::geteuid() })
+    unsafe { libc::geteuid() }
 }
 
 #[cfg(unix)]
@@ -349,13 +350,13 @@ fn libc_getpwnam(name: *const c_char) -> *mut libc::passwd {
 #[cfg(unix)]
 fn libc_passwd_get_uid(pw: *mut libc::passwd) -> u32 {
     // SAFETY: Caller guarantees pw is non-null and valid
-    u32::from(unsafe { (*pw).pw_uid })
+    unsafe { (*pw).pw_uid }
 }
 
 #[cfg(unix)]
 fn libc_passwd_get_gid(pw: *mut libc::passwd) -> u32 {
     // SAFETY: Caller guarantees pw is non-null and valid
-    u32::from(unsafe { (*pw).pw_gid })
+    unsafe { (*pw).pw_gid }
 }
 
 #[cfg(unix)]
@@ -367,7 +368,7 @@ fn libc_getgrnam(name: *const c_char) -> *mut libc::group {
 #[cfg(unix)]
 fn libc_group_get_gid(gr: *mut libc::group) -> u32 {
     // SAFETY: Caller guarantees gr is non-null and valid
-    u32::from(unsafe { (*gr).gr_gid })
+    unsafe { (*gr).gr_gid }
 }
 
 #[cfg(unix)]
@@ -382,10 +383,7 @@ fn libc_setgroups(groups: &[u32]) -> bool {
 
 #[cfg(unix)]
 fn libc_initgroups(username: &str, gid: u32) -> bool {
-    let c_username = match CString::new(username) {
-        Ok(s) => s,
-        Err(_) => return false,
-    };
+    let Ok(c_username) = CString::new(username) else { return false };
     
     // SAFETY: initgroups() is safe when passed valid C string and gid
     let result = unsafe {
@@ -417,7 +415,7 @@ fn libc_getrlimit_nofile() -> Result<(u64, u64), ResourceLimitError> {
     
     // SAFETY: getrlimit() is safe when passed valid rlimit pointer
     let result = unsafe {
-        libc::getrlimit(libc::RLIMIT_NOFILE, &mut rlim)
+        libc::getrlimit(libc::RLIMIT_NOFILE, &raw mut rlim)
     };
     
     if result != 0 {
@@ -436,17 +434,19 @@ fn libc_setrlimit_nofile(cur: u64, max: u64) -> bool {
     
     // SAFETY: setrlimit() is safe when passed valid rlimit pointer
     let result = unsafe {
-        libc::setrlimit(libc::RLIMIT_NOFILE, &rlim)
+        libc::setrlimit(libc::RLIMIT_NOFILE, &raw const rlim)
     };
     result == 0
 }
 
 #[cfg(unix)]
+#[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
 fn libc_print_backtrace() {
     const MAX_FRAMES: usize = 64;
     let mut buffer: [*mut std::ffi::c_void; MAX_FRAMES] = [std::ptr::null_mut(); MAX_FRAMES];
     
     // SAFETY: backtrace() is safe when passed valid buffer
+    // We allow the cast since MAX_FRAMES (64) fits comfortably in i32
     let nptrs = unsafe {
         libc::backtrace(buffer.as_mut_ptr(), MAX_FRAMES as c_int)
     };
