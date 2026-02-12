@@ -4,7 +4,10 @@ use core::ffi::{c_double, c_int, c_longlong};
 
 /// Computes outbound connection `ready` state.
 #[no_mangle]
-pub extern "C" fn mtproxy_ffi_net_connections_server_check_ready(status: c_int, ready: c_int) -> c_int {
+pub extern "C" fn mtproxy_ffi_net_connections_server_check_ready(
+    status: c_int,
+    ready: c_int,
+) -> c_int {
     mtproxy_core::runtime::net::connections::server_check_ready(status, ready)
 }
 
@@ -25,16 +28,21 @@ pub unsafe extern "C" fn mtproxy_ffi_net_connections_accept_rate_decide(
         return -1;
     }
 
-    let (allow, remaining, time_value) = mtproxy_core::runtime::net::connections::accept_rate_decide(
-        max_accept_rate,
-        now,
-        current_remaining,
-        current_time,
-    );
+    let (allow, remaining, time_value) =
+        mtproxy_core::runtime::net::connections::accept_rate_decide(
+            max_accept_rate,
+            now,
+            current_remaining,
+            current_time,
+        );
 
     *out_remaining = remaining;
     *out_time = time_value;
-    if allow { 1 } else { 0 }
+    if allow {
+        1
+    } else {
+        0
+    }
 }
 
 /// Computes next reconnect timestamp and timeout update.
@@ -607,11 +615,7 @@ pub extern "C" fn mtproxy_ffi_net_connections_socket_job_action(
     js_finish: c_int,
 ) -> c_int {
     mtproxy_core::runtime::net::connections::socket_job_action(
-        op,
-        js_abort,
-        js_run,
-        js_aux,
-        js_finish,
+        op, js_abort, js_run, js_aux, js_finish,
     )
 }
 
@@ -716,8 +720,10 @@ pub extern "C" fn mtproxy_ffi_net_connections_conn_job_alarm_should_call(
     timer_check_ok: c_int,
     flags: c_int,
 ) -> c_int {
-    if mtproxy_core::runtime::net::connections::conn_job_alarm_should_call(timer_check_ok != 0, flags)
-    {
+    if mtproxy_core::runtime::net::connections::conn_job_alarm_should_call(
+        timer_check_ok != 0,
+        flags,
+    ) {
         1
     } else {
         0
@@ -841,14 +847,15 @@ pub unsafe extern "C" fn mtproxy_ffi_net_connections_socket_writer_io_action(
     if out_next_eagain_count.is_null() {
         return -1;
     }
-    let (action, next_eagain_count) = mtproxy_core::runtime::net::connections::socket_writer_io_action(
-        write_result,
-        write_errno,
-        eagain_count,
-        eagain_errno,
-        eintr_errno,
-        eagain_limit,
-    );
+    let (action, next_eagain_count) =
+        mtproxy_core::runtime::net::connections::socket_writer_io_action(
+            write_result,
+            write_errno,
+            eagain_count,
+            eagain_errno,
+            eintr_errno,
+            eagain_limit,
+        );
     *out_next_eagain_count = next_eagain_count;
     action
 }
@@ -939,7 +946,10 @@ pub extern "C" fn mtproxy_ffi_net_connections_listening_init_update_max_connecti
     fd: c_int,
     max_connection: c_int,
 ) -> c_int {
-    mtproxy_core::runtime::net::connections::listening_init_update_max_connection(fd, max_connection)
+    mtproxy_core::runtime::net::connections::listening_init_update_max_connection(
+        fd,
+        max_connection,
+    )
 }
 
 /// Computes mode policy flags for listening init.
@@ -953,12 +963,7 @@ pub extern "C" fn mtproxy_ffi_net_connections_listening_init_mode_policy(
     sm_rawmsg: c_int,
 ) -> c_int {
     mtproxy_core::runtime::net::connections::listening_init_mode_policy(
-        mode,
-        sm_lowprio,
-        sm_special,
-        sm_noqack,
-        sm_ipv6,
-        sm_rawmsg,
+        mode, sm_lowprio, sm_special, sm_noqack, sm_ipv6, sm_rawmsg,
     )
 }
 

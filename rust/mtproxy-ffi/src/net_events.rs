@@ -136,7 +136,9 @@ fn u32_to_i32_bits(value: u32) -> c_int {
 
 #[inline]
 unsafe fn event_ptr(fd: c_int) -> *mut EventDescr {
-    ptr::addr_of_mut!(Events).cast::<EventDescr>().add(usize::try_from(fd).unwrap_or(0))
+    ptr::addr_of_mut!(Events)
+        .cast::<EventDescr>()
+        .add(usize::try_from(fd).unwrap_or(0))
 }
 
 #[inline]
@@ -233,7 +235,12 @@ unsafe fn pop_heap_head() -> *mut EventDescr {
         if j > n {
             break;
         }
-        if j < n && greater_ev(EV_HEAP[usize::try_from(j).unwrap_or(0)], EV_HEAP[usize::try_from(j + 1).unwrap_or(0)]) > 0 {
+        if j < n
+            && greater_ev(
+                EV_HEAP[usize::try_from(j).unwrap_or(0)],
+                EV_HEAP[usize::try_from(j + 1).unwrap_or(0)],
+            ) > 0
+        {
             j += 1;
         }
         let y = EV_HEAP[usize::try_from(j).unwrap_or(0)];
@@ -268,7 +275,12 @@ unsafe fn remove_event_from_heap_impl(ev: *mut EventDescr, allow_hole: bool) -> 
         if j > n {
             break;
         }
-        if j < n && greater_ev(EV_HEAP[usize::try_from(j).unwrap_or(0)], EV_HEAP[usize::try_from(j + 1).unwrap_or(0)]) > 0 {
+        if j < n
+            && greater_ev(
+                EV_HEAP[usize::try_from(j).unwrap_or(0)],
+                EV_HEAP[usize::try_from(j + 1).unwrap_or(0)],
+            ) > 0
+        {
             j += 1;
         }
         EV_HEAP[usize::try_from(i).unwrap_or(0)] = EV_HEAP[usize::try_from(j).unwrap_or(0)];
@@ -390,7 +402,8 @@ unsafe fn epoll_insert_impl(fd: c_int, flags: c_int) -> c_int {
     (*ev).state = ((*ev).state & !(EVT_LEVEL | EVT_RWX)) | (flags_masked & (EVT_LEVEL | EVT_RWX));
     let ef = epoll_conv_flags_local(flags_masked);
 
-    if ef != (*ev).epoll_state || (flags_masked & EVT_NEW) != 0 || ((*ev).state & EVT_IN_EPOLL) == 0 {
+    if ef != (*ev).epoll_state || (flags_masked & EVT_NEW) != 0 || ((*ev).state & EVT_IN_EPOLL) == 0
+    {
         (*ev).epoll_state = ef;
 
         let mut ee = libc::epoll_event {
@@ -438,7 +451,10 @@ unsafe fn epoll_runqueue_impl() -> c_int {
     }
 
     if verbosity >= 3 {
-        kprintf(b"epoll_runqueue: %d events\n\0".as_ptr().cast(), ev_heap_size);
+        kprintf(
+            b"epoll_runqueue: %d events\n\0".as_ptr().cast(),
+            ev_heap_size,
+        );
     }
 
     EV_TIMESTAMP += 2;
@@ -518,7 +534,11 @@ unsafe fn epoll_fetch_events_impl(timeout: c_int) -> c_int {
         perror(CSTR_EPOLL_WAIT);
     }
     if verbosity > 2 && res != 0 {
-        kprintf(b"epoll_wait(%d, ...) = %d\n\0".as_ptr().cast(), epoll_fd, res);
+        kprintf(
+            b"epoll_wait(%d, ...) = %d\n\0".as_ptr().cast(),
+            epoll_fd,
+            res,
+        );
     }
 
     let mut i = 0;
@@ -595,7 +615,14 @@ unsafe fn new_socket_impl(mode: c_int, nonblock: c_int) -> c_int {
     socket_fd
 }
 
-unsafe fn maximize_buf_impl(socket_fd: c_int, mut max: c_int, optname: c_int, perror_tag: &[u8], default_max: c_int, log_fmt: &[u8]) {
+unsafe fn maximize_buf_impl(
+    socket_fd: c_int,
+    mut max: c_int,
+    optname: c_int,
+    perror_tag: &[u8],
+    default_max: c_int,
+    log_fmt: &[u8],
+) {
     let mut intsize = libc::socklen_t::try_from(core::mem::size_of::<c_int>()).unwrap_or(0);
     let mut old_size: c_int = 0;
 
@@ -622,7 +649,10 @@ unsafe fn maximize_buf_impl(socket_fd: c_int, mut max: c_int, optname: c_int, pe
     let mut hi = max;
 
     while min <= hi {
-        let avg = (u32::try_from(min).unwrap_or(0).wrapping_add(u32::try_from(hi).unwrap_or(0)) / 2) as c_int;
+        let avg = (u32::try_from(min)
+            .unwrap_or(0)
+            .wrapping_add(u32::try_from(hi).unwrap_or(0))
+            / 2) as c_int;
         if libc::setsockopt(
             socket_fd,
             libc::SOL_SOCKET,
@@ -665,7 +695,12 @@ unsafe fn maximize_rcvbuf_impl(socket_fd: c_int, max: c_int) {
     );
 }
 
-unsafe fn server_socket_impl(port: c_int, in_addr: libc::in_addr, backlog: c_int, mode: c_int) -> c_int {
+unsafe fn server_socket_impl(
+    port: c_int,
+    in_addr: libc::in_addr,
+    backlog: c_int,
+    mode: c_int,
+) -> c_int {
     let socket_fd = new_socket_impl(mode, 1);
     if socket_fd < 0 {
         return -1;
@@ -1467,12 +1502,18 @@ pub unsafe extern "C" fn mtproxy_ffi_net_events_get_my_ipv6(ipv6: *mut u8) -> c_
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_events_conv_addr(a: c_uint, buf: *mut c_char) -> *const c_char {
+pub unsafe extern "C" fn mtproxy_ffi_net_events_conv_addr(
+    a: c_uint,
+    buf: *mut c_char,
+) -> *const c_char {
     conv_addr_impl(a, buf)
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_events_conv_addr6(a: *const u8, buf: *mut c_char) -> *const c_char {
+pub unsafe extern "C" fn mtproxy_ffi_net_events_conv_addr6(
+    a: *const u8,
+    buf: *mut c_char,
+) -> *const c_char {
     conv_addr6_impl(a, buf)
 }
 

@@ -52,6 +52,8 @@
 //! - Signal-based job execution model
 //! - Thread pool architecture with configurable limits
 
+pub mod mp_queue;
+
 use alloc::{
     collections::{BTreeMap, VecDeque},
     string::{String, ToString},

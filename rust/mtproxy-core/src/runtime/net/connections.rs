@@ -365,13 +365,9 @@ pub fn alloc_connection_success_deltas(
 ) -> (i32, i32, i32, i32, i32, i32, i32, i32, i32, bool) {
     if basic_type == CT_OUTBOUND {
         let target_delta = if has_target { 1 } else { 0 };
-        (
-            1, 1, 1, 0, 0, 0, 0, 0, target_delta, has_target,
-        )
+        (1, 1, 1, 0, 0, 0, 0, 0, target_delta, has_target)
     } else {
-        (
-            0, 0, 0, 1, 1, 1, 1, 1, 0, false,
-        )
+        (0, 0, 0, 1, 1, 1, 1, 1, 0, false)
     }
 }
 
@@ -463,7 +459,11 @@ pub fn alloc_socket_connection_plan(conn_flags: i32, use_epollet: bool) -> (i32,
     let cf = i32_to_u32(conn_flags);
     let socket_flags = u32_to_i32(C_WANTRD | C_WANTWR | (cf & C_CONNECTED));
     let initial_epoll_status = compute_conn_events(socket_flags, use_epollet);
-    (socket_flags, initial_epoll_status, ALLOC_SOCKET_CONNECTION_DELTA)
+    (
+        socket_flags,
+        initial_epoll_status,
+        ALLOC_SOCKET_CONNECTION_DELTA,
+    )
 }
 
 /// Computes epoll event mask for a connection, matching C policy.
@@ -582,7 +582,11 @@ pub fn socket_job_run_should_call_read_write(flags: i32) -> bool {
 
 /// Returns whether `JS_RUN` should send `JS_AUX` after `socket_read_write`.
 #[must_use]
-pub fn socket_job_run_should_signal_aux(flags: i32, new_epoll_status: i32, current_epoll_status: i32) -> bool {
+pub fn socket_job_run_should_signal_aux(
+    flags: i32,
+    new_epoll_status: i32,
+    current_epoll_status: i32,
+) -> bool {
     socket_job_run_should_call_read_write(flags) && new_epoll_status != current_epoll_status
 }
 
@@ -607,7 +611,12 @@ pub fn socket_reader_should_run(flags: i32) -> bool {
 /// - `2`: clear `C_NORD`, count EINTR and continue
 /// - `3`: fatal abort path
 #[must_use]
-pub fn socket_reader_io_action(read_result: i32, read_errno: i32, eagain_errno: i32, eintr_errno: i32) -> i32 {
+pub fn socket_reader_io_action(
+    read_result: i32,
+    read_errno: i32,
+    eagain_errno: i32,
+    eintr_errno: i32,
+) -> i32 {
     if read_result > 0 {
         SOCKET_READER_IO_HAVE_DATA
     } else if read_result < 0 && read_errno == eagain_errno {
@@ -1017,7 +1026,11 @@ pub fn target_pick_allow_stopped_should_select(
 
 /// Returns whether target-connection scan should skip current candidate.
 #[must_use]
-pub fn target_pick_should_skip(allow_stopped: bool, has_selected: bool, selected_ready: i32) -> bool {
+pub fn target_pick_should_skip(
+    allow_stopped: bool,
+    has_selected: bool,
+    selected_ready: i32,
+) -> bool {
     if allow_stopped {
         target_pick_allow_stopped_should_skip(has_selected, selected_ready)
     } else {
@@ -1106,7 +1119,12 @@ pub fn compute_next_reconnect(
 
 /// Computes hash bucket index for IPv4 target lookup table.
 #[must_use]
-pub fn target_bucket_ipv4(type_addr: usize, addr_s_addr: u32, port: i32, prime_targets: u32) -> i32 {
+pub fn target_bucket_ipv4(
+    type_addr: usize,
+    addr_s_addr: u32,
+    port: i32,
+    prime_targets: u32,
+) -> i32 {
     if prime_targets == 0 {
         return -1;
     }
@@ -1181,7 +1199,11 @@ pub fn target_needed_connections(
 
 /// Returns whether reconnect/open-attempt loop should run now.
 #[must_use]
-pub fn target_should_attempt_reconnect(now: f64, next_reconnect: f64, active_outbound_connections: i32) -> bool {
+pub fn target_should_attempt_reconnect(
+    now: f64,
+    next_reconnect: f64,
+    active_outbound_connections: i32,
+) -> bool {
     now >= next_reconnect || active_outbound_connections != 0
 }
 
@@ -1375,7 +1397,11 @@ pub fn target_job_update_mode(global_refcnt: i32) -> i32 {
 /// - `1`: schedule retry timer
 /// - `2`: attempt free-target path
 #[must_use]
-pub fn target_job_post_tick_action(is_completed: bool, global_refcnt: i32, has_conn_tree: bool) -> i32 {
+pub fn target_job_post_tick_action(
+    is_completed: bool,
+    global_refcnt: i32,
+    has_conn_tree: bool,
+) -> i32 {
     if is_completed {
         TARGET_JOB_POST_RETURN_ZERO
     } else if global_refcnt != 0 || has_conn_tree {
@@ -1430,71 +1456,62 @@ pub fn nat_translate_ip(local_ip: u32) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::{
-        accept_rate_decide, alloc_connection_basic_type_policy,
-        alloc_connection_failure_action, alloc_socket_connection_plan,
+        accept_rate_decide, alloc_connection_basic_type_policy, alloc_connection_failure_action,
         alloc_connection_listener_flags, alloc_connection_special_action,
-        alloc_connection_success_deltas, check_conn_functions_accept_mask,
-        check_conn_functions_default_mask, check_conn_functions_raw_policy,
-        close_connection_basic_deltas,
-        close_connection_failure_deltas, close_connection_has_isdh,
-        close_connection_has_special, close_connection_should_signal_special_aux,
-        compute_conn_events, compute_next_reconnect, conn_job_abort_has_error,
-        conn_job_abort_should_close, conn_job_alarm_should_call,
+        alloc_connection_success_deltas, alloc_socket_connection_plan,
+        check_conn_functions_accept_mask, check_conn_functions_default_mask,
+        check_conn_functions_raw_policy, close_connection_basic_deltas,
+        close_connection_failure_deltas, close_connection_has_isdh, close_connection_has_special,
+        close_connection_should_signal_special_aux, compute_conn_events, compute_next_reconnect,
+        conn_job_abort_has_error, conn_job_abort_should_close, conn_job_alarm_should_call,
         conn_job_ready_pending_cas_failure_expected, conn_job_ready_pending_should_promote_status,
         conn_job_run_actions, connection_event_should_release, connection_generation_matches,
         connection_get_by_fd_action, connection_is_active, connection_timeout_action,
-        connection_write_close_action, create_target_transition,
-        destroy_target_transition, listening_init_fd_action, listening_init_mode_policy,
-        listening_init_update_max_connection, listening_job_action, nat_add_rule,
-        nat_translate_ip, server_check_ready, fail_connection_action,
-        fail_socket_connection_action, free_connection_allocated_deltas, socket_free_plan,
-        socket_job_abort_error, socket_job_action,
-        socket_job_aux_should_update_epoll,
+        connection_write_close_action, create_target_transition, destroy_target_transition,
+        fail_connection_action, fail_socket_connection_action, free_connection_allocated_deltas,
+        listening_init_fd_action, listening_init_mode_policy, listening_init_update_max_connection,
+        listening_job_action, nat_add_rule, nat_translate_ip, server_check_ready, socket_free_plan,
+        socket_gateway_abort_action, socket_gateway_clear_flags, socket_job_abort_error,
+        socket_job_action, socket_job_aux_should_update_epoll,
         socket_job_run_should_call_read_write, socket_job_run_should_signal_aux,
-        socket_gateway_abort_action, socket_gateway_clear_flags, socket_reader_io_action,
-        socket_reader_should_run, socket_read_write_connect_action, socket_writer_io_action,
-        socket_writer_should_abort_on_stop, socket_writer_should_call_ready_to_write,
-        socket_writer_should_run, target_bucket_ipv4,
-        target_bucket_ipv6, target_job_boot_delay, target_job_finalize_free_action,
-        target_job_post_tick_action, target_job_retry_delay, target_job_should_run_tick,
-        target_job_update_mode, target_needed_connections, target_pick_allow_stopped_should_select,
-        target_pick_allow_stopped_should_skip, target_pick_basic_should_select,
-        target_pick_basic_should_skip, target_pick_should_select, target_pick_should_skip,
-        target_ready_bucket, target_ready_transition, target_should_attempt_reconnect,
-        target_connect_socket_action, target_create_insert_should_insert,
-        target_find_bad_should_select, target_lookup_match_action,
-        target_lookup_miss_action, target_pick_should_incref,
-        target_remove_dead_connection_deltas, target_tree_update_action,
-        target_free_action,
-        NatAddRuleError,
-        ALLOC_CONNECTION_SPECIAL_ACTION_EPOLL_REMOVE,
-        ALLOC_CONNECTION_SPECIAL_ACTION_LOG_LEVEL0,
-        ALLOC_CONNECTION_SPECIAL_ACTION_LOG_LEVEL1,
+        socket_read_write_connect_action, socket_reader_io_action, socket_reader_should_run,
+        socket_writer_io_action, socket_writer_should_abort_on_stop,
+        socket_writer_should_call_ready_to_write, socket_writer_should_run, target_bucket_ipv4,
+        target_bucket_ipv6, target_connect_socket_action, target_create_insert_should_insert,
+        target_find_bad_should_select, target_free_action, target_job_boot_delay,
+        target_job_finalize_free_action, target_job_post_tick_action, target_job_retry_delay,
+        target_job_should_run_tick, target_job_update_mode, target_lookup_match_action,
+        target_lookup_miss_action, target_needed_connections,
+        target_pick_allow_stopped_should_select, target_pick_allow_stopped_should_skip,
+        target_pick_basic_should_select, target_pick_basic_should_skip, target_pick_should_incref,
+        target_pick_should_select, target_pick_should_skip, target_ready_bucket,
+        target_ready_transition, target_remove_dead_connection_deltas,
+        target_should_attempt_reconnect, target_tree_update_action, NatAddRuleError,
         ALLOC_CONNECTION_FAILURE_ACTION_DEC_JOBS_ACTIVE,
         ALLOC_CONNECTION_FAILURE_ACTION_FREE_RAWMSG,
         ALLOC_CONNECTION_FAILURE_ACTION_INC_ACCEPT_INIT_FAILED,
-        ALLOC_CONNECTION_FAILURE_ACTION_SET_BASIC_TYPE_NONE, C_CONNECTED, C_ERROR, C_FAILED,
-        C_ISDH, C_NET_FAILED, C_NORD, C_NOQACK, C_NOWR, C_READY_PENDING, C_SPECIAL,
-        C_STOPREAD, C_WANTRD, C_WANTWR, C_RAWMSG, CONNECTION_TIMEOUT_ACTION_INSERT_TIMER,
+        ALLOC_CONNECTION_FAILURE_ACTION_SET_BASIC_TYPE_NONE,
+        ALLOC_CONNECTION_SPECIAL_ACTION_EPOLL_REMOVE, ALLOC_CONNECTION_SPECIAL_ACTION_LOG_LEVEL0,
+        ALLOC_CONNECTION_SPECIAL_ACTION_LOG_LEVEL1, CONNECTION_TIMEOUT_ACTION_INSERT_TIMER,
         CONNECTION_TIMEOUT_ACTION_REMOVE_TIMER, CONNECTION_TIMEOUT_ACTION_SKIP_ERROR,
         CONNECTION_WRITE_CLOSE_ACTION_SET_CONN_STOPREAD,
         CONNECTION_WRITE_CLOSE_ACTION_SET_IO_STOPREAD,
         CONNECTION_WRITE_CLOSE_ACTION_SET_STATUS_WRITE_CLOSE,
-        CONNECTION_WRITE_CLOSE_ACTION_SIGNAL_RUN, CT_INBOUND, CT_OUTBOUND, EVT_LEVEL,
-        EVT_READ, EVT_SPEC, EVT_WRITE, FAIL_CONNECTION_ACTION_NOOP,
+        CONNECTION_WRITE_CLOSE_ACTION_SIGNAL_RUN, CONN_CONNECTING, CONN_WORKING, CR_BUSY,
+        CT_INBOUND, CT_OUTBOUND, C_CONNECTED, C_ERROR, C_FAILED, C_ISDH, C_NET_FAILED, C_NOQACK,
+        C_NORD, C_NOWR, C_RAWMSG, C_READY_PENDING, C_SPECIAL, C_STOPREAD, C_WANTRD, C_WANTWR,
+        EVT_LEVEL, EVT_READ, EVT_SPEC, EVT_WRITE, FAIL_CONNECTION_ACTION_NOOP,
         FAIL_CONNECTION_ACTION_SET_ERROR_CODE, FAIL_CONNECTION_ACTION_SET_STATUS_ERROR,
         FAIL_CONNECTION_ACTION_SIGNAL_ABORT, FAIL_SOCKET_CONNECTION_ACTION_CLEANUP,
-        FAIL_SOCKET_CONNECTION_ACTION_NOOP, MAX_NAT_INFO_RULES, NAT_INFO_RULES, CONN_CONNECTING,
-        CONN_WORKING, CR_BUSY, SOCKET_FREE_ACTION_FAIL_CONN, SOCKET_FREE_ACTION_NONE,
-        SOCKET_JOB_ACTION_ABORT, SOCKET_JOB_ACTION_AUX, SOCKET_JOB_ACTION_ERROR,
-        SOCKET_JOB_ACTION_FINISH, SOCKET_JOB_ACTION_RUN, TARGET_CONNECT_SOCKET_IPV4,
-        TARGET_CONNECT_SOCKET_IPV6, TARGET_READY_BUCKET_BAD, TARGET_READY_BUCKET_GOOD,
-        TARGET_READY_BUCKET_IGNORE, TARGET_READY_BUCKET_STOPPED,
+        FAIL_SOCKET_CONNECTION_ACTION_NOOP, MAX_NAT_INFO_RULES, NAT_INFO_RULES,
+        SOCKET_FREE_ACTION_FAIL_CONN, SOCKET_FREE_ACTION_NONE, SOCKET_JOB_ACTION_ABORT,
+        SOCKET_JOB_ACTION_AUX, SOCKET_JOB_ACTION_ERROR, SOCKET_JOB_ACTION_FINISH,
+        SOCKET_JOB_ACTION_RUN, TARGET_CONNECT_SOCKET_IPV4, TARGET_CONNECT_SOCKET_IPV6,
+        TARGET_FREE_ACTION_DELETE_IPV4, TARGET_FREE_ACTION_DELETE_IPV6, TARGET_FREE_ACTION_REJECT,
         TARGET_LOOKUP_MATCH_ASSERT_INVALID, TARGET_LOOKUP_MATCH_REMOVE_AND_RETURN,
         TARGET_LOOKUP_MATCH_RETURN_FOUND, TARGET_LOOKUP_MISS_ASSERT_INVALID,
-        TARGET_LOOKUP_MISS_INSERT_NEW, TARGET_LOOKUP_MISS_RETURN_NULL,
-        TARGET_FREE_ACTION_DELETE_IPV4, TARGET_FREE_ACTION_DELETE_IPV6,
-        TARGET_FREE_ACTION_REJECT,
+        TARGET_LOOKUP_MISS_INSERT_NEW, TARGET_LOOKUP_MISS_RETURN_NULL, TARGET_READY_BUCKET_BAD,
+        TARGET_READY_BUCKET_GOOD, TARGET_READY_BUCKET_IGNORE, TARGET_READY_BUCKET_STOPPED,
         TARGET_TREE_UPDATE_FREE_ONLY, TARGET_TREE_UPDATE_REPLACE_AND_FREE_OLD,
     };
     use core::sync::atomic::Ordering;
@@ -1532,7 +1549,10 @@ mod tests {
             connection_timeout_action(0x100, 1.0),
             CONNECTION_TIMEOUT_ACTION_INSERT_TIMER
         );
-        assert_eq!(connection_timeout_action(0, 0.0), CONNECTION_TIMEOUT_ACTION_REMOVE_TIMER);
+        assert_eq!(
+            connection_timeout_action(0, 0.0),
+            CONNECTION_TIMEOUT_ACTION_REMOVE_TIMER
+        );
 
         assert_eq!(
             fail_connection_action(0, 7),
@@ -1544,7 +1564,10 @@ mod tests {
             fail_connection_action(0, -1),
             FAIL_CONNECTION_ACTION_SET_STATUS_ERROR | FAIL_CONNECTION_ACTION_SIGNAL_ABORT
         );
-        assert_eq!(fail_connection_action(error, 7), FAIL_CONNECTION_ACTION_NOOP);
+        assert_eq!(
+            fail_connection_action(error, 7),
+            FAIL_CONNECTION_ACTION_NOOP
+        );
 
         assert_eq!(free_connection_allocated_deltas(CT_OUTBOUND), (-1, 0));
         assert_eq!(free_connection_allocated_deltas(CT_INBOUND), (0, -1));
@@ -1555,9 +1578,13 @@ mod tests {
         assert_eq!(close_connection_failure_deltas(-18, connected), (1, 0, 0));
         assert_eq!(close_connection_failure_deltas(-18, 0), (1, 1, 0));
 
-        assert!(close_connection_has_isdh(i32::from_ne_bytes(C_ISDH.to_ne_bytes())));
+        assert!(close_connection_has_isdh(i32::from_ne_bytes(
+            C_ISDH.to_ne_bytes()
+        )));
         assert!(!close_connection_has_isdh(0));
-        assert!(close_connection_has_special(i32::from_ne_bytes(C_SPECIAL.to_ne_bytes())));
+        assert!(close_connection_has_special(i32::from_ne_bytes(
+            C_SPECIAL.to_ne_bytes()
+        )));
         assert!(!close_connection_has_special(0));
         assert!(close_connection_should_signal_special_aux(11, 11));
         assert!(!close_connection_should_signal_special_aux(10, 11));
@@ -1640,10 +1667,7 @@ mod tests {
             FAIL_SOCKET_CONNECTION_ACTION_NOOP
         );
 
-        assert_eq!(
-            socket_free_plan(false),
-            (SOCKET_FREE_ACTION_NONE, -201, -1)
-        );
+        assert_eq!(socket_free_plan(false), (SOCKET_FREE_ACTION_NONE, -201, -1));
         assert_eq!(
             socket_free_plan(true),
             (SOCKET_FREE_ACTION_FAIL_CONN, -201, -1)
@@ -1652,11 +1676,20 @@ mod tests {
 
     #[test]
     fn socket_job_and_alloc_socket_helpers_match_c_rules() {
-        assert_eq!(socket_job_action(11, 11, 12, 13, 14), SOCKET_JOB_ACTION_ABORT);
+        assert_eq!(
+            socket_job_action(11, 11, 12, 13, 14),
+            SOCKET_JOB_ACTION_ABORT
+        );
         assert_eq!(socket_job_action(12, 11, 12, 13, 14), SOCKET_JOB_ACTION_RUN);
         assert_eq!(socket_job_action(13, 11, 12, 13, 14), SOCKET_JOB_ACTION_AUX);
-        assert_eq!(socket_job_action(14, 11, 12, 13, 14), SOCKET_JOB_ACTION_FINISH);
-        assert_eq!(socket_job_action(15, 11, 12, 13, 14), SOCKET_JOB_ACTION_ERROR);
+        assert_eq!(
+            socket_job_action(14, 11, 12, 13, 14),
+            SOCKET_JOB_ACTION_FINISH
+        );
+        assert_eq!(
+            socket_job_action(15, 11, 12, 13, 14),
+            SOCKET_JOB_ACTION_ERROR
+        );
         assert_eq!(socket_job_abort_error(), -200);
 
         let connected = i32::from_ne_bytes(C_CONNECTED.to_ne_bytes());
@@ -1752,20 +1785,17 @@ mod tests {
             target_lookup_match_action(1),
             TARGET_LOOKUP_MATCH_ASSERT_INVALID
         );
-        assert_eq!(
-            target_lookup_miss_action(1),
-            TARGET_LOOKUP_MISS_INSERT_NEW
-        );
-        assert_eq!(
-            target_lookup_miss_action(0),
-            TARGET_LOOKUP_MISS_RETURN_NULL
-        );
+        assert_eq!(target_lookup_miss_action(1), TARGET_LOOKUP_MISS_INSERT_NEW);
+        assert_eq!(target_lookup_miss_action(0), TARGET_LOOKUP_MISS_RETURN_NULL);
         assert_eq!(
             target_lookup_miss_action(-1),
             TARGET_LOOKUP_MISS_ASSERT_INVALID
         );
 
-        assert_eq!(target_free_action(1, false, true), TARGET_FREE_ACTION_REJECT);
+        assert_eq!(
+            target_free_action(1, false, true),
+            TARGET_FREE_ACTION_REJECT
+        );
         assert_eq!(target_free_action(0, true, true), TARGET_FREE_ACTION_REJECT);
         assert_eq!(
             target_free_action(0, false, true),
@@ -1845,7 +1875,10 @@ mod tests {
             i32::from_ne_bytes((EVT_READ | EVT_WRITE).to_ne_bytes()),
             i32::from_ne_bytes((EVT_READ | EVT_WRITE).to_ne_bytes()),
         );
-        assert_eq!(u32::from_ne_bytes(clear_both.to_ne_bytes()), C_NORD | C_NOWR);
+        assert_eq!(
+            u32::from_ne_bytes(clear_both.to_ne_bytes()),
+            C_NORD | C_NOWR
+        );
 
         assert_eq!(socket_gateway_abort_action(false, false), 0);
         assert_eq!(socket_gateway_abort_action(false, true), 2);
@@ -1903,7 +1936,8 @@ mod tests {
         assert_eq!(listening_init_update_max_connection(11, 10), 11);
         assert_eq!(listening_init_update_max_connection(9, 10), 10);
 
-        let mode_bits = listening_init_mode_policy(0b1_1101, 0b0001, 0b0010, 0b0100, 0b1000, 0b1_0000);
+        let mode_bits =
+            listening_init_mode_policy(0b1_1101, 0b0001, 0b0010, 0b0100, 0b1000, 0b1_0000);
         assert_eq!(mode_bits, 0b1_1101);
     }
 
@@ -2095,7 +2129,10 @@ mod tests {
     fn target_bucket_ipv4_is_stable() {
         let bucket = target_bucket_ipv4(0x1234usize, 0x7f00_0001, 443, 99_961);
         assert!(bucket >= 0 && bucket < 99_961);
-        assert_eq!(bucket, target_bucket_ipv4(0x1234usize, 0x7f00_0001, 443, 99_961));
+        assert_eq!(
+            bucket,
+            target_bucket_ipv4(0x1234usize, 0x7f00_0001, 443, 99_961)
+        );
     }
 
     #[test]
