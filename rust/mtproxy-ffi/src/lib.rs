@@ -907,12 +907,14 @@ static AES_NONCE_RAND_BUF: Mutex<[u8; 64]> = Mutex::new([0u8; 64]);
 mod compat;
 mod crypto;
 mod jobs;
+mod kprintf;
 mod mtproto;
 mod time_cfg_observability;
 
 pub use compat::*;
 pub use crypto::*;
 pub use jobs::*;
+pub use kprintf::*;
 pub use mtproto::*;
 pub use time_cfg_observability::*;
 
