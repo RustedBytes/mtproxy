@@ -265,6 +265,25 @@ extern int32_t mtproxy_ffi_net_connections_socket_job_run_should_signal_aux(
     int32_t flags, int32_t new_epoll_status, int32_t current_epoll_status);
 extern int32_t
 mtproxy_ffi_net_connections_socket_job_aux_should_update_epoll(int32_t flags);
+extern int32_t
+mtproxy_ffi_net_connections_socket_reader_should_run(int32_t flags);
+extern int32_t mtproxy_ffi_net_connections_socket_reader_io_action(
+    int32_t read_result, int32_t read_errno, int32_t eagain_errno,
+    int32_t eintr_errno);
+extern int32_t
+mtproxy_ffi_net_connections_socket_writer_should_run(int32_t flags);
+extern int32_t mtproxy_ffi_net_connections_socket_writer_io_action(
+    int32_t write_result, int32_t write_errno, int32_t eagain_count,
+    int32_t eagain_errno, int32_t eintr_errno, int32_t eagain_limit,
+    int32_t *out_next_eagain_count);
+extern int32_t
+mtproxy_ffi_net_connections_socket_writer_should_call_ready_to_write(
+    int32_t check_watermark, int32_t total_bytes, int32_t write_low_watermark);
+extern int32_t
+mtproxy_ffi_net_connections_socket_writer_should_abort_on_stop(int32_t stop,
+                                                               int32_t flags);
+extern int32_t
+mtproxy_ffi_net_connections_socket_read_write_connect_action(int32_t flags);
 extern int32_t mtproxy_ffi_net_connections_socket_gateway_clear_flags(
     int32_t event_state, int32_t event_ready);
 extern int32_t mtproxy_ffi_net_connections_socket_gateway_abort_action(
@@ -960,11 +979,24 @@ int net_server_socket_free(socket_connection_job_t C) {
   Then puts it to conn->in_queue and send JS_RUN signal
 */
 int net_server_socket_reader(socket_connection_job_t C) {
+  enum {
+    SOCKET_READER_IO_HAVE_DATA = 0,
+    SOCKET_READER_IO_BREAK = 1,
+    SOCKET_READER_IO_CONTINUE_INTR = 2,
+    SOCKET_READER_IO_FATAL_ABORT = 3,
+  };
+
   assert_net_net_thread();
   struct socket_connection_info *c = SOCKET_CONN_INFO(C);
 
-  while ((c->flags & (C_WANTRD | C_NORD | C_STOPREAD | C_ERROR |
-                      C_NET_FAILED)) == C_WANTRD) {
+  while (1) {
+    int32_t should_run =
+        mtproxy_ffi_net_connections_socket_reader_should_run(c->flags);
+    assert(should_run == 0 || should_run == 1);
+    if (!should_run) {
+      break;
+    }
+
     if (!tcp_recv_buffers_num) {
       prealloc_tcp_buffers();
     }
@@ -982,19 +1014,25 @@ int net_server_socket_reader(socket_connection_job_t C) {
     int read_errno = (r < 0) ? errno : 0;
     MODULE_STAT->tcp_readv_calls++;
 
-    if (r <= 0) {
-      if (r < 0 && read_errno == EAGAIN) {
-      } else if (r < 0 && read_errno == EINTR) {
-        __sync_fetch_and_and(&c->flags, ~C_NORD);
-        MODULE_STAT->tcp_readv_intr++;
-        continue;
-      } else {
-        vkprintf(1, "Connection %d: Fatal error %m\n", c->fd);
-        job_signal(JOB_REF_CREATE_PASS(C), JS_ABORT);
-        __sync_fetch_and_or(&c->flags, C_NET_FAILED);
-        return 0;
-      }
-    } else {
+    int32_t io_action = mtproxy_ffi_net_connections_socket_reader_io_action(
+        r, read_errno, EAGAIN, EINTR);
+    assert(io_action == SOCKET_READER_IO_HAVE_DATA ||
+           io_action == SOCKET_READER_IO_BREAK ||
+           io_action == SOCKET_READER_IO_CONTINUE_INTR ||
+           io_action == SOCKET_READER_IO_FATAL_ABORT);
+
+    if (io_action == SOCKET_READER_IO_CONTINUE_INTR) {
+      __sync_fetch_and_and(&c->flags, ~C_NORD);
+      MODULE_STAT->tcp_readv_intr++;
+      continue;
+    }
+    if (io_action == SOCKET_READER_IO_FATAL_ABORT) {
+      vkprintf(1, "Connection %d: Fatal error %m\n", c->fd);
+      job_signal(JOB_REF_CREATE_PASS(C), JS_ABORT);
+      __sync_fetch_and_or(&c->flags, C_NET_FAILED);
+      return 0;
+    }
+    if (io_action == SOCKET_READER_IO_HAVE_DATA) {
       __sync_fetch_and_and(&c->flags, ~C_NORD);
     }
 
@@ -1008,11 +1046,12 @@ int net_server_socket_reader(socket_connection_job_t C) {
       vkprintf(2, "readv from %d: %d read out of %d\n", c->fd, r, s);
     }
 
-    if (r <= 0) {
+    if (io_action == SOCKET_READER_IO_BREAK) {
       rwm_free(in);
       free(in);
       break;
     }
+    assert(io_action == SOCKET_READER_IO_HAVE_DATA);
 
     MODULE_STAT->tcp_readv_bytes += r;
     struct msg_part *mp = 0;
@@ -1068,6 +1107,14 @@ int net_server_socket_reader(socket_connection_job_t C) {
   Get data from out raw message and writes it to socket
 */
 int net_server_socket_writer(socket_connection_job_t C) {
+  enum {
+    SOCKET_WRITER_IO_HAVE_DATA = 0,
+    SOCKET_WRITER_IO_BREAK_EAGAIN = 1,
+    SOCKET_WRITER_IO_CONTINUE_INTR = 2,
+    SOCKET_WRITER_IO_FATAL_EAGAIN_LIMIT = 3,
+    SOCKET_WRITER_IO_FATAL_OTHER = 4,
+  };
+
   assert_net_net_thread();
   struct socket_connection_info *c = SOCKET_CONN_INFO(C);
 
@@ -1078,8 +1125,14 @@ int net_server_socket_writer(socket_connection_job_t C) {
 
   int stop = c->flags & C_STOPWRITE;
 
-  while ((c->flags & (C_WANTWR | C_NOWR | C_ERROR | C_NET_FAILED)) ==
-         C_WANTWR) {
+  while (1) {
+    int32_t should_run =
+        mtproxy_ffi_net_connections_socket_writer_should_run(c->flags);
+    assert(should_run == 0 || should_run == 1);
+    if (!should_run) {
+      break;
+    }
+
     if (!out->total_bytes) {
       __sync_fetch_and_and(&c->flags, ~C_WANTWR);
       break;
@@ -1095,29 +1148,38 @@ int net_server_socket_writer(socket_connection_job_t C) {
     int r = writev(c->fd, iov, iovcnt);
     MODULE_STAT->tcp_writev_calls++;
 
-    if (r <= 0) {
-      if (r < 0 && errno == EAGAIN) {
-        if (++c->eagain_count > 100) {
-          kprintf("Too much EAGAINs for connection %d (%s), dropping\n", c->fd,
-                  show_remote_socket_ip(C));
-          job_signal(JOB_REF_CREATE_PASS(C), JS_ABORT);
-          __sync_fetch_and_or(&c->flags, C_NET_FAILED);
-          return 0;
-        }
-      } else if (r < 0 && errno == EINTR) {
-        __sync_fetch_and_and(&c->flags, ~C_NOWR);
-        MODULE_STAT->tcp_writev_intr++;
-        continue;
-      } else {
-        vkprintf(1, "Connection %d: Fatal error %m\n", c->fd);
-        job_signal(JOB_REF_CREATE_PASS(C), JS_ABORT);
-        __sync_fetch_and_or(&c->flags, C_NET_FAILED);
-        return 0;
-      }
-    } else {
+    int32_t next_eagain_count = c->eagain_count;
+    int32_t io_action = mtproxy_ffi_net_connections_socket_writer_io_action(
+        r, (r < 0) ? errno : 0, c->eagain_count, EAGAIN, EINTR, 100,
+        &next_eagain_count);
+    assert(io_action == SOCKET_WRITER_IO_HAVE_DATA ||
+           io_action == SOCKET_WRITER_IO_BREAK_EAGAIN ||
+           io_action == SOCKET_WRITER_IO_CONTINUE_INTR ||
+           io_action == SOCKET_WRITER_IO_FATAL_EAGAIN_LIMIT ||
+           io_action == SOCKET_WRITER_IO_FATAL_OTHER);
+    c->eagain_count = next_eagain_count;
+
+    if (io_action == SOCKET_WRITER_IO_CONTINUE_INTR) {
+      __sync_fetch_and_and(&c->flags, ~C_NOWR);
+      MODULE_STAT->tcp_writev_intr++;
+      continue;
+    }
+    if (io_action == SOCKET_WRITER_IO_FATAL_EAGAIN_LIMIT) {
+      kprintf("Too much EAGAINs for connection %d (%s), dropping\n", c->fd,
+              show_remote_socket_ip(C));
+      job_signal(JOB_REF_CREATE_PASS(C), JS_ABORT);
+      __sync_fetch_and_or(&c->flags, C_NET_FAILED);
+      return 0;
+    }
+    if (io_action == SOCKET_WRITER_IO_FATAL_OTHER) {
+      vkprintf(1, "Connection %d: Fatal error %m\n", c->fd);
+      job_signal(JOB_REF_CREATE_PASS(C), JS_ABORT);
+      __sync_fetch_and_or(&c->flags, C_NET_FAILED);
+      return 0;
+    }
+    if (io_action == SOCKET_WRITER_IO_HAVE_DATA) {
       __sync_fetch_and_and(&c->flags, ~C_NOWR);
       MODULE_STAT->tcp_writev_bytes += r;
-      c->eagain_count = 0;
       t += r;
     }
 
@@ -1135,13 +1197,21 @@ int net_server_socket_writer(socket_connection_job_t C) {
     }
   }
 
-  if (check_watermark && out->total_bytes < c->write_low_watermark) {
+  int32_t should_call_ready_to_write =
+      mtproxy_ffi_net_connections_socket_writer_should_call_ready_to_write(
+          check_watermark, out->total_bytes, c->write_low_watermark);
+  assert(should_call_ready_to_write == 0 || should_call_ready_to_write == 1);
+  if (should_call_ready_to_write) {
     if (c->type->ready_to_write) {
       c->type->ready_to_write(C);
     }
   }
 
-  if (stop && !(c->flags & C_WANTWR)) {
+  int32_t should_abort_on_stop =
+      mtproxy_ffi_net_connections_socket_writer_should_abort_on_stop(
+          !!stop, c->flags);
+  assert(should_abort_on_stop == 0 || should_abort_on_stop == 1);
+  if (should_abort_on_stop) {
     vkprintf(1, "Closing write_close socket\n");
     job_signal(JOB_REF_CREATE_PASS(C), JS_ABORT);
     __sync_fetch_and_or(&c->flags, C_NET_FAILED);
@@ -1158,32 +1228,45 @@ int net_server_socket_writer(socket_connection_job_t C) {
   runs socket_reader and socket_writer
 */
 int net_server_socket_read_write(socket_connection_job_t C) {
+  enum {
+    SOCKET_READ_WRITE_CONNECT_RETURN_ZERO = 0,
+    SOCKET_READ_WRITE_CONNECT_RETURN_COMPUTE_EVENTS = 1,
+    SOCKET_READ_WRITE_CONNECT_MARK_CONNECTED = 2,
+    SOCKET_READ_WRITE_CONNECT_CONTINUE_IO = 3,
+  };
+
   assert_net_net_thread();
 
   struct socket_connection_info *c = SOCKET_CONN_INFO(C);
 
-  if (c->flags & C_ERROR) {
+  int32_t connect_action =
+      mtproxy_ffi_net_connections_socket_read_write_connect_action(c->flags);
+  assert(connect_action == SOCKET_READ_WRITE_CONNECT_RETURN_ZERO ||
+         connect_action == SOCKET_READ_WRITE_CONNECT_RETURN_COMPUTE_EVENTS ||
+         connect_action == SOCKET_READ_WRITE_CONNECT_MARK_CONNECTED ||
+         connect_action == SOCKET_READ_WRITE_CONNECT_CONTINUE_IO);
+
+  if (connect_action == SOCKET_READ_WRITE_CONNECT_RETURN_ZERO) {
     return 0;
   }
-
-  if (!(c->flags & C_CONNECTED)) {
-    if (!(c->flags & C_NOWR)) {
-      __sync_fetch_and_and(&c->flags, C_PERMANENT);
-      __sync_fetch_and_or(&c->flags, C_WANTRD | C_CONNECTED);
-      __sync_fetch_and_or(&CONN_INFO(c->conn)->flags,
-                          C_READY_PENDING | C_CONNECTED);
-
-      c->type->socket_connected(C);
-      job_signal(JOB_REF_CREATE_PASS(c->conn), JS_RUN);
-    } else {
-      return compute_conn_events(C);
-    }
+  if (connect_action == SOCKET_READ_WRITE_CONNECT_RETURN_COMPUTE_EVENTS) {
+    return compute_conn_events(C);
   }
+  if (connect_action == SOCKET_READ_WRITE_CONNECT_MARK_CONNECTED) {
+    __sync_fetch_and_and(&c->flags, C_PERMANENT);
+    __sync_fetch_and_or(&c->flags, C_WANTRD | C_CONNECTED);
+    __sync_fetch_and_or(&CONN_INFO(c->conn)->flags,
+                        C_READY_PENDING | C_CONNECTED);
+
+    c->type->socket_connected(C);
+    job_signal(JOB_REF_CREATE_PASS(c->conn), JS_RUN);
+  }
+  assert(connect_action == SOCKET_READ_WRITE_CONNECT_MARK_CONNECTED ||
+         connect_action == SOCKET_READ_WRITE_CONNECT_CONTINUE_IO);
 
   vkprintf(2, "END processing connection %d, flags=%d\n", c->fd, c->flags);
 
-  while ((c->flags & (C_WANTRD | C_NORD | C_ERROR | C_STOPREAD |
-                      C_NET_FAILED)) == C_WANTRD) {
+  while (mtproxy_ffi_net_connections_socket_reader_should_run(c->flags)) {
     c->type->socket_reader(C);
   }
 
@@ -1202,8 +1285,7 @@ int net_server_socket_read_write(socket_connection_job_t C) {
     __sync_fetch_and_or(&c->flags, C_WANTWR);
   }
 
-  while ((c->flags & (C_NOWR | C_ERROR | C_WANTWR | C_NET_FAILED)) ==
-         C_WANTWR) {
+  while (mtproxy_ffi_net_connections_socket_writer_should_run(c->flags)) {
     c->type->socket_writer(C);
   }
 

@@ -86,6 +86,22 @@ const CHECK_CONN_NONRAW_ASSERT_FREE_BUFFERS: i32 = 1 << 0;
 const CHECK_CONN_NONRAW_ASSERT_READER: i32 = 1 << 1;
 const CHECK_CONN_NONRAW_ASSERT_WRITER: i32 = 1 << 2;
 
+const SOCKET_READER_IO_HAVE_DATA: i32 = 0;
+const SOCKET_READER_IO_BREAK: i32 = 1;
+const SOCKET_READER_IO_CONTINUE_INTR: i32 = 2;
+const SOCKET_READER_IO_FATAL_ABORT: i32 = 3;
+
+const SOCKET_WRITER_IO_HAVE_DATA: i32 = 0;
+const SOCKET_WRITER_IO_BREAK_EAGAIN: i32 = 1;
+const SOCKET_WRITER_IO_CONTINUE_INTR: i32 = 2;
+const SOCKET_WRITER_IO_FATAL_EAGAIN_LIMIT: i32 = 3;
+const SOCKET_WRITER_IO_FATAL_OTHER: i32 = 4;
+
+const SOCKET_READ_WRITE_CONNECT_RETURN_ZERO: i32 = 0;
+const SOCKET_READ_WRITE_CONNECT_RETURN_COMPUTE_EVENTS: i32 = 1;
+const SOCKET_READ_WRITE_CONNECT_MARK_CONNECTED: i32 = 2;
+const SOCKET_READ_WRITE_CONNECT_CONTINUE_IO: i32 = 3;
+
 static NAT_INFO_RULES: AtomicUsize = AtomicUsize::new(0);
 static NAT_INFO_LOCAL: [AtomicU32; MAX_NAT_INFO_RULES] =
     [const { AtomicU32::new(0) }; MAX_NAT_INFO_RULES];
@@ -211,6 +227,114 @@ pub fn socket_job_run_should_signal_aux(flags: i32, new_epoll_status: i32, curre
 #[must_use]
 pub fn socket_job_aux_should_update_epoll(flags: i32) -> bool {
     (i32_to_u32(flags) & C_ERROR) == 0
+}
+
+/// Returns whether socket reader loop should continue.
+#[must_use]
+pub fn socket_reader_should_run(flags: i32) -> bool {
+    let f = i32_to_u32(flags);
+    (f & (C_WANTRD | C_NORD | C_STOPREAD | C_ERROR | C_NET_FAILED)) == C_WANTRD
+}
+
+/// Selects action for socket reader IO result.
+///
+/// Returns:
+/// - `0`: data available (`r > 0`)
+/// - `1`: break loop (`EAGAIN`)
+/// - `2`: clear `C_NORD`, count EINTR and continue
+/// - `3`: fatal abort path
+#[must_use]
+pub fn socket_reader_io_action(read_result: i32, read_errno: i32, eagain_errno: i32, eintr_errno: i32) -> i32 {
+    if read_result > 0 {
+        SOCKET_READER_IO_HAVE_DATA
+    } else if read_result < 0 && read_errno == eagain_errno {
+        SOCKET_READER_IO_BREAK
+    } else if read_result < 0 && read_errno == eintr_errno {
+        SOCKET_READER_IO_CONTINUE_INTR
+    } else {
+        SOCKET_READER_IO_FATAL_ABORT
+    }
+}
+
+/// Returns whether socket writer loop should continue.
+#[must_use]
+pub fn socket_writer_should_run(flags: i32) -> bool {
+    let f = i32_to_u32(flags);
+    (f & (C_WANTWR | C_NOWR | C_ERROR | C_NET_FAILED)) == C_WANTWR
+}
+
+/// Selects action for socket writer IO result and next `eagain_count`.
+///
+/// Returns tuple `(action, next_eagain_count)`, where action is:
+/// - `0`: data written (`r > 0`)
+/// - `1`: break loop (`EAGAIN`, below limit)
+/// - `2`: clear `C_NOWR`, count EINTR and continue
+/// - `3`: fatal abort (`EAGAIN` limit exceeded)
+/// - `4`: fatal abort (other error / zero write)
+#[must_use]
+pub fn socket_writer_io_action(
+    write_result: i32,
+    write_errno: i32,
+    eagain_count: i32,
+    eagain_errno: i32,
+    eintr_errno: i32,
+    eagain_limit: i32,
+) -> (i32, i32) {
+    if write_result > 0 {
+        return (SOCKET_WRITER_IO_HAVE_DATA, 0);
+    }
+
+    if write_result < 0 && write_errno == eagain_errno {
+        let next = eagain_count + 1;
+        if next > eagain_limit {
+            (SOCKET_WRITER_IO_FATAL_EAGAIN_LIMIT, next)
+        } else {
+            (SOCKET_WRITER_IO_BREAK_EAGAIN, next)
+        }
+    } else if write_result < 0 && write_errno == eintr_errno {
+        (SOCKET_WRITER_IO_CONTINUE_INTR, eagain_count)
+    } else {
+        (SOCKET_WRITER_IO_FATAL_OTHER, eagain_count)
+    }
+}
+
+/// Returns whether `ready_to_write` callback should be invoked.
+#[must_use]
+pub fn socket_writer_should_call_ready_to_write(
+    check_watermark: bool,
+    total_bytes: i32,
+    write_low_watermark: i32,
+) -> bool {
+    check_watermark && total_bytes < write_low_watermark
+}
+
+/// Returns whether write-stop path should trigger abort.
+#[must_use]
+pub fn socket_writer_should_abort_on_stop(stop: bool, flags: i32) -> bool {
+    stop && (i32_to_u32(flags) & C_WANTWR) == 0
+}
+
+/// Selects connect-stage action in `net_server_socket_read_write`.
+///
+/// Returns:
+/// - `0`: return `0` (`C_ERROR`)
+/// - `1`: return `compute_conn_events(C)` (still connecting and `C_NOWR`)
+/// - `2`: mark connected and continue
+/// - `3`: already connected, continue
+#[must_use]
+pub fn socket_read_write_connect_action(flags: i32) -> i32 {
+    let f = i32_to_u32(flags);
+    if (f & C_ERROR) != 0 {
+        SOCKET_READ_WRITE_CONNECT_RETURN_ZERO
+    } else if (f & C_CONNECTED) == 0 {
+        if (f & C_NOWR) != 0 {
+            SOCKET_READ_WRITE_CONNECT_RETURN_COMPUTE_EVENTS
+        } else {
+            SOCKET_READ_WRITE_CONNECT_MARK_CONNECTED
+        }
+    } else {
+        SOCKET_READ_WRITE_CONNECT_CONTINUE_IO
+    }
 }
 
 /// Computes socket flag bits to clear in read-write gateway after epoll readiness.
@@ -827,7 +951,10 @@ mod tests {
         listening_init_update_max_connection, nat_add_rule, nat_translate_ip, server_check_ready,
         listening_job_action, socket_job_aux_should_update_epoll,
         socket_job_run_should_call_read_write, socket_job_run_should_signal_aux,
-        socket_gateway_abort_action, socket_gateway_clear_flags, target_bucket_ipv4,
+        socket_gateway_abort_action, socket_gateway_clear_flags, socket_reader_io_action,
+        socket_reader_should_run, socket_read_write_connect_action, socket_writer_io_action,
+        socket_writer_should_abort_on_stop, socket_writer_should_call_ready_to_write,
+        socket_writer_should_run, target_bucket_ipv4,
         target_bucket_ipv6, target_job_boot_delay, target_job_finalize_free_action,
         target_job_post_tick_action, target_job_retry_delay, target_job_should_run_tick,
         target_job_update_mode, target_needed_connections, target_pick_allow_stopped_should_select,
@@ -835,10 +962,11 @@ mod tests {
         target_pick_basic_should_skip, target_pick_should_select, target_pick_should_skip,
         target_ready_transition, target_should_attempt_reconnect, NatAddRuleError,
         C_CONNECTED, C_ERROR, C_FAILED, C_NET_FAILED, C_NORD, C_NOWR, C_READY_PENDING,
-        C_WANTRD, C_WANTWR, EVT_LEVEL, EVT_READ, EVT_SPEC, EVT_WRITE, MAX_NAT_INFO_RULES,
-        NAT_INFO_RULES, connection_event_should_release, connection_get_by_fd_action,
-        connection_generation_matches, check_conn_functions_default_mask,
-        check_conn_functions_accept_mask, check_conn_functions_raw_policy,
+        C_STOPREAD, C_WANTRD, C_WANTWR, EVT_LEVEL, EVT_READ, EVT_SPEC, EVT_WRITE,
+        MAX_NAT_INFO_RULES, NAT_INFO_RULES, connection_event_should_release,
+        connection_get_by_fd_action, connection_generation_matches,
+        check_conn_functions_default_mask, check_conn_functions_accept_mask,
+        check_conn_functions_raw_policy,
     };
     use core::sync::atomic::Ordering;
 
@@ -927,6 +1055,42 @@ mod tests {
         assert_eq!(socket_gateway_abort_action(false, true), 2);
         assert_eq!(socket_gateway_abort_action(true, false), 1);
         assert_eq!(socket_gateway_abort_action(true, true), 1);
+    }
+
+    #[test]
+    fn socket_reader_writer_and_read_write_helpers_match_c_rules() {
+        let wantrd = i32::from_ne_bytes(C_WANTRD.to_ne_bytes());
+        let wantwr = i32::from_ne_bytes(C_WANTWR.to_ne_bytes());
+        let nord = i32::from_ne_bytes(C_NORD.to_ne_bytes());
+        let stopread = i32::from_ne_bytes(C_STOPREAD.to_ne_bytes());
+        let nowr = i32::from_ne_bytes(C_NOWR.to_ne_bytes());
+        let connected = i32::from_ne_bytes(C_CONNECTED.to_ne_bytes());
+        let error = i32::from_ne_bytes(C_ERROR.to_ne_bytes());
+
+        assert!(socket_reader_should_run(wantrd));
+        assert!(!socket_reader_should_run(wantrd | nord));
+        assert!(!socket_reader_should_run(wantrd | stopread));
+        assert_eq!(socket_reader_io_action(5, 0, 11, 4), 0);
+        assert_eq!(socket_reader_io_action(-1, 11, 11, 4), 1);
+        assert_eq!(socket_reader_io_action(-1, 4, 11, 4), 2);
+        assert_eq!(socket_reader_io_action(0, 0, 11, 4), 3);
+
+        assert!(socket_writer_should_run(wantwr));
+        assert!(!socket_writer_should_run(wantwr | nowr));
+        assert_eq!(socket_writer_io_action(5, 0, 7, 11, 4, 100), (0, 0));
+        assert_eq!(socket_writer_io_action(-1, 11, 7, 11, 4, 100), (1, 8));
+        assert_eq!(socket_writer_io_action(-1, 4, 7, 11, 4, 100), (2, 7));
+        assert_eq!(socket_writer_io_action(-1, 11, 100, 11, 4, 100), (3, 101));
+        assert_eq!(socket_writer_io_action(0, 0, 7, 11, 4, 100), (4, 7));
+        assert!(socket_writer_should_call_ready_to_write(true, 5, 10));
+        assert!(!socket_writer_should_call_ready_to_write(false, 5, 10));
+        assert!(socket_writer_should_abort_on_stop(true, 0));
+        assert!(!socket_writer_should_abort_on_stop(true, wantwr));
+
+        assert_eq!(socket_read_write_connect_action(error), 0);
+        assert_eq!(socket_read_write_connect_action(nowr), 1);
+        assert_eq!(socket_read_write_connect_action(0), 2);
+        assert_eq!(socket_read_write_connect_action(connected), 3);
     }
 
     #[test]

@@ -334,6 +334,111 @@ pub extern "C" fn mtproxy_ffi_net_connections_socket_job_aux_should_update_epoll
     }
 }
 
+/// Returns whether socket reader loop should continue.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_connections_socket_reader_should_run(flags: c_int) -> c_int {
+    if mtproxy_core::runtime::net::connections::socket_reader_should_run(flags) {
+        1
+    } else {
+        0
+    }
+}
+
+/// Selects action for socket reader IO result.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_connections_socket_reader_io_action(
+    read_result: c_int,
+    read_errno: c_int,
+    eagain_errno: c_int,
+    eintr_errno: c_int,
+) -> c_int {
+    mtproxy_core::runtime::net::connections::socket_reader_io_action(
+        read_result,
+        read_errno,
+        eagain_errno,
+        eintr_errno,
+    )
+}
+
+/// Returns whether socket writer loop should continue.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_connections_socket_writer_should_run(flags: c_int) -> c_int {
+    if mtproxy_core::runtime::net::connections::socket_writer_should_run(flags) {
+        1
+    } else {
+        0
+    }
+}
+
+/// Selects action for socket writer IO result and returns next `eagain_count`.
+///
+/// # Safety
+/// `out_next_eagain_count` must be a valid writable pointer.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_connections_socket_writer_io_action(
+    write_result: c_int,
+    write_errno: c_int,
+    eagain_count: c_int,
+    eagain_errno: c_int,
+    eintr_errno: c_int,
+    eagain_limit: c_int,
+    out_next_eagain_count: *mut c_int,
+) -> c_int {
+    if out_next_eagain_count.is_null() {
+        return -1;
+    }
+    let (action, next_eagain_count) = mtproxy_core::runtime::net::connections::socket_writer_io_action(
+        write_result,
+        write_errno,
+        eagain_count,
+        eagain_errno,
+        eintr_errno,
+        eagain_limit,
+    );
+    *out_next_eagain_count = next_eagain_count;
+    action
+}
+
+/// Returns whether `ready_to_write` callback should be invoked.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_connections_socket_writer_should_call_ready_to_write(
+    check_watermark: c_int,
+    total_bytes: c_int,
+    write_low_watermark: c_int,
+) -> c_int {
+    if mtproxy_core::runtime::net::connections::socket_writer_should_call_ready_to_write(
+        check_watermark != 0,
+        total_bytes,
+        write_low_watermark,
+    ) {
+        1
+    } else {
+        0
+    }
+}
+
+/// Returns whether write-stop path should trigger abort.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_connections_socket_writer_should_abort_on_stop(
+    stop: c_int,
+    flags: c_int,
+) -> c_int {
+    if mtproxy_core::runtime::net::connections::socket_writer_should_abort_on_stop(stop != 0, flags)
+    {
+        1
+    } else {
+        0
+    }
+}
+
+/// Selects connect-stage action in `net_server_socket_read_write`.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_connections_socket_read_write_connect_action(
+    flags: c_int,
+) -> c_int {
+    mtproxy_core::runtime::net::connections::socket_read_write_connect_action(flags)
+}
+
 /// Computes socket flag bits to clear in read-write gateway after epoll readiness.
 #[no_mangle]
 pub extern "C" fn mtproxy_ffi_net_connections_socket_gateway_clear_flags(
