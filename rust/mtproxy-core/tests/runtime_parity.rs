@@ -4,7 +4,7 @@ use mtproxy_core::runtime::{
     engine::signals::{
         engine_process_signals_with, processed_signals_count, register_runtime_signal,
         set_signal_handlers, signal_check_pending, signal_check_pending_and_clear,
-        signal_dispatch_count, signal_set_pending, SIGTERM, SIGUSR1,
+        signal_dispatch_count, signal_set_pending, SIGINT, SIGTERM, SIGUSR1,
     },
     engine::{
         engine_init, engine_runtime_snapshot, engine_server_start, engine_server_tick, server_init,
@@ -249,4 +249,34 @@ fn parity_engine_server_tick_uses_persistent_scheduler() {
         assert!(tick <= 1);
         assert_eq!(engine_runtime_snapshot().last_scheduler_batch, tick);
     }
+}
+
+#[test]
+fn parity_engine_server_tick_drains_usr1_and_tracks_signal_batch() {
+    assert!(engine_init(None, true).is_ok());
+    assert!(server_init().is_ok());
+    let _ = signal_check_pending_and_clear(SIGUSR1);
+    let _ = signal_check_pending_and_clear(SIGINT);
+    let _ = signal_check_pending_and_clear(SIGTERM);
+    assert!(engine_server_start().is_ok());
+
+    signal_set_pending(SIGUSR1);
+    let _ = engine_server_tick().expect("tick should run while engine is active");
+    assert!(!signal_check_pending(SIGUSR1));
+    assert!(engine_runtime_snapshot().last_signal_batch >= 1);
+}
+
+#[test]
+fn parity_engine_server_tick_interrupt_pending_returns_error() {
+    assert!(engine_init(None, true).is_ok());
+    assert!(server_init().is_ok());
+    let _ = signal_check_pending_and_clear(SIGINT);
+    let _ = signal_check_pending_and_clear(SIGTERM);
+    assert!(engine_server_start().is_ok());
+
+    signal_set_pending(SIGTERM);
+    let err = engine_server_tick().expect_err("tick should fail on pending SIGTERM");
+    assert!(err.contains("SIGINT/SIGTERM"));
+    assert!(!signal_check_pending(SIGTERM));
+    assert_eq!(engine_runtime_snapshot().last_scheduler_batch, 0);
 }

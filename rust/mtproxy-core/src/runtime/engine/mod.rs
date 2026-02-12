@@ -317,6 +317,10 @@ fn process_engine_scheduler_batch(max_steps: u32) -> u32 {
     processed
 }
 
+fn drain_engine_signal_batch() -> u32 {
+    signals::engine_process_signals_with(|_| {})
+}
+
 /// Returns a snapshot of runtime engine lifecycle state.
 #[must_use]
 pub fn engine_runtime_snapshot() -> EngineRuntimeSnapshot {
@@ -478,18 +482,12 @@ pub fn engine_server_start() -> Result<(), String> {
     }
 
     if signals::interrupt_signal_raised() {
-        LAST_SIGNAL_BATCH.store(
-            signals::engine_process_signals_with(|_| {}),
-            Ordering::Release,
-        );
+        LAST_SIGNAL_BATCH.store(drain_engine_signal_batch(), Ordering::Release);
         LAST_SCHEDULER_BATCH.store(0, Ordering::Release);
         return Err("startup interrupted by pending SIGINT/SIGTERM".to_string());
     }
 
-    LAST_SIGNAL_BATCH.store(
-        signals::engine_process_signals_with(|_| {}),
-        Ordering::Release,
-    );
+    LAST_SIGNAL_BATCH.store(drain_engine_signal_batch(), Ordering::Release);
     enqueue_engine_bootstrap_jobs()?;
     let processed = process_engine_scheduler_batch(4);
     LAST_SCHEDULER_BATCH.store(processed, Ordering::Release);
@@ -506,6 +504,14 @@ pub fn engine_server_tick() -> Result<u32, String> {
     if lifecycle() != EngineLifecycle::Running {
         return Err("server must be running before scheduler tick".to_string());
     }
+
+    let interrupted = signals::interrupt_signal_raised();
+    LAST_SIGNAL_BATCH.store(drain_engine_signal_batch(), Ordering::Release);
+    if interrupted {
+        LAST_SCHEDULER_BATCH.store(0, Ordering::Release);
+        return Err("scheduler tick interrupted by pending SIGINT/SIGTERM".to_string());
+    }
+
     let processed = process_engine_scheduler_batch(1);
     LAST_SCHEDULER_BATCH.store(processed, Ordering::Release);
     Ok(processed)
@@ -600,6 +606,36 @@ mod tests {
             assert!(processed <= 1);
             assert_eq!(engine_runtime_snapshot().last_scheduler_batch, processed);
         }
+    }
+
+    #[test]
+    fn test_engine_server_tick_drains_usr1_signal_batch() {
+        assert!(engine_init(None, true).is_ok());
+        assert!(server_init().is_ok());
+        let _ = signals::signal_check_pending_and_clear(signals::SIGUSR1);
+        let _ = signals::signal_check_pending_and_clear(signals::SIGINT);
+        let _ = signals::signal_check_pending_and_clear(signals::SIGTERM);
+        assert!(engine_server_start().is_ok());
+
+        signals::signal_set_pending(signals::SIGUSR1);
+        let _ = engine_server_tick().expect("tick should run");
+        assert!(!signals::signal_check_pending(signals::SIGUSR1));
+        assert!(engine_runtime_snapshot().last_signal_batch >= 1);
+    }
+
+    #[test]
+    fn test_engine_server_tick_interrupt_pending_returns_error() {
+        assert!(engine_init(None, true).is_ok());
+        assert!(server_init().is_ok());
+        let _ = signals::signal_check_pending_and_clear(signals::SIGINT);
+        let _ = signals::signal_check_pending_and_clear(signals::SIGTERM);
+        assert!(engine_server_start().is_ok());
+
+        signals::signal_set_pending(signals::SIGTERM);
+        let err = engine_server_tick().expect_err("tick should abort on interrupt");
+        assert!(err.contains("SIGINT/SIGTERM"));
+        assert!(!signals::signal_check_pending(signals::SIGTERM));
+        assert_eq!(engine_runtime_snapshot().last_scheduler_batch, 0);
     }
 
     #[test]
