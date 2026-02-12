@@ -33,13 +33,6 @@ extern "C" {
     fn get_utime_monotonic() -> c_double;
 }
 
-// We'll use a C helper function to get start_time
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_get_start_time() -> c_double {
-    // This needs to be implemented in C wrapper
-    0.0
-}
-
 const O_RDONLY: c_int = 0;
 const EINTR: c_int = 4;
 const _SC_PAGESIZE: c_int = 30;
@@ -81,16 +74,16 @@ static mut STAT_FUNC_FIRST: *mut StatFunEn = core::ptr::null_mut();
 
 /// Reads entire file into buffer. Returns bytes read or -1 on error.
 unsafe fn read_whole_file(filename: &[u8], output: &mut [u8]) -> isize {
-    let fd = unsafe { open(filename.as_ptr() as *const c_char, O_RDONLY) };
+    let fd = open(filename.as_ptr() as *const c_char, O_RDONLY);
     if fd < 0 {
         return -1;
     }
 
     let mut n: isize;
     loop {
-        n = unsafe { read(fd, output.as_mut_ptr() as *mut c_void, output.len()) };
+        n = read(fd, output.as_mut_ptr() as *mut c_void, output.len());
         if n < 0 {
-            if unsafe { get_errno() } == EINTR {
+            if get_errno() == EINTR {
                 continue;
             }
             break;
@@ -100,8 +93,8 @@ unsafe fn read_whole_file(filename: &[u8], output: &mut [u8]) -> isize {
 
     // Close fd (retry on EINTR)
     loop {
-        let res = unsafe { close(fd) };
-        if res < 0 && unsafe { get_errno() } == EINTR {
+        let res = close(fd);
+        if res < 0 && get_errno() == EINTR {
             continue;
         }
         break;
@@ -402,6 +395,7 @@ pub unsafe extern "C" fn mtproxy_ffi_sb_prepare(sb: *mut StatsBuffer) {
 
 /// Printf to stats buffer with va_list (internal helper)
 /// Note: This function is called from C wrapper that handles variadic args
+/// WARNING: The va_list can only be used ONCE per call. Cannot retry after reallocation.
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_sb_vprintf(
     sb: *mut StatsBuffer,
@@ -412,7 +406,7 @@ pub unsafe extern "C" fn mtproxy_ffi_sb_vprintf(
         return;
     }
 
-    let sb_ref = unsafe { &mut *sb };
+    let sb_ref = &mut *sb;
     if sb_ref.pos >= sb_ref.size {
         return;
     }
@@ -424,7 +418,7 @@ pub unsafe extern "C" fn mtproxy_ffi_sb_vprintf(
         return;
     }
 
-    let out_ptr = unsafe { sb_ref.buff.offset(old_pos as isize) };
+    let out_ptr = sb_ref.buff.offset(old_pos as isize);
 
     // Use vsnprintf
     extern "C" {
@@ -436,36 +430,31 @@ pub unsafe extern "C" fn mtproxy_ffi_sb_vprintf(
         ) -> c_int;
     }
 
-    let written = unsafe { vsnprintf(out_ptr, available, format, args) };
+    let written = vsnprintf(out_ptr, available, format, args);
 
     sb_ref.pos += written;
 
     // Handle buffer expansion if allocated
+    // NOTE: We cannot retry vsnprintf because va_list is consumed.
+    // If the buffer is too small, we truncate rather than crash.
     if sb_ref.pos >= sb_ref.size {
         if (sb_ref.flags & 1) != 0 {
-            // Reallocate
+            // Reallocate buffer but we can't re-print
             let new_size = 2 * sb_ref.pos;
             extern "C" {
                 fn realloc(ptr: *mut c_void, size: usize) -> *mut c_void;
             }
-            let new_buff = unsafe { realloc(sb_ref.buff as *mut c_void, new_size as usize) as *mut c_char };
-            if new_buff.is_null() {
-                unsafe { sb_truncate(sb) };
-                return;
+            let new_buff = realloc(sb_ref.buff as *mut c_void, new_size as usize) as *mut c_char;
+            if !new_buff.is_null() {
+                sb_ref.buff = new_buff;
+                sb_ref.size = new_size;
+                // Note: We've already consumed the va_list, so we can't retry.
+                // The buffer is expanded for next time, but this call may be truncated.
+            } else {
+                sb_truncate(sb);
             }
-
-            sb_ref.buff = new_buff;
-            sb_ref.size = new_size;
-
-            // Retry vsnprintf
-            let out_ptr = unsafe { sb_ref.buff.offset(old_pos as isize) };
-            let available = (sb_ref.size - old_pos) as usize;
-
-            let written = unsafe { vsnprintf(out_ptr, available, format, args) };
-
-            sb_ref.pos = old_pos + written;
         } else {
-            unsafe { sb_truncate(sb) };
+            sb_truncate(sb);
         }
     }
 }
