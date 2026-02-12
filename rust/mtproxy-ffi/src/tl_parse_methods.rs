@@ -6,7 +6,11 @@ use core::ptr;
 const RM_INIT_MAGIC: c_int = 0x2351_3473;
 const TLF_PERMANENT: c_int = 2;
 const TLF_ALLOW_PREPEND: c_int = 4;
+const TLF_DISABLE_PREPEND: c_int = 8;
 const TLF_NOALIGN: c_int = 16;
+const TL_TYPE_NONE: c_int = 0;
+const TL_TYPE_STR: c_int = 1;
+const TL_TYPE_RAW_MSG: c_int = 2;
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -59,7 +63,19 @@ pub struct TlOutMethods {
 }
 
 #[repr(C)]
-struct TlInState {
+#[derive(Clone, Copy)]
+pub struct TlQueryHeader {
+    qid: i64,
+    actor_id: i64,
+    flags: c_int,
+    op: c_int,
+    real_op: c_int,
+    ref_cnt: c_int,
+    qw_params: *mut c_void,
+}
+
+#[repr(C)]
+pub struct TlInState {
     in_type: c_int,
     in_methods: *const TlInMethods,
     in_ptr: *mut c_void,
@@ -75,7 +91,7 @@ struct TlInState {
 }
 
 #[repr(C)]
-struct TlOutState {
+pub struct TlOutState {
     out_type: c_int,
     out_methods: *const TlOutMethods,
     out_ptr: *mut c_void,
@@ -103,9 +119,12 @@ unsafe extern "C" {
     fn rwm_prepend_alloc(raw: *mut RawMessage, alloc_bytes: c_int) -> *mut c_void;
     fn rwm_push_data(raw: *mut RawMessage, data: *const c_void, alloc_bytes: c_int) -> c_int;
     fn rwm_fetch_data_back(raw: *mut RawMessage, data: *mut c_void, bytes: c_int) -> c_int;
+    fn rwm_move(dest_raw: *mut RawMessage, src_raw: *mut RawMessage);
+    fn rwm_init(raw: *mut RawMessage, alloc_bytes: c_int) -> c_int;
 
     fn tcp_rpc_conn_send(c_tag_int: c_int, c: *mut c_void, raw: *mut RawMessage, flags: c_int);
     fn job_decref(job_tag_int: c_int, job: *mut c_void);
+    fn strdup(src: *const i8) -> *mut i8;
 }
 
 unsafe fn add_bytes(ptr_: *mut c_void, len: c_int) -> *mut c_void {
@@ -483,6 +502,285 @@ unsafe extern "C" fn tl_str_store_clear(tlio_out: *mut TlOutState) {
 
 unsafe extern "C" fn tl_str_store_flush(tlio_out: *mut TlOutState) {
     (*tlio_out).out_ptr = ptr::null_mut();
+}
+
+unsafe fn tl_fetch_init_impl(
+    tlio_in: *mut TlInState,
+    in_ptr: *mut c_void,
+    type_: c_int,
+    methods: *const TlInMethods,
+    size: c_int,
+) -> c_int {
+    if tlio_in.is_null() || in_ptr.is_null() || methods.is_null() {
+        return -1;
+    }
+    if (*tlio_in).in_type != TL_TYPE_NONE {
+        return -1;
+    }
+    (*tlio_in).in_type = type_;
+    (*tlio_in).in_ptr = in_ptr;
+    (*tlio_in).in_remaining = size;
+    (*tlio_in).in_pos = 0;
+    (*tlio_in).in_flags = 0;
+    (*tlio_in).in_methods = methods;
+    if !(*tlio_in).error.is_null() {
+        libc::free((*tlio_in).error.cast::<c_void>());
+        (*tlio_in).error = ptr::null_mut();
+    }
+    (*tlio_in).errnum = 0;
+    0
+}
+
+unsafe fn tl_store_init_impl(
+    tlio_out: *mut TlOutState,
+    out: *mut c_void,
+    out_extra: *mut c_void,
+    type_: c_int,
+    methods: *const TlOutMethods,
+    size: c_int,
+    qid: i64,
+) -> c_int {
+    if tlio_out.is_null() {
+        return -1;
+    }
+    if !(*tlio_out).out_methods.is_null() {
+        return -1;
+    }
+
+    (*tlio_out).out_ptr = out;
+    (*tlio_out).out_extra = out_extra;
+
+    if !out.is_null() {
+        if methods.is_null() {
+            return -1;
+        }
+        (*tlio_out).out_methods = methods;
+        (*tlio_out).out_type = type_;
+        if type_ != TL_TYPE_NONE && (((*methods).flags & (TLF_ALLOW_PREPEND | TLF_DISABLE_PREPEND)) == 0)
+        {
+            let reserve = (*methods).prepend_bytes + if qid != 0 { 12 } else { 0 };
+            let Some(store_get_ptr) = (*methods).store_get_ptr else {
+                return -1;
+            };
+            (*tlio_out).out_size = store_get_ptr(tlio_out, reserve).cast::<c_int>();
+        }
+    } else {
+        (*tlio_out).out_type = TL_TYPE_NONE;
+    }
+
+    (*tlio_out).out_pos = 0;
+    (*tlio_out).out_qid = qid;
+    (*tlio_out).out_remaining = size;
+    (*tlio_out).errnum = 0;
+    (*tlio_out).error = ptr::null_mut();
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_tl_query_header_delete(h: *mut TlQueryHeader) {
+    if h.is_null() {
+        return;
+    }
+    let refcnt = (&(*h).ref_cnt as *const c_int).cast::<core::sync::atomic::AtomicI32>();
+    if (*refcnt).fetch_sub(1, core::sync::atomic::Ordering::SeqCst) > 1 {
+        return;
+    }
+    libc::free(h.cast::<c_void>());
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_tl_query_header_dup(
+    h: *mut TlQueryHeader,
+) -> *mut TlQueryHeader {
+    if h.is_null() {
+        return ptr::null_mut();
+    }
+    let refcnt = (&(*h).ref_cnt as *const c_int).cast::<core::sync::atomic::AtomicI32>();
+    let _ = (*refcnt).fetch_add(1, core::sync::atomic::Ordering::SeqCst);
+    h
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_tl_query_header_clone(
+    h_old: *const TlQueryHeader,
+) -> *mut TlQueryHeader {
+    if h_old.is_null() {
+        return ptr::null_mut();
+    }
+    let h = libc::malloc(size_of::<TlQueryHeader>()).cast::<TlQueryHeader>();
+    if h.is_null() {
+        return ptr::null_mut();
+    }
+    *h = *h_old;
+    (*h).ref_cnt = 1;
+    h
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_tl_set_error(
+    tlio_in: *mut TlInState,
+    errnum: c_int,
+    s: *const i8,
+) -> c_int {
+    if tlio_in.is_null() || s.is_null() {
+        return -1;
+    }
+    if !(*tlio_in).error.is_null() {
+        return 0;
+    }
+    (*tlio_in).error = strdup(s);
+    (*tlio_in).errnum = errnum;
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_init(
+    tlio_in: *mut TlInState,
+    in_ptr: *mut c_void,
+    type_: c_int,
+    methods: *const TlInMethods,
+    size: c_int,
+) -> c_int {
+    tl_fetch_init_impl(tlio_in, in_ptr, type_, methods, size)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_tl_init_raw_message(
+    tlio_in: *mut TlInState,
+    msg: *mut RawMessage,
+    size: c_int,
+    dup: c_int,
+) -> c_int {
+    if msg.is_null() {
+        return -1;
+    }
+    let r = libc::malloc(size_of::<RawMessage>()).cast::<RawMessage>();
+    if r.is_null() {
+        return -1;
+    }
+    if dup == 0 {
+        rwm_move(r, msg);
+    } else if dup == 1 {
+        rwm_move(r, msg);
+        let _ = rwm_init(msg, 0);
+    } else {
+        rwm_clone(r, msg);
+    }
+    tl_fetch_init_impl(
+        tlio_in,
+        r.cast::<c_void>(),
+        TL_TYPE_RAW_MSG,
+        core::ptr::addr_of!(tl_in_raw_msg_methods),
+        size,
+    )
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_tl_init_str(
+    tlio_in: *mut TlInState,
+    s: *const i8,
+    size: c_int,
+) -> c_int {
+    if s.is_null() {
+        return -1;
+    }
+    tl_fetch_init_impl(
+        tlio_in,
+        s.cast_mut().cast::<c_void>(),
+        TL_TYPE_STR,
+        core::ptr::addr_of!(tl_in_str_methods),
+        size,
+    )
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_tl_store_init(
+    tlio_out: *mut TlOutState,
+    out: *mut c_void,
+    out_extra: *mut c_void,
+    type_: c_int,
+    methods: *const TlOutMethods,
+    size: c_int,
+    qid: i64,
+) -> c_int {
+    tl_store_init_impl(tlio_out, out, out_extra, type_, methods, size, qid)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_tl_init_raw_msg(
+    tlio_out: *mut TlOutState,
+    pid: *const MtproxyProcessId,
+    qid: i64,
+) -> c_int {
+    if tlio_out.is_null() {
+        return -1;
+    }
+    if !pid.is_null() {
+        (*tlio_out).out_pid_buf = *pid;
+        (*tlio_out).out_pid = &raw mut (*tlio_out).out_pid_buf;
+    } else {
+        (*tlio_out).out_pid = ptr::null_mut();
+    }
+    let mut d: *mut RawMessage = ptr::null_mut();
+    if !pid.is_null() {
+        d = libc::malloc(size_of::<RawMessage>()).cast::<RawMessage>();
+        if d.is_null() {
+            return -1;
+        }
+        let _ = rwm_init(d, 0);
+    }
+    tl_store_init_impl(
+        tlio_out,
+        d.cast::<c_void>(),
+        ptr::null_mut(),
+        TL_TYPE_RAW_MSG,
+        core::ptr::addr_of!(tl_out_raw_msg_methods),
+        1 << 27,
+        qid,
+    )
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_tl_init_raw_msg_nosend(tlio_out: *mut TlOutState) -> c_int {
+    if tlio_out.is_null() {
+        return -1;
+    }
+    let d = libc::malloc(size_of::<RawMessage>()).cast::<RawMessage>();
+    if d.is_null() {
+        return -1;
+    }
+    let _ = rwm_init(d, 0);
+    tl_store_init_impl(
+        tlio_out,
+        d.cast::<c_void>(),
+        d.cast::<c_void>(),
+        TL_TYPE_RAW_MSG,
+        core::ptr::addr_of!(tl_out_raw_msg_methods_nosend),
+        1 << 27,
+        0,
+    )
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_tl_init_str_out(
+    tlio_out: *mut TlOutState,
+    s: *mut i8,
+    qid: i64,
+    size: c_int,
+) -> c_int {
+    if tlio_out.is_null() || s.is_null() {
+        return -1;
+    }
+    (*tlio_out).out_pid = ptr::null_mut();
+    tl_store_init_impl(
+        tlio_out,
+        s.cast::<c_void>(),
+        s.cast::<c_void>(),
+        TL_TYPE_STR,
+        core::ptr::addr_of!(tl_out_str_methods),
+        size,
+        qid,
+    )
 }
 
 #[no_mangle]

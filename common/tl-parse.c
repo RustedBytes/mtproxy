@@ -57,6 +57,37 @@ mtproxy_ffi_tl_parse_query_header(const uint8_t *data, size_t len,
 extern int32_t
 mtproxy_ffi_tl_parse_answer_header(const uint8_t *data, size_t len,
                                    mtproxy_ffi_tl_header_parse_result_t *out);
+extern void
+mtproxy_ffi_tl_query_header_delete(struct tl_query_header *h);
+extern struct tl_query_header *
+mtproxy_ffi_tl_query_header_dup(struct tl_query_header *h);
+extern struct tl_query_header *
+mtproxy_ffi_tl_query_header_clone(const struct tl_query_header *h_old);
+extern int32_t
+mtproxy_ffi_tl_set_error(struct tl_in_state *tlio_in, int32_t errnum,
+                         const char *s);
+extern int32_t
+mtproxy_ffi_tl_fetch_init(struct tl_in_state *tlio_in, void *in, int32_t type,
+                          const struct tl_in_methods *methods, int32_t size);
+extern int32_t
+mtproxy_ffi_tl_init_raw_message(struct tl_in_state *tlio_in,
+                                struct raw_message *msg, int32_t size,
+                                int32_t dup);
+extern int32_t
+mtproxy_ffi_tl_init_str(struct tl_in_state *tlio_in, const char *s, int32_t size);
+extern int32_t
+mtproxy_ffi_tl_store_init(struct tl_out_state *tlio_out, void *out,
+                          void *out_extra, int32_t type,
+                          const struct tl_out_methods *methods, int32_t size,
+                          int64_t qid);
+extern int32_t
+mtproxy_ffi_tl_init_raw_msg(struct tl_out_state *tlio_out,
+                            const struct process_id *pid, int64_t qid);
+extern int32_t
+mtproxy_ffi_tl_init_raw_msg_nosend(struct tl_out_state *tlio_out);
+extern int32_t
+mtproxy_ffi_tl_init_str_out(struct tl_out_state *tlio_out, char *s, int64_t qid,
+                            int32_t size);
 
 MODULE_STAT_TYPE {
   long long rpc_queries_received, rpc_answers_error, rpc_answers_received;
@@ -223,23 +254,15 @@ static int rust_tl_try_answer_header(struct tl_in_state *tlio_in,
 }
 
 void tl_query_header_delete(struct tl_query_header *h) {
-  if (__sync_fetch_and_add(&h->ref_cnt, -1) > 1) {
-    return;
-  }
-  assert(!h->ref_cnt);
-  free(h);
+  mtproxy_ffi_tl_query_header_delete(h);
 }
 
 struct tl_query_header *tl_query_header_dup(struct tl_query_header *h) {
-  __sync_fetch_and_add(&h->ref_cnt, 1);
-  return h;
+  return mtproxy_ffi_tl_query_header_dup(h);
 }
 
 struct tl_query_header *tl_query_header_clone(struct tl_query_header *h_old) {
-  struct tl_query_header *h = malloc(sizeof(*h));
-  memcpy(h, h_old, sizeof(*h));
-  h->ref_cnt = 1;
-  return h;
+  return mtproxy_ffi_tl_query_header_clone(h_old);
 }
 
 int tlf_set_error_format(struct tl_in_state *tlio_in, int errnum,
@@ -283,55 +306,23 @@ extern const struct tl_out_methods tl_out_tcp_raw_msg_unaligned_methods;
 extern const struct tl_out_methods tl_out_str_methods;
 
 int tlf_set_error(struct tl_in_state *tlio_in, int errnum, const char *s) {
-  assert(s);
-  if (TL_ERROR) {
-    return 0;
-  }
-  vkprintf(2, "Error %s\n", s);
-  TL_ERROR = strdup(s);
-  TL_ERRNUM = errnum;
-  return 0;
+  return mtproxy_ffi_tl_set_error(tlio_in, errnum, s);
 }
 
 int __tl_fetch_init(struct tl_in_state *tlio_in, void *in,
                     [[maybe_unused]] void *in_extra,
                     enum tl_type type, const struct tl_in_methods *methods,
                     int size) {
-  assert(TL_IN_TYPE == tl_type_none);
-  assert(in);
-  TL_IN_TYPE = type;
-  TL_IN = in;
-  TL_IN_REMAINING = size;
-  TL_IN_POS = 0;
-  TL_IN_CUR_FLAGS = 0;
-
-  TL_IN_METHODS = methods;
-  if (TL_ERROR) {
-    free(TL_ERROR);
-    TL_ERROR = 0;
-  }
-  TL_ERRNUM = 0;
-  return 0;
+  return mtproxy_ffi_tl_fetch_init(tlio_in, in, type, methods, size);
 }
 
 int tlf_init_raw_message(struct tl_in_state *tlio_in, struct raw_message *msg,
                          int size, int dup) {
-  struct raw_message *r = (struct raw_message *)malloc(sizeof(*r));
-  if (dup == 0) {
-    rwm_move(r, msg);
-  } else if (dup == 1) {
-    rwm_move(r, msg);
-    rwm_init(msg, 0);
-  } else {
-    rwm_clone(r, msg);
-  }
-  return __tl_fetch_init(tlio_in, r, 0, tl_type_raw_msg, &tl_in_raw_msg_methods,
-                         size);
+  return mtproxy_ffi_tl_init_raw_message(tlio_in, msg, size, dup);
 }
 
 int tlf_init_str(struct tl_in_state *tlio_in, const char *s, int size) {
-  return __tl_fetch_init(tlio_in, (void *)s, 0, tl_type_str, &tl_in_str_methods,
-                         size);
+  return mtproxy_ffi_tl_init_str(tlio_in, s, size);
 }
 
 int tlf_query_header(struct tl_in_state *tlio_in,
@@ -370,31 +361,8 @@ static inline int __tl_store_init(struct tl_out_state *tlio_out, void *out,
                                   void *out_extra, enum tl_type type,
                                   const struct tl_out_methods *methods,
                                   int size, long long qid) {
-  assert(tlio_out);
-  assert(!TL_OUT_METHODS);
-
-  TL_OUT = out;
-  TL_OUT_EXTRA = out_extra;
-  if (out) {
-    TL_OUT_METHODS = methods;
-    TL_OUT_TYPE = type;
-    if (type != tl_type_none &&
-        !(methods->flags & (TLF_ALLOW_PREPEND | TLF_DISABLE_PREPEND))) {
-      TL_OUT_SIZE = (int *)methods->store_get_ptr(
-          tlio_out, methods->prepend_bytes + (qid ? 12 : 0));
-    }
-  } else {
-    TL_OUT_TYPE = tl_type_none;
-  }
-
-  TL_OUT_POS = 0;
-  TL_OUT_QID = qid;
-  TL_OUT_REMAINING = size;
-
-  tlio_out->errnum = 0;
-  tlio_out->error = NULL;
-
-  return 0;
+  return mtproxy_ffi_tl_store_init(tlio_out, out, out_extra, type, methods,
+                                   size, qid);
 }
 
 /*int tls_init_simple (struct tl_out_state *tlio_out, connection_job_t c) {
@@ -409,19 +377,7 @@ static inline int __tl_store_init(struct tl_out_state *tlio_out, void *out,
 
 int tls_init_raw_msg(struct tl_out_state *tlio_out, struct process_id *pid,
                      long long qid) {
-  if (pid) {
-    memcpy(&tlio_out->out_pid_buf, pid, 12);
-    TL_OUT_PID = &tlio_out->out_pid_buf;
-  } else {
-    TL_OUT_PID = 0;
-  }
-  struct raw_message *d = 0;
-  if (pid) {
-    d = (struct raw_message *)malloc(sizeof(*d));
-    rwm_init(d, 0);
-  }
-  return __tl_store_init(tlio_out, d, NULL, tl_type_raw_msg,
-                         &tl_out_raw_msg_methods, (1 << 27), qid);
+  return mtproxy_ffi_tl_init_raw_msg(tlio_out, pid, qid);
 }
 
 int tls_init_tcp_raw_msg(struct tl_out_state *tlio_out, JOB_REF_ARG(c),
@@ -458,16 +414,11 @@ int tls_init_tcp_raw_msg_unaligned(struct tl_out_state *tlio_out,
 
 int tls_init_str(struct tl_out_state *tlio_out, char *s, long long qid,
                  int size) {
-  TL_OUT_PID = 0;
-  return __tl_store_init(tlio_out, s, s, tl_type_str, &tl_out_str_methods, size,
-                         qid);
+  return mtproxy_ffi_tl_init_str_out(tlio_out, s, qid, size);
 }
 
 int tls_init_raw_msg_nosend(struct tl_out_state *tlio_out) {
-  struct raw_message *d = (struct raw_message *)malloc(sizeof(*d));
-  rwm_init(d, 0);
-  return __tl_store_init(tlio_out, d, d, tl_type_raw_msg,
-                         &tl_out_raw_msg_methods_nosend, (1 << 27), 0);
+  return mtproxy_ffi_tl_init_raw_msg_nosend(tlio_out);
 }
 /*
 int tls_init_any (struct tl_out_state *tlio_out, enum tl_type type, void *out,
