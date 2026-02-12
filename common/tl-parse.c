@@ -88,6 +88,12 @@ mtproxy_ffi_tl_init_raw_msg_nosend(struct tl_out_state *tlio_out);
 extern int32_t
 mtproxy_ffi_tl_init_str_out(struct tl_out_state *tlio_out, char *s, int64_t qid,
                             int32_t size);
+extern int32_t
+mtproxy_ffi_tl_store_header(struct tl_out_state *tlio_out,
+                            const struct tl_query_header *header);
+extern int32_t
+mtproxy_ffi_tl_store_end_ext(struct tl_out_state *tlio_out, int32_t op,
+                             int32_t *out_sent_kind);
 
 MODULE_STAT_TYPE {
   long long rpc_queries_received, rpc_answers_error, rpc_answers_received;
@@ -429,96 +435,22 @@ tls_init_tcp_raw_msg (tlio_out, out, qid); default: assert (0);
 }*/
 
 int tls_header(struct tl_out_state *tlio_out, struct tl_query_header *header) {
-  assert(tls_check(tlio_out, 0) >= 0);
-  assert(header->op == (int)RPC_REQ_ERROR ||
-         header->op == (int)RPC_REQ_RESULT ||
-         header->op == (int)RPC_INVOKE_REQ ||
-         header->op == (int)RPC_REQ_ERROR_WRAPPED);
-  if (header->op == (int)RPC_INVOKE_REQ) {
-    if (header->flags) {
-      tl_store_int(RPC_DEST_ACTOR_FLAGS);
-      tl_store_long(header->actor_id);
-      tl_store_int(header->flags);
-    } else if (header->actor_id) {
-      tl_store_int(RPC_DEST_ACTOR);
-      tl_store_long(header->actor_id);
-    }
-  } else if (header->op == RPC_REQ_ERROR_WRAPPED) {
-    tl_store_int(RPC_REQ_ERROR);
-    tl_store_long(TL_OUT_QID);
-  } else if (header->op == RPC_REQ_RESULT) {
-    if (header->flags) {
-      tl_store_int(RPC_REQ_RESULT_FLAGS);
-      tl_store_int(header->flags);
-    }
-  }
-  return 0;
+  return mtproxy_ffi_tl_store_header(tlio_out, header);
 }
 
 int tls_end_ext(struct tl_out_state *tlio_out, int op) {
-  if (TL_OUT_TYPE == tl_type_none) {
-    return 0;
+  int sent_kind = 0;
+  int rc = mtproxy_ffi_tl_store_end_ext(tlio_out, op, &sent_kind);
+  if (rc < 0) {
+    return rc;
   }
-  assert(TL_OUT);
-  assert(TL_OUT_TYPE);
-  if (tlio_out->error) {
-    //    tl_store_clear ();
-    tl_store_clean();
-    vkprintf(1,
-             "tl_store_end: " PID_PRINT_STR
-             " writing error %s, errnum %d, tl.out_pos = %d\n",
-             PID_TO_PRINT(TL_OUT_PID), tlio_out->error, tlio_out->errnum,
-             TL_OUT_POS);
-    // tl_store_clear ();
-    tl_store_int(RPC_REQ_ERROR);
-    tl_store_long(TL_OUT_QID);
-    tl_store_int(tlio_out->errnum);
-    tl_store_string0(tlio_out->error);
-
+  if (sent_kind == 1) {
     MODULE_STAT->rpc_sent_errors++;
-  } else {
-    if (op == RPC_REQ_RESULT) {
-      MODULE_STAT->rpc_sent_answers++;
-    } else {
-      MODULE_STAT->rpc_sent_queries++;
-    }
+  } else if (sent_kind == 2) {
+    MODULE_STAT->rpc_sent_answers++;
+  } else if (sent_kind == 3) {
+    MODULE_STAT->rpc_sent_queries++;
   }
-  if (!(TL_OUT_FLAGS & TLF_NOALIGN)) {
-    assert(!(TL_OUT_POS & 3));
-  }
-
-  {
-    int *p;
-    if (TL_OUT_FLAGS & TLF_ALLOW_PREPEND) {
-      p = TL_OUT_SIZE = tl_store_get_prepend_ptr(TL_OUT_METHODS->prepend_bytes +
-                                                 (TL_OUT_QID ? 12 : 0));
-    } else {
-      p = TL_OUT_SIZE;
-    }
-
-    if (TL_OUT_QID) {
-      assert(op);
-      p += (TL_OUT_METHODS->prepend_bytes) / 4;
-      *p = op;
-      *(long long *)(p + 1) = TL_OUT_QID;
-    }
-  }
-
-  if (TL_OUT_METHODS->store_prefix) {
-    TL_OUT_METHODS->store_prefix(tlio_out);
-  }
-
-  if (!(TL_OUT_FLAGS & TLF_NO_AUTOFLUSH)) {
-    TL_OUT_METHODS->store_flush(tlio_out);
-  }
-  vkprintf(2,
-           "tl_store_end: written %d bytes, qid = %lld, PID = " PID_PRINT_STR
-           "\n",
-           TL_OUT_POS, TL_OUT_QID, PID_TO_PRINT(TL_OUT_PID));
-  TL_OUT = 0;
-  TL_OUT_TYPE = tl_type_none;
-  TL_OUT_METHODS = 0;
-  TL_OUT_EXTRA = 0;
   return 0;
 }
 

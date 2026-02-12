@@ -8,9 +8,21 @@ const TLF_PERMANENT: c_int = 2;
 const TLF_ALLOW_PREPEND: c_int = 4;
 const TLF_DISABLE_PREPEND: c_int = 8;
 const TLF_NOALIGN: c_int = 16;
+const TLF_NO_AUTOFLUSH: c_int = 32;
 const TL_TYPE_NONE: c_int = 0;
 const TL_TYPE_STR: c_int = 1;
 const TL_TYPE_RAW_MSG: c_int = 2;
+const RPC_INVOKE_REQ: c_int = mtproxy_core::runtime::config::tl_parse::RPC_INVOKE_REQ;
+const RPC_REQ_ERROR: c_int = mtproxy_core::runtime::config::tl_parse::RPC_REQ_ERROR;
+const RPC_REQ_RESULT: c_int = mtproxy_core::runtime::config::tl_parse::RPC_REQ_RESULT;
+const RPC_REQ_ERROR_WRAPPED: c_int = mtproxy_core::runtime::config::tl_parse::RPC_REQ_ERROR_WRAPPED;
+const RPC_DEST_ACTOR: c_int = mtproxy_core::runtime::config::tl_parse::RPC_DEST_ACTOR;
+const RPC_DEST_ACTOR_FLAGS: c_int = mtproxy_core::runtime::config::tl_parse::RPC_DEST_ACTOR_FLAGS;
+const RPC_REQ_RESULT_FLAGS: c_int = mtproxy_core::runtime::config::tl_parse::RPC_REQ_RESULT_FLAGS;
+const TL_SENT_KIND_NONE: c_int = 0;
+const TL_SENT_KIND_ERROR: c_int = 1;
+const TL_SENT_KIND_ANSWER: c_int = 2;
+const TL_SENT_KIND_QUERY: c_int = 3;
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -573,6 +585,255 @@ unsafe fn tl_store_init_impl(
     (*tlio_out).out_remaining = size;
     (*tlio_out).errnum = 0;
     (*tlio_out).error = ptr::null_mut();
+    0
+}
+
+unsafe fn tl_out_store_raw_data(
+    tlio_out: *mut TlOutState,
+    data: *const c_void,
+    len: c_int,
+) -> c_int {
+    if tlio_out.is_null() || data.is_null() || len < 0 {
+        return -1;
+    }
+    if (*tlio_out).out_type == TL_TYPE_NONE || (*tlio_out).out_methods.is_null() {
+        return -1;
+    }
+    if (*tlio_out).out_remaining < len {
+        return -1;
+    }
+    let methods = &*(*tlio_out).out_methods;
+    let Some(store_raw_data) = methods.store_raw_data else {
+        return -1;
+    };
+    store_raw_data(tlio_out, data, len);
+    (*tlio_out).out_pos += len;
+    (*tlio_out).out_remaining -= len;
+    0
+}
+
+unsafe fn tl_out_store_int(tlio_out: *mut TlOutState, value: c_int) -> c_int {
+    let bytes = value.to_le_bytes();
+    tl_out_store_raw_data(tlio_out, bytes.as_ptr().cast::<c_void>(), 4)
+}
+
+unsafe fn tl_out_store_long(tlio_out: *mut TlOutState, value: i64) -> c_int {
+    let bytes = value.to_le_bytes();
+    tl_out_store_raw_data(tlio_out, bytes.as_ptr().cast::<c_void>(), 8)
+}
+
+unsafe fn tl_out_store_string_len(tlio_out: *mut TlOutState, len: usize) -> c_int {
+    if len < 254 {
+        let b = [u8::try_from(len).unwrap_or(0)];
+        return tl_out_store_raw_data(tlio_out, b.as_ptr().cast::<c_void>(), 1);
+    }
+    if len >= (1usize << 24) {
+        return -1;
+    }
+    let low = u8::try_from(len & 0xff).unwrap_or(0);
+    let mid = u8::try_from((len >> 8) & 0xff).unwrap_or(0);
+    let high = u8::try_from((len >> 16) & 0xff).unwrap_or(0);
+    let bytes = [0xfe, low, mid, high];
+    tl_out_store_raw_data(tlio_out, bytes.as_ptr().cast::<c_void>(), 4)
+}
+
+unsafe fn tl_out_store_pad(tlio_out: *mut TlOutState) -> c_int {
+    let pad = (4 - ((*tlio_out).out_pos & 3)) & 3;
+    if pad == 0 {
+        return 0;
+    }
+    let zeros = [0u8; 3];
+    tl_out_store_raw_data(
+        tlio_out,
+        zeros.as_ptr().cast::<c_void>(),
+        c_int::try_from(pad).unwrap_or(0),
+    )
+}
+
+unsafe fn tl_out_store_string0(tlio_out: *mut TlOutState, s: *const i8) -> c_int {
+    if s.is_null() {
+        return -1;
+    }
+    let len = libc::strlen(s);
+    if tl_out_store_string_len(tlio_out, len) < 0 {
+        return -1;
+    }
+    if len > 0 {
+        if tl_out_store_raw_data(
+            tlio_out,
+            s.cast::<c_void>(),
+            c_int::try_from(len).unwrap_or(c_int::MAX),
+        ) < 0
+        {
+            return -1;
+        }
+    }
+    tl_out_store_pad(tlio_out)
+}
+
+unsafe fn tl_out_clean(tlio_out: *mut TlOutState) -> c_int {
+    if tlio_out.is_null() || (*tlio_out).out_methods.is_null() {
+        return -1;
+    }
+    let methods = &*(*tlio_out).out_methods;
+    let Some(store_read_back) = methods.store_read_back else {
+        return -1;
+    };
+    store_read_back(tlio_out, (*tlio_out).out_pos);
+    (*tlio_out).out_remaining += (*tlio_out).out_pos;
+    (*tlio_out).out_pos = 0;
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_tl_store_header(
+    tlio_out: *mut TlOutState,
+    header: *const TlQueryHeader,
+) -> c_int {
+    if tlio_out.is_null() || header.is_null() {
+        return -1;
+    }
+    if (*tlio_out).out_type == TL_TYPE_NONE {
+        return -1;
+    }
+    let h = &*header;
+    if h.op != RPC_REQ_ERROR
+        && h.op != RPC_REQ_RESULT
+        && h.op != RPC_INVOKE_REQ
+        && h.op != RPC_REQ_ERROR_WRAPPED
+    {
+        return -1;
+    }
+
+    if h.op == RPC_INVOKE_REQ {
+        if h.flags != 0 {
+            if tl_out_store_int(tlio_out, RPC_DEST_ACTOR_FLAGS) < 0 {
+                return -1;
+            }
+            if tl_out_store_long(tlio_out, h.actor_id) < 0 {
+                return -1;
+            }
+            if tl_out_store_int(tlio_out, h.flags) < 0 {
+                return -1;
+            }
+        } else if h.actor_id != 0 {
+            if tl_out_store_int(tlio_out, RPC_DEST_ACTOR) < 0 {
+                return -1;
+            }
+            if tl_out_store_long(tlio_out, h.actor_id) < 0 {
+                return -1;
+            }
+        }
+    } else if h.op == RPC_REQ_ERROR_WRAPPED {
+        if tl_out_store_int(tlio_out, RPC_REQ_ERROR) < 0 {
+            return -1;
+        }
+        if tl_out_store_long(tlio_out, (*tlio_out).out_qid) < 0 {
+            return -1;
+        }
+    } else if h.op == RPC_REQ_RESULT && h.flags != 0 {
+        if tl_out_store_int(tlio_out, RPC_REQ_RESULT_FLAGS) < 0 {
+            return -1;
+        }
+        if tl_out_store_int(tlio_out, h.flags) < 0 {
+            return -1;
+        }
+    }
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_tl_store_end_ext(
+    tlio_out: *mut TlOutState,
+    op: c_int,
+    out_sent_kind: *mut c_int,
+) -> c_int {
+    if tlio_out.is_null() {
+        return -1;
+    }
+    if !out_sent_kind.is_null() {
+        *out_sent_kind = TL_SENT_KIND_NONE;
+    }
+    if (*tlio_out).out_type == TL_TYPE_NONE {
+        return 0;
+    }
+    if (*tlio_out).out_ptr.is_null() || (*tlio_out).out_methods.is_null() {
+        return -1;
+    }
+
+    let methods = &*(*tlio_out).out_methods;
+
+    let sent_kind = if !(*tlio_out).error.is_null() {
+        if tl_out_clean(tlio_out) < 0 {
+            return -1;
+        }
+        if tl_out_store_int(tlio_out, RPC_REQ_ERROR) < 0 {
+            return -1;
+        }
+        if tl_out_store_long(tlio_out, (*tlio_out).out_qid) < 0 {
+            return -1;
+        }
+        if tl_out_store_int(tlio_out, (*tlio_out).errnum) < 0 {
+            return -1;
+        }
+        if tl_out_store_string0(tlio_out, (*tlio_out).error.cast::<i8>()) < 0 {
+            return -1;
+        }
+        TL_SENT_KIND_ERROR
+    } else if op == RPC_REQ_RESULT {
+        TL_SENT_KIND_ANSWER
+    } else {
+        TL_SENT_KIND_QUERY
+    };
+
+    if (methods.flags & TLF_NOALIGN) == 0 && ((*tlio_out).out_pos & 3) != 0 {
+        return -1;
+    }
+
+    let mut p: *mut c_int = if (methods.flags & TLF_ALLOW_PREPEND) != 0 {
+        let reserve = methods.prepend_bytes + if (*tlio_out).out_qid != 0 { 12 } else { 0 };
+        let Some(store_get_prepend_ptr) = methods.store_get_prepend_ptr else {
+            return -1;
+        };
+        if (*tlio_out).out_remaining < reserve {
+            return -1;
+        }
+        let ptr_ = store_get_prepend_ptr(tlio_out, reserve).cast::<c_int>();
+        (*tlio_out).out_pos += reserve;
+        (*tlio_out).out_remaining -= reserve;
+        (*tlio_out).out_size = ptr_;
+        ptr_
+    } else {
+        (*tlio_out).out_size
+    };
+
+    if (*tlio_out).out_qid != 0 {
+        if op == 0 || p.is_null() {
+            return -1;
+        }
+        p = p.add(usize::try_from(methods.prepend_bytes / 4).unwrap_or(0));
+        ptr::write_unaligned(p, op);
+        ptr::write_unaligned(p.add(1).cast::<i64>(), (*tlio_out).out_qid);
+    }
+
+    if let Some(store_prefix) = methods.store_prefix {
+        store_prefix(tlio_out);
+    }
+    if (methods.flags & TLF_NO_AUTOFLUSH) == 0 {
+        let Some(store_flush) = methods.store_flush else {
+            return -1;
+        };
+        store_flush(tlio_out);
+    }
+
+    (*tlio_out).out_ptr = ptr::null_mut();
+    (*tlio_out).out_type = TL_TYPE_NONE;
+    (*tlio_out).out_methods = ptr::null();
+    (*tlio_out).out_extra = ptr::null_mut();
+
+    if !out_sent_kind.is_null() {
+        *out_sent_kind = sent_kind;
+    }
     0
 }
 
