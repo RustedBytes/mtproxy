@@ -21,8 +21,6 @@
 
 #pragma once
 
-#include "net/net-rpc-flags.h"
-
 enum {
   MAX_PWD_CONFIG_LEN = 16384,
 };

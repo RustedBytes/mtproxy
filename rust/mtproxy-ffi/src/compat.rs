@@ -1,5 +1,7 @@
 use super::*;
-use crate::ffi_util::{copy_bytes, mut_ref_from_ptr, mut_slice_from_ptr, ref_from_ptr, slice_from_ptr};
+use crate::ffi_util::{
+    copy_bytes, mut_ref_from_ptr, mut_slice_from_ptr, ref_from_ptr, slice_from_ptr,
+};
 use std::os::unix::fs::MetadataExt;
 
 /// Mirrors core API version for Rust callers.
@@ -743,13 +745,17 @@ pub unsafe extern "C" fn mtproxy_ffi_resolver_gethostbyname_plan(
     out_kind: *mut i32,
     out_ipv4: *mut u32,
 ) -> i32 {
-    if name.is_null() || out_kind.is_null() || out_ipv4.is_null() {
+    let Some(name_ref) = (unsafe { ref_from_ptr(name) }) else {
         return -1;
-    }
-    let name = unsafe { CStr::from_ptr(name) };
+    };
+    let Some(kind_ref) = (unsafe { mut_ref_from_ptr(out_kind) }) else {
+        return -1;
+    };
+    let Some(ip_ref) = (unsafe { mut_ref_from_ptr(out_ipv4) }) else {
+        return -1;
+    };
+    let name = unsafe { CStr::from_ptr(name_ref) };
     let (kind, ip) = resolver_gethostbyname_plan_impl(name.to_bytes());
-    let kind_ref = unsafe { &mut *out_kind };
-    let ip_ref = unsafe { &mut *out_ipv4 };
     *kind_ref = kind;
     *ip_ref = ip;
     0
@@ -787,13 +793,13 @@ pub unsafe extern "C" fn mtproxy_ffi_net_select_best_key_signature(
     let extra = if extra_num == 0 {
         &[]
     } else {
-        if extra_key_signatures.is_null() {
-            return 0;
-        }
         let Ok(count) = usize::try_from(extra_num) else {
             return 0;
         };
-        unsafe { core::slice::from_raw_parts(extra_key_signatures, count) }
+        let Some(values) = (unsafe { slice_from_ptr(extra_key_signatures, count) }) else {
+            return 0;
+        };
+        values
     };
     net_select_best_key_signature_impl(main_secret_len, main_key_signature, key_signature, extra)
 }
@@ -816,11 +822,11 @@ pub extern "C" fn mtproxy_ffi_net_compute_conn_events(flags: i32, use_epollet: i
 /// `rule_text` must be a valid NUL-terminated C string.
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_net_add_nat_info(rule_text: *const c_char) -> i32 {
-    if rule_text.is_null() {
+    let Some(rule_text_ref) = (unsafe { ref_from_ptr(rule_text) }) else {
         eprintln!("expected <local-addr>:<global-addr> in --nat-info");
         return -1;
-    }
-    let rule = unsafe { CStr::from_ptr(rule_text) };
+    };
+    let rule = unsafe { CStr::from_ptr(rule_text_ref) };
     let Ok(rule_text) = rule.to_str() else {
         eprintln!("expected <local-addr>:<global-addr> in --nat-info");
         return -1;
@@ -907,15 +913,14 @@ pub unsafe extern "C" fn mtproxy_ffi_net_tcp_tls_parse_header(
     header: *const u8,
     out_payload_len: *mut i32,
 ) -> i32 {
-    if header.is_null() || out_payload_len.is_null() {
+    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out_payload_len) }) else {
         return -1;
-    }
-    let mut h = [0u8; 5];
-    let header_slice = unsafe { core::slice::from_raw_parts(header, 5) };
-    h.copy_from_slice(header_slice);
+    };
+    let Some(h) = (unsafe { copy_bytes::<5>(header) }) else {
+        return -1;
+    };
     match net_tcp_tls_parse_header_impl(&h) {
         Ok(payload_len) => {
-            let out_ref = unsafe { &mut *out_payload_len };
             *out_ref = payload_len;
             0
         }
@@ -975,12 +980,11 @@ pub unsafe extern "C" fn mtproxy_ffi_net_tcp_reader_skip_from_parse_result(
     need_more_bytes: i32,
     out_skip_bytes: *mut i32,
 ) -> i32 {
-    if out_skip_bytes.is_null() {
+    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out_skip_bytes) }) else {
         return -1;
-    }
+    };
     match net_tcp_reader_skip_from_parse_result_impl(parse_res, buffered_bytes, need_more_bytes) {
         Some(skip) => {
-            let out_ref = unsafe { &mut *out_skip_bytes };
             *out_ref = skip;
             1
         }
@@ -1013,13 +1017,15 @@ pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_domain_bucket_index(
     domain: *const u8,
     len: i32,
 ) -> i32 {
-    if domain.is_null() || len < 0 {
+    if len < 0 {
         return -1;
     }
     let Ok(len) = usize::try_from(len) else {
         return -1;
     };
-    let domain = unsafe { core::slice::from_raw_parts(domain, len) };
+    let Some(domain) = (unsafe { slice_from_ptr(domain, len) }) else {
+        return -1;
+    };
     net_tcp_rpc_ext_domain_bucket_index_impl(domain)
 }
 
@@ -1031,12 +1037,9 @@ pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_domain_bucket_index(
 pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_client_random_bucket_index(
     random: *const u8,
 ) -> i32 {
-    if random.is_null() {
+    let Some(random_buf) = (unsafe { copy_bytes::<16>(random) }) else {
         return -1;
-    }
-    let random_slice = unsafe { core::slice::from_raw_parts(random, 16) };
-    let mut random_buf = [0_u8; 16];
-    random_buf.copy_from_slice(random_slice);
+    };
     net_tcp_rpc_ext_client_random_bucket_index_impl(&random_buf)
 }
 
@@ -1053,16 +1056,17 @@ pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_select_server_hello_profile
     out_size: *mut i32,
     out_profile: *mut i32,
 ) -> i32 {
-    if out_size.is_null() || out_profile.is_null() {
+    let Some(out_size_ref) = (unsafe { mut_ref_from_ptr(out_size) }) else {
         return -1;
-    }
+    };
+    let Some(out_profile_ref) = (unsafe { mut_ref_from_ptr(out_profile) }) else {
+        return -1;
+    };
     let Some((size, profile)) =
         net_tcp_rpc_ext_select_server_hello_profile_impl(min_len, max_len, sum_len, sample_count)
     else {
         return -1;
     };
-    let out_size_ref = unsafe { &mut *out_size };
-    let out_profile_ref = unsafe { &mut *out_profile };
     *out_size_ref = size;
     *out_profile_ref = profile;
     0
@@ -1125,12 +1129,11 @@ pub unsafe extern "C" fn mtproxy_ffi_net_thread_run_notification_event(
 /// `code` must be a valid writable pointer to `i32`.
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_net_http_error_msg_text(code: *mut i32) -> *const c_char {
-    if code.is_null() {
+    let Some(code_ref) = (unsafe { mut_ref_from_ptr(code) }) else {
         return core::ptr::null();
-    }
-    let in_code = unsafe { *code };
+    };
+    let in_code = *code_ref;
     let (normalized_code, message_ptr) = net_http_error_msg_text_impl(in_code);
-    let code_ref = unsafe { &mut *code };
     *code_ref = normalized_code;
     message_ptr
 }
@@ -1145,13 +1148,15 @@ pub unsafe extern "C" fn mtproxy_ffi_net_http_gen_date(
     out_len: i32,
     time: i32,
 ) -> i32 {
-    if out.is_null() || out_len < 29 {
+    if out_len < 29 {
         return -1;
     }
     let Ok(out_count) = usize::try_from(out_len) else {
         return -1;
     };
-    let out_slice = unsafe { core::slice::from_raw_parts_mut(out.cast::<u8>(), out_count) };
+    let Some(out_slice) = (unsafe { mut_slice_from_ptr(out.cast::<u8>(), out_count) }) else {
+        return -1;
+    };
     let date = net_http_gen_date_impl(time);
     out_slice[..29].copy_from_slice(&date);
     if out_count > 29 {
@@ -1169,16 +1174,18 @@ pub unsafe extern "C" fn mtproxy_ffi_net_http_gen_time(
     date_text: *const c_char,
     out_time: *mut i32,
 ) -> i32 {
-    if date_text.is_null() || out_time.is_null() {
+    let Some(date_text_ref) = (unsafe { ref_from_ptr(date_text) }) else {
         return -8;
-    }
-    let text = unsafe { CStr::from_ptr(date_text) };
+    };
+    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out_time) }) else {
+        return -8;
+    };
+    let text = unsafe { CStr::from_ptr(date_text_ref) };
     let Ok(text) = text.to_str() else {
         return -8;
     };
     match net_http_gen_time_impl(text) {
         Ok(time) => {
-            let out_ref = unsafe { &mut *out_time };
             *out_ref = time;
             0
         }
@@ -1201,15 +1208,17 @@ pub unsafe extern "C" fn mtproxy_ffi_net_http_get_header(
     arg_name: *const c_char,
     arg_len: i32,
 ) -> i32 {
-    if buffer.is_null() || b_len <= 0 {
+    if b_len <= 0 {
         return -1;
     }
     let Ok(buffer_len) = usize::try_from(b_len) else {
         return -1;
     };
-    let out = unsafe { core::slice::from_raw_parts_mut(buffer.cast::<u8>(), buffer_len) };
+    let Some(out) = (unsafe { mut_slice_from_ptr(buffer.cast::<u8>(), buffer_len) }) else {
+        return -1;
+    };
 
-    if q_headers.is_null() || arg_name.is_null() || q_headers_len < 0 || arg_len < 0 {
+    if q_headers_len < 0 || arg_len < 0 {
         out[0] = 0;
         return -1;
     }
@@ -1221,8 +1230,14 @@ pub unsafe extern "C" fn mtproxy_ffi_net_http_get_header(
         out[0] = 0;
         return -1;
     };
-    let headers = unsafe { core::slice::from_raw_parts(q_headers.cast::<u8>(), headers_len) };
-    let name = unsafe { core::slice::from_raw_parts(arg_name.cast::<u8>(), name_len) };
+    let Some(headers) = (unsafe { slice_from_ptr(q_headers.cast::<u8>(), headers_len) }) else {
+        out[0] = 0;
+        return -1;
+    };
+    let Some(name) = (unsafe { slice_from_ptr(arg_name.cast::<u8>(), name_len) }) else {
+        out[0] = 0;
+        return -1;
+    };
     net_http_get_header_impl(headers, out, name)
 }
 
@@ -1236,13 +1251,15 @@ pub unsafe extern "C" fn mtproxy_ffi_msg_buffers_pick_size_index(
     buffer_size_values: i32,
     size_hint: i32,
 ) -> i32 {
-    if buffer_sizes.is_null() || buffer_size_values <= 0 {
+    if buffer_size_values <= 0 {
         return -1;
     }
     let Ok(count) = usize::try_from(buffer_size_values) else {
         return -1;
     };
-    let sizes = unsafe { core::slice::from_raw_parts(buffer_sizes, count) };
+    let Some(sizes) = (unsafe { slice_from_ptr(buffer_sizes, count) }) else {
+        return -1;
+    };
     msg_buffers_pick_size_index_impl(sizes, size_hint)
 }
 
@@ -1257,12 +1274,13 @@ pub unsafe extern "C" fn mtproxy_ffi_tcp_rpc_encode_compact_header(
     out_prefix_word: *mut i32,
     out_prefix_bytes: *mut i32,
 ) -> i32 {
-    if out_prefix_word.is_null() || out_prefix_bytes.is_null() {
+    let Some(out_word) = (unsafe { mut_ref_from_ptr(out_prefix_word) }) else {
         return -1;
-    }
+    };
+    let Some(out_bytes) = (unsafe { mut_ref_from_ptr(out_prefix_bytes) }) else {
+        return -1;
+    };
     let (prefix_word, prefix_bytes) = tcp_rpc_encode_compact_header_impl(payload_len, is_medium);
-    let out_word = unsafe { &mut *out_prefix_word };
-    let out_bytes = unsafe { &mut *out_prefix_bytes };
     *out_word = prefix_word;
     *out_bytes = prefix_bytes;
     0
@@ -1301,10 +1319,9 @@ pub unsafe extern "C" fn mtproxy_ffi_rpc_target_normalize_pid(
     pid: *mut MtproxyProcessId,
     default_ip: u32,
 ) -> i32 {
-    if pid.is_null() {
+    let Some(pid_ref) = (unsafe { mut_ref_from_ptr(pid) }) else {
         return -1;
-    }
-    let pid_ref = unsafe { &mut *pid };
+    };
     rpc_target_normalize_pid_impl(pid_ref, default_ip);
     0
 }
@@ -1392,9 +1409,9 @@ pub unsafe extern "C" fn mtproxy_ffi_engine_net_try_open_port_range(
     try_open_ctx: *mut c_void,
     out_selected_port: *mut i32,
 ) -> i32 {
-    if out_selected_port.is_null() {
+    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out_selected_port) }) else {
         return -1;
-    }
+    };
 
     match engine_net_try_open_port_range_impl(
         start_port,
@@ -1406,7 +1423,6 @@ pub unsafe extern "C" fn mtproxy_ffi_engine_net_try_open_port_range(
         try_open_ctx,
     ) {
         Ok(Some(port)) => {
-            let out_ref = unsafe { &mut *out_selected_port };
             *out_ref = port;
             0
         }
@@ -1443,9 +1459,9 @@ pub unsafe extern "C" fn mtproxy_ffi_engine_net_open_privileged_port(
     try_open_ctx: *mut c_void,
     out_selected_port: *mut i32,
 ) -> i32 {
-    if out_selected_port.is_null() {
+    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out_selected_port) }) else {
         return -1;
-    }
+    };
 
     match engine_net_open_privileged_port_impl(
         port,
@@ -1458,7 +1474,6 @@ pub unsafe extern "C" fn mtproxy_ffi_engine_net_open_privileged_port(
         try_open_ctx,
     ) {
         Ok(Some(selected_port)) => {
-            let out_ref = unsafe { &mut *out_selected_port };
             *out_ref = selected_port;
             0
         }

@@ -1,4 +1,5 @@
 use super::*;
+use crate::ffi_util::{mut_ref_from_ptr, mut_slice_from_ptr, ref_from_ptr, slice_from_ptr};
 
 fn mtproto_proxy_collect_argv(argc: i32, argv: *const *const c_char) -> Option<Vec<String>> {
     if argc < 0 {
@@ -12,13 +13,11 @@ fn mtproto_proxy_collect_argv(argc: i32, argv: *const *const c_char) -> Option<V
     }
 
     let count = usize::try_from(argc).ok()?;
-    let raw = unsafe { core::slice::from_raw_parts(argv, count) };
+    let raw = unsafe { slice_from_ptr(argv, count) }?;
     let mut out = Vec::with_capacity(count.max(1));
     for &arg_ptr in raw {
-        if arg_ptr.is_null() {
-            return None;
-        }
-        let arg = unsafe { CStr::from_ptr(arg_ptr) }
+        let arg_ref = unsafe { ref_from_ptr(arg_ptr) }?;
+        let arg = unsafe { CStr::from_ptr(arg_ref) }
             .to_string_lossy()
             .into_owned();
         out.push(arg);
@@ -38,7 +37,10 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_proxy_usage(program_name: *const c_
     let program_name = if program_name.is_null() {
         "mtproto-proxy".to_owned()
     } else {
-        unsafe { CStr::from_ptr(program_name) }
+        let Some(program_name_ref) = (unsafe { ref_from_ptr(program_name) }) else {
+            return -1;
+        };
+        unsafe { CStr::from_ptr(program_name_ref) }
             .to_string_lossy()
             .into_owned()
     };
@@ -64,25 +66,8 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_proxy_main(
     mtproxy_bin::entrypoint::run_from_argv(&args)
 }
 
-fn slice_from_ptr<'a>(data: *const u8, len: usize) -> Option<&'a [u8]> {
-    if len == 0 {
-        Some(&[])
-    } else if data.is_null() {
-        None
-    } else {
-        Some(unsafe { core::slice::from_raw_parts(data, len) })
-    }
-}
-
 fn cfg_bytes_from_cstr(cur: *const c_char, len: usize) -> Option<&'static [u8]> {
-    if len == 0 {
-        return Some(&[]);
-    }
-    if cur.is_null() {
-        return None;
-    }
-    let raw = unsafe { core::slice::from_raw_parts(cur.cast::<u8>(), len) };
-    Some(raw)
+    unsafe { slice_from_ptr(cur.cast::<u8>(), len) }
 }
 
 #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
@@ -161,10 +146,9 @@ fn mtproto_cfg_clear_cluster(
 #[no_mangle]
 #[allow(private_interfaces)]
 pub unsafe extern "C" fn clear_config(mc: *mut MtproxyMfConfig, do_destroy_targets: c_int) {
-    if mc.is_null() {
+    let Some(mc_ref) = (unsafe { mut_ref_from_ptr(mc) }) else {
         return;
-    }
-    let mc_ref = unsafe { &mut *mc };
+    };
     let tot_targets = usize::try_from(mc_ref.tot_targets)
         .unwrap_or(0)
         .min(MTPROTO_CFG_MAX_TARGETS);
@@ -205,10 +189,9 @@ pub unsafe extern "C" fn mf_cluster_lookup(
     cluster_id: c_int,
     force: c_int,
 ) -> *mut MtproxyMfCluster {
-    if mc.is_null() {
+    let Some(mc_ref) = (unsafe { mut_ref_from_ptr(mc) }) else {
         return core::ptr::null_mut();
-    }
-    let mc_ref = unsafe { &mut *mc };
+    };
     let mut cluster_ids = [0i32; MTPROTO_CFG_MAX_CLUSTERS];
     let auth_clusters = mtproto_cfg_collect_auth_cluster_ids(mc_ref, &mut cluster_ids);
     let default_cluster_index = mtproto_cfg_default_cluster_index(mc_ref, auth_clusters);
@@ -326,16 +309,15 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_create_target(
     mc: *mut MtproxyMfConfig,
     target_index: u32,
 ) {
-    if mc.is_null() {
+    let Some(mc_ref) = (unsafe { mut_ref_from_ptr(mc) }) else {
         return;
-    }
+    };
     let Ok(target_index_usize) = usize::try_from(target_index) else {
         return;
     };
     if target_index_usize >= MTPROTO_CFG_MAX_TARGETS {
         return;
     }
-    let mc_ref = unsafe { &mut *mc };
     let mut was_created = -1;
     let target = unsafe { create_target(&raw mut default_cfg_ct, &raw mut was_created) };
     mc_ref.targets[target_index_usize] = target;
@@ -378,12 +360,14 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_parse_text_ipv4(
     str: *const c_char,
     out_ip: *mut u32,
 ) -> i32 {
-    if str.is_null() || out_ip.is_null() {
+    let Some(str_ref) = (unsafe { ref_from_ptr(str) }) else {
         return -1;
-    }
-    let input = unsafe { CStr::from_ptr(str) }.to_string_lossy();
+    };
+    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out_ip) }) else {
+        return -1;
+    };
+    let input = unsafe { CStr::from_ptr(str_ref) }.to_string_lossy();
     let parsed = mtproxy_core::runtime::mtproto::proxy::parse_text_ipv4(&input);
-    let out_ref = unsafe { &mut *out_ip };
     *out_ref = parsed;
     0
 }
@@ -399,15 +383,19 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_parse_text_ipv6(
     out_ip: *mut u8,
     out_consumed: *mut i32,
 ) -> i32 {
-    if str.is_null() || out_ip.is_null() || out_consumed.is_null() {
+    let Some(str_ref) = (unsafe { ref_from_ptr(str) }) else {
         return -1;
-    }
-    let input = unsafe { CStr::from_ptr(str) }.to_string_lossy();
+    };
+    let Some(out_ip_slice) = (unsafe { mut_slice_from_ptr(out_ip, 16) }) else {
+        return -1;
+    };
+    let Some(out_consumed_ref) = (unsafe { mut_ref_from_ptr(out_consumed) }) else {
+        return -1;
+    };
+    let input = unsafe { CStr::from_ptr(str_ref) }.to_string_lossy();
     let mut parsed_ip = [0u8; 16];
     let consumed = mtproxy_core::runtime::mtproto::proxy::parse_text_ipv6(&mut parsed_ip, &input);
-    let out_ip_slice = unsafe { core::slice::from_raw_parts_mut(out_ip, 16) };
     out_ip_slice.copy_from_slice(&parsed_ip);
-    let out_consumed_ref = unsafe { &mut *out_consumed };
     *out_consumed_ref = consumed;
     0
 }
@@ -424,13 +412,12 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_inspect_packet_header(
     packet_len: i32,
     out: *mut MtproxyMtprotoPacketInspectResult,
 ) -> i32 {
-    if out.is_null() {
+    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out) }) else {
         return -1;
-    }
+    };
     let Some(bytes) = slice_from_ptr(header, header_len) else {
         return -1;
     };
-    let out_ref = unsafe { &mut *out };
     *out_ref = MtproxyMtprotoPacketInspectResult::default();
 
     match mtproxy_core::runtime::mtproto::proxy::inspect_mtproto_packet_header(bytes, packet_len) {
@@ -510,13 +497,12 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_parse_client_packet(
     len: usize,
     out: *mut MtproxyMtprotoClientPacketParseResult,
 ) -> i32 {
-    if out.is_null() {
+    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out) }) else {
         return -1;
-    }
+    };
     let Some(bytes) = slice_from_ptr(data, len) else {
         return -1;
     };
-    let out_ref = unsafe { &mut *out };
     *out_ref = MtproxyMtprotoClientPacketParseResult {
         kind: MTPROTO_CLIENT_PACKET_KIND_INVALID,
         ..MtproxyMtprotoClientPacketParseResult::default()
@@ -556,13 +542,12 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_parse_function(
     actor_id: i64,
     out: *mut MtproxyMtprotoParseFunctionResult,
 ) -> i32 {
-    if out.is_null() {
+    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out) }) else {
         return -1;
-    }
+    };
     let Some(bytes) = slice_from_ptr(data, len) else {
         return -1;
     };
-    let out_ref = unsafe { &mut *out };
     *out_ref = MtproxyMtprotoParseFunctionResult::default();
     mtproto_parse_function_impl(bytes, actor_id, out_ref);
     0
@@ -578,9 +563,9 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_preinit(
     default_max_connections: i64,
     out: *mut MtproxyMtprotoCfgPreinitResult,
 ) -> i32 {
-    if out.is_null() {
+    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out) }) else {
         return MTPROTO_CFG_PREINIT_ERR_INVALID_ARGS;
-    }
+    };
     let snapshot = mtproxy_core::runtime::mtproto::config::preinit_config_snapshot(
         mtproxy_core::runtime::mtproto::config::MtprotoConfigDefaults {
             min_connections: default_min_connections,
@@ -593,7 +578,6 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_preinit(
     let Ok(auth_clusters) = i32::try_from(snapshot.auth_clusters) else {
         return MTPROTO_CFG_PREINIT_ERR_INTERNAL;
     };
-    let out_ref = unsafe { &mut *out };
     *out_ref = MtproxyMtprotoCfgPreinitResult {
         tot_targets,
         auth_clusters,
@@ -618,22 +602,18 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_decide_cluster_apply(
     max_clusters: u32,
     out: *mut MtproxyMtprotoCfgClusterApplyDecisionResult,
 ) -> i32 {
-    if out.is_null() {
+    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out) }) else {
         return MTPROTO_CFG_CLUSTER_APPLY_DECISION_ERR_INVALID_ARGS;
-    }
+    };
     let Ok(clusters_len_usize) = usize::try_from(clusters_len) else {
         return MTPROTO_CFG_CLUSTER_APPLY_DECISION_ERR_INVALID_ARGS;
     };
     let Ok(max_clusters_usize) = usize::try_from(max_clusters) else {
         return MTPROTO_CFG_CLUSTER_APPLY_DECISION_ERR_INVALID_ARGS;
     };
-    if clusters_len_usize > 0 && cluster_ids.is_null() {
+    let Some(cluster_ids_slice) = (unsafe { slice_from_ptr(cluster_ids, clusters_len_usize) })
+    else {
         return MTPROTO_CFG_CLUSTER_APPLY_DECISION_ERR_INVALID_ARGS;
-    }
-    let cluster_ids_slice = if clusters_len_usize == 0 {
-        &[]
-    } else {
-        unsafe { core::slice::from_raw_parts(cluster_ids, clusters_len_usize) }
     };
     match mtproxy_core::runtime::mtproto::config::decide_proxy_cluster_apply(
         cluster_ids_slice,
@@ -644,7 +624,6 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_decide_cluster_apply(
             let Ok(cluster_index) = i32::try_from(decision.cluster_index) else {
                 return MTPROTO_CFG_CLUSTER_APPLY_DECISION_ERR_INTERNAL;
             };
-            let out_ref = unsafe { &mut *out };
             *out_ref = MtproxyMtprotoCfgClusterApplyDecisionResult {
                 kind: mtproto_cfg_cluster_apply_decision_kind_to_ffi(decision.kind),
                 cluster_index,
@@ -927,15 +906,14 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_getlex_ext(
     len: usize,
     out: *mut MtproxyMtprotoCfgGetlexExtResult,
 ) -> i32 {
-    if out.is_null() {
+    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out) }) else {
         return MTPROTO_CFG_GETLEX_EXT_ERR_INVALID_ARGS;
-    }
+    };
     let Some(bytes) = cfg_bytes_from_cstr(cur, len) else {
         return MTPROTO_CFG_GETLEX_EXT_ERR_INVALID_ARGS;
     };
     let mut cursor = 0usize;
     let lex = mtproxy_core::runtime::mtproto::config::cfg_getlex_ext(bytes, &mut cursor);
-    let out_ref = unsafe { &mut *out };
     *out_ref = MtproxyMtprotoCfgGetlexExtResult {
         advance: cursor,
         lex,
@@ -955,9 +933,9 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_scan_directive_token(
     max_connections: i64,
     out: *mut MtproxyMtprotoCfgDirectiveTokenResult,
 ) -> i32 {
-    if out.is_null() {
+    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out) }) else {
         return MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_INVALID_ARGS;
-    }
+    };
     let Some(bytes) = cfg_bytes_from_cstr(cur, len) else {
         return MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_INVALID_ARGS;
     };
@@ -967,7 +945,6 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_scan_directive_token(
         max_connections,
     ) {
         Ok(preview) => {
-            let out_ref = unsafe { &mut *out };
             *out_ref = MtproxyMtprotoCfgDirectiveTokenResult {
                 kind: mtproto_directive_token_kind_to_ffi(preview.kind),
                 advance: preview.advance,
@@ -996,9 +973,9 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_parse_directive_step(
     max_clusters: u32,
     out: *mut MtproxyMtprotoCfgDirectiveStepResult,
 ) -> i32 {
-    if out.is_null() {
+    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out) }) else {
         return MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_INVALID_ARGS;
-    }
+    };
     let Some(bytes) = cfg_bytes_from_cstr(cur, len) else {
         return MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_INVALID_ARGS;
     };
@@ -1008,13 +985,9 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_parse_directive_step(
     let Ok(max_clusters_usize) = usize::try_from(max_clusters) else {
         return MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_INVALID_ARGS;
     };
-    if clusters_len_usize > 0 && cluster_ids.is_null() {
+    let Some(cluster_ids_slice) = (unsafe { slice_from_ptr(cluster_ids, clusters_len_usize) })
+    else {
         return MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_INVALID_ARGS;
-    }
-    let cluster_ids_slice = if clusters_len_usize == 0 {
-        &[]
-    } else {
-        unsafe { core::slice::from_raw_parts(cluster_ids, clusters_len_usize) }
     };
 
     match mtproxy_core::runtime::mtproto::config::cfg_parse_directive_step(
@@ -1037,7 +1010,6 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_parse_directive_step(
                 } else {
                     (0, -1)
                 };
-            let out_ref = unsafe { &mut *out };
             *out_ref = MtproxyMtprotoCfgDirectiveStepResult {
                 kind: mtproto_directive_token_kind_to_ffi(step.kind),
                 advance: step.advance,
@@ -1076,9 +1048,9 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_parse_proxy_target_step(
     has_last_cluster_state: i32,
     out: *mut MtproxyMtprotoCfgParseProxyTargetStepResult,
 ) -> i32 {
-    if out.is_null() {
+    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out) }) else {
         return MTPROTO_CFG_PARSE_PROXY_TARGET_STEP_ERR_INVALID_ARGS;
-    }
+    };
     let Some(bytes) = cfg_bytes_from_cstr(cur, len) else {
         return MTPROTO_CFG_PARSE_PROXY_TARGET_STEP_ERR_INVALID_ARGS;
     };
@@ -1097,20 +1069,15 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_parse_proxy_target_step(
     let Ok(current_auth_tot_clusters_usize) = usize::try_from(current_auth_tot_clusters) else {
         return MTPROTO_CFG_PARSE_PROXY_TARGET_STEP_ERR_INVALID_ARGS;
     };
-    if clusters_len_usize > 0 && cluster_ids.is_null() {
+    let Some(cluster_ids_slice) = (unsafe { slice_from_ptr(cluster_ids, clusters_len_usize) })
+    else {
         return MTPROTO_CFG_PARSE_PROXY_TARGET_STEP_ERR_INVALID_ARGS;
-    }
-    let cluster_ids_slice = if clusters_len_usize == 0 {
-        &[]
-    } else {
-        unsafe { core::slice::from_raw_parts(cluster_ids, clusters_len_usize) }
     };
 
     let last_cluster_state = if has_last_cluster_state != 0 {
-        if last_cluster_state.is_null() {
+        let Some(state_ref) = (unsafe { ref_from_ptr(last_cluster_state) }) else {
             return MTPROTO_CFG_PARSE_PROXY_TARGET_STEP_ERR_INVALID_ARGS;
-        }
-        let state_ref = unsafe { &*last_cluster_state };
+        };
         let Some(state) = mtproto_old_cluster_from_ffi(state_ref) else {
             return MTPROTO_CFG_PARSE_PROXY_TARGET_STEP_ERR_INVALID_ARGS;
         };
@@ -1168,7 +1135,6 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_parse_proxy_target_step(
                 0
             };
 
-            let out_ref = unsafe { &mut *out };
             *out_ref = MtproxyMtprotoCfgParseProxyTargetStepResult {
                 advance: step.advance,
                 target_index,
@@ -1212,9 +1178,9 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_parse_full_pass(
     actions_capacity: u32,
     out: *mut MtproxyMtprotoCfgParseFullResult,
 ) -> i32 {
-    if out.is_null() {
+    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out) }) else {
         return MTPROTO_CFG_PARSE_FULL_PASS_ERR_INVALID_ARGS;
-    }
+    };
     let Some(bytes) = cfg_bytes_from_cstr(cur, len) else {
         return MTPROTO_CFG_PARSE_FULL_PASS_ERR_INVALID_ARGS;
     };
@@ -1257,8 +1223,11 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_parse_full_pass(
                 return MTPROTO_CFG_PARSE_FULL_PASS_ERR_INTERNAL;
             }
             if result.actions_len > 0 {
-                let out_actions =
-                    unsafe { core::slice::from_raw_parts_mut(actions, actions_capacity_usize) };
+                let Some(out_actions) =
+                    (unsafe { mut_slice_from_ptr(actions, actions_capacity_usize) })
+                else {
+                    return MTPROTO_CFG_PARSE_FULL_PASS_ERR_INVALID_ARGS;
+                };
                 for idx in 0..result.actions_len {
                     let action = planned_actions[idx];
                     let step = action.step;
@@ -1345,7 +1314,6 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_parse_full_pass(
                 } else {
                     (0, 0)
                 };
-            let out_ref = unsafe { &mut *out };
             *out_ref = MtproxyMtprotoCfgParseFullResult {
                 tot_targets,
                 auth_clusters,
@@ -1375,16 +1343,15 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_expect_semicolon(
     len: usize,
     out_advance: *mut usize,
 ) -> i32 {
-    if out_advance.is_null() {
+    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out_advance) }) else {
         return MTPROTO_CFG_EXPECT_SEMICOLON_ERR_INVALID_ARGS;
-    }
+    };
     let Some(bytes) = cfg_bytes_from_cstr(cur, len) else {
         return MTPROTO_CFG_EXPECT_SEMICOLON_ERR_INVALID_ARGS;
     };
     let mut cursor = 0usize;
     match mtproxy_core::runtime::mtproto::config::cfg_expect_semicolon(bytes, &mut cursor) {
         Ok(()) => {
-            let out_ref = unsafe { &mut *out_advance };
             *out_ref = cursor;
             MTPROTO_CFG_EXPECT_SEMICOLON_OK
         }
@@ -1412,15 +1379,12 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_lookup_cluster_index(
     has_default_cluster_index: i32,
     out_cluster_index: *mut i32,
 ) -> i32 {
-    if out_cluster_index.is_null() {
+    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out_cluster_index) }) else {
         return MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_ERR_INVALID_ARGS;
-    }
+    };
     let Ok(clusters_len_usize) = usize::try_from(clusters_len) else {
         return MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_ERR_INVALID_ARGS;
     };
-    if clusters_len_usize > 0 && cluster_ids.is_null() {
-        return MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_ERR_INVALID_ARGS;
-    }
     let default_idx = if has_default_cluster_index != 0 {
         let Ok(idx) = usize::try_from(default_cluster_index) else {
             return MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_ERR_INVALID_ARGS;
@@ -1432,17 +1396,15 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_lookup_cluster_index(
     } else {
         None
     };
-    let cluster_ids_slice = if clusters_len_usize == 0 {
-        &[]
-    } else {
-        unsafe { core::slice::from_raw_parts(cluster_ids, clusters_len_usize) }
+    let Some(cluster_ids_slice) = (unsafe { slice_from_ptr(cluster_ids, clusters_len_usize) })
+    else {
+        return MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_ERR_INVALID_ARGS;
     };
     let lookup = mtproxy_core::runtime::mtproto::config::mf_cluster_lookup_index(
         cluster_ids_slice,
         cluster_id,
         if force != 0 { default_idx } else { None },
     );
-    let out_ref = unsafe { &mut *out_cluster_index };
     let Some(idx) = lookup else {
         *out_ref = -1;
         return MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_NOT_FOUND;
@@ -1467,19 +1429,15 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_finalize(
     default_cluster_id: i32,
     out: *mut MtproxyMtprotoCfgFinalizeResult,
 ) -> i32 {
-    if out.is_null() {
+    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out) }) else {
         return MTPROTO_CFG_FINALIZE_ERR_INVALID_ARGS;
-    }
+    };
     let Ok(clusters_len_usize) = usize::try_from(clusters_len) else {
         return MTPROTO_CFG_FINALIZE_ERR_INVALID_ARGS;
     };
-    if clusters_len_usize > 0 && cluster_ids.is_null() {
+    let Some(cluster_ids_slice) = (unsafe { slice_from_ptr(cluster_ids, clusters_len_usize) })
+    else {
         return MTPROTO_CFG_FINALIZE_ERR_INVALID_ARGS;
-    }
-    let cluster_ids_slice = if clusters_len_usize == 0 {
-        &[]
-    } else {
-        unsafe { core::slice::from_raw_parts(cluster_ids, clusters_len_usize) }
     };
     match mtproxy_core::runtime::mtproto::config::finalize_parse_config_state(
         have_proxy != 0,
@@ -1496,7 +1454,6 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_finalize(
                 } else {
                     (0, 0)
                 };
-            let out_ref = unsafe { &mut *out };
             *out_ref = MtproxyMtprotoCfgFinalizeResult {
                 default_cluster_index,
                 has_default_cluster_index,
@@ -1585,11 +1542,13 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_parse_config(
     flags: i32,
     config_fd: i32,
 ) -> i32 {
-    if mc.is_null() || (flags & 4) == 0 {
+    if (flags & 4) == 0 {
         return -1;
     }
-    let mc_ptr = mc.cast::<MtproxyMfConfig>();
-    let mc_ref = unsafe { &mut *mc_ptr };
+    let Some(mc_ref) = (unsafe { mut_ref_from_ptr(mc.cast::<MtproxyMfConfig>()) }) else {
+        return -1;
+    };
+    let mc_ptr = mc_ref as *mut MtproxyMfConfig;
 
     if (flags & 17) == 0 && unsafe { load_config(config_filename.cast_const(), config_fd) } < 0 {
         return -2;
