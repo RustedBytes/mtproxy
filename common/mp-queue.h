@@ -110,22 +110,13 @@ extern volatile int mpq_threads;
 /* initialize this thread id and return it */
 int get_this_thread_id(void);
 
-/* functions for one mp_queue_block */
-struct mp_queue_block *alloc_mpq_block(mqn_value_t first_val,
-                                       int allow_recursion, int is_small);
-void free_mpq_block(struct mp_queue_block *QB);
-
-mqn_value_t mpq_block_pop(struct mp_queue_block *QB);
-long mpq_block_push(struct mp_queue_block *QB, mqn_value_t val);
-
-/* functions for mp_queue = list of mp_queue_block's */
+/* functions for mp_queue */
 void init_mp_queue(struct mp_queue *MQ);
 struct mp_queue *alloc_mp_queue(void);
 struct mp_queue *alloc_mp_queue_w(void);
 void init_mp_queue_w(struct mp_queue *MQ);
-void clear_mp_queue(
-    struct mp_queue *MQ); // frees all mpq block chain; invoke only if nobody
-                          // else is using mp-queue
+void clear_mp_queue(struct mp_queue *MQ); // invoke only if nobody else is
+                                          // using mp-queue
 void free_mp_queue(struct mp_queue *MQ); // same + invoke free()
 
 // flags for mpq_push / mpq_pop functions
@@ -140,10 +131,6 @@ int mpq_is_empty(struct mp_queue *MQ);
 long mpq_push_w(struct mp_queue *MQ, mqn_value_t val, int flags);
 mqn_value_t mpq_pop_w(struct mp_queue *MQ, int flags);
 mqn_value_t mpq_pop_nw(struct mp_queue *MQ, int flags);
-
-int mp_sem_post(mp_sem_t *sem);
-int mp_sem_wait(mp_sem_t *sem);
-int mp_sem_trywait(mp_sem_t *sem);
 
 #define COMMON_HAZARD_PTR_NUM 3
 int is_hazard_ptr(void *ptr, int a, int b);

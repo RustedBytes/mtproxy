@@ -13,6 +13,7 @@
 #define MQ_MAGIC_RUST_SEM 0x53ed7b42
 
 static volatile int mpq_rust_bridge_state;
+volatile int mpq_rust_attached_queues;
 
 static inline int is_rust_magic(const int magic) {
   return magic == MQ_MAGIC_RUST || magic == MQ_MAGIC_RUST_SEM;
@@ -39,6 +40,7 @@ static inline void bind_queue_handle(struct mp_queue *MQ, void *handle,
   MQ->mq_head = (struct mp_queue_block *)handle;
   MQ->mq_tail = (struct mp_queue_block *)handle;
   MQ->mq_magic = waitable ? MQ_MAGIC_RUST_SEM : MQ_MAGIC_RUST;
+  __sync_fetch_and_add(&mpq_rust_attached_queues, 1);
 }
 
 int mpq_rust_bridge_enable(void) {
@@ -52,6 +54,10 @@ int mpq_rust_bridge_enabled(void) {
 
 int mpq_rust_queue_attached(struct mp_queue *MQ) {
   return MQ && is_rust_magic(MQ->mq_magic);
+}
+
+int mpq_rust_queue_waitable(struct mp_queue *MQ) {
+  return MQ && queue_is_waitable(MQ);
 }
 
 int mpq_rust_init_queue(struct mp_queue *MQ, int waitable) {
@@ -85,6 +91,7 @@ void mpq_rust_clear_queue(struct mp_queue *MQ) {
   MQ->mq_tail = NULL;
   MQ->mq_magic = 0;
   memset(&MQ->mq_sem, 0, sizeof(MQ->mq_sem));
+  __sync_fetch_and_add(&mpq_rust_attached_queues, -1);
 }
 
 long mpq_rust_push(struct mp_queue *MQ, mqn_value_t val, int flags) {
