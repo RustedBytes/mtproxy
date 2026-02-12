@@ -7,18 +7,18 @@ Install the usual C build tools plus Rust tooling (`cargo` is required by `make`
 
 Debian/Ubuntu:
 ```bash
-apt install git curl build-essential zlib1g-dev rustc cargo
+apt install git curl build-essential rustc cargo
 ```
 
 CentOS/RHEL:
 ```bash
-yum install zlib-devel rust cargo
+yum install rust cargo
 yum groupinstall "Development Tools"
 ```
 
 ### Clone
 ```bash
-git clone https://github.com/TelegramMessenger/MTProxy
+git clone https://github.com/RustedBytes/mtproxy
 cd MTProxy
 ```
 

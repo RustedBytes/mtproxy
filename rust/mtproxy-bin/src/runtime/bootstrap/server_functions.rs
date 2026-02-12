@@ -8,8 +8,11 @@
 
 #![allow(unsafe_code)]
 
+use std::collections::HashSet;
 use std::ffi::CString;
 use std::os::raw::{c_char, c_int};
+use std::process;
+use std::sync::{LazyLock, Mutex, MutexGuard};
 
 /// Parse failure kinds for [`parse_memory_limit`].
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

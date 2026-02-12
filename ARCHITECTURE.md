@@ -1303,7 +1303,6 @@ LDFLAGS = -ggdb \        # GDB debug symbols
           -rdynamic \    # Export symbols for backtrace
           -lm \          # Math library
           -lrt \         # POSIX real-time
-          -lz \          # zlib compression
           -lpthread \    # POSIX threads
           -ldl           # Dynamic linking
 ```
@@ -1333,7 +1332,7 @@ LDFLAGS = -ggdb \        # GDB debug symbols
        objs/lib/libkdb.a \
        target/debug/libmtproxy_ffi.a \
        objs/lib/libkdb.a \   # Linked twice for circular deps
-       -lm -lrt -lz -lpthread -ldl
+       -lm -lrt -lpthread -ldl
 ```
 
 ### Dependency Tracking
