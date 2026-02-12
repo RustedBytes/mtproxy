@@ -913,6 +913,8 @@ mod server_functions;
 mod stats;
 mod tl_parse_methods;
 mod time_cfg_observability;
+pub mod vv_io;
+pub mod vv_tree;
 
 pub use compat::*;
 pub use crypto::*;

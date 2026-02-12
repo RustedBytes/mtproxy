@@ -8,5 +8,9 @@ publish.workspace = true
 [lib]
 path = "src/lib.rs"
 
+[dependencies]
+parking_lot = "0.12"
+heapless = "0.8"
+
 [lints]
 workspace = true
