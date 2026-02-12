@@ -30,12 +30,12 @@
 //! - Network stack for connections (`runtime::net`)
 //! - TL parsing for RPC protocol
 //!
-//! ## C23 Compliance
+//! ## Architecture Notes
 //!
-//! This module follows strict C23 standards when interfacing with C:
-//! - Uses `nullptr` instead of NULL
-//! - Uses built-in `bool`, `true`, `false` keywords
-//! - Leverages `constexpr` for compile-time constants
+//! This Rust implementation follows patterns from the original C source:
+//! - Configuration flags stored as bitmasks for efficiency
+//! - State management via EngineState structure
+//! - Multi-phase initialization sequence
 
 pub mod net;
 pub mod rpc;

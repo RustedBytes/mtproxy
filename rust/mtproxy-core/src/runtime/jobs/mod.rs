@@ -44,13 +44,13 @@
 //! - `JS_KILL`: Terminate
 //! - `JS_FINISH`: Cleanup/destructor
 //!
-//! ## C23 Compliance
+//! ## Architecture Notes
 //!
-//! This module follows strict C23 standards:
-//! - Uses `nullptr` for null pointers
-//! - Uses built-in `bool`, `true`, `false`
-//! - Uses `constexpr` for compile-time constants
-//! - Leverages atomic operations for thread safety
+//! This Rust implementation preserves design patterns from the C source:
+//! - Atomic operations for thread-safe reference counting and state management
+//! - Bit-packed flags and status for memory efficiency
+//! - Signal-based job execution model
+//! - Thread pool architecture with configurable limits
 
 use alloc::string::String;
 use core::sync::atomic::{AtomicI32, AtomicU32, Ordering};

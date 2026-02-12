@@ -20,12 +20,16 @@ static PENDING_SIGNALS: AtomicU64 = AtomicU64::new(0);
 pub type SignalHandler = fn();
 
 /// Convert signal number to bitmask
+///
+/// Note: Signal 64 is treated specially as SIGRTMAX and maps to bit 0
 #[must_use]
 pub const fn sig_to_int(sig: u32) -> u64 {
     if sig == 64 {
         1
-    } else {
+    } else if sig < 64 {
         1u64 << sig
+    } else {
+        0
     }
 }
 
