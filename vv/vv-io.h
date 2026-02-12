@@ -22,7 +22,6 @@
 #pragma once
 
 #include <arpa/inet.h>
-#include <stdint.h>
 #include <stdio.h>
 
 // Format string constants for printing IP addresses and PIDs
