@@ -413,7 +413,10 @@ pub fn engine_init(pwd_filename: Option<&str>, do_not_open_port: bool) -> Result
     LISTENER_PORT.store(defaults.port, Ordering::Release);
     LISTENER_START_PORT.store(defaults.start_port, Ordering::Release);
     LISTENER_END_PORT.store(defaults.end_port, Ordering::Release);
-    LISTENER_TCP_ENABLED.store(defaults.is_module_enabled(EngineModule::Tcp), Ordering::Release);
+    LISTENER_TCP_ENABLED.store(
+        defaults.is_module_enabled(EngineModule::Tcp),
+        Ordering::Release,
+    );
     let io_threads = normalize_thread_count("I/O", defaults.required_io_threads, 16)?;
     let cpu_threads = normalize_thread_count("CPU", defaults.required_cpu_threads, 8)?;
 

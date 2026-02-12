@@ -1,12 +1,12 @@
 use std::vec::Vec;
 
 use mtproxy_core::runtime::{
+    engine::net::{select_listener_port_with, DEFAULT_PORT_MOD},
     engine::signals::{
         engine_process_signals_with, processed_signals_count, register_runtime_signal,
         set_signal_handlers, signal_check_pending, signal_check_pending_and_clear,
         signal_dispatch_count, signal_set_pending, SIGINT, SIGTERM, SIGUSR1,
     },
-    engine::net::{select_listener_port_with, DEFAULT_PORT_MOD},
     engine::{
         engine_configure_network_listener, engine_init, engine_runtime_snapshot,
         engine_server_start, engine_server_tick, server_init,
@@ -298,11 +298,10 @@ fn parity_engine_net_select_listener_direct_port_outcome() {
 
 #[test]
 fn parity_engine_net_select_listener_range_outcome() {
-    let selected =
-        select_listener_port_with(0, 1000, 1004, DEFAULT_PORT_MOD, true, true, |port| {
-            port == 1002
-        })
-        .expect("range listener open should select matching port");
+    let selected = select_listener_port_with(0, 1000, 1004, DEFAULT_PORT_MOD, true, true, |port| {
+        port == 1002
+    })
+    .expect("range listener open should select matching port");
     assert_eq!(selected, Some(1002));
 }
 
