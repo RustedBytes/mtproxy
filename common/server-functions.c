@@ -44,6 +44,7 @@
 #include "server-functions.h"
 
 long long max_allocated_buffer_bytes __attribute__((weak));
+int default_parse_option_func(int a);
 
 int engine_options_num;
 char *engine_options[MAX_ENGINE_OPTIONS];
@@ -112,6 +113,7 @@ void init_parse_options(unsigned keep_mask,
 void parse_option_ex(const char *name, int arg, int *var, int val,
                      unsigned flags, int (*func)(int), const char *help, ...) {
   (void)var;
+  int (*effective_func)(int) = func ? func : default_parse_option_func;
 
   char *formatted_help = NULL;
   if (help) {
@@ -122,7 +124,8 @@ void parse_option_ex(const char *name, int arg, int *var, int val,
     assert(rc >= 0);
   }
 
-  if (rust_sf_parse_option_add(name, arg, val, flags, func, formatted_help) < 0) {
+  if (rust_sf_parse_option_add(name, arg, val, flags, effective_func,
+                               formatted_help) < 0) {
     kprintf("failed to register parse option %s (%d)\n", name ? name : "(null)",
             val);
     free(formatted_help);
@@ -145,7 +148,8 @@ void parse_option(const char *name, int arg, int *var, int val,
     assert(rc >= 0);
   }
 
-  if (rust_sf_parse_option_add(name, arg, val, LONGOPT_CUSTOM_SET, NULL,
+  if (rust_sf_parse_option_add(name, arg, val, LONGOPT_CUSTOM_SET,
+                               default_parse_option_func,
                                formatted_help) < 0) {
     kprintf("failed to register custom parse option %s (%d)\n",
             name ? name : "(null)", val);

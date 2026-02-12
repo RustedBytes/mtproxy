@@ -29,6 +29,7 @@ unsafe extern "C" {
     static mut daemonize: c_int;
     static mut username: *const c_char;
     static mut optarg: *mut c_char;
+    static mut optind: c_int;
     static mut max_allocated_buffer_bytes: c_longlong;
 
     static mut engine_options_num: c_int;
@@ -655,6 +656,7 @@ pub unsafe extern "C" fn rust_sf_parse_engine_options_long(
     let registry = lock_unpoisoned(&PARSE_REGISTRY);
 
     let mut index = 1usize;
+    let mut first_non_option: Option<usize> = None;
     while index < argc_usize {
         // SAFETY: index is within argv bounds.
         let token_ptr = unsafe { *argv.add(index) };
@@ -665,6 +667,9 @@ pub unsafe extern "C" fn rust_sf_parse_engine_options_long(
         // SAFETY: token_ptr is a valid C string from argv.
         let token = unsafe { CStr::from_ptr(token_ptr).to_bytes() };
         if token == b"--" {
+            if first_non_option.is_none() {
+                first_non_option = Some(index + 1);
+            }
             break;
         }
 
@@ -679,10 +684,18 @@ pub unsafe extern "C" fn rust_sf_parse_engine_options_long(
                 Err(_) => return -1,
             }
         } else {
+            if first_non_option.is_none() {
+                first_non_option = Some(index);
+            }
             0
         };
 
         index += 1 + consumed_next;
+    }
+
+    // SAFETY: optind is process-global getopt state.
+    unsafe {
+        optind = c_int::try_from(first_non_option.unwrap_or(argc_usize)).unwrap_or(argc);
     }
 
     0
