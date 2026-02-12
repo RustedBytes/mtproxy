@@ -47,7 +47,6 @@
 #include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 
 #include "vv/vv-io.h"
-#include "vv/vv-tree.h"
 
 #include "engine/engine.h"
 
@@ -81,24 +80,15 @@ struct tl_out_state *tl_aio_init_store(enum tl_type type,
 
 #define ENGINE_JOB_CLASS JF_CLASS_MAIN
 
-#define rpc_custom_op_cmp(a, b) (a->op < b->op ? -1 : a->op > b->op ? 1 : 0)
-
-#define X_TYPE struct rpc_custom_op *
-#define X_CMP rpc_custom_op_cmp
-#define TREE_NAME rpc_custom_op
-#define TREE_MALLOC
-
-#include "vv/vv-tree.c"
-static struct tree_rpc_custom_op *rpc_custom_op_tree;
-
 void register_custom_op_cb(unsigned op,
                            void (*func)(struct tl_in_state *tlio_in,
                                         struct query_work_params *params)) {
   struct rpc_custom_op *O = malloc(sizeof(*O));
+  assert(O);
   O->op = op;
   O->func = func;
-  rpc_custom_op_tree =
-      tree_insert_rpc_custom_op(rpc_custom_op_tree, O, lrand48());
+  int32_t rc = mtproxy_ffi_engine_rpc_custom_op_insert(op, O);
+  assert(rc == 0);
 }
 
 static struct tl_act_extra *(*tl_parse_function)(struct tl_in_state *tlio_in,
@@ -197,7 +187,7 @@ int __tl_query_act_custom(struct tl_in_state *tlio_in,
                           struct query_work_params *P) {
   unsigned op = tl_fetch_lookup_int();
   struct rpc_custom_op *O =
-      tree_lookup_ptr_rpc_custom_op(rpc_custom_op_tree, (void *)&op);
+      mtproxy_ffi_engine_rpc_custom_op_lookup(op);
   if (O) {
     O->func(tlio_in, P);
   }
@@ -685,8 +675,9 @@ int query_job_run(job_t job, int fd, int generation) {
   struct tl_query_header *h = NULL;
 
   int res;
+  int has_custom_ops = mtproxy_ffi_engine_rpc_custom_op_has_any();
   int dispatch_decision = mtproxy_ffi_engine_rpc_query_job_dispatch_decision(
-      op, rpc_custom_op_tree != NULL);
+      op, has_custom_ops);
   if (dispatch_decision == MTPROXY_FFI_ENGINE_RPC_QJ_CUSTOM) {
     struct raw_message r;
     rwm_clone(&r, (struct raw_message *)IO->in);

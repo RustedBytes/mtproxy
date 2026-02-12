@@ -40,8 +40,6 @@
 #include "server-functions.h"
 #include "vv/vv-io.h"
 
-long long total_vv_tree_nodes;
-
 int my_pid;
 
 int connections_prepare_stat(stats_buffer_t *sb);

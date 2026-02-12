@@ -28,6 +28,7 @@
 #include <assert.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 
 #include "kprintf.h"
@@ -50,33 +51,17 @@ static inline void rpc_target_normalize_pid(struct process_id *pid) {
   assert(rc == 0);
 }
 
-#define rpc_target_cmp(a, b)                                                   \
-  (RPC_TARGET_INFO(a)->PID.port                                                \
-       ? memcmp(&RPC_TARGET_INFO(a)->PID, &RPC_TARGET_INFO(b)->PID, 6)         \
-       : memcmp(&RPC_TARGET_INFO(a)->PID, &RPC_TARGET_INFO(b)->PID, 8))
+_Static_assert(sizeof(struct process_id) == sizeof(mtproxy_ffi_process_id_t),
+               "process_id layout mismatch");
 
-// DEFINE_TREE(rpc_target, rpc_target_job_t, rpc_target_cmp, MALLOC)
+static inline mtproxy_ffi_process_id_t
+rpc_target_pid_to_ffi(const struct process_id *pid) {
+  mtproxy_ffi_process_id_t out;
+  memcpy(&out, pid, sizeof(out));
+  return out;
+}
 
-// DEFINE_TREE(rpc_target, struct rpc_target *, rpc_target_cmp)
-#define X_TYPE rpc_target_job_t
-#define X_CMP rpc_target_cmp
-#define TREE_NAME rpc_target
-#define TREE_PTHREAD
-#define TREE_MALLOC
-#include "vv/vv-tree.c"
-
-#define X_TYPE connection_job_t
-#define X_CMP(a, b) (((a) < (b)) ? -1 : ((a) > (b)) ? 1 : 0)
-#define TREE_NAME connection
-#define TREE_PTHREAD
-#define TREE_MALLOC
-#define TREE_INCREF job_incref
-#define TREE_DECREF job_decref_f
-#include "vv/vv-tree.c"
-
-static struct tree_rpc_target *rpc_target_tree;
-struct tree_rpc_target *get_rpc_target_tree_ptr(struct tree_rpc_target **T);
-void free_rpc_target_tree_ptr(struct tree_rpc_target *T);
+static mtproxy_ffi_rpc_target_tree_t *rpc_target_tree;
 
 #define MODULE rpc_targets
 
@@ -94,22 +79,20 @@ MODULE_STAT_FUNCTION_END
 
 static rpc_target_job_t rpc_target_alloc(struct process_id PID) {
   assert_engine_thread();
+  rpc_target_normalize_pid(&PID);
   rpc_target_job_t SS =
       calloc(sizeof(struct async_job) + sizeof(struct rpc_target_info), 1);
   struct rpc_target_info *S = RPC_TARGET_INFO(SS);
 
   S->PID = PID;
 
-  struct tree_rpc_target *old = rpc_target_tree;
-
-  if (old) {
-    __sync_fetch_and_add(&old->refcnt, 1);
-  }
-
-  rpc_target_tree = tree_insert_rpc_target(rpc_target_tree, SS, lrand48_j());
+  mtproxy_ffi_rpc_target_tree_t *old =
+      mtproxy_ffi_rpc_target_tree_acquire(rpc_target_tree);
+  mtproxy_ffi_process_id_t pid_key = rpc_target_pid_to_ffi(&PID);
+  rpc_target_tree =
+      mtproxy_ffi_rpc_target_tree_insert(rpc_target_tree, &pid_key, SS);
   MODULE_STAT->total_rpc_targets++;
-  // hexdump ((void *)rpc_target_tree, (void *)(rpc_target_tree + 1));
-  free_tree_ptr_rpc_target(old);
+  mtproxy_ffi_rpc_target_tree_release(old);
 
   return SS;
 }
@@ -129,16 +112,14 @@ void rpc_target_insert_conn(connection_job_t C) {
   // st_update_host ();
   struct rpc_target_info t;
   t.PID = TCP_RPC_DATA(C)->remote_pid;
-  assert(t.PID.ip);
+  rpc_target_normalize_pid(&t.PID);
 
   vkprintf(
       2, "rpc_target_insert_conn: ip = " IP_PRINT_STR ", port = %d, fd = %d\n",
       IP_TO_PRINT(t.PID.ip), (int)t.PID.port, c->fd);
-  rpc_target_job_t fake_target =
-      ((void *)&t) - offsetof(struct async_job, j_custom);
-
+  mtproxy_ffi_process_id_t pid_key = rpc_target_pid_to_ffi(&t.PID);
   rpc_target_job_t SS =
-      tree_lookup_ptr_rpc_target(rpc_target_tree, fake_target);
+      mtproxy_ffi_rpc_target_tree_lookup(rpc_target_tree, &pid_key);
 
   if (!SS) {
     SS = rpc_target_alloc(t.PID);
@@ -149,11 +130,7 @@ void rpc_target_insert_conn(connection_job_t C) {
   connection_job_t D = tree_lookup_ptr_connection(S->conn_tree, C);
   assert(!D);
 
-  struct tree_connection *old = S->conn_tree;
-
-  if (old) {
-    __sync_fetch_and_add(&old->refcnt, 1);
-  }
+  struct tree_connection *old = get_tree_ptr_connection(&S->conn_tree);
 
   S->conn_tree =
       tree_insert_connection(S->conn_tree, job_incref(C), lrand48_j());
@@ -182,11 +159,9 @@ void rpc_target_delete_conn(connection_job_t C) {
   vkprintf(
       2, "rpc_target_insert_conn: ip = " IP_PRINT_STR ", port = %d, fd = %d\n",
       IP_TO_PRINT(t.PID.ip), (int)t.PID.port, c->fd);
-  rpc_target_job_t fake_target =
-      ((void *)&t) - offsetof(struct async_job, j_custom);
-
+  mtproxy_ffi_process_id_t pid_key = rpc_target_pid_to_ffi(&t.PID);
   rpc_target_job_t SS =
-      tree_lookup_ptr_rpc_target(rpc_target_tree, fake_target);
+      mtproxy_ffi_rpc_target_tree_lookup(rpc_target_tree, &pid_key);
 
   if (!SS) {
     SS = rpc_target_alloc(t.PID);
@@ -197,10 +172,7 @@ void rpc_target_delete_conn(connection_job_t C) {
   connection_job_t D = tree_lookup_ptr_connection(S->conn_tree, C);
   assert(D);
 
-  struct tree_connection *old = S->conn_tree;
-  if (old) {
-    __sync_fetch_and_add(&old->refcnt, 1);
-  }
+  struct tree_connection *old = get_tree_ptr_connection(&S->conn_tree);
   S->conn_tree = tree_delete_connection(S->conn_tree, C);
   MODULE_STAT->total_connections_in_rpc_targets--;
 
@@ -213,20 +185,17 @@ void rpc_target_delete_conn(connection_job_t C) {
 
 rpc_target_job_t rpc_target_lookup(struct process_id *pid) {
   assert(pid);
-  struct rpc_target_info t;
-  t.PID = *pid;
-  rpc_target_normalize_pid(&t.PID);
-  rpc_target_job_t fake_target =
-      ((void *)&t) - offsetof(struct async_job, j_custom);
-  assert(RPC_TARGET_INFO(fake_target) == &t);
+  struct process_id normalized = *pid;
+  rpc_target_normalize_pid(&normalized);
+  mtproxy_ffi_process_id_t pid_key = rpc_target_pid_to_ffi(&normalized);
 
   int fast = this_job_thread && this_job_thread->thread_class == JC_ENGINE;
 
-  struct tree_rpc_target *T =
-      fast ? rpc_target_tree : get_tree_ptr_rpc_target(&rpc_target_tree);
-  rpc_target_job_t S = tree_lookup_ptr_rpc_target(T, fake_target);
+  mtproxy_ffi_rpc_target_tree_t *T =
+      fast ? rpc_target_tree : mtproxy_ffi_rpc_target_tree_acquire(rpc_target_tree);
+  rpc_target_job_t S = mtproxy_ffi_rpc_target_tree_lookup(T, &pid_key);
   if (!fast) {
-    tree_free_rpc_target(T);
+    mtproxy_ffi_rpc_target_tree_release(T);
   }
   return S;
 }

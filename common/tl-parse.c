@@ -40,7 +40,6 @@
 #include "common/server-functions.h"
 
 #include "vv/vv-io.h"
-#include "vv/vv-tree.h"
 
 #include "common/common-stats.h"
 #include "jobs/jobs.h"

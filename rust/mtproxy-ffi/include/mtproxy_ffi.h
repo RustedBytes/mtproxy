@@ -14,6 +14,8 @@ typedef struct mtproxy_ffi_process_id {
   int32_t utime;
 } mtproxy_ffi_process_id_t;
 
+typedef struct mtproxy_ffi_rpc_target_tree mtproxy_ffi_rpc_target_tree_t;
+
 typedef struct mtproxy_ffi_aes_key_data {
   uint8_t read_key[32];
   uint8_t read_iv[16];
@@ -651,6 +653,19 @@ int32_t mtproxy_ffi_tcp_rpc_server_packet_len_state(int32_t packet_len, int32_t 
 
 // net-rpc-targets helper: normalizes zero-ip PID to default local IP.
 int32_t mtproxy_ffi_rpc_target_normalize_pid(mtproxy_ffi_process_id_t *pid, uint32_t default_ip);
+mtproxy_ffi_rpc_target_tree_t *mtproxy_ffi_rpc_target_tree_acquire(
+  mtproxy_ffi_rpc_target_tree_t *tree
+);
+void mtproxy_ffi_rpc_target_tree_release(mtproxy_ffi_rpc_target_tree_t *tree);
+mtproxy_ffi_rpc_target_tree_t *mtproxy_ffi_rpc_target_tree_insert(
+  mtproxy_ffi_rpc_target_tree_t *tree,
+  const mtproxy_ffi_process_id_t *pid,
+  void *target
+);
+void *mtproxy_ffi_rpc_target_tree_lookup(
+  mtproxy_ffi_rpc_target_tree_t *tree,
+  const mtproxy_ffi_process_id_t *pid
+);
 
 // net-crypto-aes helper: derives session keys/ivs from handshake material.
 int32_t mtproxy_ffi_crypto_aes_create_keys(
@@ -760,6 +775,9 @@ int32_t mtproxy_ffi_engine_rpc_query_job_dispatch_decision(
   int32_t op,
   int32_t has_custom_tree
 );
+int32_t mtproxy_ffi_engine_rpc_custom_op_insert(uint32_t op, void *entry);
+void *mtproxy_ffi_engine_rpc_custom_op_lookup(uint32_t op);
+int32_t mtproxy_ffi_engine_rpc_custom_op_has_any(void);
 int32_t mtproxy_ffi_engine_rpc_tcp_should_hold_conn(int32_t op);
 int32_t mtproxy_ffi_engine_net_default_port_mod(void);
 int32_t mtproxy_ffi_engine_net_try_open_port_range(

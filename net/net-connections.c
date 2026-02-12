@@ -270,15 +270,6 @@ void assert_engine_thread(void) {
 
 socket_connection_job_t alloc_new_socket_connection(connection_job_t C);
 
-#define X_TYPE connection_job_t
-#define X_CMP(a, b) (((a) < (b)) ? -1 : ((a) > (b)) ? 1 : 0)
-#define TREE_NAME connection
-#define TREE_MALLOC
-#define TREE_PTHREAD
-#define TREE_INCREF job_incref
-#define TREE_DECREF job_decref_f
-#include "vv/vv-tree.c"
-
 static inline int connection_is_active(int flags) {
   int32_t active = mtproxy_ffi_net_connection_is_active(flags);
   assert(active == 0 || active == 1);
@@ -1642,10 +1633,7 @@ static void find_bad_connection(connection_job_t C, void *x) {
 void destroy_dead_target_connections(conn_target_job_t CTJ) {
   struct conn_target_info *CT = CONN_TARGET_INFO(CTJ);
 
-  struct tree_connection *T = CT->conn_tree;
-  if (T) {
-    __sync_fetch_and_add(&T->refcnt, 1);
-  }
+  struct tree_connection *T = get_tree_ptr_connection(&CT->conn_tree);
 
   while (1) {
     connection_job_t CJ = NULL;
@@ -1729,10 +1717,7 @@ int create_new_connections(conn_target_job_t CTJ) {
   }
 
   if (precise_now >= CT->next_reconnect || CT->active_outbound_connections) {
-    struct tree_connection *T = CT->conn_tree;
-    if (T) {
-      __sync_fetch_and_add(&T->refcnt, 1);
-    }
+    struct tree_connection *T = get_tree_ptr_connection(&CT->conn_tree);
 
     while (CT->outbound_connections < need_c) {
       int cfd = -1;
