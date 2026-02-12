@@ -206,6 +206,45 @@ extern int32_t mtproxy_ffi_net_compute_conn_events(int32_t flags,
                                                    int32_t use_epollet);
 extern int32_t mtproxy_ffi_net_add_nat_info(const char *rule_text);
 extern uint32_t mtproxy_ffi_net_translate_ip(uint32_t local_ip);
+extern int32_t mtproxy_ffi_net_connections_server_check_ready(int32_t status,
+                                                              int32_t ready);
+extern int32_t mtproxy_ffi_net_connections_accept_rate_decide(
+    int32_t max_accept_rate, double now, double current_remaining,
+    double current_time, double *out_remaining, double *out_time);
+extern int32_t mtproxy_ffi_net_connections_compute_next_reconnect(
+    double reconnect_timeout, double next_reconnect_timeout,
+    int32_t active_outbound_connections, double now, double random_unit,
+    double *out_next_reconnect, double *out_next_reconnect_timeout);
+extern int32_t mtproxy_ffi_net_connections_target_bucket_ipv4(
+    size_t type_addr, uint32_t addr_s_addr, int32_t port, int32_t prime_targets);
+extern int32_t mtproxy_ffi_net_connections_target_bucket_ipv6(
+    size_t type_addr, const uint8_t *addr_ipv6, int32_t port,
+    int32_t prime_targets);
+extern int32_t mtproxy_ffi_net_connections_target_ready_transition(
+    int32_t was_ready, int32_t now_ready, int32_t *out_ready_outbound_delta,
+    int32_t *out_ready_targets_delta);
+extern int32_t mtproxy_ffi_net_connections_target_needed_connections(
+    int32_t min_connections, int32_t max_connections, int32_t bad_connections,
+    int32_t stopped_connections);
+extern int32_t mtproxy_ffi_net_connections_target_should_attempt_reconnect(
+    double now, double next_reconnect, int32_t active_outbound_connections);
+extern int32_t mtproxy_ffi_net_connections_destroy_target_transition(
+    int32_t new_global_refcnt, int32_t *out_active_targets_delta,
+    int32_t *out_inactive_targets_delta);
+extern int32_t mtproxy_ffi_net_connections_create_target_transition(
+    int32_t target_found, int32_t old_global_refcnt,
+    int32_t *out_active_targets_delta, int32_t *out_inactive_targets_delta,
+    int32_t *out_was_created);
+extern double mtproxy_ffi_net_connections_target_job_boot_delay(void);
+extern double mtproxy_ffi_net_connections_target_job_retry_delay(void);
+extern int32_t mtproxy_ffi_net_connections_target_job_should_run_tick(
+    int32_t is_alarm, int32_t timer_check_ok);
+extern int32_t
+mtproxy_ffi_net_connections_target_job_update_mode(int32_t global_refcnt);
+extern int32_t mtproxy_ffi_net_connections_target_job_post_tick_action(
+    int32_t is_completed, int32_t global_refcnt, int32_t has_conn_tree);
+extern int32_t mtproxy_ffi_net_connections_target_job_finalize_free_action(
+    int32_t free_target_rc);
 
 void tcp_set_max_accept_rate(int rate) { max_accept_rate = rate; }
 
@@ -1264,20 +1303,20 @@ int net_accept_new_connections(listening_connection_job_t LCJ) {
     MODULE_STAT->inbound_connections_accepted++;
 
     if (max_accept_rate) {
-      cur_accept_rate_remaining +=
-          (precise_now - cur_accept_rate_time) * max_accept_rate;
-      cur_accept_rate_time = precise_now;
-      if (cur_accept_rate_remaining > max_accept_rate) {
-        cur_accept_rate_remaining = max_accept_rate;
-      }
+      double new_remaining = cur_accept_rate_remaining;
+      double new_time = cur_accept_rate_time;
+      int32_t allow = mtproxy_ffi_net_connections_accept_rate_decide(
+          max_accept_rate, precise_now, cur_accept_rate_remaining,
+          cur_accept_rate_time, &new_remaining, &new_time);
+      assert(allow == 0 || allow == 1);
+      cur_accept_rate_remaining = new_remaining;
+      cur_accept_rate_time = new_time;
 
-      if (cur_accept_rate_remaining < 1) {
+      if (!allow) {
         MODULE_STAT->accept_rate_limit_failed++;
         close(cfd);
         continue;
       }
-
-      cur_accept_rate_remaining -= 1;
     }
 
     if (LC->flags & C_IPV6) {
@@ -1463,13 +1502,11 @@ connection_job_t connection_get_by_fd_generation(int fd, int generation) {
 
 int server_check_ready(connection_job_t C) {
   struct connection_info *c = CONN_INFO(C);
-  if (c->status == conn_none || c->status == conn_connecting) {
-    return c->ready = cr_notyet;
-  }
-  if (c->status == conn_error || c->ready == cr_failed) {
-    return c->ready = cr_failed;
-  }
-  return c->ready = cr_ok;
+  int32_t ready =
+      mtproxy_ffi_net_connections_server_check_ready(c->status, c->ready);
+  assert(ready >= cr_notyet && ready <= cr_failed);
+  c->ready = ready;
+  return ready;
 }
 
 int server_noop(connection_job_t C) { return 0; }
@@ -1584,16 +1621,15 @@ int check_conn_functions(conn_type_t *type, int listening) {
 
 void compute_next_reconnect(conn_target_job_t CT) {
   struct conn_target_info *S = CONN_TARGET_INFO(CT);
-  if (S->next_reconnect_timeout < S->reconnect_timeout ||
-      S->active_outbound_connections) {
-    S->next_reconnect_timeout = S->reconnect_timeout;
-  }
-  S->next_reconnect = precise_now + S->next_reconnect_timeout;
-  if (!S->active_outbound_connections &&
-      S->next_reconnect_timeout < MAX_RECONNECT_INTERVAL) {
-    S->next_reconnect_timeout =
-        S->next_reconnect_timeout * 1.5 + drand48_j() * 0.2;
-  }
+  double next_reconnect = 0.0;
+  double next_reconnect_timeout = S->next_reconnect_timeout;
+  int32_t rc = mtproxy_ffi_net_connections_compute_next_reconnect(
+      S->reconnect_timeout, S->next_reconnect_timeout,
+      S->active_outbound_connections, precise_now, drand48_j(),
+      &next_reconnect, &next_reconnect_timeout);
+  assert(rc == 0);
+  S->next_reconnect = next_reconnect;
+  S->next_reconnect_timeout = next_reconnect_timeout;
 }
 
 static void count_connection_num(connection_job_t C, void *good_c,
@@ -1657,17 +1693,14 @@ void destroy_dead_target_connections(conn_target_job_t CTJ) {
   int was_ready = CT->ready_outbound_connections;
   CT->ready_outbound_connections = good_c;
 
-  if (was_ready != CT->ready_outbound_connections) {
-    MODULE_STAT->ready_outbound_connections +=
-        CT->ready_outbound_connections - was_ready;
-  }
-
-  if (was_ready && !CT->ready_outbound_connections) {
-    MODULE_STAT->ready_targets--;
-  }
-  if (!was_ready && CT->ready_outbound_connections) {
-    MODULE_STAT->ready_targets++;
-  }
+  int32_t ready_outbound_delta = 0;
+  int32_t ready_targets_delta = 0;
+  int32_t rc = mtproxy_ffi_net_connections_target_ready_transition(
+      was_ready, CT->ready_outbound_connections, &ready_outbound_delta,
+      &ready_targets_delta);
+  assert(rc == 0);
+  MODULE_STAT->ready_outbound_connections += ready_outbound_delta;
+  MODULE_STAT->ready_targets += ready_targets_delta;
 
   if (T == CT->conn_tree) {
     tree_free_connection(T);
@@ -1699,24 +1732,21 @@ int create_new_connections(conn_target_job_t CTJ) {
   int was_ready = CT->ready_outbound_connections;
   CT->ready_outbound_connections = good_c;
 
-  if (was_ready != CT->ready_outbound_connections) {
-    MODULE_STAT->ready_outbound_connections +=
-        CT->ready_outbound_connections - was_ready;
-  }
+  int32_t ready_outbound_delta = 0;
+  int32_t ready_targets_delta = 0;
+  int32_t rc = mtproxy_ffi_net_connections_target_ready_transition(
+      was_ready, CT->ready_outbound_connections, &ready_outbound_delta,
+      &ready_targets_delta);
+  assert(rc == 0);
+  MODULE_STAT->ready_outbound_connections += ready_outbound_delta;
+  MODULE_STAT->ready_targets += ready_targets_delta;
 
-  if (was_ready && !CT->ready_outbound_connections) {
-    MODULE_STAT->ready_targets--;
-  }
-  if (!was_ready && CT->ready_outbound_connections) {
-    MODULE_STAT->ready_targets++;
-  }
+  need_c = mtproxy_ffi_net_connections_target_needed_connections(
+      CT->min_connections, CT->max_connections, bad_c, stopped_c);
+  assert(need_c <= CT->max_connections);
 
-  need_c = CT->min_connections + bad_c + ((stopped_c + 1) >> 1);
-  if (need_c > CT->max_connections) {
-    need_c = CT->max_connections;
-  }
-
-  if (precise_now >= CT->next_reconnect || CT->active_outbound_connections) {
+  if (mtproxy_ffi_net_connections_target_should_attempt_reconnect(
+          precise_now, CT->next_reconnect, CT->active_outbound_connections)) {
     struct tree_connection *T = get_tree_ptr_connection(&CT->conn_tree);
 
     while (CT->outbound_connections < need_c) {
@@ -1779,8 +1809,10 @@ static conn_target_job_t find_target(struct in_addr ad, int port,
                                      conn_type_t *type, void *extra, int mode,
                                      conn_target_job_t new_target) {
   assert(ad.s_addr);
-  unsigned h1 = ((unsigned long)type * 0xabacaba + ad.s_addr) % PRIME_TARGETS;
-  h1 = (h1 * 239 + port) % PRIME_TARGETS;
+  int32_t h1_i32 = mtproxy_ffi_net_connections_target_bucket_ipv4(
+      (size_t)type, ad.s_addr, port, PRIME_TARGETS);
+  assert(h1_i32 >= 0 && h1_i32 < PRIME_TARGETS);
+  unsigned h1 = (unsigned)h1_i32;
   conn_target_job_t *prev = HTarget + h1, cur;
   while ((cur = *prev) != 0) {
     struct conn_target_info *S = CONN_TARGET_INFO(cur);
@@ -1812,13 +1844,10 @@ static conn_target_job_t find_target_ipv6(unsigned char ad_ipv6[16], int port,
                                           int mode,
                                           conn_target_job_t new_target) {
   assert(*(long long *)ad_ipv6 || ((long long *)ad_ipv6)[1]);
-  unsigned h1 = ((unsigned long)type * 0xabacaba) % PRIME_TARGETS;
-  int i;
-  for (i = 0; i < 4; i++) {
-    h1 = ((unsigned long long)h1 * 17239 + ((unsigned *)ad_ipv6)[i]) %
-         PRIME_TARGETS;
-  }
-  h1 = (h1 * 239 + port) % PRIME_TARGETS;
+  int32_t h1_i32 = mtproxy_ffi_net_connections_target_bucket_ipv6(
+      (size_t)type, ad_ipv6, port, PRIME_TARGETS);
+  assert(h1_i32 >= 0 && h1_i32 < PRIME_TARGETS);
+  unsigned h1 = (unsigned)h1_i32;
   conn_target_job_t *prev = HTarget + h1, cur;
   while ((cur = *prev) != 0) {
     struct conn_target_info *S = CONN_TARGET_INFO(cur);
@@ -1900,11 +1929,16 @@ int destroy_target(JOB_REF_ARG(CTJ)) {
   assert(CT->type);
   assert(CT->global_refcnt > 0);
 
-  int r;
-  if (!((r = __sync_add_and_fetch(&CT->global_refcnt, -1)))) {
-    MODULE_STAT->active_targets--;
-    MODULE_STAT->inactive_targets++;
+  int r = __sync_add_and_fetch(&CT->global_refcnt, -1);
+  int32_t active_targets_delta = 0;
+  int32_t inactive_targets_delta = 0;
+  int32_t signal_run = mtproxy_ffi_net_connections_destroy_target_transition(
+      r, &active_targets_delta, &inactive_targets_delta);
+  assert(signal_run == 0 || signal_run == 1);
+  MODULE_STAT->active_targets += active_targets_delta;
+  MODULE_STAT->inactive_targets += inactive_targets_delta;
 
+  if (signal_run) {
     job_signal(JOB_REF_PASS(CTJ), JS_RUN);
   } else {
     job_decref(JOB_REF_PASS(CTJ));
@@ -1913,18 +1947,38 @@ int destroy_target(JOB_REF_ARG(CTJ)) {
 }
 
 int do_conn_target_job(job_t job, int op, struct job_thread *JT) {
+  enum {
+    TARGET_JOB_UPDATE_INACTIVE_CLEANUP = 0,
+    TARGET_JOB_UPDATE_CREATE_CONNECTIONS = 1,
+    TARGET_JOB_POST_RETURN_ZERO = 0,
+    TARGET_JOB_POST_SCHEDULE_RETRY = 1,
+    TARGET_JOB_POST_ATTEMPT_FREE = 2,
+    TARGET_JOB_FINALIZE_COMPLETED = 1,
+    TARGET_JOB_FINALIZE_SCHEDULE_RETRY = 2,
+  };
+
   if (epoll_fd <= 0) {
-    job_timer_insert(job, precise_now + 0.01);
+    job_timer_insert(job,
+                     precise_now + mtproxy_ffi_net_connections_target_job_boot_delay());
     return 0;
   }
   conn_target_job_t CTJ = job;
   struct conn_target_info *CT = CONN_TARGET_INFO(CTJ);
 
   if (op == JS_ALARM || op == JS_RUN) {
-    if (op == JS_ALARM && !job_timer_check(job)) {
+    int32_t timer_check_ok = (op != JS_ALARM) || job_timer_check(job);
+    int32_t should_run = mtproxy_ffi_net_connections_target_job_should_run_tick(
+        op == JS_ALARM, timer_check_ok);
+    assert(should_run == 0 || should_run == 1);
+    if (!should_run) {
       return 0;
     }
-    if (!CT->global_refcnt) {
+
+    int32_t update_mode =
+        mtproxy_ffi_net_connections_target_job_update_mode(CT->global_refcnt);
+    assert(update_mode == TARGET_JOB_UPDATE_INACTIVE_CLEANUP ||
+           update_mode == TARGET_JOB_UPDATE_CREATE_CONNECTIONS);
+    if (update_mode == TARGET_JOB_UPDATE_INACTIVE_CLEANUP) {
       destroy_dead_target_connections(CTJ);
       clean_unused_target(CTJ);
       compute_next_reconnect(CTJ);
@@ -1932,21 +1986,33 @@ int do_conn_target_job(job_t job, int op, struct job_thread *JT) {
       create_new_connections(CTJ);
     }
 
-    if (CTJ->j_flags & JF_COMPLETED) {
+    int32_t post_action = mtproxy_ffi_net_connections_target_job_post_tick_action(
+        !!(CTJ->j_flags & JF_COMPLETED), CT->global_refcnt, !!CT->conn_tree);
+    assert(post_action == TARGET_JOB_POST_RETURN_ZERO ||
+           post_action == TARGET_JOB_POST_SCHEDULE_RETRY ||
+           post_action == TARGET_JOB_POST_ATTEMPT_FREE);
+
+    if (post_action == TARGET_JOB_POST_RETURN_ZERO) {
       return 0;
     }
 
-    if (CT->global_refcnt || CT->conn_tree) {
-      job_timer_insert(CTJ, precise_now + 0.1);
+    double retry_delay = mtproxy_ffi_net_connections_target_job_retry_delay();
+    if (post_action == TARGET_JOB_POST_SCHEDULE_RETRY) {
+      job_timer_insert(CTJ, precise_now + retry_delay);
       return 0;
-    } else {
-      if (free_target(CTJ) >= 0) {
-        return JOB_COMPLETED;
-      } else {
-        job_timer_insert(CTJ, precise_now + 0.1);
-        return 0;
-      }
     }
+
+    assert(post_action == TARGET_JOB_POST_ATTEMPT_FREE);
+    int32_t finalize_action =
+        mtproxy_ffi_net_connections_target_job_finalize_free_action(
+            free_target(CTJ));
+    assert(finalize_action == TARGET_JOB_FINALIZE_COMPLETED ||
+           finalize_action == TARGET_JOB_FINALIZE_SCHEDULE_RETRY);
+    if (finalize_action == TARGET_JOB_FINALIZE_COMPLETED) {
+      return JOB_COMPLETED;
+    }
+    job_timer_insert(CTJ, precise_now + retry_delay);
+    return 0;
   }
   if (op == JS_FINISH) {
     assert(CTJ->j_flags & JF_COMPLETED);
@@ -1978,17 +2044,18 @@ conn_target_job_t create_target(struct conn_target_info *source,
     t->max_connections = source->max_connections;
     t->reconnect_timeout = source->reconnect_timeout;
 
-    if (!__sync_fetch_and_add(&t->global_refcnt, 1)) {
-      MODULE_STAT->active_targets++;
-      MODULE_STAT->inactive_targets--;
-
-      if (was_created) {
-        *was_created = 2;
-      }
-    } else {
-      if (was_created) {
-        *was_created = 0;
-      }
+    int32_t old_global_refcnt = __sync_fetch_and_add(&t->global_refcnt, 1);
+    int32_t active_targets_delta = 0;
+    int32_t inactive_targets_delta = 0;
+    int32_t created_state = 0;
+    int32_t rc = mtproxy_ffi_net_connections_create_target_transition(
+        1, old_global_refcnt, &active_targets_delta, &inactive_targets_delta,
+        &created_state);
+    assert(rc == 0);
+    MODULE_STAT->active_targets += active_targets_delta;
+    MODULE_STAT->inactive_targets += inactive_targets_delta;
+    if (was_created) {
+      *was_created = created_state;
     }
 
     job_incref(T);
@@ -2006,7 +2073,14 @@ conn_target_job_t create_target(struct conn_target_info *source,
     job_timer_init(T);
 
     // t->generation = 1;
-    MODULE_STAT->active_targets++;
+    int32_t active_targets_delta = 0;
+    int32_t inactive_targets_delta = 0;
+    int32_t created_state = 0;
+    int32_t rc = mtproxy_ffi_net_connections_create_target_transition(
+        0, 0, &active_targets_delta, &inactive_targets_delta, &created_state);
+    assert(rc == 0);
+    MODULE_STAT->active_targets += active_targets_delta;
+    MODULE_STAT->inactive_targets += inactive_targets_delta;
     MODULE_STAT->allocated_targets++;
 
     if (source->target.s_addr) {
@@ -2018,7 +2092,7 @@ conn_target_job_t create_target(struct conn_target_info *source,
     }
 
     if (was_created) {
-      *was_created = 1;
+      *was_created = created_state;
     }
     t->global_refcnt = 1;
     schedule_job(JOB_REF_CREATE_PASS(T));
