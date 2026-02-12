@@ -81,8 +81,6 @@ struct tl_out_state *tl_aio_init_store(enum tl_type type,
 
 #define ENGINE_JOB_CLASS JF_CLASS_MAIN
 
-static long long queries_allocated;
-
 #define rpc_custom_op_cmp(a, b) (a->op < b->op ? -1 : a->op > b->op ? 1 : 0)
 
 #define X_TYPE struct rpc_custom_op *
@@ -150,10 +148,6 @@ struct tl_act_extra *tl_default_act_dup(struct tl_act_extra *extra) {
   return new;
 }
 
-int need_dup(struct tl_act_extra *extra) {
-  return mtproxy_ffi_engine_rpc_need_dup(extra->flags);
-}
-
 static tl_query_result_fun_t *tl_query_result_functions = NULL;
 
 void tl_query_result_fun_set(tl_query_result_fun_t func, int query_type_id) {
@@ -174,8 +168,6 @@ long long tl_generate_next_qid(int query_type_id) {
           << 32) |
          (++last_qid);
 }
-
-long long tl_generate_next_qid(int query_type_id);
 
 void engine_work_rpc_req_result(struct tl_in_state *tlio_in,
                                 struct query_work_params *params) {
@@ -251,8 +243,7 @@ void paramed_type_free([[maybe_unused]] struct paramed_type *P) {}
 static job_t fetch_query(job_t parent, struct tl_in_state *IO,
                          struct raw_message **raw, char **error,
                          int *error_code, long long actor_id, job_t extra_ref,
-                         job_t all_list, int status,
-                         [[maybe_unused]] struct tl_query_header *h) {
+                         job_t all_list, int status) {
   int fop = tl_get_op_function(IO);
 
   struct tl_act_extra *extra = tl_default_parse_function(IO, actor_id);
@@ -286,7 +277,8 @@ static job_t fetch_query(job_t parent, struct tl_in_state *IO,
   extra->raw = raw;
   extra->extra_ref = extra_ref ? job_incref(extra_ref) : 0;
 
-  extra = need_dup(extra) ? extra->dup(extra) : extra;
+  extra = mtproxy_ffi_engine_rpc_need_dup(extra->flags) ? extra->dup(extra)
+                                                         : extra;
 
   job_t job = create_async_job(
       process_act_atom_subjob,
@@ -301,8 +293,6 @@ static job_t fetch_query(job_t parent, struct tl_in_state *IO,
                              JSP_PARENT_ERROR);
   }
 
-  queries_allocated++;
-
   return job;
 }
 
@@ -313,11 +303,9 @@ static int fetch_all_queries(job_t parent, struct tl_in_state *tlio_in) {
 
   job_t root =
       fetch_query(parent, tlio_in, &P->result, &P->error, &P->error_code,
-                  h->actor_id, 0, P->all_list, JSP_PARENT_RWE, h);
+                  h->actor_id, 0, P->all_list, JSP_PARENT_RWE);
 
-  if (root == (void *)-1l) {
-    return -2;
-  } else if (root) {
+  if (root) {
     schedule_job(JOB_REF_PASS(root));
 
     return 0;
@@ -338,90 +326,75 @@ static int process_act_atom_subjob(job_t job, int op,
 
   switch (op) {
   case JS_RUN: {
-    int ok = 1;
-    if (!ok && !(E->type & (QUERY_ALLOW_REPLICA_GET | QUERY_ALLOW_UNINIT))) {
+    if (!E->raw) {
+      if (E->extra_ref) {
+        job_decref(JOB_REF_PASS(E->extra_ref));
+      }
+      return JOB_COMPLETED;
+    }
+
+    struct tl_out_state *IO = tl_out_state_alloc();
+    tls_init_raw_msg_nosend(IO);
+    E->tlio_out = IO;
+
+    long long old_rdtsc = rdtsc();
+    int res = E->act(job, E);
+    E->tlio_out = NULL;
+    long long rdtsc_delta = rdtsc() - old_rdtsc;
+    // vv_incr_stat_counter (STAT_QPS_TIME, rdtsc_delta);
+    // vv_op_stat_insert_rdtsc (E->op, rdtsc_delta);
+    // if (rdtsc_delta > (int)(0.05 * 2e9)) {
+    //   long_queries_cpu_cnt ++;
+    // }
+    E->cpu_rdtsc += rdtsc_delta;
+
+    if (res >= 0 && !IO->error) {
+      // assert (TL_OUT_RAW_MSG);
+      struct raw_message *raw = malloc(sizeof(*raw));
+      rwm_clone(raw, (struct raw_message *)IO->out);
+      tl_out_state_free(IO);
       if (E->raw) {
-        *E->error = strdup("not coord anymore");
-        *E->error_code = TL_ERROR_BINLOG_DISABLED;
+        *E->raw = raw;
         E->raw = 0;
         if (E->extra_ref) {
           job_decref(JOB_REF_PASS(E->extra_ref));
         }
       }
-      return job_fatal(job, EIO);
+
+      return JOB_COMPLETED;
+    } else if (res == -2 && E->attempt < 5 && !IO->error &&
+               job->j_children > 0) {
+      tl_out_state_free(IO);
+
+      E->attempt++;
+
+      return 0;
     } else {
-      if (!E->raw) {
+      if (!IO->error) {
+        if (res == -2 && E->attempt >= 5) {
+          tls_set_error_format(IO, TL_ERROR_AIO_MAX_RETRY_EXCEEDED,
+                               "Maximum number of retries exceeded");
+        } else if (res == -2) {
+          tls_set_error_format(IO, TL_ERROR_BAD_METAFILE,
+                               "Error loading metafile");
+        } else {
+          tls_set_error_format(IO, TL_ERROR_UNKNOWN, "Unknown error");
+        }
+      }
+
+      assert(IO->error);
+      if (E->raw) {
+        *E->error = strdup(IO->error);
+        *E->error_code = IO->errnum;
+        E->raw = 0;
         if (E->extra_ref) {
           job_decref(JOB_REF_PASS(E->extra_ref));
         }
-        return JOB_COMPLETED;
       }
+      tl_out_state_free(IO);
 
-      struct tl_out_state *IO = tl_out_state_alloc();
-      tls_init_raw_msg_nosend(IO);
-      E->tlio_out = IO;
-
-      long long old_rdtsc = rdtsc();
-      int res = E->act(job, E);
-      E->tlio_out = NULL;
-      long long rdtsc_delta = rdtsc() - old_rdtsc;
-      // vv_incr_stat_counter (STAT_QPS_TIME, rdtsc_delta);
-      // vv_op_stat_insert_rdtsc (E->op, rdtsc_delta);
-      // if (rdtsc_delta > (int)(0.05 * 2e9)) {
-      //   long_queries_cpu_cnt ++;
-      // }
-      E->cpu_rdtsc += rdtsc_delta;
-
-      if (res >= 0 && !IO->error) {
-        // assert (TL_OUT_RAW_MSG);
-        struct raw_message *raw = malloc(sizeof(*raw));
-        rwm_clone(raw, (struct raw_message *)IO->out);
-        tl_out_state_free(IO);
-        if (E->raw) {
-          *E->raw = raw;
-          E->raw = 0;
-          if (E->extra_ref) {
-            job_decref(JOB_REF_PASS(E->extra_ref));
-          }
-        }
-
-        return JOB_COMPLETED;
-      } else if (res == -2 && E->attempt < 5 && !IO->error &&
-                 job->j_children > 0) {
-        tl_out_state_free(IO);
-
-        E->attempt++;
-
-        return 0;
-      } else {
-        if (!IO->error) {
-          if (res == -2 && E->attempt >= 5) {
-            tls_set_error_format(IO, TL_ERROR_AIO_MAX_RETRY_EXCEEDED,
-                                 "Maximum number of retries exceeded");
-          } else if (res == -2) {
-            tls_set_error_format(IO, TL_ERROR_BAD_METAFILE,
-                                 "Error loading metafile");
-          } else {
-            tls_set_error_format(IO, TL_ERROR_UNKNOWN, "Unknown error");
-          }
-        }
-
-        assert(IO->error);
-        if (E->raw) {
-          *E->error = strdup(IO->error);
-          *E->error_code = IO->errnum;
-          E->raw = 0;
-          if (E->extra_ref) {
-            job_decref(JOB_REF_PASS(E->extra_ref));
-          }
-        }
-        tl_out_state_free(IO);
-
-        return job_fatal(job, EIO);
-      }
+      return job_fatal(job, EIO);
     }
-    assert(0);
-    return job_fatal(job, EINVAL);
   }
   case JS_ABORT:
     if (!job->j_error) {
@@ -438,7 +411,6 @@ static int process_act_atom_subjob(job_t job, int op,
     }
     return JOB_COMPLETED;
   case JS_FINISH:
-    queries_allocated--;
     if (E->extra_ref) {
       job_decref(JOB_REF_PASS(E->extra_ref));
     }
@@ -595,17 +567,12 @@ static int process_parse_subjob(job_t job, int op, struct job_thread *JT) {
   case JS_RUN: {
     job->j_execute = process_query_job;
 
-    struct raw_message raw_copy;
-    rwm_clone(&raw_copy, &P->src);
-
     struct tl_in_state *IO = tl_in_state_alloc();
     tlf_init_raw_message(IO, &P->src, P->src.total_bytes, 0);
 
     int r = fetch_all_queries(job, IO);
     tl_in_state_free(IO);
     IO = NULL;
-
-    rwm_free(&raw_copy);
     if (r < 0) {
       return JOB_SENDSIG(JS_ABORT);
       // return JOB_COMPLETED;
