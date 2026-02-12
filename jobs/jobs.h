@@ -479,41 +479,56 @@ unsigned int *payload_continuation_create(
   5, payload_continuation_create(_magic, _func, _extra)
 
 extern struct job_thread JobThreads[];
-#define CNCT2(a, b) a##b
-#define CNCT(a, b) CNCT2(a, b)
 
-#define MODULE_STAT_TYPE struct CNCT(jobs_module_stat_, MODULE)
-#define MODULE_STR(a) MODULE_STR2(a)
-#define MODULE_STR2(a) #a
-#define MODULE_STAT_PREFIX_NAME CNCT(jobs_module_state_prefix_, MODULE)
-#define MODULE_STAT_PREFIX char *MODULE_STAT_PREFIX_NAME
+#define JOBS_PP_CAT2(a, b) a##b
+#define JOBS_PP_CAT(a, b) JOBS_PP_CAT2(a, b)
+#define JOBS_PP_STR2(a) #a
+#define JOBS_PP_STR(a) JOBS_PP_STR2(a)
 
-#define MODULE_STAT CNCT(jobs_module_stat_, MODULE)
-#define MODULE_STAT_ARR CNCT(jobs_module_list_stat_, MODULE)
+#define JOBS_MODULE_STAT_TYPE(module) struct JOBS_PP_CAT(jobs_module_stat_, module)
+#define JOBS_MODULE_STAT_ARRAY(module) JOBS_PP_CAT(jobs_module_list_stat_, module)
+#define JOBS_MODULE_STAT_TLS(module) JOBS_PP_CAT(jobs_module_stat_, module)
+#define JOBS_MODULE_STAT_PREFIX(module) JOBS_PP_CAT(jobs_module_state_prefix_, module)
+#define JOBS_MODULE_THREAD_INIT_FN(module) JOBS_PP_CAT(jobs_module_thread_init_, module)
+#define JOBS_MODULE_REGISTER_FN(module) JOBS_PP_CAT(jobs_module_register_, module)
+#define JOBS_MODULE_THREAD_CALLBACK(module) JOBS_PP_CAT(module, _thread_callback)
+#define JOBS_MODULE_PREPARE_STAT_FN(module) JOBS_PP_CAT(module, _prepare_stat)
 
-#define MODULE_STAT_FUNCTION                                                   \
-  int CNCT(MODULE, _prepare_stat)(stats_buffer_t * sb) {                       \
-    sb_printf(sb, ">>>>>>%s>>>>>>\tstart\n", MODULE_STR(MODULE));
+#define JOBS_MODULE_STAT_FUNCTION_BEGIN(module)                                \
+  int JOBS_MODULE_PREPARE_STAT_FN(module)(stats_buffer_t * sb) {               \
+    sb_printf(sb, ">>>>>>%s>>>>>>\tstart\n", JOBS_PP_STR(module));
 
-#define MODULE_STAT_FUNCTION_END                                               \
-  sb_printf(sb, "<<<<<<%s<<<<<<\tend\n", MODULE_STR(MODULE));                  \
+#define JOBS_MODULE_STAT_FUNCTION_END(module)                                  \
+  sb_printf(sb, "<<<<<<%s<<<<<<\tend\n", JOBS_PP_STR(module));                 \
   return sb->pos;                                                              \
   }
 
-#define MODULE_INIT                                                            \
-  MODULE_STAT_TYPE *MODULE_STAT_ARR[MAX_JOB_THREADS];                          \
-  __thread MODULE_STAT_TYPE *MODULE_STAT;                                      \
-  MODULE_STAT_PREFIX;                                                          \
+#define JOBS_MODULE_INIT(module)                                               \
+  JOBS_MODULE_STAT_TYPE(module) *JOBS_MODULE_STAT_ARRAY(module)                \
+      [MAX_JOB_THREADS];                                                       \
+  __thread JOBS_MODULE_STAT_TYPE(module) *JOBS_MODULE_STAT_TLS(module);        \
+  char *JOBS_MODULE_STAT_PREFIX(module);                                       \
                                                                                \
-  void CNCT(jobs_module_thread_init_, MODULE)(void) {                          \
+  void JOBS_MODULE_THREAD_INIT_FN(module)(void) {                              \
     int id = get_this_thread_id();                                             \
     assert(id >= 0 && id < MAX_JOB_THREADS);                                   \
-    MODULE_STAT = MODULE_STAT_ARR[id] = calloc(sizeof(MODULE_STAT_TYPE), 1);   \
+    JOBS_MODULE_STAT_TLS(module) =                                             \
+        JOBS_MODULE_STAT_ARRAY(module)[id] =                                   \
+            calloc(sizeof(JOBS_MODULE_STAT_TYPE(module)), 1);                  \
   }                                                                            \
                                                                                \
-  struct thread_callback CNCT(MODULE, _thread_callback) = {                    \
-      .new_thread = CNCT(jobs_module_thread_init_, MODULE), .next = NULL};     \
-  void CNCT(jobs_module_register_, MODULE)(void) __attribute__((constructor)); \
-  void CNCT(jobs_module_register_, MODULE)(void) {                             \
-    register_thread_callback(&CNCT(MODULE, _thread_callback));                 \
+  struct thread_callback JOBS_MODULE_THREAD_CALLBACK(module) = {               \
+      .new_thread = JOBS_MODULE_THREAD_INIT_FN(module), .next = NULL};         \
+  void JOBS_MODULE_REGISTER_FN(module)(void) __attribute__((constructor));     \
+  void JOBS_MODULE_REGISTER_FN(module)(void) {                                 \
+    register_thread_callback(&JOBS_MODULE_THREAD_CALLBACK(module));             \
   }
+
+/* Backward-compatible aliases used in legacy modules. */
+#define MODULE_STAT_TYPE JOBS_MODULE_STAT_TYPE(MODULE)
+#define MODULE_STAT_PREFIX_NAME JOBS_MODULE_STAT_PREFIX(MODULE)
+#define MODULE_STAT JOBS_MODULE_STAT_TLS(MODULE)
+#define MODULE_STAT_ARR JOBS_MODULE_STAT_ARRAY(MODULE)
+#define MODULE_STAT_FUNCTION JOBS_MODULE_STAT_FUNCTION_BEGIN(MODULE)
+#define MODULE_STAT_FUNCTION_END JOBS_MODULE_STAT_FUNCTION_END(MODULE)
+#define MODULE_INIT JOBS_MODULE_INIT(MODULE)

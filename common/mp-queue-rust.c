@@ -90,7 +90,6 @@ void mpq_rust_clear_queue(struct mp_queue *MQ) {
   MQ->mq_head = NULL;
   MQ->mq_tail = NULL;
   MQ->mq_magic = 0;
-  memset(&MQ->mq_sem, 0, sizeof(MQ->mq_sem));
   __sync_fetch_and_add(&mpq_rust_attached_queues, -1);
 }
 

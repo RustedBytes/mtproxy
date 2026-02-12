@@ -34,17 +34,8 @@
 #include "mp-queue.h"
 #include "server-functions.h"
 
-volatile int mpq_blocks_allocated, mpq_blocks_allocated_max,
-    mpq_blocks_allocations, mpq_blocks_true_allocations, mpq_blocks_wasted,
-    mpq_blocks_prepared;
-volatile int mpq_small_blocks_allocated, mpq_small_blocks_allocated_max;
-
-__thread int mpq_this_thread_id;
-__thread void **thread_hazard_pointers;
-volatile int mpq_threads;
-
-void *mqb_hazard_ptr[MAX_MPQ_THREADS][THREAD_HPTRS]
-    __attribute__((aligned(64)));
+static __thread int mpq_this_thread_id;
+static volatile int mpq_threads;
 
 struct jobs_module_stat_mp_queue {
   int mpq_active;
@@ -86,16 +77,6 @@ int mp_queue_prepare_stat(stats_buffer_t *sb) {
   assert(sb);
   sb_printf(sb, ">>>>>>mp_queue>>>>>>\tstart\n");
 
-  sb_printf(sb, "mpq_blocks_allocated\t%d\n", mpq_blocks_allocated);
-  sb_printf(sb, "mpq_blocks_allocated_max\t%d\n", mpq_blocks_allocated_max);
-  sb_printf(sb, "mpq_blocks_allocations\t%d\n", mpq_blocks_allocations);
-  sb_printf(sb, "mpq_blocks_true_allocations\t%d\n",
-            mpq_blocks_true_allocations);
-  sb_printf(sb, "mpq_blocks_wasted\t%d\n", mpq_blocks_wasted);
-  sb_printf(sb, "mpq_blocks_prepared\t%d\n", mpq_blocks_prepared);
-  sb_printf(sb, "mpq_small_blocks_allocated\t%d\n", mpq_small_blocks_allocated);
-  sb_printf(sb, "mpq_small_blocks_allocated_max\t%d\n",
-            mpq_small_blocks_allocated_max);
   sb_printf(sb, "mpq_rust_attached_queues\t%d\n", mpq_rust_attached_queues);
 
   const char *prefix = jobs_module_state_prefix_mp_queue ?: "";
@@ -114,40 +95,13 @@ int mp_queue_prepare_stat(stats_buffer_t *sb) {
   return sb->pos;
 }
 
-int is_hazard_ptr(void *ptr, int a, int b) {
-  barrier();
-  int k = mpq_threads, q = mpq_this_thread_id;
-  barrier();
-  int i, j, r = 0;
-  for (j = a; j <= b; j++) {
-    if (q > 0 && mqb_hazard_ptr[q][j] == ptr) {
-      r = 1;
-      break;
-    }
-  }
-  for (i = 1; i <= k; i++) {
-    if (i == q) {
-      continue;
-    }
-    for (j = a; j <= b; j++) {
-      if (mqb_hazard_ptr[i][j] == ptr) {
-        barrier();
-        return r + 2;
-      }
-    }
-  }
-  barrier();
-  return r;
-}
-
 int get_this_thread_id(void) {
   int id = mpq_this_thread_id;
   if (id) {
     return id;
   }
   id = __sync_fetch_and_add(&mpq_threads, 1) + 1;
-  assert(id > 0 && id < MAX_MPQ_THREADS);
-  thread_hazard_pointers = mqb_hazard_ptr[id];
+  assert(id > 0 && id < MAX_JOB_THREADS);
   mpq_this_thread_id = id;
   return id;
 }
@@ -223,29 +177,4 @@ mqn_value_t mpq_pop_nw(struct mp_queue *MQ, int flags) {
 long mpq_push_w(struct mp_queue *MQ, mqn_value_t v, int flags) {
   assert(mpq_rust_queue_attached(MQ));
   return mpq_rust_push_w(MQ, v, flags);
-}
-
-void *get_ptr_multithread_copy(void **ptr, void (*incref)(void *ptr)) {
-  void **hptr = &mqb_hazard_ptr[get_this_thread_id()][COMMON_HAZARD_PTR_NUM];
-  assert(*hptr == NULL);
-
-  void *R;
-  while (1) {
-    R = *ptr;
-    barrier();
-    *hptr = R;
-    barrier();
-    mfence();
-
-    if (R != *ptr) {
-      continue;
-    }
-
-    incref(R);
-
-    barrier();
-    *hptr = NULL;
-    break;
-  }
-  return R;
 }
