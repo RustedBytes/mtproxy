@@ -40,7 +40,6 @@
 #include "net/net-rpc-targets.h"
 #include "net/net-tcp-rpc-common.h"
 
-#include "common/cpuid.h"
 #include "common/kprintf.h"
 
 #include "engine/engine-rpc-common.h"
