@@ -72,5 +72,6 @@ int tcp_rpcs_init_accepted_nohs(connection_job_t c);
 int tcp_rpcs_default_check_perm(connection_job_t c);
 int tcp_rpcs_init_crypto(connection_job_t c, struct tcp_rpc_nonce_packet *P);
 
-#define TCP_RPCS_FUNC(c)                                                       \
-  ((struct tcp_rpc_server_functions *)(CONN_INFO(c)->extra))
+static inline struct tcp_rpc_server_functions *TCP_RPCS_FUNC(connection_job_t c) {
+  return (struct tcp_rpc_server_functions *)CONN_INFO(c)->extra;
+}

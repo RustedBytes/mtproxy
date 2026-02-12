@@ -181,19 +181,24 @@ struct domain_info {
 
 static struct domain_info *default_domain_info;
 
-#define DOMAIN_HASH_MOD 257
-static struct domain_info *domains[DOMAIN_HASH_MOD];
+enum {
+  domain_hash_mod = 257,
+};
 
-#define SERVER_HELLO_PROFILE_FIXED 0
-#define SERVER_HELLO_PROFILE_RANDOM_NEAR 1
-#define SERVER_HELLO_PROFILE_RANDOM_AVG 2
+enum server_hello_profile {
+  server_hello_profile_fixed = 0,
+  server_hello_profile_random_near = 1,
+  server_hello_profile_random_avg = 2,
+};
+
+static struct domain_info *domains[domain_hash_mod];
 
 static inline int domain_bucket_index(const char *domain, size_t len) {
   assert(domain != NULL);
   assert(len <= (size_t)INT32_MAX);
   int32_t index = mtproxy_ffi_net_tcp_rpc_ext_domain_bucket_index(
       (const uint8_t *)domain, (int32_t)len);
-  assert(0 <= index && index < DOMAIN_HASH_MOD);
+  assert(0 <= index && index < domain_hash_mod);
   return (int)index;
 }
 
@@ -224,23 +229,25 @@ get_domain_server_hello_encrypted_size(const struct domain_info *info) {
   }
 }
 
-#define TLS_REQUEST_LENGTH 517
+enum {
+  tls_request_length = 517,
+};
 
 static void add_string(unsigned char *str, int *pos, const char *data,
                        int data_len) {
-  assert(*pos + data_len <= TLS_REQUEST_LENGTH);
+  assert(*pos + data_len <= tls_request_length);
   memcpy(str + (*pos), data, data_len);
   (*pos) += data_len;
 }
 
 static void add_random(unsigned char *str, int *pos, int random_len) {
-  assert(*pos + random_len <= TLS_REQUEST_LENGTH);
+  assert(*pos + random_len <= tls_request_length);
   assert(mtproxy_ffi_crypto_rand_bytes(str + (*pos), random_len) == 0);
   (*pos) += random_len;
 }
 
 static void add_length(unsigned char *str, int *pos, int length) {
-  assert(*pos + 2 <= TLS_REQUEST_LENGTH);
+  assert(*pos + 2 <= tls_request_length);
   str[*pos + 0] = (unsigned char)(length / 256);
   str[*pos + 1] = (unsigned char)(length % 256);
   (*pos) += 2;
@@ -248,35 +255,36 @@ static void add_length(unsigned char *str, int *pos, int length) {
 
 static void add_grease(unsigned char *str, int *pos,
                        const unsigned char *greases, int num) {
-  assert(*pos + 2 <= TLS_REQUEST_LENGTH);
+  assert(*pos + 2 <= tls_request_length);
   str[*pos + 0] = greases[num];
   str[*pos + 1] = greases[num];
   (*pos) += 2;
 }
 
 static void add_public_key(unsigned char *str, int *pos) {
-  assert(*pos + 32 <= TLS_REQUEST_LENGTH);
+  assert(*pos + 32 <= tls_request_length);
   assert(mtproxy_ffi_crypto_tls_generate_public_key(str + (*pos)) == 0);
   (*pos) += 32;
 }
 
 static unsigned char *create_request(const char *domain) {
-  unsigned char *result = malloc(TLS_REQUEST_LENGTH);
+  unsigned char *result = malloc(tls_request_length);
   int pos = 0;
 
-#define MAX_GREASE 7
-  unsigned char greases[MAX_GREASE];
-  assert(mtproxy_ffi_crypto_rand_bytes(greases, MAX_GREASE) == 0);
+  enum {
+    max_grease = 7,
+  };
+  unsigned char greases[max_grease];
+  assert(mtproxy_ffi_crypto_rand_bytes(greases, max_grease) == 0);
   int i;
-  for (i = 0; i < MAX_GREASE; i++) {
+  for (i = 0; i < max_grease; i++) {
     greases[i] = (unsigned char)((greases[i] & 0xF0) + 0x0A);
   }
-  for (i = 1; i < MAX_GREASE; i += 2) {
+  for (i = 1; i < max_grease; i += 2) {
     if (greases[i] == greases[i - 1]) {
       greases[i] = (unsigned char)(0x10 ^ greases[i]);
     }
   }
-#undef MAX_GREASE
 
   int domain_length = (int)strlen(domain);
 
@@ -322,10 +330,10 @@ static unsigned char *create_request(const char *domain) {
   add_grease(result, &pos, greases, 3);
   add_string(result, &pos, "\x00\x01\x00\x00\x15", 5);
 
-  int padding_length = TLS_REQUEST_LENGTH - 2 - pos;
+  int padding_length = tls_request_length - 2 - pos;
   assert(padding_length >= 0);
   add_length(result, &pos, padding_length);
-  memset(result + pos, 0, TLS_REQUEST_LENGTH - pos);
+  memset(result + pos, 0, tls_request_length - pos);
   return result;
 }
 
@@ -334,66 +342,85 @@ static int read_length(const unsigned char *response, int *pos) {
   return response[*pos - 2] * 256 + response[*pos - 1];
 }
 
+static int tls_fail_response_parse(const char *error) {
+  kprintf("Failed to parse upstream TLS response: %s\n", error);
+  return 0;
+}
+
+static int tls_has_bytes(int pos, int length, int len) {
+  return pos + length <= len;
+}
+
+static int tls_expect_bytes(const unsigned char *response, int pos,
+                            const void *expected, size_t expected_len) {
+  return memcmp(response + pos, expected, expected_len) == 0;
+}
+
 static int check_response(const unsigned char *response, int len,
                           const unsigned char *request_session_id,
                           int *is_reversed_extension_order,
                           int *encrypted_application_data_length) {
-#define FAIL(error)                                                            \
-  {                                                                            \
-    kprintf("Failed to parse upstream TLS response: " error "\n");             \
-    return 0;                                                                  \
-  }
-#define CHECK_LENGTH(length)                                                   \
-  if (pos + (length) > len) {                                                  \
-    FAIL("Too short");                                                         \
-  }
-#define EXPECT_STR(pos, str, error)                                            \
-  if (memcmp(response + pos, str, sizeof(str) - 1) != 0) {                     \
-    FAIL(error);                                                               \
-  }
-
   int pos = 0;
-  CHECK_LENGTH(3);
-  EXPECT_STR(0, "\x16\x03\x03", "Non-TLS response or TLS <= 1.1");
+  if (!tls_has_bytes(pos, 3, len)) {
+    return tls_fail_response_parse("Too short");
+  }
+  if (!tls_expect_bytes(response, 0, "\x16\x03\x03",
+                        sizeof("\x16\x03\x03") - 1)) {
+    return tls_fail_response_parse("Non-TLS response or TLS <= 1.1");
+  }
   pos += 3;
-  CHECK_LENGTH(2);
+  if (!tls_has_bytes(pos, 2, len)) {
+    return tls_fail_response_parse("Too short");
+  }
   int server_hello_length = read_length(response, &pos);
   if (server_hello_length <= 39) {
-    FAIL("Receive too short ServerHello");
+    return tls_fail_response_parse("Receive too short ServerHello");
   }
-  CHECK_LENGTH(server_hello_length);
+  if (!tls_has_bytes(pos, server_hello_length, len)) {
+    return tls_fail_response_parse("Too short");
+  }
 
-  EXPECT_STR(5, "\x02\x00", "Non-TLS response 2");
-  EXPECT_STR(9, "\x03\x03", "Non-TLS response 3");
+  if (!tls_expect_bytes(response, 5, "\x02\x00", sizeof("\x02\x00") - 1)) {
+    return tls_fail_response_parse("Non-TLS response 2");
+  }
+  if (!tls_expect_bytes(response, 9, "\x03\x03", sizeof("\x03\x03") - 1)) {
+    return tls_fail_response_parse("Non-TLS response 3");
+  }
 
   if (memcmp(response + 11,
              "\xcf\x21\xad\x74\xe5\x9a\x61\x11\xbe\x1d\x8c\x02\x1e\x65\xb8\x91"
              "\xc2\xa2\x11\x16\x7a\xbb\x8c\x5e\x07\x9e\x09\xe2\xc8\xa8\x33\x9c",
              32) == 0) {
-    FAIL("TLS 1.3 servers returning HelloRetryRequest are not supprted");
+    return tls_fail_response_parse(
+        "TLS 1.3 servers returning HelloRetryRequest are not supprted");
   }
   if (response[43] == '\x00') {
-    FAIL("TLS <= 1.2: empty session_id");
+    return tls_fail_response_parse("TLS <= 1.2: empty session_id");
   }
-  EXPECT_STR(43, "\x20", "Non-TLS response 4");
+  if (!tls_expect_bytes(response, 43, "\x20", sizeof("\x20") - 1)) {
+    return tls_fail_response_parse("Non-TLS response 4");
+  }
   if (server_hello_length <= 75) {
-    FAIL("Receive too short server hello 2");
+    return tls_fail_response_parse("Receive too short server hello 2");
   }
   if (memcmp(response + 44, request_session_id, 32) != 0) {
-    FAIL("TLS <= 1.2: expected mirrored session_id");
+    return tls_fail_response_parse("TLS <= 1.2: expected mirrored session_id");
   }
-  EXPECT_STR(76, "\x13\x01\x00",
-             "TLS <= 1.2: expected x25519 as a chosen cipher");
+  if (!tls_expect_bytes(response, 76, "\x13\x01\x00",
+                        sizeof("\x13\x01\x00") - 1)) {
+    return tls_fail_response_parse(
+        "TLS <= 1.2: expected x25519 as a chosen cipher");
+  }
   pos += 74;
   int extensions_length = read_length(response, &pos);
   if (extensions_length + 76 != server_hello_length) {
-    FAIL("Receive wrong extensions length");
+    return tls_fail_response_parse("Receive wrong extensions length");
   }
   int sum = 0;
   while (pos < 5 + server_hello_length - 4) {
     int extension_id = read_length(response, &pos);
     if (extension_id != 0x33 && extension_id != 0x2b) {
-      FAIL("Receive unexpected extension");
+      return tls_fail_response_parse("Receive unexpected extension");
     }
     if (pos == 83) {
       *is_reversed_extension_order = (extension_id == 0x2b);
@@ -402,40 +429,48 @@ static int check_response(const unsigned char *response, int len,
 
     int extension_length = read_length(response, &pos);
     if (pos + extension_length > 5 + server_hello_length) {
-      FAIL("Receive wrong extension length");
+      return tls_fail_response_parse("Receive wrong extension length");
     }
     if (extension_length != (extension_id == 0x33 ? 36 : 2)) {
-      FAIL("Unexpected extension length");
+      return tls_fail_response_parse("Unexpected extension length");
     }
     pos += extension_length;
   }
   if (sum != 0x33 + 0x2b) {
-    FAIL("Receive duplicate extensions");
+    return tls_fail_response_parse("Receive duplicate extensions");
   }
   if (pos != 5 + server_hello_length) {
-    FAIL("Receive wrong extensions list");
+    return tls_fail_response_parse("Receive wrong extensions list");
   }
 
-  CHECK_LENGTH(9);
-  EXPECT_STR(pos, "\x14\x03\x03\x00\x01\x01",
-             "Expected dummy ChangeCipherSpec");
-  EXPECT_STR(pos + 6, "\x17\x03\x03", "Expected encrypted application data");
+  if (!tls_has_bytes(pos, 9, len)) {
+    return tls_fail_response_parse("Too short");
+  }
+  if (!tls_expect_bytes(response, pos, "\x14\x03\x03\x00\x01\x01",
+                        sizeof("\x14\x03\x03\x00\x01\x01") - 1)) {
+    return tls_fail_response_parse("Expected dummy ChangeCipherSpec");
+  }
+  if (!tls_expect_bytes(response, pos + 6, "\x17\x03\x03",
+                        sizeof("\x17\x03\x03") - 1)) {
+    return tls_fail_response_parse("Expected encrypted application data");
+  }
   pos += 9;
 
-  CHECK_LENGTH(2);
+  if (!tls_has_bytes(pos, 2, len)) {
+    return tls_fail_response_parse("Too short");
+  }
   *encrypted_application_data_length = read_length(response, &pos);
   if (*encrypted_application_data_length == 0) {
-    FAIL("Receive empty encrypted application data");
+    return tls_fail_response_parse("Receive empty encrypted application data");
   }
 
-  CHECK_LENGTH(*encrypted_application_data_length);
+  if (!tls_has_bytes(pos, *encrypted_application_data_length, len)) {
+    return tls_fail_response_parse("Too short");
+  }
   pos += *encrypted_application_data_length;
   if (pos != len) {
-    FAIL("Too long");
+    return tls_fail_response_parse("Too long");
   }
-#undef FAIL
-#undef CHECK_LENGTH
-#undef EXPECT_STR
 
   return 1;
 }
@@ -456,10 +491,12 @@ static int update_domain_info(struct domain_info *info) {
   FD_ZERO(&write_fd);
   FD_ZERO(&except_fd);
 
-#define TRIES 20
-  int sockets[TRIES];
+  enum {
+    tls_probe_tries = 20,
+  };
+  int sockets[tls_probe_tries];
   int i;
-  for (i = 0; i < TRIES; i++) {
+  for (i = 0; i < tls_probe_tries; i++) {
     sockets[i] = socket(host->h_addrtype, SOCK_STREAM, IPPROTO_TCP);
     if (sockets[i] < 0) {
       kprintf("Failed to open socket for %s: %s\n", domain, strerror(errno));
@@ -502,18 +539,18 @@ static int update_domain_info(struct domain_info *info) {
     }
   }
 
-  unsigned char *requests[TRIES];
-  for (i = 0; i < TRIES; i++) {
+  unsigned char *requests[tls_probe_tries];
+  for (i = 0; i < tls_probe_tries; i++) {
     requests[i] = create_request(domain);
   }
-  unsigned char *responses[TRIES] = {};
-  int response_len[TRIES] = {};
-  int is_encrypted_application_data_length_read[TRIES] = {};
+  unsigned char *responses[tls_probe_tries] = {};
+  int response_len[tls_probe_tries] = {};
+  int is_encrypted_application_data_length_read[tls_probe_tries] = {};
 
   int finished_count = 0;
-  int is_written[TRIES] = {};
-  int is_finished[TRIES] = {};
-  int read_pos[TRIES] = {};
+  int is_written[tls_probe_tries] = {};
+  int is_finished[tls_probe_tries] = {};
+  int read_pos[tls_probe_tries] = {};
   double finish_time = get_utime_monotonic() + 5.0;
   int encrypted_application_data_length_min = 0;
   int encrypted_application_data_length_sum = 0;
@@ -521,14 +558,15 @@ static int update_domain_info(struct domain_info *info) {
   int is_reversed_extension_order_min = 0;
   int is_reversed_extension_order_max = 0;
   int have_error = 0;
-  while (get_utime_monotonic() < finish_time && finished_count < TRIES &&
+  while (get_utime_monotonic() < finish_time &&
+         finished_count < tls_probe_tries &&
          !have_error) {
     struct timeval timeout_data;
     timeout_data.tv_sec = (int)(finish_time - precise_now + 1);
     timeout_data.tv_usec = 0;
 
     int max_fd = 0;
-    for (i = 0; i < TRIES; i++) {
+    for (i = 0; i < tls_probe_tries; i++) {
       if (is_finished[i]) {
         continue;
       }
@@ -547,7 +585,7 @@ static int update_domain_info(struct domain_info *info) {
 
     select(max_fd + 1, &read_fd, &write_fd, &except_fd, &timeout_data);
 
-    for (i = 0; i < TRIES; i++) {
+    for (i = 0; i < tls_probe_tries; i++) {
       if (is_finished[i]) {
         continue;
       }
@@ -661,8 +699,8 @@ static int update_domain_info(struct domain_info *info) {
       }
       if (FD_ISSET(sockets[i], &write_fd)) {
         assert(!is_written[i]);
-        ssize_t write_res = write(sockets[i], requests[i], TLS_REQUEST_LENGTH);
-        if (write_res != TLS_REQUEST_LENGTH) {
+        ssize_t write_res = write(sockets[i], requests[i], tls_request_length);
+        if (write_res != tls_request_length) {
           kprintf("Failed to write request for checking domain %s: %s", domain,
                   write_res == -1 ? strerror(errno)
                                   : "Written less bytes than expected");
@@ -679,13 +717,13 @@ static int update_domain_info(struct domain_info *info) {
     }
   }
 
-  for (i = 0; i < TRIES; i++) {
+  for (i = 0; i < tls_probe_tries; i++) {
     close(sockets[i]);
     free(requests[i]);
     free(responses[i]);
   }
 
-  if (finished_count != TRIES) {
+  if (finished_count != tls_probe_tries) {
     if (!have_error) {
       kprintf("Failed to check domain %s in 5 seconds\n", domain);
     }
@@ -704,21 +742,21 @@ static int update_domain_info(struct domain_info *info) {
   assert(mtproxy_ffi_net_tcp_rpc_ext_select_server_hello_profile(
              encrypted_application_data_length_min,
              encrypted_application_data_length_max,
-             encrypted_application_data_length_sum, TRIES,
+             encrypted_application_data_length_sum, tls_probe_tries,
              &selected_server_hello_size, &selected_server_hello_profile) == 0);
-  if (selected_server_hello_profile == SERVER_HELLO_PROFILE_RANDOM_AVG) {
+  if (selected_server_hello_profile == server_hello_profile_random_avg) {
     kprintf("Unrecognized encrypted application data length pattern with min = "
             "%d, max = %d, mean = %.3lf\n",
             encrypted_application_data_length_min,
             encrypted_application_data_length_max,
-            encrypted_application_data_length_sum * 1.0 / TRIES);
+            encrypted_application_data_length_sum * 1.0 / tls_probe_tries);
   } else {
-    assert(selected_server_hello_profile == SERVER_HELLO_PROFILE_FIXED ||
-           selected_server_hello_profile == SERVER_HELLO_PROFILE_RANDOM_NEAR);
+    assert(selected_server_hello_profile == server_hello_profile_fixed ||
+           selected_server_hello_profile == server_hello_profile_random_near);
   }
   info->server_hello_encrypted_size = (short)selected_server_hello_size;
   info->use_random_encrypted_size =
-      selected_server_hello_profile == SERVER_HELLO_PROFILE_FIXED ? 0 : 1;
+      selected_server_hello_profile == server_hello_profile_fixed ? 0 : 1;
 
   vkprintf(0,
            "Successfully checked domain %s in %.3lf seconds: "
@@ -734,32 +772,34 @@ static int update_domain_info(struct domain_info *info) {
             domain);
   }
   return 1;
-#undef TRIES
 }
-
-#undef TLS_REQUEST_LENGTH
 
 static const struct domain_info *
 get_sni_domain_info(const unsigned char *request, int len) {
-#define CHECK_LENGTH(length)                                                   \
-  if (pos + (length) > len) {                                                  \
-    return NULL;                                                               \
-  }
-
   int pos = 11 + 32 + 1 + 32;
-  CHECK_LENGTH(2);
+  if (pos + 2 > len) {
+    return NULL;
+  }
   int cipher_suites_length = read_length(request, &pos);
-  CHECK_LENGTH(cipher_suites_length + 4);
+  if (pos + cipher_suites_length + 4 > len) {
+    return NULL;
+  }
   pos += cipher_suites_length + 4;
   while (1) {
-    CHECK_LENGTH(4);
+    if (pos + 4 > len) {
+      return NULL;
+    }
     int extension_id = read_length(request, &pos);
     int extension_length = read_length(request, &pos);
-    CHECK_LENGTH(extension_length);
+    if (pos + extension_length > len) {
+      return NULL;
+    }
 
     if (extension_id == 0) {
       // found SNI
-      CHECK_LENGTH(5);
+      if (pos + 5 > len) {
+        return NULL;
+      }
       int inner_length = read_length(request, &pos);
       if (inner_length != extension_length - 2) {
         return NULL;
@@ -788,7 +828,6 @@ get_sni_domain_info(const unsigned char *request, int len) {
 
     pos += extension_length;
   }
-#undef CHECK_LENGTH
 }
 
 void tcp_rpc_add_proxy_domain(const char *domain) {
@@ -810,7 +849,7 @@ void tcp_rpc_add_proxy_domain(const char *domain) {
 
 void tcp_rpc_init_proxy_domains() {
   int i;
-  for (i = 0; i < DOMAIN_HASH_MOD; i++) {
+  for (i = 0; i < domain_hash_mod; i++) {
     struct domain_info *info = domains[i];
     while (info != NULL) {
       if (!update_domain_info(info)) {
@@ -835,8 +874,11 @@ struct client_random {
   int time;
 };
 
-#define RANDOM_HASH_BITS 14
-static struct client_random *client_randoms[1 << RANDOM_HASH_BITS];
+enum {
+  random_hash_bits = 14,
+  random_hash_size = 1 << random_hash_bits,
+};
+static struct client_random *client_randoms[random_hash_size];
 
 static struct client_random *first_client_random;
 static struct client_random *last_client_random;
@@ -844,7 +886,7 @@ static struct client_random *last_client_random;
 static struct client_random **
 get_client_random_bucket(unsigned char random[16]) {
   int32_t id = mtproxy_ffi_net_tcp_rpc_ext_client_random_bucket_index(random);
-  assert(0 <= id && id < (1 << RANDOM_HASH_BITS));
+  assert(0 <= id && id < random_hash_size);
   return client_randoms + id;
 }
 
@@ -877,12 +919,14 @@ static void add_client_random(unsigned char random[16]) {
   *bucket = entry;
 }
 
-#define MAX_CLIENT_RANDOM_CACHE_TIME 2 * 86400
+enum {
+  max_client_random_cache_time = 2 * 86400,
+};
 
 static void delete_old_client_randoms() {
   while (first_client_random != last_client_random) {
     assert(first_client_random != NULL);
-    if (first_client_random->time > now - MAX_CLIENT_RANDOM_CACHE_TIME) {
+    if (first_client_random->time > now - max_client_random_cache_time) {
       return;
     }
 
@@ -916,7 +960,7 @@ static int is_allowed_timestamp(int timestamp) {
   // then the current request could be accepted only after the request with
   // first_client_random, so the client random still must be cached if the
   // request wasn't accepted, then the client_random still will be cached for
-  // MAX_CLIENT_RANDOM_CACHE_TIME seconds, so we can miss duplicate request only
+  // max_client_random_cache_time seconds, so we can miss duplicate request only
   // after a lot of time has passed
   if (first_client_random != NULL &&
       timestamp > first_client_random->time + 3) {
@@ -1008,8 +1052,6 @@ int tcp_rpcs_ext_init_accepted(connection_job_t C) {
 }
 
 int tcp_rpcs_compact_parse_execute(connection_job_t C) {
-#define RETURN_TLS_ERROR(info) return proxy_connection(C, info);
-
   struct tcp_rpc_data *D = TCP_RPC_DATA(C);
   if (D->crypto_flags & RPCF_COMPACT_OFF) {
     if (D->in_packet_num != -3) {
@@ -1142,7 +1184,7 @@ int tcp_rpcs_compact_parse_execute(connection_job_t C) {
         const struct domain_info *info =
             get_sni_domain_info(client_hello, read_len);
         if (info == NULL) {
-          RETURN_TLS_ERROR(default_domain_info);
+          return proxy_connection(C, default_domain_info);
         }
 
         vkprintf(1, "TLS type with domain %s from %s:%d\n", info->domain,
@@ -1151,18 +1193,18 @@ int tcp_rpcs_compact_parse_execute(connection_job_t C) {
         if (c->our_port == 80) {
           vkprintf(1, "Receive TLS request on port %d, proxying to %s\n",
                    c->our_port, info->domain);
-          RETURN_TLS_ERROR(info);
+          return proxy_connection(C, info);
         }
 
         if (len > min_len) {
           vkprintf(1,
                    "Too much data in ClientHello, receive %d instead of %d\n",
                    len, min_len);
-          RETURN_TLS_ERROR(info);
+          return proxy_connection(C, info);
         }
         if (len != read_len) {
           vkprintf(1, "Too big ClientHello: receive %d bytes\n", len);
-          RETURN_TLS_ERROR(info);
+          return proxy_connection(C, info);
         }
 
         unsigned char client_random[32];
@@ -1171,7 +1213,7 @@ int tcp_rpcs_compact_parse_execute(connection_job_t C) {
 
         if (have_client_random(client_random)) {
           vkprintf(1, "Receive again request with the same client random\n");
-          RETURN_TLS_ERROR(info);
+          return proxy_connection(C, info);
         }
         add_client_random(client_random);
         delete_old_client_randoms();
@@ -1187,12 +1229,12 @@ int tcp_rpcs_compact_parse_execute(connection_job_t C) {
         }
         if (secret_id == ext_secret_cnt) {
           vkprintf(1, "Receive request with unmatched client random\n");
-          RETURN_TLS_ERROR(info);
+          return proxy_connection(C, info);
         }
         int timestamp =
             *(int *)(expected_random + 28) ^ *(int *)(client_random + 28);
         if (!is_allowed_timestamp(timestamp)) {
-          RETURN_TLS_ERROR(info);
+          return proxy_connection(C, info);
         }
 
         int pos = 76;
@@ -1200,7 +1242,7 @@ int tcp_rpcs_compact_parse_execute(connection_job_t C) {
         if (pos + cipher_suites_length > read_len) {
           vkprintf(1, "Too long cipher suites list of length %d\n",
                    cipher_suites_length);
-          RETURN_TLS_ERROR(info);
+          return proxy_connection(C, info);
         }
         while (cipher_suites_length >= 2 &&
                (client_hello[pos] & 0x0F) == 0x0A &&
@@ -1212,7 +1254,7 @@ int tcp_rpcs_compact_parse_execute(connection_job_t C) {
         if (cipher_suites_length <= 1 || client_hello[pos] != 0x13 ||
             client_hello[pos + 1] < 0x01 || client_hello[pos + 1] > 0x03) {
           vkprintf(1, "Can't find supported cipher suite\n");
-          RETURN_TLS_ERROR(info);
+          return proxy_connection(C, info);
         }
         unsigned char cipher_suite_id = client_hello[pos + 1];
 
@@ -1284,7 +1326,7 @@ int tcp_rpcs_compact_parse_execute(connection_job_t C) {
 
       if (allow_only_tls && !(c->flags & C_IS_TLS)) {
         vkprintf(1, "Expected TLS-transport\n");
-        RETURN_TLS_ERROR(default_domain_info);
+        return proxy_connection(C, default_domain_info);
       }
 
 #if __ALLOW_UNOBFS__
@@ -1358,7 +1400,7 @@ int tcp_rpcs_compact_parse_execute(connection_job_t C) {
         if (tag == 0xdddddddd || tag == 0xeeeeeeee || tag == 0xefefefef) {
           if (tag != 0xdddddddd && allow_only_tls) {
             vkprintf(1, "Expected random padding mode\n");
-            RETURN_TLS_ERROR(default_domain_info);
+            return proxy_connection(C, default_domain_info);
           }
           assert(rwm_skip_data(&c->in, 64) == 64);
           rwm_union(&c->in_u, &c->in);
@@ -1511,7 +1553,6 @@ int tcp_rpcs_compact_parse_execute(connection_job_t C) {
     D->in_packet_num++;
   }
   return NEED_MORE_BYTES;
-#undef RETURN_TLS_ERROR
 }
 
 /*

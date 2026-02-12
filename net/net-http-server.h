@@ -88,8 +88,13 @@ enum hts_query_type {
 #define QF_KEEPALIVE 0x100
 #define QF_EXTRA_HEADERS 0x200
 
-#define HTS_DATA(c) ((struct hts_data *)(CONN_INFO(c)->custom_data))
-#define HTS_FUNC(c) ((struct http_server_functions *)(CONN_INFO(c)->extra))
+static inline struct hts_data *HTS_DATA(connection_job_t c) {
+  return (struct hts_data *)CONN_INFO(c)->custom_data;
+}
+
+static inline struct http_server_functions *HTS_FUNC(connection_job_t c) {
+  return (struct http_server_functions *)CONN_INFO(c)->extra;
+}
 
 extern conn_type_t ct_http_server;
 extern struct http_server_functions default_http_server;

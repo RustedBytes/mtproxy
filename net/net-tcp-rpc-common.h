@@ -164,7 +164,9 @@ struct tcp_rpc_data {
 #define RPC_MF_IGNORE_PID 4
 #define RPC_MF_OPPORT_CRYPTO 8
 
-#define TCP_RPC_DATA(c) ((struct tcp_rpc_data *)(CONN_INFO(c)->custom_data))
+static inline struct tcp_rpc_data *TCP_RPC_DATA(connection_job_t c) {
+  return (struct tcp_rpc_data *)CONN_INFO(c)->custom_data;
+}
 
 int tcp_rpc_flush_packet(connection_job_t C);
 int tcp_rpc_write_packet(connection_job_t C, struct raw_message *raw);

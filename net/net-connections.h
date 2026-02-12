@@ -121,6 +121,7 @@ typedef job_t socket_connection_job_t;
 typedef job_t listening_connection_job_t;
 typedef job_t conn_target_job_t;
 typedef job_t query_job_t;
+struct query_info;
 
 /* connection function table */
 
@@ -357,15 +358,27 @@ struct connections_stat {
   long long accept_connection_limit_failed;
 };
 
-#define QUERY_INFO(_c) ((struct query_info *)(_c)->j_custom)
+static inline struct query_info *QUERY_INFO(query_job_t query) {
+  return (struct query_info *)query->j_custom;
+}
 
-#define CONN_INFO(_conn) ((struct connection_info *)((_conn)->j_custom))
-#define LISTEN_CONN_INFO(_conn)                                                \
-  ((struct listening_connection_info *)((_conn)->j_custom))
-#define SOCKET_CONN_INFO(_conn)                                                \
-  ((struct socket_connection_info *)((_conn)->j_custom))
-#define CONN_TARGET_INFO(_conn_target)                                         \
-  ((struct conn_target_info *)((_conn_target)->j_custom))
+static inline struct connection_info *CONN_INFO(connection_job_t conn) {
+  return (struct connection_info *)conn->j_custom;
+}
+
+static inline struct listening_connection_info *
+LISTEN_CONN_INFO(listening_connection_job_t conn) {
+  return (struct listening_connection_info *)conn->j_custom;
+}
+
+static inline struct socket_connection_info *
+SOCKET_CONN_INFO(socket_connection_job_t conn) {
+  return (struct socket_connection_info *)conn->j_custom;
+}
+
+static inline struct conn_target_info *CONN_TARGET_INFO(conn_target_job_t conn) {
+  return (struct conn_target_info *)conn->j_custom;
+}
 
 static inline const char *show_ip46(unsigned ip, const unsigned char ipv6[16]) {
   return ip ? show_ip(ip) : show_ipv6(ipv6);
@@ -431,10 +444,17 @@ int server_noop(connection_job_t C);
 int server_failed(connection_job_t C);
 
 void connection_write_close(connection_job_t C);
-#define write_out_chk(c, data, len)                                            \
-  assert(write_out(&CONN_INFO(c)->Out, data, len) == len);
-#define write_out_old(c, data, len) write_out(&CONN_INFO(c)->Out, data, len)
-#define read_in_old(c, data, len) read_in(&CONN_INFO(c)->In, data, len)
+static inline void write_out_chk(connection_job_t c, const void *data, int len) {
+  assert(rwm_push_data(&CONN_INFO(c)->out, data, len) == len);
+}
+
+static inline int write_out_old(connection_job_t c, const void *data, int len) {
+  return rwm_push_data(&CONN_INFO(c)->out, data, len);
+}
+
+static inline int read_in_old(connection_job_t c, void *data, int len) {
+  return rwm_fetch_data(&CONN_INFO(c)->in, data, len);
+}
 
 static inline int is_ipv6_localhost(unsigned char ipv6[16]) {
   return !*(long long *)ipv6 && ((long long *)ipv6)[1] == 1LL << 56;
@@ -480,7 +500,6 @@ void free_later_act(void);
 void incr_active_dh_connections(void);
 int check_conn_functions(conn_type_t *type, int listening);
 
-#define QUERY_INFO(_c) ((struct query_info *)(_c)->j_custom)
 void insert_free_later_struct(struct free_later *F);
 int new_conn_generation(void);
 int get_cur_conn_generation(void);

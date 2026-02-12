@@ -37,7 +37,9 @@ struct rpc_target_info {
   struct process_id PID;
 };
 
-#define RPC_TARGET_INFO(_c) ((struct rpc_target_info *)(_c)->j_custom)
+static inline struct rpc_target_info *RPC_TARGET_INFO(rpc_target_job_t c) {
+  return (struct rpc_target_info *)c->j_custom;
+}
 
 rpc_target_job_t rpc_target_lookup(struct process_id *PID);
 rpc_target_job_t rpc_target_lookup_hp(unsigned host, int port);

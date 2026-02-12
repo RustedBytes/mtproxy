@@ -48,7 +48,6 @@
 
 #include "jobs/jobs.h"
 #include "net/net-events.h"
-// #include "net/net-buffers.h"
 #include "common/mp-queue.h"
 #include "kprintf.h"
 #include "net/net-connections.h"
@@ -61,10 +60,7 @@
 
 #include "common/common-stats.h"
 
-// struct process_id PID;
-
 #define USE_EPOLLET 1
-#define MAX_RECONNECT_INTERVAL 20
 
 #define MODULE connections
 
@@ -167,36 +163,32 @@ SB_SUM_ONE_LL(accept_init_accepted_failed);
 MODULE_STAT_FUNCTION_END
 
 void fetch_connections_stat(struct connections_stat *st) {
-#define COLLECT_I(__x) st->__x = SB_SUM_I(__x);
-#define COLLECT_LL(__x) st->__x = SB_SUM_LL(__x);
-  COLLECT_I(active_connections);
-  COLLECT_I(active_dh_connections);
-  COLLECT_I(outbound_connections);
-  COLLECT_I(active_outbound_connections);
-  COLLECT_I(ready_outbound_connections);
+  st->active_connections = SB_SUM_I(active_connections);
+  st->active_dh_connections = SB_SUM_I(active_dh_connections);
+  st->outbound_connections = SB_SUM_I(outbound_connections);
+  st->active_outbound_connections = SB_SUM_I(active_outbound_connections);
+  st->ready_outbound_connections = SB_SUM_I(ready_outbound_connections);
   st->max_special_connections = max_special_connections;
   st->active_special_connections = active_special_connections;
-  COLLECT_I(allocated_connections);
-  COLLECT_I(allocated_outbound_connections);
-  COLLECT_I(allocated_inbound_connections);
-  COLLECT_I(allocated_socket_connections);
-  COLLECT_I(allocated_targets);
-  COLLECT_I(ready_targets);
-  COLLECT_I(active_targets);
-  COLLECT_I(inactive_targets);
-  COLLECT_LL(tcp_readv_calls);
-  COLLECT_LL(tcp_readv_intr);
-  COLLECT_LL(tcp_readv_bytes);
-  COLLECT_LL(tcp_writev_calls);
-  COLLECT_LL(tcp_writev_intr);
-  COLLECT_LL(tcp_writev_bytes);
-  COLLECT_LL(accept_calls_failed);
-  COLLECT_LL(accept_nonblock_set_failed);
-  COLLECT_LL(accept_rate_limit_failed);
-  COLLECT_LL(accept_init_accepted_failed);
-  COLLECT_LL(accept_connection_limit_failed);
-#undef COLLECT_I
-#undef COLLECT_LL
+  st->allocated_connections = SB_SUM_I(allocated_connections);
+  st->allocated_outbound_connections = SB_SUM_I(allocated_outbound_connections);
+  st->allocated_inbound_connections = SB_SUM_I(allocated_inbound_connections);
+  st->allocated_socket_connections = SB_SUM_I(allocated_socket_connections);
+  st->allocated_targets = SB_SUM_I(allocated_targets);
+  st->ready_targets = SB_SUM_I(ready_targets);
+  st->active_targets = SB_SUM_I(active_targets);
+  st->inactive_targets = SB_SUM_I(inactive_targets);
+  st->tcp_readv_calls = SB_SUM_LL(tcp_readv_calls);
+  st->tcp_readv_intr = SB_SUM_LL(tcp_readv_intr);
+  st->tcp_readv_bytes = SB_SUM_LL(tcp_readv_bytes);
+  st->tcp_writev_calls = SB_SUM_LL(tcp_writev_calls);
+  st->tcp_writev_intr = SB_SUM_LL(tcp_writev_intr);
+  st->tcp_writev_bytes = SB_SUM_LL(tcp_writev_bytes);
+  st->accept_calls_failed = SB_SUM_LL(accept_calls_failed);
+  st->accept_nonblock_set_failed = SB_SUM_LL(accept_nonblock_set_failed);
+  st->accept_rate_limit_failed = SB_SUM_LL(accept_rate_limit_failed);
+  st->accept_init_accepted_failed = SB_SUM_LL(accept_init_accepted_failed);
+  st->accept_connection_limit_failed = SB_SUM_LL(accept_connection_limit_failed);
 }
 
 void connection_event_incref(int fd, long long val);
@@ -455,12 +447,6 @@ void assert_engine_thread(void) {
 }
 
 socket_connection_job_t alloc_new_socket_connection(connection_job_t C);
-
-static inline int connection_is_active(int flags) {
-  int32_t active = mtproxy_ffi_net_connection_is_active(flags);
-  assert(active == 0 || active == 1);
-  return active;
-}
 
 #if USE_EPOLLET
 static inline int compute_conn_events(socket_connection_job_t c) {

@@ -32,7 +32,6 @@
 #include "jobs/jobs.h"
 #include "mp-queue-rust.h"
 #include "mp-queue.h"
-#include "server-functions.h"
 
 static __thread int mpq_this_thread_id;
 static volatile int mpq_threads;

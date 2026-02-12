@@ -27,14 +27,15 @@
 // Rust implementation wrapper for common-stats
 // All functionality is now in rust/mtproxy-ffi/src/stats.rs
 
+#include <stdarg.h>
+
 #include "common/common-stats.h"
 #include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
-#include <stdarg.h>
 
 // Wrapper functions that call Rust implementations
 
 int am_get_memory_usage(pid_t pid, long long *a, int m) {
-  return mtproxy_ffi_am_get_memory_usage(pid, a, m);
+  return mtproxy_ffi_am_get_memory_usage(pid, (int64_t *)a, m);
 }
 
 int am_get_memory_stats(am_memory_stat_t *S, int flags) {
