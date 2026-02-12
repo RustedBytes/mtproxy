@@ -255,7 +255,7 @@ static job_t fetch_query(job_t parent, struct tl_in_state *IO,
   int fop = tl_get_op_function(IO);
 
   struct tl_act_extra *extra = tl_default_parse_function(IO, actor_id);
-  if (!extra && tlf_error(IO)) {
+  if (!extra && tlf_error_rust(IO)) {
     *error = strdup(IO->error);
     *error_code = IO->errnum;
     return NULL;
@@ -265,7 +265,7 @@ static job_t fetch_query(job_t parent, struct tl_in_state *IO,
   }
   if (!extra) {
     tlf_set_error_format(IO, TL_ERROR_UNKNOWN_FUNCTION_ID, "Unknown op 0x%08x",
-                         tlf_lookup_int(IO));
+                         tlf_lookup_int_rust(IO));
     *error = strdup(IO->error);
     *error_code = IO->errnum;
     return NULL;
@@ -490,9 +490,9 @@ static int process_query_job(job_t job, int op,
         P->error = 0;
       } else {
         int z = tl_result_get_header_len(P->h);
-        int *hptr = tls_get_ptr(IO, z);
+        int *hptr = tls_get_ptr_rust(IO, z);
         assert(z == tl_result_make_header(hptr, P->h));
-        tls_raw_msg(IO, P->result, 0);
+        tls_raw_msg_rust(IO, P->result, 0);
         free(P->result);
         P->result = NULL;
       }
@@ -713,7 +713,7 @@ int query_job_run(job_t job, int fd, int generation) {
   struct tl_in_state *IO = tl_in_state_alloc();
   tlf_init_raw_message(IO, &q->raw, q->raw.total_bytes, 0);
 
-  int op = tlf_lookup_int(IO);
+  int op = tlf_lookup_int_rust(IO);
   struct tl_query_header *h = NULL;
 
   int res;
@@ -732,7 +732,7 @@ int query_job_run(job_t job, int fd, int generation) {
     h = malloc(sizeof(*h));
     tlf_query_header(IO, h);
 
-    if (tlf_error(IO)) {
+    if (tlf_error_rust(IO)) {
       struct tl_out_state *OUT =
           tl_aio_init_store(q->src_type, &q->src_pid, h ? h->qid : 0);
       if (OUT) {

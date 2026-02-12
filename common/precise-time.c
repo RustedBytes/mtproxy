@@ -18,10 +18,10 @@
     Copyright 2014 Telegram Messenger Inc
               2014 Anton Maydell
 */
+
 #include <assert.h>
 #include <stdint.h>
 #include <sys/time.h>
-/* unistd.h defines _POSIX_TIMERS */
 #include <unistd.h>
 
 #include "precise-time.h"

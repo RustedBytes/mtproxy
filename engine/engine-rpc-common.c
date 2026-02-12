@@ -35,7 +35,7 @@
 #include "common/tl-parse.h"
 
 static int tl_act_nop([[maybe_unused]] job_t job, struct tl_act_extra *extra) {
-  tls_int(extra->tlio_out, TL_TRUE);
+  tls_int_rust(extra->tlio_out, TL_TRUE);
   return 0;
 }
 

@@ -986,6 +986,56 @@ int32_t mtproxy_ffi_tl_parse_answer_header(
   mtproxy_ffi_tl_header_parse_result_t *out
 );
 
+// TL runtime helpers for incremental `common/tl-parse.h` migration.
+int32_t mtproxy_ffi_tl_fetch_check(void *tlio_in, int32_t nbytes);
+int32_t mtproxy_ffi_tl_fetch_lookup_int(void *tlio_in);
+int32_t mtproxy_ffi_tl_fetch_lookup_second_int(void *tlio_in);
+int64_t mtproxy_ffi_tl_fetch_lookup_long(void *tlio_in);
+int32_t mtproxy_ffi_tl_fetch_lookup_data(void *tlio_in, void *data, int32_t len);
+int32_t mtproxy_ffi_tl_fetch_int(void *tlio_in);
+double mtproxy_ffi_tl_fetch_double(void *tlio_in);
+int64_t mtproxy_ffi_tl_fetch_long(void *tlio_in);
+int32_t mtproxy_ffi_tl_fetch_raw_data(void *tlio_in, void *buf, int32_t len);
+void mtproxy_ffi_tl_fetch_mark(void *tlio_in);
+void mtproxy_ffi_tl_fetch_mark_restore(void *tlio_in);
+void mtproxy_ffi_tl_fetch_mark_delete(void *tlio_in);
+int32_t mtproxy_ffi_tl_fetch_string_len(void *tlio_in, int32_t max_len);
+int32_t mtproxy_ffi_tl_fetch_pad(void *tlio_in);
+int32_t mtproxy_ffi_tl_fetch_string_data(void *tlio_in, char *buf, int32_t len);
+int32_t mtproxy_ffi_tl_fetch_skip_string_data(void *tlio_in, int32_t len);
+int32_t mtproxy_ffi_tl_fetch_string(void *tlio_in, char *buf, int32_t max_len);
+int32_t mtproxy_ffi_tl_fetch_skip_string(void *tlio_in, int32_t max_len);
+int32_t mtproxy_ffi_tl_fetch_string0(void *tlio_in, char *buf, int32_t max_len);
+int32_t mtproxy_ffi_tl_fetch_check_str_end(void *tlio_in, int32_t size);
+int32_t mtproxy_ffi_tl_fetch_unread(void *tlio_in);
+int32_t mtproxy_ffi_tl_fetch_skip(void *tlio_in, int32_t len);
+int32_t mtproxy_ffi_tl_fetch_end(void *tlio_in);
+int32_t mtproxy_ffi_tl_fetch_error(void *tlio_in);
+int32_t mtproxy_ffi_tl_fetch_int_range(void *tlio_in, int32_t min, int32_t max);
+int32_t mtproxy_ffi_tl_fetch_positive_int(void *tlio_in);
+int32_t mtproxy_ffi_tl_fetch_nonnegative_int(void *tlio_in);
+int32_t mtproxy_ffi_tl_fetch_int_subset(void *tlio_in, int32_t set);
+int64_t mtproxy_ffi_tl_fetch_long_range(void *tlio_in, int64_t min, int64_t max);
+int64_t mtproxy_ffi_tl_fetch_positive_long(void *tlio_in);
+int64_t mtproxy_ffi_tl_fetch_nonnegative_long(void *tlio_in);
+int32_t mtproxy_ffi_tl_fetch_raw_message(void *tlio_in, void *raw, int32_t bytes);
+int32_t mtproxy_ffi_tl_fetch_lookup_raw_message(void *tlio_in, void *raw, int32_t bytes);
+void *mtproxy_ffi_tl_store_get_ptr(void *tlio_out, int32_t size);
+void *mtproxy_ffi_tl_store_get_prepend_ptr(void *tlio_out, int32_t size);
+int32_t mtproxy_ffi_tl_store_int(void *tlio_out, int32_t value);
+int32_t mtproxy_ffi_tl_store_long(void *tlio_out, int64_t value);
+int32_t mtproxy_ffi_tl_store_double(void *tlio_out, double value);
+int32_t mtproxy_ffi_tl_store_raw_data(void *tlio_out, const void *data, int32_t len);
+int32_t mtproxy_ffi_tl_store_raw_msg(void *tlio_out, void *raw, int32_t dup);
+int32_t mtproxy_ffi_tl_store_string_len(void *tlio_out, int32_t len);
+int32_t mtproxy_ffi_tl_store_pad(void *tlio_out);
+int32_t mtproxy_ffi_tl_store_string_data(void *tlio_out, const char *s, int32_t len);
+int32_t mtproxy_ffi_tl_store_string(void *tlio_out, const char *s, int32_t len);
+int32_t mtproxy_ffi_tl_store_clear(void *tlio_out);
+int32_t mtproxy_ffi_tl_store_clean(void *tlio_out);
+int32_t mtproxy_ffi_tl_store_pos(void *tlio_out);
+int32_t mtproxy_ffi_tl_copy_through(void *tlio_in, void *tlio_out, int32_t len, int32_t advance);
+
 // proc-stat/common-stats helpers for observability migration.
 int32_t mtproxy_ffi_parse_proc_stat_line(
   const char *line,

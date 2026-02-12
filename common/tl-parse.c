@@ -94,6 +94,117 @@ mtproxy_ffi_tl_query_header_parse(struct tl_in_state *tlio_in,
 extern int32_t
 mtproxy_ffi_tl_query_answer_header_parse(struct tl_in_state *tlio_in,
                                          struct tl_query_header *header);
+extern int32_t
+mtproxy_ffi_tl_fetch_check(struct tl_in_state *tlio_in, int32_t nbytes);
+extern int32_t
+mtproxy_ffi_tl_fetch_lookup_int(struct tl_in_state *tlio_in);
+extern int32_t
+mtproxy_ffi_tl_fetch_lookup_second_int(struct tl_in_state *tlio_in);
+extern int64_t
+mtproxy_ffi_tl_fetch_lookup_long(struct tl_in_state *tlio_in);
+extern int32_t
+mtproxy_ffi_tl_fetch_lookup_data(struct tl_in_state *tlio_in, void *data,
+                                 int32_t len);
+extern int32_t
+mtproxy_ffi_tl_fetch_int(struct tl_in_state *tlio_in);
+extern double
+mtproxy_ffi_tl_fetch_double(struct tl_in_state *tlio_in);
+extern int64_t
+mtproxy_ffi_tl_fetch_long(struct tl_in_state *tlio_in);
+extern int32_t
+mtproxy_ffi_tl_fetch_raw_data(struct tl_in_state *tlio_in, void *buf,
+                              int32_t len);
+extern void
+mtproxy_ffi_tl_fetch_mark(struct tl_in_state *tlio_in);
+extern void
+mtproxy_ffi_tl_fetch_mark_restore(struct tl_in_state *tlio_in);
+extern void
+mtproxy_ffi_tl_fetch_mark_delete(struct tl_in_state *tlio_in);
+extern int32_t
+mtproxy_ffi_tl_fetch_string_len(struct tl_in_state *tlio_in, int32_t max_len);
+extern int32_t
+mtproxy_ffi_tl_fetch_pad(struct tl_in_state *tlio_in);
+extern int32_t
+mtproxy_ffi_tl_fetch_string_data(struct tl_in_state *tlio_in, char *buf,
+                                 int32_t len);
+extern int32_t
+mtproxy_ffi_tl_fetch_skip_string_data(struct tl_in_state *tlio_in, int32_t len);
+extern int32_t
+mtproxy_ffi_tl_fetch_string(struct tl_in_state *tlio_in, char *buf,
+                            int32_t max_len);
+extern int32_t
+mtproxy_ffi_tl_fetch_skip_string(struct tl_in_state *tlio_in, int32_t max_len);
+extern int32_t
+mtproxy_ffi_tl_fetch_string0(struct tl_in_state *tlio_in, char *buf,
+                             int32_t max_len);
+extern int32_t
+mtproxy_ffi_tl_fetch_check_str_end(struct tl_in_state *tlio_in, int32_t size);
+extern int32_t
+mtproxy_ffi_tl_fetch_unread(struct tl_in_state *tlio_in);
+extern int32_t
+mtproxy_ffi_tl_fetch_skip(struct tl_in_state *tlio_in, int32_t len);
+extern int32_t
+mtproxy_ffi_tl_fetch_end(struct tl_in_state *tlio_in);
+extern int32_t
+mtproxy_ffi_tl_fetch_error(struct tl_in_state *tlio_in);
+extern int32_t
+mtproxy_ffi_tl_fetch_int_range(struct tl_in_state *tlio_in, int32_t min,
+                               int32_t max);
+extern int32_t
+mtproxy_ffi_tl_fetch_positive_int(struct tl_in_state *tlio_in);
+extern int32_t
+mtproxy_ffi_tl_fetch_nonnegative_int(struct tl_in_state *tlio_in);
+extern int32_t
+mtproxy_ffi_tl_fetch_int_subset(struct tl_in_state *tlio_in, int32_t set);
+extern int64_t
+mtproxy_ffi_tl_fetch_long_range(struct tl_in_state *tlio_in, int64_t min,
+                                int64_t max);
+extern int64_t
+mtproxy_ffi_tl_fetch_positive_long(struct tl_in_state *tlio_in);
+extern int64_t
+mtproxy_ffi_tl_fetch_nonnegative_long(struct tl_in_state *tlio_in);
+extern int32_t
+mtproxy_ffi_tl_fetch_raw_message(struct tl_in_state *tlio_in,
+                                 struct raw_message *raw, int32_t bytes);
+extern int32_t
+mtproxy_ffi_tl_fetch_lookup_raw_message(struct tl_in_state *tlio_in,
+                                        struct raw_message *raw, int32_t bytes);
+extern void *
+mtproxy_ffi_tl_store_get_ptr(struct tl_out_state *tlio_out, int32_t size);
+extern void *
+mtproxy_ffi_tl_store_get_prepend_ptr(struct tl_out_state *tlio_out, int32_t size);
+extern int32_t
+mtproxy_ffi_tl_store_int(struct tl_out_state *tlio_out, int32_t value);
+extern int32_t
+mtproxy_ffi_tl_store_long(struct tl_out_state *tlio_out, int64_t value);
+extern int32_t
+mtproxy_ffi_tl_store_double(struct tl_out_state *tlio_out, double value);
+extern int32_t
+mtproxy_ffi_tl_store_raw_data(struct tl_out_state *tlio_out, const void *data,
+                              int32_t len);
+extern int32_t
+mtproxy_ffi_tl_store_raw_msg(struct tl_out_state *tlio_out,
+                             struct raw_message *raw, int32_t dup);
+extern int32_t
+mtproxy_ffi_tl_store_string_len(struct tl_out_state *tlio_out, int32_t len);
+extern int32_t
+mtproxy_ffi_tl_store_pad(struct tl_out_state *tlio_out);
+extern int32_t
+mtproxy_ffi_tl_store_string_data(struct tl_out_state *tlio_out, const char *s,
+                                 int32_t len);
+extern int32_t
+mtproxy_ffi_tl_store_string(struct tl_out_state *tlio_out, const char *s,
+                            int32_t len);
+extern int32_t
+mtproxy_ffi_tl_store_clear(struct tl_out_state *tlio_out);
+extern int32_t
+mtproxy_ffi_tl_store_clean(struct tl_out_state *tlio_out);
+extern int32_t
+mtproxy_ffi_tl_store_pos(struct tl_out_state *tlio_out);
+extern int32_t
+mtproxy_ffi_tl_copy_through(struct tl_in_state *tlio_in,
+                            struct tl_out_state *tlio_out, int32_t len,
+                            int32_t advance);
 
 MODULE_STAT_TYPE {
   long long rpc_queries_received, rpc_answers_error, rpc_answers_received;
@@ -175,6 +286,203 @@ extern const struct tl_out_methods tl_out_str_methods;
 
 int tlf_set_error(struct tl_in_state *tlio_in, int errnum, const char *s) {
   return mtproxy_ffi_tl_set_error(tlio_in, errnum, s);
+}
+
+int tlf_check_rust(struct tl_in_state *tlio_in, int nbytes) {
+  return mtproxy_ffi_tl_fetch_check(tlio_in, nbytes);
+}
+
+int tlf_lookup_int_rust(struct tl_in_state *tlio_in) {
+  return mtproxy_ffi_tl_fetch_lookup_int(tlio_in);
+}
+
+int tlf_lookup_second_int_rust(struct tl_in_state *tlio_in) {
+  return mtproxy_ffi_tl_fetch_lookup_second_int(tlio_in);
+}
+
+long long tlf_lookup_long_rust(struct tl_in_state *tlio_in) {
+  return mtproxy_ffi_tl_fetch_lookup_long(tlio_in);
+}
+
+int tlf_lookup_data_rust(struct tl_in_state *tlio_in, void *data, int len) {
+  return mtproxy_ffi_tl_fetch_lookup_data(tlio_in, data, len);
+}
+
+int tlf_int_rust(struct tl_in_state *tlio_in) {
+  return mtproxy_ffi_tl_fetch_int(tlio_in);
+}
+
+double tlf_double_rust(struct tl_in_state *tlio_in) {
+  return mtproxy_ffi_tl_fetch_double(tlio_in);
+}
+
+long long tlf_long_rust(struct tl_in_state *tlio_in) {
+  return mtproxy_ffi_tl_fetch_long(tlio_in);
+}
+
+void tlf_mark_rust(struct tl_in_state *tlio_in) {
+  mtproxy_ffi_tl_fetch_mark(tlio_in);
+}
+
+void tlf_mark_restore_rust(struct tl_in_state *tlio_in) {
+  mtproxy_ffi_tl_fetch_mark_restore(tlio_in);
+}
+
+void tlf_mark_delete_rust(struct tl_in_state *tlio_in) {
+  mtproxy_ffi_tl_fetch_mark_delete(tlio_in);
+}
+
+int tlf_string_len_rust(struct tl_in_state *tlio_in, int max_len) {
+  return mtproxy_ffi_tl_fetch_string_len(tlio_in, max_len);
+}
+
+int tlf_pad_rust(struct tl_in_state *tlio_in) {
+  return mtproxy_ffi_tl_fetch_pad(tlio_in);
+}
+
+int tlf_raw_data_rust(struct tl_in_state *tlio_in, void *buf, int len) {
+  return mtproxy_ffi_tl_fetch_raw_data(tlio_in, buf, len);
+}
+
+int tlf_string_data_rust(struct tl_in_state *tlio_in, char *buf, int len) {
+  return mtproxy_ffi_tl_fetch_string_data(tlio_in, buf, len);
+}
+
+int tlf_skip_string_data_rust(struct tl_in_state *tlio_in, int len) {
+  return mtproxy_ffi_tl_fetch_skip_string_data(tlio_in, len);
+}
+
+int tlf_string_rust(struct tl_in_state *tlio_in, char *buf, int max_len) {
+  return mtproxy_ffi_tl_fetch_string(tlio_in, buf, max_len);
+}
+
+int tlf_skip_string_rust(struct tl_in_state *tlio_in, int max_len) {
+  return mtproxy_ffi_tl_fetch_skip_string(tlio_in, max_len);
+}
+
+int tlf_string0_rust(struct tl_in_state *tlio_in, char *buf, int max_len) {
+  return mtproxy_ffi_tl_fetch_string0(tlio_in, buf, max_len);
+}
+
+int tlf_check_str_end_rust(struct tl_in_state *tlio_in, int size) {
+  return mtproxy_ffi_tl_fetch_check_str_end(tlio_in, size);
+}
+
+int tlf_unread_rust(struct tl_in_state *tlio_in) {
+  return mtproxy_ffi_tl_fetch_unread(tlio_in);
+}
+
+int tlf_skip_rust(struct tl_in_state *tlio_in, int len) {
+  return mtproxy_ffi_tl_fetch_skip(tlio_in, len);
+}
+
+int tlf_end_rust(struct tl_in_state *tlio_in) {
+  return mtproxy_ffi_tl_fetch_end(tlio_in);
+}
+
+int tlf_error_rust(struct tl_in_state *tlio_in) {
+  return mtproxy_ffi_tl_fetch_error(tlio_in);
+}
+
+int tlf_int_range_rust(struct tl_in_state *tlio_in, int min, int max) {
+  return mtproxy_ffi_tl_fetch_int_range(tlio_in, min, max);
+}
+
+int tlf_positive_int_rust(struct tl_in_state *tlio_in) {
+  return mtproxy_ffi_tl_fetch_positive_int(tlio_in);
+}
+
+int tlf_nonnegative_int_rust(struct tl_in_state *tlio_in) {
+  return mtproxy_ffi_tl_fetch_nonnegative_int(tlio_in);
+}
+
+int tlf_int_subset_rust(struct tl_in_state *tlio_in, int set) {
+  return mtproxy_ffi_tl_fetch_int_subset(tlio_in, set);
+}
+
+long long tlf_long_range_rust(struct tl_in_state *tlio_in, long long min,
+                              long long max) {
+  return mtproxy_ffi_tl_fetch_long_range(tlio_in, min, max);
+}
+
+long long tlf_positive_long_rust(struct tl_in_state *tlio_in) {
+  return mtproxy_ffi_tl_fetch_positive_long(tlio_in);
+}
+
+long long tlf_nonnegative_long_rust(struct tl_in_state *tlio_in) {
+  return mtproxy_ffi_tl_fetch_nonnegative_long(tlio_in);
+}
+
+int tlf_raw_message_rust(struct tl_in_state *tlio_in, struct raw_message *raw,
+                         int bytes) {
+  return mtproxy_ffi_tl_fetch_raw_message(tlio_in, raw, bytes);
+}
+
+int tlf_lookup_raw_message_rust(struct tl_in_state *tlio_in,
+                                struct raw_message *raw, int bytes) {
+  return mtproxy_ffi_tl_fetch_lookup_raw_message(tlio_in, raw, bytes);
+}
+
+void *tls_get_ptr_rust(struct tl_out_state *tlio_out, int size) {
+  return mtproxy_ffi_tl_store_get_ptr(tlio_out, size);
+}
+
+void *tls_get_prepend_ptr_rust(struct tl_out_state *tlio_out, int size) {
+  return mtproxy_ffi_tl_store_get_prepend_ptr(tlio_out, size);
+}
+
+int tls_int_rust(struct tl_out_state *tlio_out, int value) {
+  return mtproxy_ffi_tl_store_int(tlio_out, value);
+}
+
+int tls_long_rust(struct tl_out_state *tlio_out, long long value) {
+  return mtproxy_ffi_tl_store_long(tlio_out, value);
+}
+
+int tls_double_rust(struct tl_out_state *tlio_out, double value) {
+  return mtproxy_ffi_tl_store_double(tlio_out, value);
+}
+
+int tls_string_len_rust(struct tl_out_state *tlio_out, int len) {
+  return mtproxy_ffi_tl_store_string_len(tlio_out, len);
+}
+
+int tls_raw_data_rust(struct tl_out_state *tlio_out, const void *data, int len) {
+  return mtproxy_ffi_tl_store_raw_data(tlio_out, data, len);
+}
+
+int tls_raw_msg_rust(struct tl_out_state *tlio_out, struct raw_message *raw,
+                     int dup) {
+  return mtproxy_ffi_tl_store_raw_msg(tlio_out, raw, dup);
+}
+
+int tls_pad_rust(struct tl_out_state *tlio_out) {
+  return mtproxy_ffi_tl_store_pad(tlio_out);
+}
+
+int tls_string_data_rust(struct tl_out_state *tlio_out, const char *s, int len) {
+  return mtproxy_ffi_tl_store_string_data(tlio_out, s, len);
+}
+
+int tls_string_rust(struct tl_out_state *tlio_out, const char *s, int len) {
+  return mtproxy_ffi_tl_store_string(tlio_out, s, len);
+}
+
+int tls_clear_rust(struct tl_out_state *tlio_out) {
+  return mtproxy_ffi_tl_store_clear(tlio_out);
+}
+
+int tls_clean_rust(struct tl_out_state *tlio_out) {
+  return mtproxy_ffi_tl_store_clean(tlio_out);
+}
+
+int tls_pos_rust(struct tl_out_state *tlio_out) {
+  return mtproxy_ffi_tl_store_pos(tlio_out);
+}
+
+int tl_copy_through_rust(struct tl_in_state *tlio_in,
+                         struct tl_out_state *tlio_out, int len, int advance) {
+  return mtproxy_ffi_tl_copy_through(tlio_in, tlio_out, len, advance);
 }
 
 int __tl_fetch_init(struct tl_in_state *tlio_in, void *in,

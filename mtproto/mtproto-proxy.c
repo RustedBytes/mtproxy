@@ -1591,14 +1591,14 @@ int http_send_message(JOB_REF_ARG(C), struct tl_in_state *tlio_in, int flags) {
   clear_connection_timeout(C);
   struct hts_data *D = HTS_DATA(C);
 
-  if ((flags & 0x10) && TL_IN_REMAINING == 4) {
+  if ((flags & 0x10) && tl_fetch_unread() == 4) {
     int error_code = tl_fetch_int();
     D->query_flags &= ~QF_KEEPALIVE;
     write_http_error(C, -error_code);
   } else {
     char response_buffer[512];
     TLS_START_UNALIGN(JOB_REF_CREATE_PASS(C)) {
-      int len = TL_IN_REMAINING;
+      int len = tl_fetch_unread();
       tl_store_raw_data(
           response_buffer,
           snprintf(
@@ -1610,7 +1610,7 @@ int http_send_message(JOB_REF_ARG(C), struct tl_in_state *tlio_in, int flags) {
               D->query_flags & QF_EXTRA_HEADERS ? mtproto_cors_http_headers
                                                 : "",
               len));
-      assert(tl_copy_through(tlio_in, tlio_out, len, 1) == len);
+      assert(tl_copy_through_rust(tlio_in, tlio_out, len, 1) == len);
     }
     TLS_END;
   }
@@ -1648,7 +1648,7 @@ int client_send_message(JOB_REF_ARG(C), long long in_conn_id,
     return http_send_message(JOB_REF_PASS(C), tlio_in, flags);
   }
   TLS_START(JOB_REF_CREATE_PASS(C)) {
-    assert(tl_copy_through(tlio_in, tlio_out, TL_IN_REMAINING, 1) >= 0);
+    assert(tl_copy_through_rust(tlio_in, tlio_out, tl_fetch_unread(), 1) >= 0);
   }
   TLS_END;
 
@@ -1701,7 +1701,7 @@ static int forward_mtproto_enc_packet(struct tl_in_state *tlio_in,
 
   conn_target_job_t S = choose_proxy_target(TCP_RPC_DATA(C)->extra_int4);
 
-  assert(TL_IN_REMAINING == len);
+  assert(tl_fetch_unread() == len);
   return forward_tcp_query(tlio_in, C, S, rpc_flags, auth_key_id,
                            remote_ip_port, 0);
 }
@@ -1730,7 +1730,7 @@ int forward_mtproto_packet(struct tl_in_state *tlio_in, connection_job_t C,
   vkprintf(2, "received mtproto packet of %d bytes\n", len);
   conn_target_job_t S = choose_proxy_target(TCP_RPC_DATA(C)->extra_int4);
 
-  assert(len == TL_IN_REMAINING);
+  assert(len == tl_fetch_unread());
   return forward_tcp_query(tlio_in, C, S, 2 | rpc_flags, 0, remote_ip_port, 0);
 }
 
@@ -1851,7 +1851,7 @@ int forward_tcp_query(struct tl_in_state *tlio_in, connection_job_t c,
 
   if (flags & 12) {
     int *extra_size_ptr = tl_store_get_ptr(4);
-    int pos = TL_OUT_POS;
+    int pos = tl_store_pos();
     if (flags & 8) {
       tl_store_int(TL_PROXY_TAG);
       tl_store_string(proxy_tag, sizeof(proxy_tag));
@@ -1866,11 +1866,11 @@ int forward_tcp_query(struct tl_in_state *tlio_in, connection_job_t c,
                                                ? cur_http_user_agent_len
                                                : 0);
     }
-    *extra_size_ptr = TL_OUT_POS - pos;
+    *extra_size_ptr = tl_store_pos() - pos;
   }
 
-  int len = TL_IN_REMAINING;
-  assert(tl_copy_through(tlio_in, tlio_out, len, 1) == len);
+  int len = tl_fetch_unread();
+  assert(tl_copy_through_rust(tlio_in, tlio_out, len, 1) == len);
 
   TLS_END; // close tlio_out context
 
