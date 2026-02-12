@@ -17,3 +17,4 @@
 -DUSE_RUST_FFI=1
 -I.
 -Icommon
+-Irust/mtproxy-ffi/include
