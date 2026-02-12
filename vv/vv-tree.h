@@ -27,6 +27,8 @@
  * the C runtime units.
  */
 
+#include "net/net-connections.h"
+
 struct tree_connection;
 
 struct tree_connection *tree_insert_connection(struct tree_connection *tree,
