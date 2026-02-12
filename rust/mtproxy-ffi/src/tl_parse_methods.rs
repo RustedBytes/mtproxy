@@ -60,8 +60,7 @@ pub struct TlInMethods {
     fetch_mark_restore: Option<unsafe extern "C" fn(*mut TlInState)>,
     fetch_mark_delete: Option<unsafe extern "C" fn(*mut TlInState)>,
     fetch_raw_message: Option<unsafe extern "C" fn(*mut TlInState, *mut RawMessage, c_int)>,
-    fetch_lookup_raw_message:
-        Option<unsafe extern "C" fn(*mut TlInState, *mut RawMessage, c_int)>,
+    fetch_lookup_raw_message: Option<unsafe extern "C" fn(*mut TlInState, *mut RawMessage, c_int)>,
     flags: c_int,
     prepend_bytes: c_int,
 }
@@ -74,15 +73,11 @@ pub struct TlOutMethods {
     store_raw_data: Option<unsafe extern "C" fn(*mut TlOutState, *const c_void, c_int)>,
     store_raw_msg: Option<unsafe extern "C" fn(*mut TlOutState, *mut RawMessage)>,
     store_read_back: Option<unsafe extern "C" fn(*mut TlOutState, c_int)>,
-    store_read_back_nondestruct:
-        Option<unsafe extern "C" fn(*mut TlOutState, *mut c_void, c_int)>,
+    store_read_back_nondestruct: Option<unsafe extern "C" fn(*mut TlOutState, *mut c_void, c_int)>,
     store_crc32_partial: Option<unsafe extern "C" fn(*mut TlOutState, c_int, u32) -> u32>,
     store_flush: Option<unsafe extern "C" fn(*mut TlOutState)>,
     store_clear: Option<unsafe extern "C" fn(*mut TlOutState)>,
-    copy_through: [
-        Option<unsafe extern "C" fn(*mut TlInState, *mut TlOutState, c_int, c_int)>;
-        10
-    ],
+    copy_through: [Option<unsafe extern "C" fn(*mut TlInState, *mut TlOutState, c_int, c_int)>; 10],
     store_prefix: Option<unsafe extern "C" fn(*mut TlOutState)>,
     flags: c_int,
     prepend_bytes: c_int,
@@ -153,18 +148,22 @@ unsafe extern "C" {
     fn strdup(src: *const i8) -> *mut i8;
 }
 
-unsafe fn add_bytes(ptr_: *mut c_void, len: c_int) -> *mut c_void {
+fn add_bytes(ptr_: *mut c_void, len: c_int) -> *mut c_void {
     if len <= 0 {
         return ptr_;
     }
-    (ptr_ as *mut u8).add(len as usize).cast::<c_void>()
+    (ptr_ as *mut u8)
+        .wrapping_add(len as usize)
+        .cast::<c_void>()
 }
 
-unsafe fn sub_bytes(ptr_: *mut c_void, len: c_int) -> *mut c_void {
+fn sub_bytes(ptr_: *mut c_void, len: c_int) -> *mut c_void {
     if len <= 0 {
         return ptr_;
     }
-    (ptr_ as *mut u8).sub(len as usize).cast::<c_void>()
+    (ptr_ as *mut u8)
+        .wrapping_sub(len as usize)
+        .cast::<c_void>()
 }
 
 unsafe fn in_raw(state: *mut TlInState) -> *mut RawMessage {
@@ -216,7 +215,14 @@ unsafe extern "C" fn tl_raw_msg_fetch_lookup_raw_message(
 unsafe extern "C" fn tl_raw_msg_fetch_mark(tlio_in: *mut TlInState) {
     debug_assert!((*tlio_in).in_mark.is_null());
     let mark = libc::malloc(size_of::<RawMessage>()).cast::<RawMessage>();
-    debug_assert!(!mark.is_null());
+    if mark.is_null() {
+        tl_set_error_once(
+            tlio_in,
+            TL_ERROR_INTERNAL,
+            "Out of memory while creating TL mark",
+        );
+        return;
+    }
     rwm_clone(mark, in_raw(tlio_in));
     (*tlio_in).in_mark = mark.cast::<c_void>();
     (*tlio_in).in_mark_pos = (*tlio_in).in_pos;
@@ -393,12 +399,12 @@ unsafe extern "C" fn tl_tcp_raw_msg_store_flush_unaligned(tlio_out: *mut TlOutSt
     (*tlio_out).out_ptr = ptr::null_mut();
 }
 
-unsafe extern "C" fn tl_str_fetch_raw_data(
-    tlio_in: *mut TlInState,
-    buf: *mut c_void,
-    len: c_int,
-) {
-    ptr::copy_nonoverlapping((*tlio_in).in_ptr.cast::<u8>(), buf.cast::<u8>(), len as usize);
+unsafe extern "C" fn tl_str_fetch_raw_data(tlio_in: *mut TlInState, buf: *mut c_void, len: c_int) {
+    ptr::copy(
+        (*tlio_in).in_ptr.cast::<u8>(),
+        buf.cast::<u8>(),
+        len as usize,
+    );
     (*tlio_in).in_ptr = add_bytes((*tlio_in).in_ptr, len);
 }
 
@@ -406,12 +412,12 @@ unsafe extern "C" fn tl_str_fetch_move(tlio_in: *mut TlInState, len: c_int) {
     (*tlio_in).in_ptr = add_bytes((*tlio_in).in_ptr, len);
 }
 
-unsafe extern "C" fn tl_str_fetch_lookup(
-    tlio_in: *mut TlInState,
-    buf: *mut c_void,
-    len: c_int,
-) {
-    ptr::copy_nonoverlapping((*tlio_in).in_ptr.cast::<u8>(), buf.cast::<u8>(), len as usize);
+unsafe extern "C" fn tl_str_fetch_lookup(tlio_in: *mut TlInState, buf: *mut c_void, len: c_int) {
+    ptr::copy(
+        (*tlio_in).in_ptr.cast::<u8>(),
+        buf.cast::<u8>(),
+        len as usize,
+    );
 }
 
 unsafe extern "C" fn tl_str_fetch_raw_message(
@@ -449,7 +455,11 @@ unsafe extern "C" fn tl_str_store_raw_data(
     buf: *const c_void,
     len: c_int,
 ) {
-    ptr::copy_nonoverlapping(buf.cast::<u8>(), (*tlio_out).out_ptr.cast::<u8>(), len as usize);
+    ptr::copy(
+        buf.cast::<u8>(),
+        (*tlio_out).out_ptr.cast::<u8>(),
+        len as usize,
+    );
     (*tlio_out).out_ptr = add_bytes((*tlio_out).out_ptr, len);
 }
 
@@ -468,9 +478,9 @@ unsafe extern "C" fn tl_str_store_read_back_nondestruct(
     buf: *mut c_void,
     len: c_int,
 ) {
-    ptr::copy_nonoverlapping(
-        buf.cast::<u8>(),
+    ptr::copy(
         sub_bytes((*tlio_out).out_ptr, len).cast::<u8>(),
+        buf.cast::<u8>(),
         len as usize,
     );
 }
@@ -493,7 +503,7 @@ unsafe extern "C" fn tl_str_str_copy_through(
     len: c_int,
     advance: c_int,
 ) {
-    ptr::copy_nonoverlapping(
+    ptr::copy(
         (*tlio_in).in_ptr.cast::<u8>(),
         (*tlio_out).out_ptr.cast::<u8>(),
         len as usize,
@@ -569,7 +579,11 @@ unsafe fn tl_set_error_once(tlio_in: *mut TlInState, errnum: c_int, message: &st
 }
 
 unsafe fn tl_in_skip(tlio_in: *mut TlInState, len: c_int) -> c_int {
-    if tlio_in.is_null() || len < 0 || (*tlio_in).in_remaining < len || (*tlio_in).in_methods.is_null() {
+    if tlio_in.is_null()
+        || len < 0
+        || (*tlio_in).in_remaining < len
+        || (*tlio_in).in_methods.is_null()
+    {
         return -1;
     }
     let methods = &*(*tlio_in).in_methods;
@@ -657,8 +671,7 @@ unsafe fn tl_query_header_parse_impl(
     }
     let unread_usize = usize::try_from(unread).unwrap_or(0);
     let mut buf = vec![0u8; unread_usize];
-    if unread > 0
-        && tl_in_lookup_data(tlio_in, buf.as_mut_ptr().cast::<c_void>(), unread) != unread
+    if unread > 0 && tl_in_lookup_data(tlio_in, buf.as_mut_ptr().cast::<c_void>(), unread) != unread
     {
         tl_set_error_once(
             tlio_in,
@@ -733,7 +746,8 @@ unsafe fn tl_store_init_impl(
         }
         (*tlio_out).out_methods = methods;
         (*tlio_out).out_type = type_;
-        if type_ != TL_TYPE_NONE && (((*methods).flags & (TLF_ALLOW_PREPEND | TLF_DISABLE_PREPEND)) == 0)
+        if type_ != TL_TYPE_NONE
+            && (((*methods).flags & (TLF_ALLOW_PREPEND | TLF_DISABLE_PREPEND)) == 0)
         {
             let reserve = (*methods).prepend_bytes + if qid != 0 { 12 } else { 0 };
             let Some(store_get_ptr) = (*methods).store_get_ptr else {
@@ -921,7 +935,11 @@ unsafe fn tl_fetch_string_len_impl(tlio_in: *mut TlInState, max_len: c_int) -> c
         return -1;
     }
     if first == 0xff {
-        tl_set_error_once(tlio_in, TL_ERROR_SYNTAX, "String len can not start with 0xff");
+        tl_set_error_once(
+            tlio_in,
+            TL_ERROR_SYNTAX,
+            "String len can not start with 0xff",
+        );
         return -1;
     }
     let mut len: c_int = c_int::from(first);
@@ -969,7 +987,10 @@ unsafe fn tl_fetch_pad_impl(tlio_in: *mut TlInState) -> c_int {
     if tl_in_fetch_raw_any(tlio_in, buf.as_mut_ptr().cast::<c_void>(), pad) < 0 {
         return -1;
     }
-    if buf[..usize::try_from(pad).unwrap_or(0)].iter().any(|b| *b != 0) {
+    if buf[..usize::try_from(pad).unwrap_or(0)]
+        .iter()
+        .any(|b| *b != 0)
+    {
         tl_set_error_once(tlio_in, TL_ERROR_SYNTAX, "Padding with non-zeroes");
         return -1;
     }
@@ -1102,9 +1123,9 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_store_end_ext(
         if op == 0 || p.is_null() {
             return -1;
         }
-        p = p.add(usize::try_from(methods.prepend_bytes / 4).unwrap_or(0));
+        p = p.wrapping_add(usize::try_from(methods.prepend_bytes / 4).unwrap_or(0));
         ptr::write_unaligned(p, op);
-        ptr::write_unaligned(p.add(1).cast::<i64>(), (*tlio_out).out_qid);
+        ptr::write_unaligned(p.wrapping_add(1).cast::<i64>(), (*tlio_out).out_qid);
     }
 
     if let Some(store_prefix) = methods.store_prefix {
@@ -1218,13 +1239,18 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_init_raw_message(
     } else {
         rwm_clone(r, msg);
     }
-    tl_fetch_init_impl(
+    let rc = tl_fetch_init_impl(
         tlio_in,
         r.cast::<c_void>(),
         TL_TYPE_RAW_MSG,
         core::ptr::addr_of!(tl_in_raw_msg_methods),
         size,
-    )
+    );
+    if rc < 0 {
+        let _ = rwm_free(r);
+        libc::free(r.cast::<c_void>());
+    }
+    rc
 }
 
 #[no_mangle]
@@ -1281,7 +1307,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_init_raw_msg(
         }
         let _ = rwm_init(d, 0);
     }
-    tl_store_init_impl(
+    let rc = tl_store_init_impl(
         tlio_out,
         d.cast::<c_void>(),
         ptr::null_mut(),
@@ -1289,7 +1315,12 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_init_raw_msg(
         core::ptr::addr_of!(tl_out_raw_msg_methods),
         1 << 27,
         qid,
-    )
+    );
+    if rc < 0 && !d.is_null() {
+        let _ = rwm_free(d);
+        libc::free(d.cast::<c_void>());
+    }
+    rc
 }
 
 #[no_mangle]
@@ -1302,7 +1333,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_init_raw_msg_nosend(tlio_out: *mut TlOut
         return -1;
     }
     let _ = rwm_init(d, 0);
-    tl_store_init_impl(
+    let rc = tl_store_init_impl(
         tlio_out,
         d.cast::<c_void>(),
         d.cast::<c_void>(),
@@ -1310,7 +1341,12 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_init_raw_msg_nosend(tlio_out: *mut TlOut
         core::ptr::addr_of!(tl_out_raw_msg_methods_nosend),
         1 << 27,
         0,
-    )
+    );
+    if rc < 0 {
+        let _ = rwm_free(d);
+        libc::free(d.cast::<c_void>());
+    }
+    rc
 }
 
 #[no_mangle]
@@ -1365,7 +1401,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_init_tcp_raw_msg(
     } else {
         core::ptr::addr_of!(tl_out_tcp_raw_msg_methods)
     };
-    tl_store_init_impl(
+    let rc = tl_store_init_impl(
         tlio_out,
         d.cast::<c_void>(),
         conn,
@@ -1373,7 +1409,12 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_init_tcp_raw_msg(
         methods,
         1 << 27,
         qid,
-    )
+    );
+    if rc < 0 && !d.is_null() {
+        let _ = rwm_free(d);
+        libc::free(d.cast::<c_void>());
+    }
+    rc
 }
 
 #[no_mangle]
@@ -1415,9 +1456,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_lookup_int(tlio_in: *mut TlInState
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_lookup_second_int(
-    tlio_in: *mut TlInState,
-) -> c_int {
+pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_lookup_second_int(tlio_in: *mut TlInState) -> c_int {
     if tl_in_check(tlio_in, 8) < 0 || (*tlio_in).in_methods.is_null() {
         return -1;
     }
@@ -1668,7 +1707,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_string0(
     if buf.is_null() {
         return -1;
     }
-    *buf.add(usize::try_from(len).unwrap_or(0)) = 0;
+    *buf.wrapping_add(usize::try_from(len).unwrap_or(0)) = 0;
     len
 }
 
@@ -1734,7 +1773,11 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_error(tlio_in: *mut TlInState) -> 
     if tlio_in.is_null() {
         return 1;
     }
-    if (*tlio_in).error.is_null() { 0 } else { 1 }
+    if (*tlio_in).error.is_null() {
+        0
+    } else {
+        1
+    }
 }
 
 #[no_mangle]
@@ -1760,9 +1803,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_positive_int(tlio_in: *mut TlInSta
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_nonnegative_int(
-    tlio_in: *mut TlInState,
-) -> c_int {
+pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_nonnegative_int(tlio_in: *mut TlInState) -> c_int {
     mtproxy_ffi_tl_fetch_int_range(tlio_in, 0, 0x7fff_ffff)
 }
 
@@ -1776,9 +1817,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_int_subset(
         tl_set_error_once(
             tlio_in,
             TL_ERROR_VALUE_NOT_IN_RANGE,
-            &format!(
-                "Expected int32 with only bits 0x{set:02x} allowed, 0x{value:02x} presented"
-            ),
+            &format!("Expected int32 with only bits 0x{set:02x} allowed, 0x{value:02x} presented"),
         );
     }
     value
@@ -1807,9 +1846,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_positive_long(tlio_in: *mut TlInSt
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_nonnegative_long(
-    tlio_in: *mut TlInState,
-) -> i64 {
+pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_nonnegative_long(tlio_in: *mut TlInState) -> i64 {
     mtproxy_ffi_tl_fetch_long_range(tlio_in, 0, 0x7fff_ffff_ffff_ffff_i64)
 }
 
@@ -2003,8 +2040,11 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_store_string(
         return -1;
     }
     if len_usize > 0
-        && tl_out_store_raw_data(tlio_out, s.cast::<c_void>(), c_int::try_from(len_usize).unwrap_or(c_int::MAX))
-            < 0
+        && tl_out_store_raw_data(
+            tlio_out,
+            s.cast::<c_void>(),
+            c_int::try_from(len_usize).unwrap_or(c_int::MAX),
+        ) < 0
     {
         return -1;
     }

@@ -211,8 +211,8 @@ void default_parse_extra_args(int argc, char *argv[]);
 void engine_tl_init(struct tl_act_extra *(*parse)(struct tl_in_state *,
                                                   long long),
                     void (*stat)(struct tl_out_state *),
-                    int (*get_op)(struct tl_in_state *),
-                    double timeout, const char *name);
+                    int (*get_op)(struct tl_in_state *), double timeout,
+                    const char *name);
 void server_init(conn_type_t *listen_connection_type,
                  void *listen_connection_extra);
 void usage(void);

@@ -382,7 +382,8 @@ struct precise_cron_job_extra {
   struct event_timer ev;
 };
 
-int precise_cron_job_run(job_t job, int op, [[maybe_unused]] struct job_thread *JT) {
+int precise_cron_job_run(job_t job, int op,
+                         [[maybe_unused]] struct job_thread *JT) {
   if (op != JS_RUN && op != JS_ALARM) {
     return JOB_ERROR;
   }

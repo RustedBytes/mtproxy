@@ -341,7 +341,8 @@ static inline int tl_store_end_simple(struct tl_out_state *tlio_out) {
 #define tl_fetch_string0(...) tlf_string0_rust(tlio_in, ##__VA_ARGS__)
 #define tl_fetch_error(...) tlf_error_rust(tlio_in, ##__VA_ARGS__)
 #define tl_fetch_end(...) tlf_end_rust(tlio_in, ##__VA_ARGS__)
-#define tl_fetch_check_str_end(...) tlf_check_str_end_rust(tlio_in, ##__VA_ARGS__)
+#define tl_fetch_check_str_end(...)                                            \
+  tlf_check_str_end_rust(tlio_in, ##__VA_ARGS__)
 #define tl_fetch_unread(...) tlf_unread_rust(tlio_in, ##__VA_ARGS__)
 #define tl_fetch_skip(...) tlf_skip_rust(tlio_in, ##__VA_ARGS__)
 #define tl_fetch_check(...) tlf_check_rust(tlio_in, ##__VA_ARGS__)
@@ -373,7 +374,8 @@ static inline int tl_store_end_simple(struct tl_out_state *tlio_out) {
   tlf_nonnegative_int_rust(tlio_in, ##__VA_ARGS__)
 
 #define tl_fetch_int_subset(...) tlf_int_subset_rust(tlio_in, ##__VA_ARGS__)
-#define tl_fetch_positive_long(...) tlf_positive_long_rust(tlio_in, ##__VA_ARGS__)
+#define tl_fetch_positive_long(...)                                            \
+  tlf_positive_long_rust(tlio_in, ##__VA_ARGS__)
 #define tl_fetch_nonnegative_long(...)                                         \
   tlf_nonnegative_long_rust(tlio_in, ##__VA_ARGS__)
 #define tl_fetch_raw_message(...) tlf_raw_message_rust(tlio_in, ##__VA_ARGS__)

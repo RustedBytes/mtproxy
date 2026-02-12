@@ -1151,7 +1151,8 @@ int job_list_node_wakeup(job_t list_job, [[maybe_unused]] int op,
   return 0;
 }
 
-int process_job_list(job_t job, int op, [[maybe_unused]] struct job_thread *JT) {
+int process_job_list(job_t job, int op,
+                     [[maybe_unused]] struct job_thread *JT) {
   assert(job->j_custom_bytes == sizeof(struct job_list_params));
   struct job_list_params *P = (struct job_list_params *)job->j_custom;
   struct job_list_node *w, *wn;

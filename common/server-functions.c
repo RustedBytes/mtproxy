@@ -337,9 +337,9 @@ void parse_option_down(struct engine_parse_option *P) {
   }
 }
 
-void parse_option_internal(const char *name, int arg,
-                           [[maybe_unused]] int *var, int val,
-                           unsigned flags, int (*func)(int), char *help) {
+void parse_option_internal(const char *name, int arg, [[maybe_unused]] int *var,
+                           int val, unsigned flags, int (*func)(int),
+                           char *help) {
   int p = find_parse_option(val);
   if (p >= 0) {
     kprintf("duplicate parse option %d\n", val);

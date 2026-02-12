@@ -2051,9 +2051,7 @@ void tcp_set_max_connections(int maxconn) {
   }
 }
 
-int create_all_outbound_connections_limited(int limit) {
-  return 0;
-}
+int create_all_outbound_connections_limited(int limit) { return 0; }
 
 int create_all_outbound_connections(void) {
   return create_all_outbound_connections_limited(0x7fffffff);

@@ -32,11 +32,11 @@
 #define IPV6_PRINT_STR "%s"
 
 // Macro for IP printing - still needed for variadic arguments
-#define IP_TO_PRINT(a) \
+#define IP_TO_PRINT(a)                                                         \
   ((a) >> 24) & 0xff, ((a) >> 16) & 0xff, ((a) >> 8) & 0xff, (a) & 0xff
 
 // Macro for PID printing - still needed for variadic arguments
-#define PID_TO_PRINT(a) \
+#define PID_TO_PRINT(a)                                                        \
   IP_TO_PRINT((a)->ip), (int)(a)->port, (int)(a)->pid, (a)->utime
 
 static inline char *IPV6_TO_PRINT(void *ip) {

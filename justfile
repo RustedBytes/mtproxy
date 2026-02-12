@@ -46,7 +46,6 @@ c-format-check:
   rg --files -g '*.c' -g '*.h' common crypto engine jobs mtproto net vv | xargs -r clang-format -style=file --dry-run -Werror
 
 format:
-  just rust-format
   just c-format
 
 format-check:

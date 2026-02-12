@@ -164,7 +164,7 @@ tl_act_extra_init(void *buf, int size,
  * TL_DEFAULT_PARSE_FUN macro */
 #define TL_DEFAULT_PARSE_FUN(name, qtype)                                      \
   TL_PARSE_FUN(name, qtype)                                                    \
-  if (tl_fetch_check(sizeof(*e)) < 0) {                                         \
+  if (tl_fetch_check(sizeof(*e)) < 0) {                                        \
     tl_fetch_set_error_format(TL_ERROR_NOT_ENOUGH_DATA, "Not enougth data");   \
     return 0;                                                                  \
   }                                                                            \

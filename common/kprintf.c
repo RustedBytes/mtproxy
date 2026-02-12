@@ -25,7 +25,8 @@
 */
 
 // Minimal C wrapper for kprintf: varargs support stays in C for ABI.
-// All other functions are implemented in Rust (rust/mtproxy-ffi/src/kprintf.rs).
+// All other functions are implemented in Rust
+// (rust/mtproxy-ffi/src/kprintf.rs).
 
 #include <assert.h>
 #include <errno.h>
