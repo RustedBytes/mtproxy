@@ -177,6 +177,7 @@ dependencies = [
 name = "mtproxy-bin"
 version = "0.1.0"
 dependencies = [
+ "libc",
  "mtproxy-core",
 ]
 
