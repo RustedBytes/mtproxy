@@ -38,7 +38,6 @@
 
 #include "common/kprintf.h"
 #include "common/server-functions.h"
-#include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 
 #include "vv/vv-io.h"
 #include "vv/vv-tree.h"
@@ -51,12 +50,6 @@
 
 #define MODULE tl_parse
 
-extern int32_t
-mtproxy_ffi_tl_parse_query_header(const uint8_t *data, size_t len,
-                                  mtproxy_ffi_tl_header_parse_result_t *out);
-extern int32_t
-mtproxy_ffi_tl_parse_answer_header(const uint8_t *data, size_t len,
-                                   mtproxy_ffi_tl_header_parse_result_t *out);
 extern void
 mtproxy_ffi_tl_query_header_delete(struct tl_query_header *h);
 extern struct tl_query_header *
