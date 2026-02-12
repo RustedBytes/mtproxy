@@ -27,6 +27,7 @@
 #pragma once
 
 #include "net/net-connections.h"
+#include "net/net-rpc-flags.h"
 
 struct tcp_rpc_client_functions {
   void *info;
@@ -51,8 +52,6 @@ struct tcp_rpc_client_functions {
   int mode_flags;
 };
 extern struct tcp_rpc_client_functions default_tcp_rpc_client;
-
-#define TCP_RPC_IGNORE_PID RPC_MF_IGNORE_PID
 
 extern conn_type_t ct_tcp_rpc_client;
 int tcp_rpcc_parse_execute(connection_job_t c);

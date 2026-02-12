@@ -27,6 +27,7 @@
 #pragma once
 
 #include "net/net-connections.h"
+#include "net/net-rpc-flags.h"
 #include "pid.h"
 
 struct tcp_message {
@@ -102,11 +103,6 @@ int tcp_rpc_default_execute(connection_job_t C, int op,
                             struct raw_message *raw);
 
 /* for crypto_flags in struct tcp_rpc_data */
-/* Kept as macros for compatibility with net-config.h aliases. */
-#define RPCF_ALLOW_UNENC 1   // allow unencrypted
-#define RPCF_ALLOW_ENC 2     // allow encrypted
-#define RPCF_REQ_DH 4        // require DH
-#define RPCF_ALLOW_SKIP_DH 8 // crypto NONCE packet sent
 enum {
   RPCF_ENC_SENT = 16,
   RPCF_SEQNO_HOLES = 256, // packet numbers not sequential
@@ -168,13 +164,6 @@ enum {
   RPC_CRYPTO_AES = 1,
   RPC_CRYPTO_AES_EXT = 2,
   RPC_CRYPTO_AES_DH = 3,
-};
-
-enum {
-  RPC_MF_COMPACT_ALLOW = 1,
-  RPC_MF_COMPACT_FORCE = 2,
-  RPC_MF_IGNORE_PID = 4,
-  RPC_MF_OPPORT_CRYPTO = 8,
 };
 
 static inline struct tcp_rpc_data *TCP_RPC_DATA(connection_job_t c) {

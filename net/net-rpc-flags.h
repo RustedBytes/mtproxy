@@ -14,30 +14,23 @@
     You should have received a copy of the GNU Lesser General Public License
     along with Mtproto-proxy Library.  If not, see
    <http://www.gnu.org/licenses/>.
-
-    Copyright 2014-2016 Telegram Messenger Inc
-              2014-2016 Nikolai Durov
 */
 
 #pragma once
 
-#include "net/net-rpc-flags.h"
-
+/* Shared rpc crypto flags used by config and tcp-rpc modules. */
 enum {
-  MAX_PWD_CONFIG_LEN = 16384,
+  RPCF_ALLOW_UNENC = 1,   // allow unencrypted
+  RPCF_ALLOW_ENC = 2,     // allow encrypted
+  RPCF_REQ_DH = 4,        // require DH
+  RPCF_ALLOW_SKIP_DH = 8, // crypto NONCE packet sent
 };
 
+/* Shared rpc mode flags used by client/server function tables. */
 enum {
-  RPCF_DISABLE_RPC = 0x1000,
-  RPCF_ALLOW_MC = 0x2000,
-  RPCF_ALLOW_SQL = 0x4000,
-  RPCF_ALLOW_HTTP = 0x8000,
-  RPCF_RESULT_VALID = 0x80000000,
+  RPC_MF_COMPACT_ALLOW = 1,
+  RPC_MF_COMPACT_FORCE = 2,
+  RPC_MF_IGNORE_PID = 4,
+  RPC_MF_OPPORT_CRYPTO = 8,
+  TCP_RPC_IGNORE_PID = RPC_MF_IGNORE_PID,
 };
-
-extern char pwd_config_buf[MAX_PWD_CONFIG_LEN + 128];
-extern int pwd_config_len;
-extern char pwd_config_md5[33];
-
-int select_best_key_signature(int key_signature, int extra_num,
-                              const int *extra_key_signatures);

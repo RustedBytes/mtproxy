@@ -54,8 +54,6 @@ struct tcp_rpc_server_functions {
   void *http_fallback_type, *http_fallback_extra;
 };
 
-#define TCP_RPC_IGNORE_PID RPC_MF_IGNORE_PID
-
 extern conn_type_t ct_tcp_rpc_server;
 extern struct tcp_rpc_server_functions default_tcp_rpc_server;
 
