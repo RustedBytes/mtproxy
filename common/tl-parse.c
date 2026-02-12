@@ -227,24 +227,6 @@ int tlf_query_answer_header(struct tl_in_state *tlio_in,
   return rc;
 }
 
-static inline int __tl_store_init(struct tl_out_state *tlio_out, void *out,
-                                  void *out_extra, enum tl_type type,
-                                  const struct tl_out_methods *methods,
-                                  int size, long long qid) {
-  return mtproxy_ffi_tl_store_init(tlio_out, out, out_extra, type, methods,
-                                   size, qid);
-}
-
-/*int tls_init_simple (struct tl_out_state *tlio_out, connection_job_t c) {
-  if (c) {
-    TL_OUT_PID = &(RPCS_DATA(c)->remote_pid);
-  } else {
-    TL_OUT_PID = 0;
-  }
-  return __tl_store_init (tlio_out, job_incref (c), 0, tl_type_conn,
-&tl_out_conn_simple_methods, (1 << 27), 0);
-}*/
-
 int tls_init_raw_msg(struct tl_out_state *tlio_out, struct process_id *pid,
                      long long qid) {
   return mtproxy_ffi_tl_init_raw_msg(tlio_out, pid, qid);
