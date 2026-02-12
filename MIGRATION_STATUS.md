@@ -8,8 +8,8 @@ This document tracks the progress of migrating the MTProxy C codebase to Rust (S
 
 **Current Status**: 
 - **Rust binary**: `mtproxy-rust` with full CLI interface ✅
-- **C units migrated**: 15 complete + 19 partial of 44 total modules (77% in progress or complete)
-- **Tests passing**: 212 (all Rust tests passing)
+- **C units migrated**: 15 complete + 25 partial of 44 total modules (91% in progress or complete)
+- **Tests passing**: 239 (all Rust tests passing)
 - **Build system**: Hybrid C/Rust with FFI bridge ✅
 
 ## Migration Strategy
@@ -28,7 +28,12 @@ This document tracks the progress of migrating the MTProxy C codebase to Rust (S
 - [ ] Signal handling
 
 ### Phase 3: Core Runtime (IN PROGRESS)
-- [ ] Port remaining not-started C translation units to Rust (10 remaining)
+- [x] Create Rust module structure for engine framework
+- [x] Create Rust module structure for job system
+- [ ] Port engine initialization logic
+- [ ] Port job system core functionality
+- [ ] Port signal handling infrastructure
+- [ ] Port RPC integration
 - [ ] Complete partial implementations (19 modules)
 - [ ] Remove C object linkage from release binary
 - [ ] Verify functional parity with integration tests
@@ -101,17 +106,17 @@ This document tracks the progress of migrating the MTProxy C codebase to Rust (S
 
 | C File | Lines | Rust Module | Status | Priority | Notes |
 |--------|-------|-------------|--------|----------|-------|
-| `engine/engine.c` | ~2000 | `mtproxy-core::runtime::engine` | 🔴 Not Started | **CRITICAL** | Main event loop engine |
-| `engine/engine-net.c` | ~800 | `mtproxy-core::runtime::engine::net` | 🔴 Not Started | **CRITICAL** | Network integration |
-| `engine/engine-rpc.c` | ~600 | `mtproxy-core::runtime::engine::rpc` | 🔴 Not Started | HIGH | RPC integration |
-| `engine/engine-rpc-common.c` | ~400 | `mtproxy-core::runtime::engine::rpc_common` | 🔴 Not Started | HIGH | RPC common code |
-| `engine/engine-signals.c` | ~300 | `mtproxy-core::runtime::engine::signals` | 🔴 Not Started | MED | Signal handling |
+| `engine/engine.c` | ~2000 | `mtproxy-core::runtime::engine` | 🟡 Partial | **CRITICAL** | Module structure created; core logic pending |
+| `engine/engine-net.c` | ~800 | `mtproxy-core::runtime::engine::net` | 🟡 Partial | **CRITICAL** | Module structure created; implementation pending |
+| `engine/engine-rpc.c` | ~600 | `mtproxy-core::runtime::engine::rpc` | 🟡 Partial | HIGH | Module structure created; RPC integration pending |
+| `engine/engine-rpc-common.c` | ~400 | `mtproxy-core::runtime::engine::rpc_common` | 🟡 Partial | HIGH | Module structure created; common RPC pending |
+| `engine/engine-signals.c` | ~300 | `mtproxy-core::runtime::engine::signals` | 🟡 Partial | MED | Signal handling structure created with basic signal tracking |
 
 ### Job System
 
 | C File | Lines | Rust Module | Status | Priority | Notes |
 |--------|-------|-------------|--------|----------|-------|
-| `jobs/jobs.c` | ~900 | `mtproxy-core::runtime::jobs` | 🔴 Not Started | HIGH | Job queue and threading |
+| `jobs/jobs.c` | ~900 | `mtproxy-core::runtime::jobs` | 🟡 Partial | HIGH | Module structure created with core types; implementation pending |
 
 ## Status Legend
 
