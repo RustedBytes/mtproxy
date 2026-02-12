@@ -5,4 +5,5 @@
 //! - Treap (randomized binary search tree)
 //! - IP formatting utilities
 
+pub mod ip_format;
 pub mod treap;

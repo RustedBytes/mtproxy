@@ -36,7 +36,22 @@ The original C implementation provides a template-based treap (randomized binary
 
 The original C implementation provides IP address formatting macros and functions for IPv4 and IPv6.
 
-**Current Status**: To be implemented in Phase 3
+**Rust Implementation:**
+- **Location**: `rust/mtproxy-core/src/runtime/collections/ip_format.rs`
+- **Features**:
+  - IPv4 formatting from 32-bit integer
+  - IPv6 formatting from 16-byte array
+  - No-std compatible using `heapless` for fixed-size strings
+  - Comprehensive unit tests
+
+**FFI Bridge:**
+- **Location**: `rust/mtproxy-ffi/src/vv_io.rs`
+- **Header**: `rust/mtproxy-ffi/include/vv_io_ffi.h`
+- **Functions**:
+  - `vv_format_ipv4()` - Format IPv4 to string
+  - `vv_format_ipv6()` - Format IPv6 to string
+  - `vv_ipv4_to_octets()` - Extract IPv4 octets for printf
+  - Macros: `VV_IP_PRINT_STR`, `VV_IP_TO_PRINT` for compatibility
 
 ## Architecture
 
@@ -45,13 +60,16 @@ The original C implementation provides IP address formatting macros and function
 ```
 rust/mtproxy-core/src/runtime/collections/
 ├── mod.rs           # Module exports
-└── treap.rs         # Treap implementation
+├── treap.rs         # Treap implementation
+└── ip_format.rs     # IP address formatting
 
 rust/mtproxy-ffi/src/
 ├── vv_tree.rs       # FFI bridge for treap
+└── vv_io.rs         # FFI bridge for IP utilities
 
 rust/mtproxy-ffi/include/
-└── vv_tree_ffi.h    # C header for FFI functions
+├── vv_tree_ffi.h    # C header for treap FFI
+└── vv_io_ffi.h      # C header for IP utilities FFI
 ```
 
 ### Design Principles
@@ -88,11 +106,12 @@ The FFI layer currently exposes thread-safe variant by default to maintain compa
 - [x] Create C header file
 - [x] Add FFI tests
 
-### Phase 3: IP Utilities (Planned)
+### Phase 3: IP Utilities ✅
 
-- [ ] Port IPv4/IPv6 formatting functions
-- [ ] Create FFI bindings for IP utilities
-- [ ] Update existing C code to use new API
+- [x] Port IPv4/IPv6 formatting functions
+- [x] Create FFI bindings for IP utilities
+- [x] Add unit tests (5 tests passing)
+- [x] Update documentation
 
 ### Phase 4: C Code Migration (Planned)
 
@@ -132,20 +151,25 @@ tree.lookup(&5, |key| {
 });
 ```
 
-### C FFI API
+### C FFI API (IP Utilities)
 
 ```c
-#include "vv_tree_ffi.h"
+#include "vv_io_ffi.h"
 
-VvTreeHandle *tree = vv_tree_create();
-vv_tree_insert(tree, (void*)0x100, 10);
+// Format IPv4 address
+uint32_t addr = 0xc0a80101;  // 192.168.1.1
+const char *ip_str = vv_format_ipv4(addr);
+printf("IPv4: %s\n", ip_str);
 
-const void *found = vv_tree_lookup(tree, (void*)0x100);
-if (found) {
-    printf("Found: %p\n", found);
-}
+// Format IPv6 address
+uint8_t ipv6[16] = {0x20, 0x01, 0x0d, 0xb8, /* ... */};
+const char *ipv6_str = vv_format_ipv6(ipv6);
+printf("IPv6: %s\n", ipv6_str);
 
-vv_tree_destroy(tree);
+// Extract octets for printf
+uint8_t octets[4];
+vv_ipv4_to_octets(addr, octets);
+printf(VV_IP_PRINT_STR "\n", VV_IP_TO_PRINT(addr));
 ```
 
 ## Testing
