@@ -1,6 +1,6 @@
 # C-to-Rust Migration Status
 
-This document tracks the progress of migrating the MTProxy C codebase to Rust (Step 15 of PLAN.md).
+This document tracks the progress of migrating the MTProxy C codebase to Rust (Step 15 ownership map in `rust/mtproxy-core/src/step15.rs`).
 
 ## Overview
 
@@ -8,9 +8,9 @@ This document tracks the progress of migrating the MTProxy C codebase to Rust (S
 
 **Current Status**: 
 - **Rust binary**: `mtproxy-rust` with full CLI interface ✅
-- **C units migrated**: 15 complete + 25 partial of 44 total modules (91% in progress or complete)
-- **Tests passing**: 312 (all Rust tests passing)
-- **Build system**: Hybrid C/Rust with FFI bridge ✅
+- **C units migrated**: 15 complete + 25 partial of 43 total modules (93% in progress or complete)
+- **Tests passing**: 311/312 (1 integration parity test currently unstable in full workspace run)
+- **Build system**: Rust-first release binary (`make release`) + hybrid legacy C/Rust compatibility path ✅
 
 ## Migration Strategy
 
@@ -20,12 +20,20 @@ This document tracks the progress of migrating the MTProxy C codebase to Rust (S
 - [x] Test harness and CI integration
 - [x] Step 15 ownership map defining target Rust modules
 
-### Phase 2: Entry Point (COMPLETED)
+### Phase 2: Entry Point (BOOTSTRAP COMPLETE)
 - [x] Rust main binary with full CLI parsing (mtproxy-rust)
 - [x] Argument validation and processing
 - [x] Runtime initialization sequence
 - [x] Worker process management
 - [x] Signal handling
+
+Phase 2 full-parity checklist (remaining for a fully functional Rust C-proxy replacement):
+- [ ] End-to-end `mtproto/mtproto-proxy.c` runtime control-flow parity in `mtproxy-rust` (legacy hook ordering and startup flow).
+- [ ] Full CLI/runtime option parity with legacy parser paths (including engine/net/server-functions coverage not yet mapped in Rust startup).
+- [ ] Config loading/reloading behavior parity from `mtproto/mtproto-config.c` integrated into Rust runtime startup path.
+- [ ] Legacy process-mode parity (master/worker lifecycle, shutdown semantics, and exit-code behavior) beyond current bootstrap worker model.
+- [ ] Runtime script/utility execution parity (`run_script`-style path and result handling from C main flow).
+- [ ] Startup/shutdown observability parity (version/reporting and termination messaging behavior).
 
 ### Phase 3: Core Runtime (IN PROGRESS)
 - [x] Create Rust module structure for engine framework
@@ -37,6 +45,17 @@ This document tracks the progress of migrating the MTProxy C codebase to Rust (S
 - [ ] Complete partial implementations (19 modules)
 - [x] Remove C object linkage from release binary
 - [ ] Verify functional parity with integration tests
+
+Phase 3 full-parity checklist (remaining for production-equivalent runtime behavior):
+- [ ] Stabilize integration parity test suite state isolation (current full-workspace flake in `runtime_parity` around engine signal-batch assertions).
+- [ ] Complete `engine/engine.c` event-loop parity (`epoll_work` loop behavior, pending-main-jobs cadence, interrupt/waiting-exit/terminate-job paths).
+- [ ] Complete `engine/engine-net.c` socket lifecycle parity (listener init path, bind/backlog/address/IPv6 semantics, open/close behavior across lifecycle).
+- [ ] Complete `jobs/jobs.c` scheduler/runtime parity for edge cases (subclass scheduling fairness, timer/message queue interactions, refcount/destructor ordering).
+- [ ] Complete remaining partial HIGH-priority network modules (`net-events`, `net-connections`, `net-tcp-*`, `net-http-server`) with runtime-equivalent behavior.
+- [ ] Implement remaining NOT STARTED core helpers required by runtime paths (`common/mp-queue.c`, `common/parse-config.c`).
+- [ ] Replace residual legacy FFI bootstrap bridge dependencies (`common/rust-ffi-bridge.c`) in runtime execution paths.
+- [ ] Add broad integration parity suite that validates Rust runtime behavior against legacy C expectations (signals, RPC, timers, config reloads, shutdown paths).
+- [ ] Validate end-to-end MTProxy protocol/data-path parity under realistic traffic (not only unit/integration synthetic tests).
 
 ### Phase 4: Hardening (PLANNED)
 - [ ] Security audit of Rust implementation
@@ -141,13 +160,13 @@ This document tracks the progress of migrating the MTProxy C codebase to Rust (S
 
 ### Short-term (Week 3-4)
 5. Port remaining network stack modules
-6. Port crypto modules (AES, DH)
+6. ✅ Port crypto modules (AES, DH) - Complete in FFI layer
 7. Complete `mtproto-proxy.c` main runtime
 
 ### Medium-term (Month 2)
 8. Integration testing and validation
 9. Performance benchmarking
-10. Remove C object linkage from release binary
+10. ✅ Remove C object linkage from release binary
 
 ### Long-term (Month 3+)
 11. Security audit
