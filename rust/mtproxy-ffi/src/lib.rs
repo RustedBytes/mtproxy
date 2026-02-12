@@ -909,10 +909,11 @@ mod crypto;
 mod jobs;
 mod kprintf;
 mod mtproto;
+mod net_msg;
 mod server_functions;
 mod stats;
-mod tl_parse_methods;
 mod time_cfg_observability;
+mod tl_parse_methods;
 pub mod vv_io;
 pub mod vv_tree;
 

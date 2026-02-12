@@ -34,13 +34,13 @@ pub fn format_ipv4(addr: u32) -> heapless::String<16> {
 /// A formatted string like "2001:db8::1"
 pub fn format_ipv6(addr: &[u8; 16]) -> heapless::String<64> {
     let mut s = heapless::String::new();
-    
+
     // Convert bytes to u16 values in network byte order
     let mut segments = [0u16; 8];
     for (i, chunk) in addr.chunks(2).enumerate() {
         segments[i] = u16::from_be_bytes([chunk[0], chunk[1]]);
     }
-    
+
     // Simple formatting without zero compression to match C implementation
     // The C version doesn't do full RFC-compliant compression either
     let _ = format_ipv6_segments(&mut s, &segments);

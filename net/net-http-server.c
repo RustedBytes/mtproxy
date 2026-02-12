@@ -747,12 +747,3 @@ void http_flush(connection_job_t C, struct raw_message *raw) {
   }
   job_signal(JOB_REF_CREATE_PASS(C), JS_RUN);
 }
-
-// int write_basic_http_header (connection_job_t C, struct raw_message *raw, int
-// code, int date, int len, const char *add_header, const char *content_type) {
-
-/*
- *
- *                END (HTTP SERVER)
- *
- */

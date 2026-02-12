@@ -131,11 +131,11 @@ mod tests {
             // Test localhost 127.0.0.1
             let ptr = vv_format_ipv4(0x7f000001);
             assert!(!ptr.is_null());
-            
+
             let c_str = CStr::from_ptr(ptr);
             let rust_str = c_str.to_str().unwrap();
             assert_eq!(rust_str, "127.0.0.1");
-            
+
             // Test 192.168.1.1
             let ptr = vv_format_ipv4(0xc0a80101);
             let c_str = CStr::from_ptr(ptr);
@@ -159,10 +159,10 @@ mod tests {
             // Test loopback ::1
             let mut addr = [0u8; 16];
             addr[15] = 1;
-            
+
             let ptr = vv_format_ipv6(addr.as_ptr() as *const c_void);
             assert!(!ptr.is_null());
-            
+
             let c_str = CStr::from_ptr(ptr);
             let rust_str = c_str.to_str().unwrap();
             // Just verify it's non-empty and valid

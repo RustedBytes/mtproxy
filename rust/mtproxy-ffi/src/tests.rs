@@ -11,19 +11,18 @@ use super::{
     mtproxy_ffi_engine_net_open_privileged_port, mtproxy_ffi_engine_net_try_open_port_range,
     mtproxy_ffi_engine_process_signals_allowed,
     mtproxy_ffi_engine_rpc_common_default_parse_decision,
-    mtproxy_ffi_engine_rpc_common_default_query_type_mask,
-    mtproxy_ffi_engine_rpc_need_dup, mtproxy_ffi_engine_rpc_query_job_dispatch_decision,
+    mtproxy_ffi_engine_rpc_common_default_query_type_mask, mtproxy_ffi_engine_rpc_need_dup,
+    mtproxy_ffi_engine_rpc_query_job_dispatch_decision,
     mtproxy_ffi_engine_rpc_query_result_dispatch_decision,
-    mtproxy_ffi_engine_rpc_query_result_type_id_from_qid,
-    mtproxy_ffi_engine_rpc_tcp_should_hold_conn,
-    mtproxy_ffi_engine_rpc_result_header_len, mtproxy_ffi_engine_rpc_result_new_flags,
+    mtproxy_ffi_engine_rpc_query_result_type_id_from_qid, mtproxy_ffi_engine_rpc_result_header_len,
+    mtproxy_ffi_engine_rpc_result_new_flags, mtproxy_ffi_engine_rpc_tcp_should_hold_conn,
     mtproxy_ffi_engine_signal_check_pending, mtproxy_ffi_engine_signal_check_pending_and_clear,
-    mtproxy_ffi_engine_signal_set_pending,
-    mtproxy_ffi_get_application_boundary, mtproxy_ffi_get_concurrency_boundary,
-    mtproxy_ffi_get_crypto_boundary, mtproxy_ffi_get_network_boundary,
-    mtproxy_ffi_get_precise_time, mtproxy_ffi_get_rpc_boundary, mtproxy_ffi_get_utime_monotonic,
-    mtproxy_ffi_gf32_combine_clmul, mtproxy_ffi_gf32_compute_powers_clmul, mtproxy_ffi_matches_pid,
-    mtproxy_ffi_md5, mtproxy_ffi_md5_hex, mtproxy_ffi_msg_buffers_pick_size_index,
+    mtproxy_ffi_engine_signal_set_pending, mtproxy_ffi_get_application_boundary,
+    mtproxy_ffi_get_concurrency_boundary, mtproxy_ffi_get_crypto_boundary,
+    mtproxy_ffi_get_network_boundary, mtproxy_ffi_get_precise_time, mtproxy_ffi_get_rpc_boundary,
+    mtproxy_ffi_get_utime_monotonic, mtproxy_ffi_gf32_combine_clmul,
+    mtproxy_ffi_gf32_compute_powers_clmul, mtproxy_ffi_matches_pid, mtproxy_ffi_md5,
+    mtproxy_ffi_md5_hex, mtproxy_ffi_msg_buffers_pick_size_index,
     mtproxy_ffi_mtproto_cfg_decide_cluster_apply, mtproxy_ffi_mtproto_cfg_expect_semicolon,
     mtproxy_ffi_mtproto_cfg_finalize, mtproxy_ffi_mtproto_cfg_getlex_ext,
     mtproxy_ffi_mtproto_cfg_lookup_cluster_index, mtproxy_ffi_mtproto_cfg_parse_directive_step,
@@ -281,7 +280,10 @@ fn engine_rpc_common_dispatch_helpers_match_default_c_rules() {
 #[test]
 fn engine_rpc_decision_helpers_match_c_routing_rules() {
     let qid = i64::from_ne_bytes(0xA123_4567_89ab_cdef_u64.to_ne_bytes());
-    assert_eq!(mtproxy_ffi_engine_rpc_query_result_type_id_from_qid(qid), 10);
+    assert_eq!(
+        mtproxy_ffi_engine_rpc_query_result_type_id_from_qid(qid),
+        10
+    );
     assert_eq!(
         mtproxy_ffi_engine_rpc_query_result_dispatch_decision(0, 0),
         0

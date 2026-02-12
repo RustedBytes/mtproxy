@@ -169,8 +169,9 @@ void engine_work_rpc_req_result(struct tl_in_state *tlio_in,
   h->qw_params = params;
   int query_type_id =
       mtproxy_ffi_engine_rpc_query_result_type_id_from_qid(h->qid);
-  tl_query_result_fun_t fun =
-      tl_query_result_functions ? tl_query_result_functions[query_type_id] : NULL;
+  tl_query_result_fun_t fun = tl_query_result_functions
+                                  ? tl_query_result_functions[query_type_id]
+                                  : NULL;
   int dispatch_decision = mtproxy_ffi_engine_rpc_query_result_dispatch_decision(
       tl_query_result_functions != NULL, fun != NULL);
   if (dispatch_decision == MTPROXY_FFI_ENGINE_RPC_QR_DISPATCH) {
@@ -186,8 +187,7 @@ void engine_work_rpc_req_result(struct tl_in_state *tlio_in,
 int __tl_query_act_custom(struct tl_in_state *tlio_in,
                           struct query_work_params *P) {
   unsigned op = tl_fetch_lookup_int();
-  struct rpc_custom_op *O =
-      mtproxy_ffi_engine_rpc_custom_op_lookup(op);
+  struct rpc_custom_op *O = mtproxy_ffi_engine_rpc_custom_op_lookup(op);
   if (O) {
     O->func(tlio_in, P);
   }
@@ -267,8 +267,8 @@ static job_t fetch_query(job_t parent, struct tl_in_state *IO,
   extra->raw = raw;
   extra->extra_ref = extra_ref ? job_incref(extra_ref) : 0;
 
-  extra = mtproxy_ffi_engine_rpc_need_dup(extra->flags) ? extra->dup(extra)
-                                                         : extra;
+  extra =
+      mtproxy_ffi_engine_rpc_need_dup(extra->flags) ? extra->dup(extra) : extra;
 
   job_t job = create_async_job(
       process_act_atom_subjob,
@@ -676,8 +676,8 @@ int query_job_run(job_t job, int fd, int generation) {
 
   int res;
   int has_custom_ops = mtproxy_ffi_engine_rpc_custom_op_has_any();
-  int dispatch_decision = mtproxy_ffi_engine_rpc_query_job_dispatch_decision(
-      op, has_custom_ops);
+  int dispatch_decision =
+      mtproxy_ffi_engine_rpc_query_job_dispatch_decision(op, has_custom_ops);
   if (dispatch_decision == MTPROXY_FFI_ENGINE_RPC_QJ_CUSTOM) {
     struct raw_message r;
     rwm_clone(&r, (struct raw_message *)IO->in);
@@ -782,7 +782,8 @@ int default_tl_tcp_rpcs_execute(connection_job_t c, int op,
   CONN_INFO(c)->last_response_time = precise_now;
   // rpc_target_insert_conn (c);
 
-  void *conn_ref = mtproxy_ffi_engine_rpc_tcp_should_hold_conn(op) ? job_incref(c) : NULL;
+  void *conn_ref =
+      mtproxy_ffi_engine_rpc_tcp_should_hold_conn(op) ? job_incref(c) : NULL;
   do_create_query_job(raw, tl_type_tcp_raw_msg, &TCP_RPC_DATA(c)->remote_pid,
                       conn_ref);
   return 1;

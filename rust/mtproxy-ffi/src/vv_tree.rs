@@ -72,10 +72,7 @@ pub unsafe extern "C" fn vv_tree_lookup(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn vv_tree_delete(
-    handle: *mut VvTreeHandle,
-    key: *const c_void,
-) -> c_int {
+pub unsafe extern "C" fn vv_tree_delete(handle: *mut VvTreeHandle, key: *const c_void) -> c_int {
     let Some(tree) = vv_tree_as_ref(handle) else {
         return 0;
     };
@@ -482,16 +479,8 @@ mod tests {
                 pid: 2,
                 utime: 0,
             };
-            tree = mtproxy_ffi_rpc_target_tree_insert(
-                tree,
-                &pid_a,
-                0x1111 as *mut c_void,
-            );
-            tree = mtproxy_ffi_rpc_target_tree_insert(
-                tree,
-                &pid_b,
-                0x2222 as *mut c_void,
-            );
+            tree = mtproxy_ffi_rpc_target_tree_insert(tree, &pid_a, 0x1111 as *mut c_void);
+            tree = mtproxy_ffi_rpc_target_tree_insert(tree, &pid_b, 0x2222 as *mut c_void);
 
             assert_eq!(
                 mtproxy_ffi_rpc_target_tree_lookup(tree, &pid_a) as usize,

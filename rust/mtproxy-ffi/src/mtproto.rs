@@ -1,5 +1,69 @@
 use super::*;
 
+fn mtproto_proxy_collect_argv(argc: i32, argv: *const *const c_char) -> Option<Vec<String>> {
+    if argc < 0 {
+        return None;
+    }
+    if argc == 0 {
+        return Some(vec!["mtproto-proxy".to_owned()]);
+    }
+    if argv.is_null() {
+        return None;
+    }
+
+    let count = usize::try_from(argc).ok()?;
+    let raw = unsafe { core::slice::from_raw_parts(argv, count) };
+    let mut out = Vec::with_capacity(count.max(1));
+    for &arg_ptr in raw {
+        if arg_ptr.is_null() {
+            return None;
+        }
+        let arg = unsafe { CStr::from_ptr(arg_ptr) }
+            .to_string_lossy()
+            .into_owned();
+        out.push(arg);
+    }
+    if out.is_empty() {
+        out.push("mtproto-proxy".to_owned());
+    }
+    Some(out)
+}
+
+/// Prints CLI usage/help for the Rust MTProxy entrypoint.
+///
+/// # Safety
+/// `program_name` may be null; otherwise it must point to a valid NUL-terminated C string.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_proxy_usage(program_name: *const c_char) -> i32 {
+    let program_name = if program_name.is_null() {
+        "mtproto-proxy".to_owned()
+    } else {
+        unsafe { CStr::from_ptr(program_name) }
+            .to_string_lossy()
+            .into_owned()
+    };
+
+    let usage = mtproxy_bin::entrypoint::usage_text(&program_name);
+    eprint!("{usage}");
+    0
+}
+
+/// Runs the Rust MTProxy entrypoint using C `argc`/`argv`.
+///
+/// # Safety
+/// `argv` must point to `argc` valid NUL-terminated C strings when `argc > 0`.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_proxy_main(
+    argc: i32,
+    argv: *const *const c_char,
+) -> i32 {
+    let Some(args) = mtproto_proxy_collect_argv(argc, argv) else {
+        eprintln!("ERROR: invalid argv passed to mtproxy_ffi_mtproto_proxy_main");
+        return 1;
+    };
+    mtproxy_bin::entrypoint::run_from_argv(&args)
+}
+
 fn slice_from_ptr<'a>(data: *const u8, len: usize) -> Option<&'a [u8]> {
     if len == 0 {
         Some(&[])

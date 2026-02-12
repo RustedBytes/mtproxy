@@ -348,6 +348,7 @@ dependencies = [
  "hmac",
  "libc",
  "md-5",
+ "mtproxy-bin",
  "mtproxy-core",
  "num-bigint",
  "num-traits",

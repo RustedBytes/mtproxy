@@ -72,7 +72,9 @@ int change_user_group(const char *new_username, const char *new_groupname) {
   return rust_change_user_group(new_username, new_groupname);
 }
 
-int change_user(const char *new_username) { return rust_change_user(new_username); }
+int change_user(const char *new_username) {
+  return rust_change_user(new_username);
+}
 
 int raise_file_rlimit(int maxfiles) { return rust_raise_file_rlimit(maxfiles); }
 
@@ -107,7 +109,8 @@ void init_parse_options(unsigned keep_mask,
     }
   }
 
-  rust_sf_init_parse_options(keep_mask, keep_options_custom_list, keep_list_len);
+  rust_sf_init_parse_options(keep_mask, keep_options_custom_list,
+                             keep_list_len);
 }
 
 void parse_option_ex(const char *name, int arg, int *var, int val,
@@ -149,8 +152,7 @@ void parse_option(const char *name, int arg, int *var, int val,
   }
 
   if (rust_sf_parse_option_add(name, arg, val, LONGOPT_CUSTOM_SET,
-                               default_parse_option_func,
-                               formatted_help) < 0) {
+                               default_parse_option_func, formatted_help) < 0) {
     kprintf("failed to register custom parse option %s (%d)\n",
             name ? name : "(null)", val);
     free(formatted_help);

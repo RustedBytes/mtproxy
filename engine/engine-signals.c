@@ -41,9 +41,7 @@
 void engine_set_terminal_attributes(void) __attribute__((weak));
 void engine_set_terminal_attributes(void) {}
 
-void signal_set_pending(int sig) {
-  mtproxy_ffi_engine_signal_set_pending(sig);
-}
+void signal_set_pending(int sig) { mtproxy_ffi_engine_signal_set_pending(sig); }
 
 int signal_check_pending(int sig) {
   return mtproxy_ffi_engine_signal_check_pending(sig);

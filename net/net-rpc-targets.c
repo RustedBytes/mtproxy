@@ -192,7 +192,8 @@ rpc_target_job_t rpc_target_lookup(struct process_id *pid) {
   int fast = this_job_thread && this_job_thread->thread_class == JC_ENGINE;
 
   mtproxy_ffi_rpc_target_tree_t *T =
-      fast ? rpc_target_tree : mtproxy_ffi_rpc_target_tree_acquire(rpc_target_tree);
+      fast ? rpc_target_tree
+           : mtproxy_ffi_rpc_target_tree_acquire(rpc_target_tree);
   rpc_target_job_t S = mtproxy_ffi_rpc_target_tree_lookup(T, &pid_key);
   if (!fast) {
     mtproxy_ffi_rpc_target_tree_release(T);

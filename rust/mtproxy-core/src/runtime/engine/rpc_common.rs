@@ -98,6 +98,9 @@ mod tests {
             default_parse_decision(1, i32::from_ne_bytes(TL_ENGINE_STAT_U32.to_ne_bytes())),
             DefaultParseDecision::None
         );
-        assert_eq!(default_parse_decision(0, 0x1234_5678), DefaultParseDecision::None);
+        assert_eq!(
+            default_parse_decision(0, 0x1234_5678),
+            DefaultParseDecision::None
+        );
     }
 }

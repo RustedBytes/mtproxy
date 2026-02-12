@@ -840,6 +840,13 @@ int32_t mtproxy_ffi_mtproto_parse_client_packet(
   mtproxy_ffi_mtproto_client_packet_parse_result_t *out
 );
 
+// mtproto-proxy entrypoint helpers for legacy C wrapper.
+int32_t mtproxy_ffi_mtproto_proxy_usage(const char *program_name);
+int32_t mtproxy_ffi_mtproto_proxy_main(
+  int32_t argc,
+  const char *const *argv
+);
+
 // mtproto-config helpers for Step 15 parser/apply runtime migration.
 int32_t mtproxy_ffi_mtproto_cfg_preinit(
   int64_t default_min_connections,

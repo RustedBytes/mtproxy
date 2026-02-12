@@ -16,6 +16,7 @@ ctr = "0.9"
 hmac = "0.12"
 libc = "0.2"
 md-5 = "0.10"
+mtproxy-bin = { path = "../mtproxy-bin" }
 mtproxy-core = { path = "../mtproxy-core" }
 num-bigint = "0.4"
 num-traits = "0.2"

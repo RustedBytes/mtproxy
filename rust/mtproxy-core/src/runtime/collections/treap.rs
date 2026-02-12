@@ -10,10 +10,10 @@
 //! This ensures O(log n) expected time for operations while being simpler
 //! than balanced trees like AVL or Red-Black trees.
 
-use core::cmp::Ordering;
-use core::fmt::Debug;
 use alloc::boxed::Box;
 use alloc::sync::Arc;
+use core::cmp::Ordering;
+use core::fmt::Debug;
 
 /// A node in the treap.
 struct TreapNode<K, P> {
@@ -233,9 +233,7 @@ where
 
 impl<K: Debug, P: Debug> Debug for Treap<K, P> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("Treap")
-            .field("count", &self.count)
-            .finish()
+        f.debug_struct("Treap").field("count", &self.count).finish()
     }
 }
 

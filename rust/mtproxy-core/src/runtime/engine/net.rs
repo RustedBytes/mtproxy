@@ -321,10 +321,9 @@ mod tests {
 
     #[test]
     fn test_open_privileged_port_with_matches_engine_do_open_port_rules() {
-        let direct = open_privileged_port_with(443, 0, 0, DEFAULT_PORT_MOD, true, true, |port| {
-            port == 443
-        })
-        .expect("direct privileged pre-open should pass");
+        let direct =
+            open_privileged_port_with(443, 0, 0, DEFAULT_PORT_MOD, true, true, |port| port == 443)
+                .expect("direct privileged pre-open should pass");
         assert_eq!(direct, Some(443));
 
         let range =
@@ -335,10 +334,8 @@ mod tests {
         assert_eq!(range, Some(1002));
 
         let none =
-            open_privileged_port_with(1500, 1500, 1600, DEFAULT_PORT_MOD, true, true, |_port| {
-                true
-            })
-            .expect("non-privileged should be no-op");
+            open_privileged_port_with(1500, 1500, 1600, DEFAULT_PORT_MOD, true, true, |_port| true)
+                .expect("non-privileged should be no-op");
         assert_eq!(none, None);
     }
 }
