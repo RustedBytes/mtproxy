@@ -179,9 +179,9 @@ fn main() {
     eprintln!("Use the C binary (objs/bin/mtproto-proxy) for actual proxy operation.");
     eprintln!("\nFor migration status, see PLAN.md Step 15.");
     
+    // Config file will be required once runtime is implemented
     if args.config.is_none() {
-        eprintln!("\nERROR: Config file is required");
-        process::exit(1);
+        eprintln!("\nWARNING: No config file specified. This will be required once runtime is implemented.");
     }
 }
 

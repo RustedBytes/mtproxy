@@ -44,7 +44,7 @@ This document tracks the progress of migrating the MTProxy C codebase to Rust (S
 | C File | Lines | Rust Module | Status | Priority | Notes |
 |--------|-------|-------------|--------|----------|-------|
 | `mtproto/mtproto-proxy.c` | 2531 | `mtproxy-bin::runtime::mtproto::proxy` | 🟡 Partial | **HIGH** | Main entry point; complex dependencies |
-| `mtproto/mtproto-config.c` | 1200+ | `mtproxy-core::runtime::mtproto::config` | 🟢 Substantial | HIGH | Config parsing mostly complete |
+| `mtproto/mtproto-config.c` | 1200+ | `mtproxy-core::runtime::mtproto::config` | 🟡 Partial | HIGH | Config parsing mostly complete |
 
 ### Common Utilities
 

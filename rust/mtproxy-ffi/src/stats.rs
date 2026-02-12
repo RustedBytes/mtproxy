@@ -28,6 +28,7 @@ unsafe fn get_errno() -> c_int {
 }
 
 // Helper to get now and start_time from C
+// Note: This function is unused in Rust code but may be called from C via FFI
 extern "C" {
     #[allow(dead_code)]
     fn get_utime_monotonic() -> c_double;
