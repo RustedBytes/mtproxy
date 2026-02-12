@@ -1,5 +1,6 @@
 //! Rust-backed replacements for legacy vv tree usages.
 
+use crate::ffi_util::{mut_ref_from_ptr, ref_from_ptr};
 use core::ffi::{c_int, c_void};
 use core::sync::atomic::{AtomicUsize, Ordering};
 use std::collections::{BTreeMap, BTreeSet};
@@ -40,12 +41,9 @@ struct VvTree {
     values: RwLock<BTreeMap<usize, c_int>>,
 }
 
-fn vv_tree_as_ref(handle: *mut VvTreeHandle) -> Option<&'static VvTree> {
-    if handle.is_null() {
-        None
-    } else {
-        Some(unsafe { &*(handle as *const VvTree) })
-    }
+unsafe fn vv_tree_as_ref<'a>(handle: *mut VvTreeHandle) -> Option<&'a VvTree> {
+    // SAFETY: caller upholds handle validity.
+    unsafe { ref_from_ptr(handle.cast::<VvTree>().cast_const()) }
 }
 
 #[no_mangle]
@@ -70,7 +68,7 @@ pub unsafe extern "C" fn vv_tree_insert(
     key: *const c_void,
     priority: c_int,
 ) {
-    let Some(tree) = vv_tree_as_ref(handle) else {
+    let Some(tree) = (unsafe { vv_tree_as_ref(handle) }) else {
         return;
     };
 
@@ -83,7 +81,7 @@ pub unsafe extern "C" fn vv_tree_lookup(
     handle: *mut VvTreeHandle,
     key: *const c_void,
 ) -> *const c_void {
-    let Some(tree) = vv_tree_as_ref(handle) else {
+    let Some(tree) = (unsafe { vv_tree_as_ref(handle) }) else {
         return core::ptr::null();
     };
 
@@ -97,7 +95,7 @@ pub unsafe extern "C" fn vv_tree_lookup(
 
 #[no_mangle]
 pub unsafe extern "C" fn vv_tree_delete(handle: *mut VvTreeHandle, key: *const c_void) -> c_int {
-    let Some(tree) = vv_tree_as_ref(handle) else {
+    let Some(tree) = (unsafe { vv_tree_as_ref(handle) }) else {
         return 0;
     };
 
@@ -107,7 +105,7 @@ pub unsafe extern "C" fn vv_tree_delete(handle: *mut VvTreeHandle, key: *const c
 
 #[no_mangle]
 pub unsafe extern "C" fn vv_tree_clear(handle: *mut VvTreeHandle) {
-    let Some(tree) = vv_tree_as_ref(handle) else {
+    let Some(tree) = (unsafe { vv_tree_as_ref(handle) }) else {
         return;
     };
 
@@ -116,7 +114,7 @@ pub unsafe extern "C" fn vv_tree_clear(handle: *mut VvTreeHandle) {
 
 #[no_mangle]
 pub unsafe extern "C" fn vv_tree_count(handle: *mut VvTreeHandle) -> c_int {
-    let Some(tree) = vv_tree_as_ref(handle) else {
+    let Some(tree) = (unsafe { vv_tree_as_ref(handle) }) else {
         return 0;
     };
 
@@ -128,7 +126,7 @@ pub unsafe extern "C" fn vv_tree_traverse(
     handle: *mut VvTreeHandle,
     callback: unsafe extern "C" fn(*const c_void),
 ) {
-    let Some(tree) = vv_tree_as_ref(handle) else {
+    let Some(tree) = (unsafe { vv_tree_as_ref(handle) }) else {
         return;
     };
 
@@ -309,11 +307,11 @@ pub unsafe extern "C" fn tree_act_ex3_connection(
 pub unsafe extern "C" fn get_tree_ptr_connection(
     tree: *mut *mut tree_connection,
 ) -> *mut tree_connection {
-    if tree.is_null() {
+    let Some(tree_ref) = (unsafe { mut_ref_from_ptr(tree) }) else {
         return core::ptr::null_mut();
-    }
+    };
 
-    conn_tree_acquire_raw(*tree)
+    unsafe { conn_tree_acquire_raw(*tree_ref) }
 }
 
 #[no_mangle]
@@ -390,13 +388,13 @@ pub unsafe extern "C" fn mtproxy_ffi_rpc_target_tree_insert(
     pid: *const MtproxyProcessId,
     target: *mut c_void,
 ) -> *mut mtproxy_ffi_rpc_target_tree {
-    if pid.is_null() {
+    let Some(pid_ref) = (unsafe { ref_from_ptr(pid) }) else {
         return tree;
-    }
+    };
 
     if tree.is_null() {
         let mut values = BTreeMap::new();
-        values.insert(rpc_target_key(&*pid), target as usize);
+        values.insert(rpc_target_key(pid_ref), target as usize);
         let state = Box::new(RpcTargetTree {
             refs: AtomicUsize::new(1),
             values: RwLock::new(values),
@@ -405,7 +403,7 @@ pub unsafe extern "C" fn mtproxy_ffi_rpc_target_tree_insert(
     }
 
     let state = rpc_target_tree_from_raw(tree);
-    rw_write(&(*state).values).insert(rpc_target_key(&*pid), target as usize);
+    rw_write(&(*state).values).insert(rpc_target_key(pid_ref), target as usize);
     tree
 }
 
@@ -414,13 +412,16 @@ pub unsafe extern "C" fn mtproxy_ffi_rpc_target_tree_lookup(
     tree: *mut mtproxy_ffi_rpc_target_tree,
     pid: *const MtproxyProcessId,
 ) -> *mut c_void {
-    if tree.is_null() || pid.is_null() {
+    if tree.is_null() {
         return core::ptr::null_mut();
     }
+    let Some(pid_ref) = (unsafe { ref_from_ptr(pid) }) else {
+        return core::ptr::null_mut();
+    };
 
     let state = rpc_target_tree_from_raw(tree);
     rw_read(&(*state).values)
-        .get(&rpc_target_key(&*pid))
+        .get(&rpc_target_key(pid_ref))
         .copied()
         .map_or(core::ptr::null_mut(), |value| value as *mut c_void)
 }

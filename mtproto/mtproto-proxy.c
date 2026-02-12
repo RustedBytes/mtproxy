@@ -58,62 +58,55 @@
 #include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 #include "server-functions.h"
 
-#ifndef COMMIT
-#define COMMIT "unknown"
+static const char VersionStr[] = "mtproxy-0.02";
+static const char CommitStr[] =
+#ifdef COMMIT
+    COMMIT;
+#else
+    "unknown";
 #endif
 
-#define VERSION_STR "mtproxy-0.02"
 const char FullVersionStr[] =
-    VERSION_STR " compiled at " __DATE__ " " __TIME__ " by gcc " __VERSION__ " "
+    "mtproxy-0.02 compiled at " __DATE__ " " __TIME__ " by gcc " __VERSION__ " "
 #ifdef __LP64__
                 "64-bit"
 #else
                 "32-bit"
 #endif
-                " after commit " COMMIT;
-
-#define EXT_CONN_TABLE_SIZE (1 << 22)
-#define EXT_CONN_HASH_SHIFT 20
-#define EXT_CONN_HASH_SIZE (1 << EXT_CONN_HASH_SHIFT)
-
-#define RPC_TIMEOUT_INTERVAL 5.0
-
-#define MAX_HTTP_LISTEN_PORTS 128
-
-#define HTTP_MAX_WAIT_TIMEOUT 960.0
-
-#define PING_INTERVAL 5.0
-#define STOP_INTERVAL (2 * ping_interval)
-#define FAIL_INTERVAL (20 * ping_interval)
-#define RESPONSE_FAIL_TIMEOUT 5
-#define CONNECT_TIMEOUT 3
-
-#define MAX_POST_SIZE (262144 * 4 - 4096)
-
-#define DEFAULT_WINDOW_CLAMP 131072
+                " after commit "
+#ifdef COMMIT
+                COMMIT;
+#else
+                "unknown";
+#endif
 
 // #define DEFAULT_OUTBOUND_CONNECTION_CREATION_RATE	1000000
 
-#if 0
-#define MAX_CONNECTION_BUFFER_SPACE (1 << 10) //(1 << 25)
-#define MAX_MTFRONT_NB 1                      //((NB_max * 3) >> 2)
-#else
-#define MAX_CONNECTION_BUFFER_SPACE (1 << 25)
-#define MAX_MTFRONT_NB ((NB_max * 3) >> 2)
-#endif
+enum mtproxy_constants {
+  EXT_CONN_TABLE_SIZE = 1 << 22,
+  EXT_CONN_HASH_SHIFT = 20,
+  EXT_CONN_HASH_SIZE = 1 << EXT_CONN_HASH_SHIFT,
+  MAX_HTTP_LISTEN_PORTS = 128,
+  RESPONSE_FAIL_TIMEOUT = 5,
+  CONNECT_TIMEOUT = 3,
+  MAX_POST_SIZE = 262144 * 4 - 4096,
+  DEFAULT_WINDOW_CLAMP = 131072,
+  MAX_CONNECTION_BUFFER_SPACE = 1 << 25,
+  PROXY_MODE_OUT = 2,
+  TL_HTTP_QUERY_INFO = (int)0xd45ab381u,
+  TL_PROXY_TAG = (int)0xdb1e26aeu,
+  STATS_BUFF_SIZE = 1 << 20,
+  DEFAULT_CFG_MIN_CONNECTIONS = 4,
+  DEFAULT_CFG_MAX_CONNECTIONS = 8,
+  MAX_WORKERS = 256,
+};
 
-static double ping_interval = PING_INTERVAL;
+static const double default_ping_interval = 5.0;
+static const double http_max_wait_timeout = 960.0;
+static double ping_interval = 5.0;
 static int window_clamp;
 
-#define PROXY_MODE_OUT 2
 static int proxy_mode;
-
-#define IS_PROXY_IN 0
-#define IS_PROXY_OUT 1
-#define IS_PROXY_INOUT 1
-
-#define TL_HTTP_QUERY_INFO 0xd45ab381
-#define TL_PROXY_TAG 0xdb1e26ae
 
 conn_type_t ct_http_server_mtfront, ct_tcp_rpc_ext_server_mtfront,
     ct_tcp_rpc_server_mtfront;
@@ -122,8 +115,6 @@ long long connections_failed_lru, connections_failed_flood;
 long long api_invoke_requests;
 
 volatile int sigpoll_cnt;
-
-#define STATS_BUFF_SIZE (1 << 20)
 
 int stats_buff_len;
 char stats_buff[STATS_BUFF_SIZE];
@@ -140,9 +131,6 @@ void lru_insert_conn(connection_job_t c);
  *	CONFIGURATION PARSER SETUP
  *
  */
-
-#define DEFAULT_CFG_MIN_CONNECTIONS 4
-#define DEFAULT_CFG_MAX_CONNECTIONS 8
 
 int default_cfg_min_connections = DEFAULT_CFG_MIN_CONNECTIONS;
 int default_cfg_max_connections = DEFAULT_CFG_MAX_CONNECTIONS;
@@ -198,7 +186,7 @@ static inline int ext_conn_hash(int in_fd, long long in_conn_id) {
   return h;
 }
 
-// makes sense only for !IS_PROXY_IN
+// Makes sense only for inbound client-side connections.
 // returns the only ext_connection with given in_fd
 struct ext_connection *get_ext_connection_by_in_fd(int in_fd) {
   check_engine_class();
@@ -375,8 +363,6 @@ void remove_ext_connection(struct ext_connection *Ex, int send_notifications) {
  *
  */
 
-#define MAX_WORKERS 256
-
 struct worker_stats {
   int cnt;
   int updated_at;
@@ -431,110 +417,108 @@ static void update_local_stats_copy(struct worker_stats *S) {
   S->cnt++;
   __sync_synchronize();
   S->updated_at = now;
-#define UPD(x) S->x = x;
   fetch_tot_dh_rounds_stat(S->tot_dh_rounds);
   fetch_connections_stat(&S->conn);
   fetch_aes_crypto_stat(&S->allocated_aes_crypto,
                         &S->allocated_aes_crypto_temp);
   fetch_buffers_stat(&S->bufs);
 
-  UPD(ev_heap_size);
+  S->ev_heap_size = ev_heap_size;
+  S->get_queries = get_queries;
+  S->http_connections = http_connections;
+  S->pending_http_queries = pending_http_queries;
+  S->active_rpcs = active_rpcs;
+  S->active_rpcs_created = active_rpcs_created;
+  S->rpc_dropped_running = rpc_dropped_running;
+  S->rpc_dropped_answers = rpc_dropped_answers;
+  S->tot_forwarded_queries = tot_forwarded_queries;
+  S->expired_forwarded_queries = expired_forwarded_queries;
+  S->dropped_queries = dropped_queries;
+  S->tot_forwarded_responses = tot_forwarded_responses;
+  S->dropped_responses = dropped_responses;
+  S->tot_forwarded_simple_acks = tot_forwarded_simple_acks;
+  S->dropped_simple_acks = dropped_simple_acks;
+  S->mtproto_proxy_errors = mtproto_proxy_errors;
+  S->connections_failed_lru = connections_failed_lru;
+  S->connections_failed_flood = connections_failed_flood;
+  S->ext_connections = ext_connections;
+  S->ext_connections_created = ext_connections_created;
+  S->http_queries = http_queries;
+  S->http_bad_headers = http_bad_headers;
 
-  UPD(get_queries);
-  UPD(http_connections);
-  UPD(pending_http_queries);
-  UPD(active_rpcs);
-  UPD(active_rpcs_created);
-  UPD(rpc_dropped_running);
-  UPD(rpc_dropped_answers);
-  UPD(tot_forwarded_queries);
-  UPD(expired_forwarded_queries);
-  UPD(dropped_queries);
-  UPD(tot_forwarded_responses);
-  UPD(dropped_responses);
-  UPD(tot_forwarded_simple_acks);
-  UPD(dropped_simple_acks);
-  UPD(mtproto_proxy_errors);
-  UPD(connections_failed_lru);
-  UPD(connections_failed_flood);
-  UPD(ext_connections);
-  UPD(ext_connections_created);
-  UPD(http_queries);
-  UPD(http_bad_headers);
-#undef UPD
   __sync_synchronize();
   S->cnt++;
   __sync_synchronize();
 }
 
 static inline void add_stats(struct worker_stats *W) {
-#define UPD(x) SumStats.x += W->x;
-  UPD(tot_dh_rounds[0]);
-  UPD(tot_dh_rounds[1]);
-  UPD(tot_dh_rounds[2]);
+  SumStats.tot_dh_rounds[0] += W->tot_dh_rounds[0];
+  SumStats.tot_dh_rounds[1] += W->tot_dh_rounds[1];
+  SumStats.tot_dh_rounds[2] += W->tot_dh_rounds[2];
 
-  UPD(conn.active_connections);
-  UPD(conn.active_dh_connections);
-  UPD(conn.outbound_connections);
-  UPD(conn.active_outbound_connections);
-  UPD(conn.ready_outbound_connections);
-  UPD(conn.active_special_connections);
-  UPD(conn.max_special_connections);
-  UPD(conn.allocated_connections);
-  UPD(conn.allocated_outbound_connections);
-  UPD(conn.allocated_inbound_connections);
-  UPD(conn.allocated_socket_connections);
-  UPD(conn.allocated_targets);
-  UPD(conn.ready_targets);
-  UPD(conn.active_targets);
-  UPD(conn.inactive_targets);
-  UPD(conn.tcp_readv_calls);
-  UPD(conn.tcp_readv_intr);
-  UPD(conn.tcp_readv_bytes);
-  UPD(conn.tcp_writev_calls);
-  UPD(conn.tcp_writev_intr);
-  UPD(conn.tcp_writev_bytes);
-  UPD(conn.accept_calls_failed);
-  UPD(conn.accept_nonblock_set_failed);
-  UPD(conn.accept_rate_limit_failed);
-  UPD(conn.accept_init_accepted_failed);
+  SumStats.conn.active_connections += W->conn.active_connections;
+  SumStats.conn.active_dh_connections += W->conn.active_dh_connections;
+  SumStats.conn.outbound_connections += W->conn.outbound_connections;
+  SumStats.conn.active_outbound_connections += W->conn.active_outbound_connections;
+  SumStats.conn.ready_outbound_connections += W->conn.ready_outbound_connections;
+  SumStats.conn.active_special_connections += W->conn.active_special_connections;
+  SumStats.conn.max_special_connections += W->conn.max_special_connections;
+  SumStats.conn.allocated_connections += W->conn.allocated_connections;
+  SumStats.conn.allocated_outbound_connections +=
+      W->conn.allocated_outbound_connections;
+  SumStats.conn.allocated_inbound_connections +=
+      W->conn.allocated_inbound_connections;
+  SumStats.conn.allocated_socket_connections +=
+      W->conn.allocated_socket_connections;
+  SumStats.conn.allocated_targets += W->conn.allocated_targets;
+  SumStats.conn.ready_targets += W->conn.ready_targets;
+  SumStats.conn.active_targets += W->conn.active_targets;
+  SumStats.conn.inactive_targets += W->conn.inactive_targets;
+  SumStats.conn.tcp_readv_calls += W->conn.tcp_readv_calls;
+  SumStats.conn.tcp_readv_intr += W->conn.tcp_readv_intr;
+  SumStats.conn.tcp_readv_bytes += W->conn.tcp_readv_bytes;
+  SumStats.conn.tcp_writev_calls += W->conn.tcp_writev_calls;
+  SumStats.conn.tcp_writev_intr += W->conn.tcp_writev_intr;
+  SumStats.conn.tcp_writev_bytes += W->conn.tcp_writev_bytes;
+  SumStats.conn.accept_calls_failed += W->conn.accept_calls_failed;
+  SumStats.conn.accept_nonblock_set_failed += W->conn.accept_nonblock_set_failed;
+  SumStats.conn.accept_rate_limit_failed += W->conn.accept_rate_limit_failed;
+  SumStats.conn.accept_init_accepted_failed += W->conn.accept_init_accepted_failed;
 
-  UPD(allocated_aes_crypto);
-  UPD(allocated_aes_crypto_temp);
+  SumStats.allocated_aes_crypto += W->allocated_aes_crypto;
+  SumStats.allocated_aes_crypto_temp += W->allocated_aes_crypto_temp;
 
-  UPD(bufs.total_used_buffers_size);
-  UPD(bufs.allocated_buffer_bytes);
-  UPD(bufs.total_used_buffers);
-  UPD(bufs.allocated_buffer_chunks);
-  UPD(bufs.max_allocated_buffer_chunks);
-  UPD(bufs.max_allocated_buffer_bytes);
-  UPD(bufs.max_buffer_chunks);
-  UPD(bufs.buffer_chunk_alloc_ops);
+  SumStats.bufs.total_used_buffers_size += W->bufs.total_used_buffers_size;
+  SumStats.bufs.allocated_buffer_bytes += W->bufs.allocated_buffer_bytes;
+  SumStats.bufs.total_used_buffers += W->bufs.total_used_buffers;
+  SumStats.bufs.allocated_buffer_chunks += W->bufs.allocated_buffer_chunks;
+  SumStats.bufs.max_allocated_buffer_chunks += W->bufs.max_allocated_buffer_chunks;
+  SumStats.bufs.max_allocated_buffer_bytes += W->bufs.max_allocated_buffer_bytes;
+  SumStats.bufs.max_buffer_chunks += W->bufs.max_buffer_chunks;
+  SumStats.bufs.buffer_chunk_alloc_ops += W->bufs.buffer_chunk_alloc_ops;
 
-  UPD(ev_heap_size);
-
-  UPD(get_queries);
-  UPD(http_connections);
-  UPD(pending_http_queries);
-  UPD(active_rpcs);
-  UPD(active_rpcs_created);
-  UPD(rpc_dropped_running);
-  UPD(rpc_dropped_answers);
-  UPD(tot_forwarded_queries);
-  UPD(expired_forwarded_queries);
-  UPD(dropped_queries);
-  UPD(tot_forwarded_responses);
-  UPD(dropped_responses);
-  UPD(tot_forwarded_simple_acks);
-  UPD(dropped_simple_acks);
-  UPD(mtproto_proxy_errors);
-  UPD(connections_failed_lru);
-  UPD(connections_failed_flood);
-  UPD(ext_connections);
-  UPD(ext_connections_created);
-  UPD(http_queries);
-  UPD(http_bad_headers);
-#undef UPD
+  SumStats.ev_heap_size += W->ev_heap_size;
+  SumStats.get_queries += W->get_queries;
+  SumStats.http_connections += W->http_connections;
+  SumStats.pending_http_queries += W->pending_http_queries;
+  SumStats.active_rpcs += W->active_rpcs;
+  SumStats.active_rpcs_created += W->active_rpcs_created;
+  SumStats.rpc_dropped_running += W->rpc_dropped_running;
+  SumStats.rpc_dropped_answers += W->rpc_dropped_answers;
+  SumStats.tot_forwarded_queries += W->tot_forwarded_queries;
+  SumStats.expired_forwarded_queries += W->expired_forwarded_queries;
+  SumStats.dropped_queries += W->dropped_queries;
+  SumStats.tot_forwarded_responses += W->tot_forwarded_responses;
+  SumStats.dropped_responses += W->dropped_responses;
+  SumStats.tot_forwarded_simple_acks += W->tot_forwarded_simple_acks;
+  SumStats.dropped_simple_acks += W->dropped_simple_acks;
+  SumStats.mtproto_proxy_errors += W->mtproto_proxy_errors;
+  SumStats.connections_failed_lru += W->connections_failed_lru;
+  SumStats.connections_failed_flood += W->connections_failed_flood;
+  SumStats.ext_connections += W->ext_connections;
+  SumStats.ext_connections_created += W->ext_connections_created;
+  SumStats.http_queries += W->http_queries;
+  SumStats.http_bad_headers += W->http_bad_headers;
 }
 
 void update_local_stats(void) {
@@ -593,10 +577,10 @@ void mtfront_prepare_stats(stats_buffer_t *sb) {
 
   sb_prepare(sb);
   sb_memory(sb, AM_GET_MEMORY_USAGE_SELF);
+  const int use_worker_totals = workers != 0;
+  const long long total_get_queries = get_queries + SumStats.get_queries;
+  const long long total_http_queries = http_queries + SumStats.http_queries;
 
-#define S(x) ((x) + (SumStats.x))
-#define S1(x) (SumStats.x)
-#define SW(x) (workers ? S1(x) : S(x))
   sb_printf(
       sb,
       "config_filename\t%s\n"
@@ -652,44 +636,81 @@ void mtfront_prepare_stats(stats_buffer_t *sb) {
       "http_qps\t%.6f\n"
       "proxy_mode\t%d\n"
       "proxy_tag_set\t%d\n"
-      "version\t" VERSION_STR " compiled at " __DATE__ " " __TIME__
+      "version\t%s compiled at " __DATE__ " " __TIME__
       " by gcc " __VERSION__ " "
 #ifdef __LP64__
       "64-bit"
 #else
       "32-bit"
 #endif
-      " after commit " COMMIT "\n",
+      " after commit %s\n",
       config_filename, CurConf->config_loaded_at, CurConf->config_bytes,
       CurConf->config_md5_hex, CurConf->auth_stats.tot_clusters, workers,
-      S(get_queries), safe_div(S(get_queries), uptime),
-      S(tot_forwarded_queries), S(expired_forwarded_queries),
-      S(dropped_queries), S(tot_forwarded_responses), S(dropped_responses),
-      S(tot_forwarded_simple_acks), S(dropped_simple_acks),
-      S(active_rpcs_created), S(active_rpcs), S(rpc_dropped_answers),
-      S(rpc_dropped_running), window_clamp, SW(conn.ready_targets),
-      SW(conn.allocated_targets), SW(conn.active_targets),
-      SW(conn.inactive_targets), S(conn.active_connections),
-      S(allocated_aes_crypto), S(conn.allocated_connections),
-      S(conn.allocated_outbound_connections),
-      S(conn.allocated_inbound_connections),
-      S(conn.allocated_socket_connections), S(conn.active_dh_connections),
-      S(tot_dh_rounds[0]), S(tot_dh_rounds[1]), S(tot_dh_rounds[2]),
-      SW(conn.active_special_connections), SW(conn.max_special_connections),
-      S(conn.accept_init_accepted_failed), S(conn.accept_calls_failed),
-      S(conn.accept_connection_limit_failed), S(conn.accept_rate_limit_failed),
-      S(conn.accept_nonblock_set_failed), S(ext_connections),
-      S(ext_connections_created), S(ev_heap_size),
-      SW(bufs.total_used_buffers_size), SW(bufs.allocated_buffer_bytes),
-      SW(bufs.total_used_buffers), SW(bufs.allocated_buffer_chunks),
-      SW(bufs.max_allocated_buffer_chunks), S(mtproto_proxy_errors),
-      S(connections_failed_lru), S(connections_failed_flood),
-      S(http_connections), S(pending_http_queries), S(http_queries),
-      S(http_bad_headers), safe_div(S(http_queries), uptime), proxy_mode,
-      proxy_tag_set);
-#undef S
-#undef S1
-#undef SW
+      total_get_queries, safe_div(total_get_queries, uptime),
+      tot_forwarded_queries + SumStats.tot_forwarded_queries,
+      expired_forwarded_queries + SumStats.expired_forwarded_queries,
+      dropped_queries + SumStats.dropped_queries,
+      tot_forwarded_responses + SumStats.tot_forwarded_responses,
+      dropped_responses + SumStats.dropped_responses,
+      tot_forwarded_simple_acks + SumStats.tot_forwarded_simple_acks,
+      dropped_simple_acks + SumStats.dropped_simple_acks,
+      active_rpcs_created + SumStats.active_rpcs_created,
+      active_rpcs + SumStats.active_rpcs, rpc_dropped_answers + SumStats.rpc_dropped_answers,
+      rpc_dropped_running + SumStats.rpc_dropped_running, window_clamp,
+      use_worker_totals ? SumStats.conn.ready_targets
+                        : conn.ready_targets + SumStats.conn.ready_targets,
+      use_worker_totals ? SumStats.conn.allocated_targets
+                        : conn.allocated_targets + SumStats.conn.allocated_targets,
+      use_worker_totals ? SumStats.conn.active_targets
+                        : conn.active_targets + SumStats.conn.active_targets,
+      use_worker_totals ? SumStats.conn.inactive_targets
+                        : conn.inactive_targets + SumStats.conn.inactive_targets,
+      conn.active_connections + SumStats.conn.active_connections,
+      allocated_aes_crypto + SumStats.allocated_aes_crypto,
+      conn.allocated_connections + SumStats.conn.allocated_connections,
+      conn.allocated_outbound_connections + SumStats.conn.allocated_outbound_connections,
+      conn.allocated_inbound_connections + SumStats.conn.allocated_inbound_connections,
+      conn.allocated_socket_connections + SumStats.conn.allocated_socket_connections,
+      conn.active_dh_connections + SumStats.conn.active_dh_connections,
+      tot_dh_rounds[0] + SumStats.tot_dh_rounds[0],
+      tot_dh_rounds[1] + SumStats.tot_dh_rounds[1],
+      tot_dh_rounds[2] + SumStats.tot_dh_rounds[2],
+      use_worker_totals ? SumStats.conn.active_special_connections
+                        : conn.active_special_connections +
+                              SumStats.conn.active_special_connections,
+      use_worker_totals ? SumStats.conn.max_special_connections
+                        : conn.max_special_connections +
+                              SumStats.conn.max_special_connections,
+      conn.accept_init_accepted_failed + SumStats.conn.accept_init_accepted_failed,
+      conn.accept_calls_failed + SumStats.conn.accept_calls_failed,
+      conn.accept_connection_limit_failed + SumStats.conn.accept_connection_limit_failed,
+      conn.accept_rate_limit_failed + SumStats.conn.accept_rate_limit_failed,
+      conn.accept_nonblock_set_failed + SumStats.conn.accept_nonblock_set_failed,
+      ext_connections + SumStats.ext_connections,
+      ext_connections_created + SumStats.ext_connections_created,
+      ev_heap_size + SumStats.ev_heap_size,
+      use_worker_totals ? SumStats.bufs.total_used_buffers_size
+                        : bufs.total_used_buffers_size +
+                              SumStats.bufs.total_used_buffers_size,
+      use_worker_totals ? SumStats.bufs.allocated_buffer_bytes
+                        : bufs.allocated_buffer_bytes +
+                              SumStats.bufs.allocated_buffer_bytes,
+      use_worker_totals ? SumStats.bufs.total_used_buffers
+                        : bufs.total_used_buffers + SumStats.bufs.total_used_buffers,
+      use_worker_totals ? SumStats.bufs.allocated_buffer_chunks
+                        : bufs.allocated_buffer_chunks +
+                              SumStats.bufs.allocated_buffer_chunks,
+      use_worker_totals ? SumStats.bufs.max_allocated_buffer_chunks
+                        : bufs.max_allocated_buffer_chunks +
+                              SumStats.bufs.max_allocated_buffer_chunks,
+      mtproto_proxy_errors + SumStats.mtproto_proxy_errors,
+      connections_failed_lru + SumStats.connections_failed_lru,
+      connections_failed_flood + SumStats.connections_failed_flood,
+      http_connections + SumStats.http_connections,
+      pending_http_queries + SumStats.pending_http_queries,
+      total_http_queries, http_bad_headers + SumStats.http_bad_headers,
+      safe_div(total_http_queries, uptime), proxy_mode, proxy_tag_set, VersionStr,
+      CommitStr);
 }
 
 /*
@@ -761,11 +782,14 @@ struct tcp_rpc_client_functions mtfront_rpc_client = {
 int rpcc_exists;
 
 static int _notify_remote_closed(JOB_REF_ARG(C), long long out_conn_id) {
-  TLS_START(JOB_REF_PASS(C)) {
+  {
+    struct tl_out_state *tlio_out = tl_out_state_alloc();
+    tls_init_tcp_raw_msg(tlio_out, JOB_REF_PASS(C), 0);
     tl_store_int(RPC_CLOSE_CONN);
     tl_store_long(out_conn_id);
+    tl_store_end_ext(0);
+    tl_out_state_free(tlio_out);
   }
-  TLS_END;
   return 1;
 }
 
@@ -1597,7 +1621,9 @@ int http_send_message(JOB_REF_ARG(C), struct tl_in_state *tlio_in, int flags) {
     write_http_error(C, -error_code);
   } else {
     char response_buffer[512];
-    TLS_START_UNALIGN(JOB_REF_CREATE_PASS(C)) {
+    {
+      struct tl_out_state *tlio_out = tl_out_state_alloc();
+      tls_init_tcp_raw_msg_unaligned(tlio_out, JOB_REF_CREATE_PASS(C), 0);
       int len = tl_fetch_unread();
       tl_store_raw_data(
           response_buffer,
@@ -1611,8 +1637,9 @@ int http_send_message(JOB_REF_ARG(C), struct tl_in_state *tlio_in, int flags) {
                                                 : "",
               len));
       assert(tl_copy_through_rust(tlio_in, tlio_out, len, 1) == len);
+      tl_store_end_ext(0);
+      tl_out_state_free(tlio_out);
     }
-    TLS_END;
   }
 
   assert(CONN_INFO(C)->status == conn_working &&
@@ -1647,10 +1674,13 @@ int client_send_message(JOB_REF_ARG(C), long long in_conn_id,
   if (CONN_INFO(C)->type == &ct_http_server_mtfront) {
     return http_send_message(JOB_REF_PASS(C), tlio_in, flags);
   }
-  TLS_START(JOB_REF_CREATE_PASS(C)) {
+  {
+    struct tl_out_state *tlio_out = tl_out_state_alloc();
+    tls_init_tcp_raw_msg(tlio_out, JOB_REF_CREATE_PASS(C), 0);
     assert(tl_copy_through_rust(tlio_in, tlio_out, tl_fetch_unread(), 1) >= 0);
+    tl_store_end_ext(0);
+    tl_out_state_free(tlio_out);
   }
-  TLS_END;
 
   if (check_conn_buffers(C) < 0) {
     job_decref(JOB_REF_PASS(C));
@@ -1817,7 +1847,8 @@ int forward_tcp_query(struct tl_in_state *tlio_in, connection_job_t c,
     flags |= 8;
   }
 
-  TLS_START(JOB_REF_PASS(d)); // open tlio_out context
+  struct tl_out_state *tlio_out = tl_out_state_alloc();
+  tls_init_tcp_raw_msg(tlio_out, JOB_REF_PASS(d), 0);
 
   tl_store_int(RPC_PROXY_REQ);
   tl_store_int(flags);
@@ -1872,13 +1903,14 @@ int forward_tcp_query(struct tl_in_state *tlio_in, connection_job_t c,
   int len = tl_fetch_unread();
   assert(tl_copy_through_rust(tlio_in, tlio_out, len, 1) == len);
 
-  TLS_END; // close tlio_out context
+  tl_store_end_ext(0);
+  tl_out_state_free(tlio_out);
 
   if (CONN_INFO(c)->type == &ct_http_server_mtfront) {
     assert(CONN_INFO(c)->pending_queries >= 0);
     assert(CONN_INFO(c)->pending_queries > 0);
     assert(CONN_INFO(c)->pending_queries == 1);
-    set_connection_timeout(c, HTTP_MAX_WAIT_TIMEOUT);
+    set_connection_timeout(c, http_max_wait_timeout);
   }
 
   return 1;
@@ -2289,7 +2321,7 @@ int f_parse_option(int val) {
   case 'T':
     ping_interval = atof(optarg);
     if (ping_interval <= 0) {
-      ping_interval = PING_INTERVAL;
+      ping_interval = default_ping_interval;
     }
     break;
   case 2000:
@@ -2368,7 +2400,7 @@ void mtfront_prepare_parse_options(void) {
   parse_option(
       "ping-interval", required_argument, 0, 'T',
       "sets ping interval in second for local TCP connections (default %.3lf)",
-      PING_INTERVAL);
+      default_ping_interval);
 }
 
 void mtfront_parse_extra_args(int argc, char *argv[]) {

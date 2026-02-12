@@ -1,3 +1,4 @@
+use crate::ffi_util::mut_ref_from_ptr;
 use core::ffi::c_void;
 use core::ptr;
 use mtproxy_core::runtime::jobs::mp_queue::{self, MpQueue, MpQueueError};
@@ -27,7 +28,7 @@ const fn map_waitable_error(error: MpQueueError) -> i32 {
 #[inline]
 unsafe fn handle_ref<'a>(handle: *mut c_void) -> Option<&'a mut MpQueueHandle> {
     // SAFETY: caller validates `handle` and ownership contract.
-    unsafe { handle.cast::<MpQueueHandle>().as_mut() }
+    unsafe { mut_ref_from_ptr(handle.cast::<MpQueueHandle>()) }
 }
 
 /// Creates a Rust-backed MPQ handle.
@@ -43,13 +44,10 @@ pub unsafe extern "C" fn mtproxy_ffi_mpq_handle_create(
     waitable: i32,
     out_handle: *mut *mut c_void,
 ) -> i32 {
-    if out_handle.is_null() {
+    let Some(out_handle_ref) = (unsafe { mut_ref_from_ptr(out_handle) }) else {
         return MPQ_FFI_ERR_INVALID_ARGS;
-    }
-    // SAFETY: validated above.
-    unsafe {
-        *out_handle = ptr::null_mut();
-    }
+    };
+    *out_handle_ref = ptr::null_mut();
 
     let queue = if waitable != 0 {
         mp_queue::alloc_mp_queue_w::<MpQueueValue>()
@@ -57,10 +55,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mpq_handle_create(
         mp_queue::alloc_mp_queue::<MpQueueValue>()
     };
     let handle = Box::new(MpQueueHandle { queue });
-    // SAFETY: validated above.
-    unsafe {
-        *out_handle = Box::into_raw(handle).cast::<c_void>();
-    }
+    *out_handle_ref = Box::into_raw(handle).cast::<c_void>();
     0
 }
 
@@ -120,9 +115,9 @@ pub unsafe extern "C" fn mtproxy_ffi_mpq_handle_push(
     if value.is_null() {
         return MPQ_FFI_ERR_NULL_VALUE;
     }
-    if out_pos.is_null() {
+    let Some(out_pos_ref) = (unsafe { mut_ref_from_ptr(out_pos) }) else {
         return MPQ_FFI_ERR_INVALID_ARGS;
-    }
+    };
     let Some(handle_ref) = (unsafe { handle_ref(handle) }) else {
         return MPQ_FFI_ERR_INVALID_ARGS;
     };
@@ -131,10 +126,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mpq_handle_push(
         value as MpQueueValue,
         i32_to_u32_bits(flags),
     );
-    // SAFETY: validated above.
-    unsafe {
-        *out_pos = pos;
-    }
+    *out_pos_ref = pos;
     0
 }
 
@@ -153,22 +145,16 @@ pub unsafe extern "C" fn mtproxy_ffi_mpq_handle_pop(
     flags: i32,
     out_value: *mut *mut c_void,
 ) -> i32 {
-    if out_value.is_null() {
+    let Some(out_value_ref) = (unsafe { mut_ref_from_ptr(out_value) }) else {
         return MPQ_FFI_ERR_INVALID_ARGS;
-    }
-    // SAFETY: validated above.
-    unsafe {
-        *out_value = ptr::null_mut();
-    }
+    };
+    *out_value_ref = ptr::null_mut();
     let Some(handle_ref) = (unsafe { handle_ref(handle) }) else {
         return MPQ_FFI_ERR_INVALID_ARGS;
     };
     match mp_queue::mpq_pop(&handle_ref.queue, i32_to_u32_bits(flags)) {
         Some(value) => {
-            // SAFETY: validated above.
-            unsafe {
-                *out_value = value as *mut c_void;
-            }
+            *out_value_ref = value as *mut c_void;
             1
         }
         None => 0,
@@ -216,9 +202,9 @@ pub unsafe extern "C" fn mtproxy_ffi_mpq_handle_push_w(
     if value.is_null() {
         return MPQ_FFI_ERR_NULL_VALUE;
     }
-    if out_pos.is_null() {
+    let Some(out_pos_ref) = (unsafe { mut_ref_from_ptr(out_pos) }) else {
         return MPQ_FFI_ERR_INVALID_ARGS;
-    }
+    };
     let Some(handle_ref) = (unsafe { handle_ref(handle) }) else {
         return MPQ_FFI_ERR_INVALID_ARGS;
     };
@@ -228,10 +214,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mpq_handle_push_w(
         i32_to_u32_bits(flags),
     ) {
         Ok(pos) => {
-            // SAFETY: validated above.
-            unsafe {
-                *out_pos = pos;
-            }
+            *out_pos_ref = pos;
             0
         }
         Err(error) => map_waitable_error(error),
@@ -253,22 +236,16 @@ pub unsafe extern "C" fn mtproxy_ffi_mpq_handle_pop_w(
     flags: i32,
     out_value: *mut *mut c_void,
 ) -> i32 {
-    if out_value.is_null() {
+    let Some(out_value_ref) = (unsafe { mut_ref_from_ptr(out_value) }) else {
         return MPQ_FFI_ERR_INVALID_ARGS;
-    }
-    // SAFETY: validated above.
-    unsafe {
-        *out_value = ptr::null_mut();
-    }
+    };
+    *out_value_ref = ptr::null_mut();
     let Some(handle_ref) = (unsafe { handle_ref(handle) }) else {
         return MPQ_FFI_ERR_INVALID_ARGS;
     };
     match mp_queue::mpq_pop_w(&handle_ref.queue, i32_to_u32_bits(flags)) {
         Ok(value) => {
-            // SAFETY: validated above.
-            unsafe {
-                *out_value = value as *mut c_void;
-            }
+            *out_value_ref = value as *mut c_void;
             1
         }
         Err(error) => map_waitable_error(error),
@@ -291,22 +268,16 @@ pub unsafe extern "C" fn mtproxy_ffi_mpq_handle_pop_nw(
     flags: i32,
     out_value: *mut *mut c_void,
 ) -> i32 {
-    if out_value.is_null() {
+    let Some(out_value_ref) = (unsafe { mut_ref_from_ptr(out_value) }) else {
         return MPQ_FFI_ERR_INVALID_ARGS;
-    }
-    // SAFETY: validated above.
-    unsafe {
-        *out_value = ptr::null_mut();
-    }
+    };
+    *out_value_ref = ptr::null_mut();
     let Some(handle_ref) = (unsafe { handle_ref(handle) }) else {
         return MPQ_FFI_ERR_INVALID_ARGS;
     };
     match mp_queue::mpq_pop_nw(&handle_ref.queue, i32_to_u32_bits(flags)) {
         Ok(Some(value)) => {
-            // SAFETY: validated above.
-            unsafe {
-                *out_value = value as *mut c_void;
-            }
+            *out_value_ref = value as *mut c_void;
             1
         }
         Ok(None) => 0,

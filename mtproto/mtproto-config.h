@@ -26,9 +26,11 @@
 
 #include "net/net-connections.h"
 
-#define MAX_CFG_CLUSTERS 1024
-#define MAX_CFG_TARGETS 4096
-#define MAX_CLUSTER_TARGETS 1024
+enum mtproto_config_limits {
+  MAX_CFG_CLUSTERS = 1024,
+  MAX_CFG_TARGETS = 4096,
+  MAX_CLUSTER_TARGETS = 1024,
+};
 
 struct mf_cluster {
   int targets_num; // 1 for old-fashioned

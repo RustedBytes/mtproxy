@@ -3,101 +3,81 @@
 //! This module provides C-compatible FFI functions that replace the
 //! functionality from `vv/vv-io.h`.
 //!
-//! # Thread Safety
+//! # Buffer Semantics
 //!
-//! The FFI functions use static buffers to match the C implementation behavior.
-//! **These functions are NOT thread-safe** and should only be called from a
-//! single thread or with external synchronization. This matches the original
-//! C implementation which also used static buffers.
+//! The formatting functions return pointers into thread-local scratch buffers.
+//! Concurrent calls from different threads do not race; repeated calls on the
+//! same thread overwrite the previous result, which matches the legacy
+//! single-buffer usage contract.
 
+use crate::ffi_util::{copy_bytes, mut_slice_from_ptr};
+use core::cell::UnsafeCell;
 use core::ffi::{c_char, c_void};
 use core::ptr;
+use std::thread::LocalKey;
 
 use mtproxy_core::runtime::collections::ip_format;
 
 const VV_IPV4_FORMAT_BUFFER_LEN: usize = 16;
 const VV_IPV6_FORMAT_BUFFER_LEN: usize = 100;
 
-/// Thread-local buffer for IPv4 formatting to avoid heap allocation.
-///
-/// This matches the static buffer behavior of the C implementation.
-/// **WARNING**: This is NOT thread-safe across multiple threads without
-/// external synchronization.
-#[no_mangle]
-static mut VV_IPV4_FORMAT_BUFFER: [c_char; VV_IPV4_FORMAT_BUFFER_LEN] =
-    [0; VV_IPV4_FORMAT_BUFFER_LEN];
+std::thread_local! {
+    static VV_IPV4_FORMAT_BUFFER: UnsafeCell<[u8; VV_IPV4_FORMAT_BUFFER_LEN]> =
+        const { UnsafeCell::new([0; VV_IPV4_FORMAT_BUFFER_LEN]) };
+    static VV_IPV6_FORMAT_BUFFER: UnsafeCell<[u8; VV_IPV6_FORMAT_BUFFER_LEN]> =
+        const { UnsafeCell::new([0; VV_IPV6_FORMAT_BUFFER_LEN]) };
+}
 
-/// Thread-local buffer for IPv6 formatting.
-///
-/// **WARNING**: This is NOT thread-safe across multiple threads without
-/// external synchronization.
-#[no_mangle]
-static mut VV_IPV6_FORMAT_BUFFER: [c_char; VV_IPV6_FORMAT_BUFFER_LEN] =
-    [0; VV_IPV6_FORMAT_BUFFER_LEN];
+fn write_tls_c_string<const N: usize>(
+    tls_buffer: &'static LocalKey<UnsafeCell<[u8; N]>>,
+    bytes: &[u8],
+) -> *const c_char {
+    tls_buffer.with(|cell| {
+        // SAFETY: each thread gets its own buffer; writes are confined to this closure.
+        let buffer = unsafe { &mut *cell.get() };
+        let len = bytes.len().min(N - 1);
+        buffer[..len].copy_from_slice(&bytes[..len]);
+        buffer[len] = 0;
+        buffer.as_ptr().cast::<c_char>()
+    })
+}
 
-/// Formats an IPv4 address into a static buffer.
+/// Formats an IPv4 address into a thread-local buffer.
 ///
-/// # Safety
-/// - This function uses a mutable static buffer and is NOT thread-safe
-/// - Multiple concurrent calls will cause undefined behavior (data races)
-/// - The buffer is reused on each call, so the returned pointer is only
-///   valid until the next call to this function
-/// - This matches the behavior of the original C implementation
+/// The returned pointer is valid until the next `vv_format_ipv4` call on the
+/// same thread.
 ///
 /// # Arguments
 /// * `addr` - IPv4 address as a 32-bit integer in host byte order
 ///
 /// # Returns
-/// A pointer to a null-terminated string in a static buffer.
+/// A pointer to a null-terminated string in a thread-local buffer.
 #[no_mangle]
-pub unsafe extern "C" fn vv_format_ipv4(addr: u32) -> *const c_char {
+pub extern "C" fn vv_format_ipv4(addr: u32) -> *const c_char {
     let formatted = ip_format::format_ipv4(addr);
-    let bytes = formatted.as_bytes();
-
-    let dst = ptr::addr_of_mut!(VV_IPV4_FORMAT_BUFFER).cast::<u8>();
-    // Copy to static buffer
-    let len = bytes.len().min(VV_IPV4_FORMAT_BUFFER_LEN - 1);
-    ptr::copy_nonoverlapping(bytes.as_ptr(), dst, len);
-    *dst.add(len) = 0; // Null terminate
-
-    dst.cast::<c_char>()
+    write_tls_c_string(&VV_IPV4_FORMAT_BUFFER, formatted.as_bytes())
 }
 
-/// Formats an IPv6 address into a static buffer.
+/// Formats an IPv6 address into a thread-local buffer.
 ///
 /// # Safety
 /// - `ipv6_bytes` must point to a valid 16-byte array
-/// - This function uses a mutable static buffer and is NOT thread-safe
-/// - Multiple concurrent calls will cause undefined behavior (data races)
-/// - The buffer is reused on each call, so the returned pointer is only
-///   valid until the next call to this function
-/// - This matches the behavior of the original C implementation
+/// - The returned pointer is valid until the next `vv_format_ipv6` call on the
+///   same thread
 ///
 /// # Arguments
 /// * `ipv6_bytes` - Pointer to 16 bytes representing an IPv6 address
 ///
 /// # Returns
-/// A pointer to a null-terminated string in a static buffer.
+/// A pointer to a null-terminated string in a thread-local buffer.
 #[no_mangle]
 pub unsafe extern "C" fn vv_format_ipv6(ipv6_bytes: *const c_void) -> *const c_char {
-    if ipv6_bytes.is_null() {
+    let Some(addr) = (unsafe { copy_bytes::<16>(ipv6_bytes.cast::<u8>()) }) else {
         return ptr::null();
-    }
-
-    // Read 16 bytes from the pointer
-    let mut addr = [0u8; 16];
-    ptr::copy_nonoverlapping(ipv6_bytes as *const u8, addr.as_mut_ptr(), 16);
+    };
 
     let formatted = ip_format::format_ipv6(&addr);
-    let bytes = formatted.as_bytes();
-
-    let dst = ptr::addr_of_mut!(VV_IPV6_FORMAT_BUFFER).cast::<u8>();
-    // Copy to static buffer
-    let len = bytes.len().min(VV_IPV6_FORMAT_BUFFER_LEN - 1);
-    ptr::copy_nonoverlapping(bytes.as_ptr(), dst, len);
-    *dst.add(len) = 0; // Null terminate
-
-    dst.cast::<c_char>()
+    write_tls_c_string(&VV_IPV6_FORMAT_BUFFER, formatted.as_bytes())
 }
 
 /// Extracts IPv4 octets for printf-style formatting.
@@ -110,14 +90,10 @@ pub unsafe extern "C" fn vv_format_ipv6(ipv6_bytes: *const c_void) -> *const c_c
 /// * `out` - Output array for the 4 octets
 #[no_mangle]
 pub unsafe extern "C" fn vv_ipv4_to_octets(addr: u32, out: *mut u8) {
-    if out.is_null() {
+    let Some(out_bytes) = (unsafe { mut_slice_from_ptr(out, 4) }) else {
         return;
-    }
-
-    *out.add(0) = ((addr >> 24) & 0xff) as u8;
-    *out.add(1) = ((addr >> 16) & 0xff) as u8;
-    *out.add(2) = ((addr >> 8) & 0xff) as u8;
-    *out.add(3) = (addr & 0xff) as u8;
+    };
+    out_bytes.copy_from_slice(&addr.to_be_bytes());
 }
 
 #[cfg(test)]

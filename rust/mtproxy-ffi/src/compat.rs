@@ -1,4 +1,5 @@
 use super::*;
+use crate::ffi_util::{copy_bytes, mut_ref_from_ptr, mut_slice_from_ptr, ref_from_ptr, slice_from_ptr};
 use std::os::unix::fs::MetadataExt;
 
 /// Mirrors core API version for Rust callers.
@@ -35,10 +36,9 @@ pub extern "C" fn mtproxy_ffi_startup_handshake(expected_api_version: u32) -> i3
 pub unsafe extern "C" fn mtproxy_ffi_get_concurrency_boundary(
     out: *mut MtproxyConcurrencyBoundary,
 ) -> i32 {
-    if out.is_null() {
+    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out) }) else {
         return -1;
-    }
-    let out_ref = unsafe { &mut *out };
+    };
     *out_ref = MtproxyConcurrencyBoundary {
         boundary_version: CONCURRENCY_BOUNDARY_VERSION,
         mpq_contract_ops: MPQ_CONTRACT_OPS,
@@ -55,10 +55,9 @@ pub unsafe extern "C" fn mtproxy_ffi_get_concurrency_boundary(
 /// `out` must be a valid writable pointer to `MtproxyNetworkBoundary`.
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_get_network_boundary(out: *mut MtproxyNetworkBoundary) -> i32 {
-    if out.is_null() {
+    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out) }) else {
         return -1;
-    }
-    let out_ref = unsafe { &mut *out };
+    };
     *out_ref = MtproxyNetworkBoundary {
         boundary_version: NETWORK_BOUNDARY_VERSION,
         net_events_contract_ops: NET_EVENTS_CONTRACT_OPS,
@@ -77,10 +76,9 @@ pub unsafe extern "C" fn mtproxy_ffi_get_network_boundary(out: *mut MtproxyNetwo
 /// `out` must be a valid writable pointer to `MtproxyRpcBoundary`.
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_get_rpc_boundary(out: *mut MtproxyRpcBoundary) -> i32 {
-    if out.is_null() {
+    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out) }) else {
         return -1;
-    }
-    let out_ref = unsafe { &mut *out };
+    };
     *out_ref = MtproxyRpcBoundary {
         boundary_version: RPC_BOUNDARY_VERSION,
         tcp_rpc_common_contract_ops: TCP_RPC_COMMON_CONTRACT_OPS,
@@ -101,10 +99,9 @@ pub unsafe extern "C" fn mtproxy_ffi_get_rpc_boundary(out: *mut MtproxyRpcBounda
 /// `out` must be a valid writable pointer to `MtproxyCryptoBoundary`.
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_get_crypto_boundary(out: *mut MtproxyCryptoBoundary) -> i32 {
-    if out.is_null() {
+    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out) }) else {
         return -1;
-    }
-    let out_ref = unsafe { &mut *out };
+    };
     *out_ref = MtproxyCryptoBoundary {
         boundary_version: CRYPTO_BOUNDARY_VERSION,
         net_crypto_aes_contract_ops: NET_CRYPTO_AES_CONTRACT_OPS,
@@ -125,10 +122,9 @@ pub unsafe extern "C" fn mtproxy_ffi_get_crypto_boundary(out: *mut MtproxyCrypto
 pub unsafe extern "C" fn mtproxy_ffi_get_application_boundary(
     out: *mut MtproxyApplicationBoundary,
 ) -> i32 {
-    if out.is_null() {
+    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out) }) else {
         return -1;
-    }
-    let out_ref = unsafe { &mut *out };
+    };
     *out_ref = MtproxyApplicationBoundary {
         boundary_version: APPLICATION_BOUNDARY_VERSION,
         engine_rpc_contract_ops: ENGINE_RPC_CONTRACT_OPS,

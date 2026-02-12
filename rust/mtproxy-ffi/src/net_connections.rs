@@ -1,5 +1,6 @@
 //! Incremental FFI exports for `net/net-connections.c` migration.
 
+use crate::ffi_util::{copy_bytes, mut_ref_from_ptr};
 use core::ffi::{c_double, c_int, c_longlong};
 
 #[inline]
@@ -9,7 +10,7 @@ const fn as_bool(value: c_int) -> bool {
 
 #[inline]
 fn as_c_int(value: bool) -> c_int {
-    value as c_int
+    i32::from(value)
 }
 
 /// Computes outbound connection `ready` state.
@@ -34,9 +35,12 @@ pub unsafe extern "C" fn mtproxy_ffi_net_connections_accept_rate_decide(
     out_remaining: *mut c_double,
     out_time: *mut c_double,
 ) -> c_int {
-    if out_remaining.is_null() || out_time.is_null() {
+    let Some(out_remaining_ref) = (unsafe { mut_ref_from_ptr(out_remaining) }) else {
         return -1;
-    }
+    };
+    let Some(out_time_ref) = (unsafe { mut_ref_from_ptr(out_time) }) else {
+        return -1;
+    };
 
     let (allow, remaining, time_value) =
         mtproxy_core::runtime::net::connections::accept_rate_decide(
@@ -46,8 +50,8 @@ pub unsafe extern "C" fn mtproxy_ffi_net_connections_accept_rate_decide(
             current_time,
         );
 
-    *out_remaining = remaining;
-    *out_time = time_value;
+    *out_remaining_ref = remaining;
+    *out_time_ref = time_value;
     as_c_int(allow)
 }
 
@@ -65,9 +69,14 @@ pub unsafe extern "C" fn mtproxy_ffi_net_connections_compute_next_reconnect(
     out_next_reconnect: *mut c_double,
     out_next_reconnect_timeout: *mut c_double,
 ) -> c_int {
-    if out_next_reconnect.is_null() || out_next_reconnect_timeout.is_null() {
+    let Some(out_next_reconnect_ref) = (unsafe { mut_ref_from_ptr(out_next_reconnect) }) else {
         return -1;
-    }
+    };
+    let Some(out_next_reconnect_timeout_ref) =
+        (unsafe { mut_ref_from_ptr(out_next_reconnect_timeout) })
+    else {
+        return -1;
+    };
 
     let (next_reconnect, timeout) = mtproxy_core::runtime::net::connections::compute_next_reconnect(
         reconnect_timeout,
@@ -77,8 +86,8 @@ pub unsafe extern "C" fn mtproxy_ffi_net_connections_compute_next_reconnect(
         random_unit,
     );
 
-    *out_next_reconnect = next_reconnect;
-    *out_next_reconnect_timeout = timeout;
+    *out_next_reconnect_ref = next_reconnect;
+    *out_next_reconnect_timeout_ref = timeout;
     0
 }
 
@@ -119,12 +128,13 @@ pub unsafe extern "C" fn mtproxy_ffi_net_connections_target_bucket_ipv6(
     let Ok(prime_targets) = u32::try_from(prime_targets) else {
         return -1;
     };
-    if prime_targets == 0 || addr_ipv6.is_null() {
+    if prime_targets == 0 {
         return -1;
     }
 
-    let mut addr = [0u8; 16];
-    core::ptr::copy_nonoverlapping(addr_ipv6, addr.as_mut_ptr(), addr.len());
+    let Some(addr) = (unsafe { copy_bytes::<16>(addr_ipv6) }) else {
+        return -1;
+    };
     mtproxy_core::runtime::net::connections::target_bucket_ipv6(
         type_addr,
         &addr,
@@ -144,14 +154,20 @@ pub unsafe extern "C" fn mtproxy_ffi_net_connections_target_ready_transition(
     out_ready_outbound_delta: *mut c_int,
     out_ready_targets_delta: *mut c_int,
 ) -> c_int {
-    if out_ready_outbound_delta.is_null() || out_ready_targets_delta.is_null() {
+    let Some(out_ready_outbound_delta_ref) =
+        (unsafe { mut_ref_from_ptr(out_ready_outbound_delta) })
+    else {
         return -1;
-    }
+    };
+    let Some(out_ready_targets_delta_ref) = (unsafe { mut_ref_from_ptr(out_ready_targets_delta) })
+    else {
+        return -1;
+    };
 
     let (ready_outbound_delta, ready_targets_delta) =
         mtproxy_core::runtime::net::connections::target_ready_transition(was_ready, now_ready);
-    *out_ready_outbound_delta = ready_outbound_delta;
-    *out_ready_targets_delta = ready_targets_delta;
+    *out_ready_outbound_delta_ref = ready_outbound_delta;
+    *out_ready_targets_delta_ref = ready_targets_delta;
     0
 }
 
@@ -217,13 +233,18 @@ pub unsafe extern "C" fn mtproxy_ffi_net_connections_target_remove_dead_connecti
     out_active_outbound_delta: *mut c_int,
     out_outbound_delta: *mut c_int,
 ) -> c_int {
-    if out_active_outbound_delta.is_null() || out_outbound_delta.is_null() {
+    let Some(out_active_outbound_delta_ref) =
+        (unsafe { mut_ref_from_ptr(out_active_outbound_delta) })
+    else {
         return -1;
-    }
+    };
+    let Some(out_outbound_delta_ref) = (unsafe { mut_ref_from_ptr(out_outbound_delta) }) else {
+        return -1;
+    };
     let (active_outbound_delta, outbound_delta) =
         mtproxy_core::runtime::net::connections::target_remove_dead_connection_deltas(flags);
-    *out_active_outbound_delta = active_outbound_delta;
-    *out_outbound_delta = outbound_delta;
+    *out_active_outbound_delta_ref = active_outbound_delta;
+    *out_outbound_delta_ref = outbound_delta;
     0
 }
 
@@ -291,14 +312,21 @@ pub unsafe extern "C" fn mtproxy_ffi_net_connections_destroy_target_transition(
     out_active_targets_delta: *mut c_int,
     out_inactive_targets_delta: *mut c_int,
 ) -> c_int {
-    if out_active_targets_delta.is_null() || out_inactive_targets_delta.is_null() {
+    let Some(out_active_targets_delta_ref) =
+        (unsafe { mut_ref_from_ptr(out_active_targets_delta) })
+    else {
         return -1;
-    }
+    };
+    let Some(out_inactive_targets_delta_ref) =
+        (unsafe { mut_ref_from_ptr(out_inactive_targets_delta) })
+    else {
+        return -1;
+    };
 
     let (active_delta, inactive_delta, should_signal_run) =
         mtproxy_core::runtime::net::connections::destroy_target_transition(new_global_refcnt);
-    *out_active_targets_delta = active_delta;
-    *out_inactive_targets_delta = inactive_delta;
+    *out_active_targets_delta_ref = active_delta;
+    *out_inactive_targets_delta_ref = inactive_delta;
     as_c_int(should_signal_run)
 }
 
@@ -315,21 +343,28 @@ pub unsafe extern "C" fn mtproxy_ffi_net_connections_create_target_transition(
     out_inactive_targets_delta: *mut c_int,
     out_was_created: *mut c_int,
 ) -> c_int {
-    if out_active_targets_delta.is_null()
-        || out_inactive_targets_delta.is_null()
-        || out_was_created.is_null()
-    {
+    let Some(out_active_targets_delta_ref) =
+        (unsafe { mut_ref_from_ptr(out_active_targets_delta) })
+    else {
         return -1;
-    }
+    };
+    let Some(out_inactive_targets_delta_ref) =
+        (unsafe { mut_ref_from_ptr(out_inactive_targets_delta) })
+    else {
+        return -1;
+    };
+    let Some(out_was_created_ref) = (unsafe { mut_ref_from_ptr(out_was_created) }) else {
+        return -1;
+    };
 
     let (active_delta, inactive_delta, was_created) =
         mtproxy_core::runtime::net::connections::create_target_transition(
             as_bool(target_found),
             old_global_refcnt,
         );
-    *out_active_targets_delta = active_delta;
-    *out_inactive_targets_delta = inactive_delta;
-    *out_was_created = was_created;
+    *out_active_targets_delta_ref = active_delta;
+    *out_inactive_targets_delta_ref = inactive_delta;
+    *out_was_created_ref = was_created;
     0
 }
 

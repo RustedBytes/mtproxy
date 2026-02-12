@@ -906,6 +906,7 @@ static AES_NONCE_RAND_BUF: Mutex<[u8; 64]> = Mutex::new([0u8; 64]);
 
 mod compat;
 mod crypto;
+mod ffi_util;
 mod jobs;
 mod kprintf;
 mod mp_queue;

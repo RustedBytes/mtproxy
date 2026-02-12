@@ -35,34 +35,32 @@ extern "C" {
 #endif
 
 /**
- * Formats an IPv4 address into a static buffer.
+ * Formats an IPv4 address into a thread-local scratch buffer.
  *
- * WARNING: This function is NOT thread-safe due to the use of a static buffer.
- * Multiple concurrent calls will cause undefined behavior (data races).
- * The buffer is reused on each call, so the returned pointer is only valid
- * until the next call to this function.
+ * Calls from different threads are race-free because each thread uses its own
+ * buffer. The buffer is reused per thread, so the returned pointer is only
+ * valid until the next call on the same thread.
  *
  * This behavior matches the original C implementation from vv/vv-io.h.
  *
  * @param addr IPv4 address as a 32-bit integer in host byte order.
- * @return A pointer to a null-terminated string in a static buffer.
+ * @return A pointer to a null-terminated string in a thread-local buffer.
  *         The format is "192.168.1.1".
  */
 const char *vv_format_ipv4(uint32_t addr);
 
 /**
- * Formats an IPv6 address into a static buffer.
+ * Formats an IPv6 address into a thread-local scratch buffer.
  *
- * WARNING: This function is NOT thread-safe due to the use of a static buffer.
- * Multiple concurrent calls will cause undefined behavior (data races).
- * The buffer is reused on each call, so the returned pointer is only valid
- * until the next call to this function.
+ * Calls from different threads are race-free because each thread uses its own
+ * buffer. The buffer is reused per thread, so the returned pointer is only
+ * valid until the next call on the same thread.
  *
  * This behavior matches the original C implementation from vv/vv-io.h.
  *
  * @param ipv6_bytes Pointer to 16 bytes representing an IPv6 address.
- * @return A pointer to a null-terminated string in a static buffer,
- *         or nullptr if ipv6_bytes is nullptr.
+ * @return A pointer to a null-terminated string in a thread-local buffer,
+ *         or NULL if ipv6_bytes is NULL.
  */
 const char *vv_format_ipv6(const void *ipv6_bytes);
 
