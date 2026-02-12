@@ -1140,11 +1140,12 @@ mod tests {
         let b = table
             .get_ext_connection_by_in_conn_id(2, 2, 0, ExtConnLookupMode::CreateIfMissing)
             .expect("create b");
-        let (a_conn, b_conn) = match (a, b) {
-            (ExtConnLookupOutcome::Created(a_conn), ExtConnLookupOutcome::Created(b_conn)) => {
-                (a_conn, b_conn)
-            }
-            _ => panic!("create outcomes"),
+        let (
+            ExtConnLookupOutcome::Created(a_conn),
+            ExtConnLookupOutcome::Created(b_conn),
+        ) = (a, b)
+        else {
+            panic!("create outcomes");
         };
 
         assert!(table
