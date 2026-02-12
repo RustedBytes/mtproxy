@@ -93,11 +93,11 @@ Phase 3 full-parity checklist (remaining for production-equivalent runtime behav
 | C File | Lines | Rust Module | Status | Priority | Notes |
 |--------|-------|-------------|--------|----------|-------|
 | `crypto/aesni256.c` | 58 | `mtproxy-ffi::crypto` | 🟢 Complete | HIGH | AES encryption (FFI layer) |
-| `crypto/crc32.c` | ~100 | `mtproxy-core::runtime::common::crc32` | 🟢 Complete | MED | FFI bridge active |
-| `crypto/crc32c.c` | ~100 | `mtproxy-core::runtime::common::crc32c` | 🟢 Complete | MED | FFI bridge active |
-| `crypto/md5.c` | ~150 | `mtproxy-core::runtime::common::md5` | 🟢 Complete | MED | FFI bridge active |
-| `crypto/sha1.c` | ~120 | `mtproxy-core::runtime::common::sha1` | 🟢 Complete | MED | FFI bridge active |
-| `crypto/sha256.c` | ~150 | `mtproxy-core::runtime::common::sha256` | 🟢 Complete | MED | FFI bridge active |
+| `crypto/crc32.c` | ~100 | `mtproxy-ffi::crypto` | 🟢 Complete | MED | Pure Rust implementation; unsafe only at FFI pointer boundary |
+| `crypto/crc32c.c` | ~100 | `mtproxy-ffi::crypto` | 🟢 Complete | MED | Pure Rust implementation; unsafe only at FFI pointer boundary |
+| `crypto/md5.c` | ~150 | `mtproxy-ffi::crypto` | 🟢 Complete | MED | Pure Rust implementation; unsafe only at FFI pointer boundary |
+| `crypto/sha1.c` | ~120 | `mtproxy-ffi::crypto` | 🟢 Complete | MED | Pure Rust implementation; unsafe only at FFI pointer boundary |
+| `crypto/sha256.c` | ~150 | `mtproxy-ffi::crypto` | 🟢 Complete | MED | Pure Rust implementation; unsafe only at FFI pointer boundary |
 
 ### Network Stack
 

@@ -38,14 +38,16 @@ fn atomic_dec_saturating(counter: &AtomicI64) {
 }
 
 #[inline]
-unsafe fn rdtsc_now() -> i64 {
+fn rdtsc_now() -> i64 {
     #[cfg(target_arch = "x86_64")]
     {
-        core::arch::x86_64::_rdtsc() as i64
+        // SAFETY: `_rdtsc` has no memory safety preconditions and is available on x86_64.
+        unsafe { core::arch::x86_64::_rdtsc() as i64 }
     }
     #[cfg(all(not(target_arch = "x86_64"), target_arch = "x86"))]
     {
-        core::arch::x86::_rdtsc() as i64
+        // SAFETY: `_rdtsc` has no memory safety preconditions and is available on x86.
+        unsafe { core::arch::x86::_rdtsc() as i64 }
     }
     #[cfg(not(any(target_arch = "x86_64", target_arch = "x86")))]
     {
@@ -53,7 +55,8 @@ unsafe fn rdtsc_now() -> i64 {
             tv_sec: 0,
             tv_nsec: 0,
         };
-        if clock_gettime(CLOCK_MONOTONIC_ID, &raw mut ts) < 0 {
+        // SAFETY: `ts` is a valid writable `Timespec`.
+        if unsafe { clock_gettime(CLOCK_MONOTONIC_ID, &raw mut ts) } < 0 {
             0
         } else {
             (ts.tv_sec as i64)
@@ -63,7 +66,7 @@ unsafe fn rdtsc_now() -> i64 {
     }
 }
 
-unsafe fn refresh_aes_nonce_seed(rand_buf: &mut [u8; 64]) -> bool {
+fn refresh_aes_nonce_seed(rand_buf: &mut [u8; 64]) -> bool {
     let mut seeded = false;
     if let Ok(mut urandom) = fs::File::open("/dev/urandom") {
         if urandom.read_exact(&mut rand_buf[..16]).is_ok() {
@@ -74,16 +77,15 @@ unsafe fn refresh_aes_nonce_seed(rand_buf: &mut [u8; 64]) -> bool {
         return false;
     }
 
-    let mut seed: c_long = 0;
     let seed_len = core::mem::size_of::<c_long>();
-    core::ptr::copy_nonoverlapping(rand_buf.as_ptr(), (&raw mut seed).cast::<u8>(), seed_len);
-    seed ^= lrand48();
-    core::ptr::copy_nonoverlapping(
-        (&raw const seed).cast::<u8>(),
-        rand_buf.as_mut_ptr(),
-        seed_len,
-    );
-    srand48(seed);
+    let mut seed_bytes = [0u8; core::mem::size_of::<c_long>()];
+    seed_bytes.copy_from_slice(&rand_buf[..seed_len]);
+    let mut seed = c_long::from_ne_bytes(seed_bytes);
+    // SAFETY: libc PRNG functions do not require additional pointer invariants.
+    seed ^= unsafe { lrand48() };
+    rand_buf[..seed_len].copy_from_slice(&seed.to_ne_bytes());
+    // SAFETY: libc PRNG functions do not require additional pointer invariants.
+    unsafe { srand48(seed) };
     true
 }
 
@@ -1461,7 +1463,7 @@ unsafe fn gf32_combine_clmul_hw_x86_64(powers: *const u32, crc1: u32, len2: u64)
     lanes[0]
 }
 
-unsafe fn gf32_combine_clmul_impl(powers: &[u32], crc1: u32, len2: i64) -> u64 {
+fn gf32_combine_clmul_impl(powers: &[u32], crc1: u32, len2: i64) -> u64 {
     if len2 <= 0 {
         return u64::from(crc1);
     }
@@ -1470,7 +1472,7 @@ unsafe fn gf32_combine_clmul_impl(powers: &[u32], crc1: u32, len2: i64) -> u64 {
     {
         if std::arch::is_x86_feature_detected!("pclmulqdq") {
             // SAFETY: CPU feature is checked at runtime and table shape matches C contract.
-            return gf32_combine_clmul_hw_x86_64(powers.as_ptr(), crc1, len2 as u64);
+            return unsafe { gf32_combine_clmul_hw_x86_64(powers.as_ptr(), crc1, len2 as u64) };
         }
     }
 
@@ -2080,22 +2082,24 @@ pub unsafe extern "C" fn mtproxy_ffi_sha1_two_chunks(
     len2: usize,
     output: *mut u8,
 ) -> i32 {
+    let Some(out) = as_output_slice::<DIGEST_SHA1_LEN>(output) else {
+        return -1;
+    };
+    let out_ref = &mut *out;
     let Some(input1_ptr) = as_input_ptr(input1, len1) else {
         return -1;
     };
     let Some(input2_ptr) = as_input_ptr(input2, len2) else {
         return -1;
     };
-    let Some(total_len) = len1.checked_add(len2) else {
-        return -1;
-    };
 
     let first = core::slice::from_raw_parts(input1_ptr, len1);
     let second = core::slice::from_raw_parts(input2_ptr, len2);
-    let mut merged = Vec::with_capacity(total_len);
-    merged.extend_from_slice(first);
-    merged.extend_from_slice(second);
-    mtproxy_ffi_sha1(merged.as_ptr(), merged.len(), output)
+    let mut hasher = Sha1::new();
+    hasher.update(first);
+    hasher.update(second);
+    out_ref.copy_from_slice(&hasher.finalize());
+    0
 }
 
 /// Computes SHA256 digest.
@@ -2131,22 +2135,24 @@ pub unsafe extern "C" fn mtproxy_ffi_sha256_two_chunks(
     len2: usize,
     output: *mut u8,
 ) -> i32 {
+    let Some(out) = as_output_slice::<DIGEST_SHA256_LEN>(output) else {
+        return -1;
+    };
+    let out_ref = &mut *out;
     let Some(input1_ptr) = as_input_ptr(input1, len1) else {
         return -1;
     };
     let Some(input2_ptr) = as_input_ptr(input2, len2) else {
         return -1;
     };
-    let Some(total_len) = len1.checked_add(len2) else {
-        return -1;
-    };
 
     let first = core::slice::from_raw_parts(input1_ptr, len1);
     let second = core::slice::from_raw_parts(input2_ptr, len2);
-    let mut merged = Vec::with_capacity(total_len);
-    merged.extend_from_slice(first);
-    merged.extend_from_slice(second);
-    mtproxy_ffi_sha256(merged.as_ptr(), merged.len(), output)
+    let mut hasher = Sha256::new();
+    hasher.update(first);
+    hasher.update(second);
+    out_ref.copy_from_slice(&hasher.finalize());
+    0
 }
 
 /// Computes HMAC-SHA256.
