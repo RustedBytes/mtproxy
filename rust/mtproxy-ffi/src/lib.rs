@@ -911,6 +911,7 @@ mod kprintf;
 mod mtproto;
 mod server_functions;
 mod stats;
+mod tl_parse_methods;
 mod time_cfg_observability;
 
 pub use compat::*;
