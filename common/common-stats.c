@@ -20,297 +20,77 @@
 
     Copyright 2014-2017 Telegram Messenger Inc
               2014-2017 Anton Maydell
+    
+    Copyright 2026 Rust Migration
 */
 
-#define _FILE_OFFSET_BITS 64
+// Rust implementation wrapper for common-stats
+// All functionality is now in rust/mtproxy-ffi/src/stats.rs
 
 #include "common/common-stats.h"
-#include "kprintf.h"
-#include "net/net-connections.h"
-#include "precise-time.h"
 #include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
-#include "server-functions.h"
-#include <assert.h>
-#include <errno.h>
-#include <fcntl.h>
 #include <stdarg.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
 
-extern int32_t mtproxy_ffi_parse_statm(const char *buf, size_t len, int32_t m,
-                                       int64_t page_size, int64_t *out_values);
-extern int32_t
-mtproxy_ffi_parse_meminfo_summary(const char *buf, size_t len,
-                                  mtproxy_ffi_meminfo_summary_t *out);
-
-static int read_whole_file(char *filename, void *output, int olen) {
-  int fd = open(filename, O_RDONLY), n = -1;
-  if (fd < 0) {
-    vkprintf(1, "%s: open (\"%s\", O_RDONLY) failed. %m\n", __func__, filename);
-    return -1;
-  }
-  do {
-    n = read(fd, output, olen);
-    if (n < 0) {
-      if (errno == EINTR) {
-        continue;
-      }
-      vkprintf(1, "%s: read from %s failed. %m\n", __func__, filename);
-    }
-    break;
-  } while (1);
-  while (close(fd) < 0 && errno == EINTR) {
-  }
-  if (n < 0) {
-    return -1;
-  }
-  if (n >= olen) {
-    vkprintf(1, "%s: output buffer is too small (%d bytes).\n", __func__, olen);
-    return -1;
-  }
-  unsigned char *p = output;
-  p[n] = 0;
-  return n;
-}
-
-static int parse_statm(const char *buf, long long *a, int m) {
-  static long long page_size = -1;
-  if (page_size < 0) {
-    page_size = sysconf(_SC_PAGESIZE);
-    assert(page_size > 0);
-  }
-  if (m > 7) {
-    m = 7;
-  }
-  int64_t parsed[7] = {0};
-  if (mtproxy_ffi_parse_statm(buf, strlen(buf), m, page_size, parsed) != 0) {
-    return -1;
-  }
-  int i;
-  for (i = 0; i < m; i++) {
-    a[i] = parsed[i];
-  }
-  return 0;
-}
+// Wrapper functions that call Rust implementations
 
 int am_get_memory_usage(pid_t pid, long long *a, int m) {
-  char proc_filename[32];
-  char buf[4096];
-  assert(snprintf(proc_filename, sizeof(proc_filename), "/proc/%d/statm",
-                  (int)pid) < (int)sizeof(proc_filename));
-  if (read_whole_file(proc_filename, buf, sizeof(buf)) < 0) {
-    return -1;
-  }
-  return parse_statm(buf, a, m);
+    return mtproxy_ffi_am_get_memory_usage(pid, a, m);
 }
 
 int am_get_memory_stats(am_memory_stat_t *S, int flags) {
-  if (!flags) {
-    return -1;
-  }
-  long long a[6];
-
-  if (flags & AM_GET_MEMORY_USAGE_SELF) {
-    if (am_get_memory_usage(getpid(), a, 6) < 0) {
-      return -1;
-    }
-    S->vm_size = a[0];
-    S->vm_rss = a[1];
-    S->vm_data = a[5];
-  }
-
-  if (flags & AM_GET_MEMORY_USAGE_OVERALL) {
-    char buf[16384];
-    int n = read_whole_file("/proc/meminfo", buf, sizeof(buf));
-    if (n < 0) {
-      return -1;
-    }
-    mtproxy_ffi_meminfo_summary_t rs = {0};
-    if (mtproxy_ffi_parse_meminfo_summary(buf, n, &rs) != 0) {
-      return -1;
-    }
-    S->mem_free = rs.mem_free;
-    S->mem_cached = rs.mem_cached;
-    S->swap_total = rs.swap_total;
-    S->swap_free = rs.swap_free;
-    S->swap_used = S->swap_total - S->swap_free;
-  }
-  return 0;
+    return mtproxy_ffi_am_get_memory_stats((mtproxy_ffi_am_memory_stat_t *)S, flags);
 }
-
-struct stat_fun_en {
-  stat_fun_t func;
-  struct stat_fun_en *next;
-};
-struct stat_fun_en *stat_func_first = NULL;
 
 int sb_register_stat_fun(stat_fun_t func) {
-  struct stat_fun_en *last = NULL, *p;
-  for (p = stat_func_first; p; p = p->next) {
-    last = p;
-    if (p->func == func) {
-      return 0;
-    }
-  }
-  p = malloc(sizeof(*p));
-  p->func = func;
-  p->next = NULL;
-  if (last) {
-    last->next = p;
-  } else {
-    stat_func_first = p;
-  }
-  return 1;
+    return mtproxy_ffi_sb_register_stat_fun((mtproxy_ffi_stat_fun_t)func);
 }
 
-/************************ stats buffer functions
- * **********************************/
 void sb_init(stats_buffer_t *sb, char *buff, int size) {
-  sb->buff = buff;
-  sb->pos = 0;
-  sb->size = size;
-  sb->flags = 0;
+    mtproxy_ffi_sb_init((mtproxy_ffi_stats_buffer_t *)sb, buff, size);
 }
 
 void sb_alloc(stats_buffer_t *sb, int size) {
-  if (size < 16) {
-    size = 16;
-  }
-  sb->buff = malloc(size);
-  assert(sb->buff);
-  sb->pos = 0;
-  sb->size = size;
-  sb->flags = 1;
+    mtproxy_ffi_sb_alloc((mtproxy_ffi_stats_buffer_t *)sb, size);
 }
 
 void sb_release(stats_buffer_t *sb) {
-  if (sb->flags & 1) {
-    free(sb->buff);
-  }
-  sb->buff = NULL;
-}
-
-static void sb_truncate(stats_buffer_t *sb) {
-  sb->buff[sb->size - 1] = 0;
-  sb->pos = sb->size - 2;
-  while (sb->pos >= 0 && sb->buff[sb->pos] != '\n') {
-    sb->buff[sb->pos--] = 0;
-  }
-  sb->pos++;
-}
-
-static int sb_full(stats_buffer_t *sb) {
-  return (sb->pos == sb->size - 1 && sb->buff[sb->pos]) || sb->pos >= sb->size;
+    mtproxy_ffi_sb_release((mtproxy_ffi_stats_buffer_t *)sb);
 }
 
 void sb_prepare(stats_buffer_t *sb) {
-  sb->pos = prepare_stats(sb->buff, sb->size);
-  if (sb_full(sb)) {
-    sb_truncate(sb);
-    return;
-  }
-  struct stat_fun_en *p;
-  for (p = stat_func_first; p; p = p->next) {
-    p->func(sb);
-    if (sb_full(sb)) {
-      sb_truncate(sb);
-      return;
-    }
-  }
+    mtproxy_ffi_sb_prepare((mtproxy_ffi_stats_buffer_t *)sb);
 }
 
 void sb_printf(stats_buffer_t *sb, const char *format, ...) {
-  if (sb->pos >= sb->size) {
-    return;
-  }
-  const int old_pos = sb->pos;
-  va_list ap;
-  va_start(ap, format);
-  sb->pos += vsnprintf(sb->buff + old_pos, sb->size - old_pos, format, ap);
-  va_end(ap);
-  if (sb->pos >= sb->size) {
-    if (sb->flags & 1) {
-      sb->size = 2 * sb->pos;
-      sb->buff = realloc(sb->buff, sb->size);
-      assert(sb->buff);
-      va_start(ap, format);
-      sb->pos = old_pos +
-                vsnprintf(sb->buff + old_pos, sb->size - old_pos, format, ap);
-      va_end(ap);
-      assert(sb->pos < sb->size);
-    } else {
-      sb_truncate(sb);
-    }
-  }
+    va_list args;
+    va_start(args, format);
+    mtproxy_ffi_sb_vprintf((mtproxy_ffi_stats_buffer_t *)sb, format, args);
+    va_end(args);
 }
-/************************************************************************************/
 
 void sb_memory(stats_buffer_t *sb, int flags) {
-  am_memory_stat_t S;
-  if (!am_get_memory_stats(&S, flags & AM_GET_MEMORY_USAGE_SELF)) {
-    sb_printf(sb,
-              "vmsize_bytes\t%lld\n"
-              "vmrss_bytes\t%lld\n"
-              "vmdata_bytes\t%lld\n",
-              S.vm_size, S.vm_rss, S.vm_data);
-  }
-
-  if (!am_get_memory_stats(&S, flags & AM_GET_MEMORY_USAGE_OVERALL)) {
-    sb_printf(sb,
-              "memfree_bytes\t%lld\n"
-              "memcached_bytes\t%lld\n"
-              "swap_used_bytes\t%lld\n"
-              "swap_total_bytes\t%lld\n",
-              S.mem_free, S.mem_cached, S.swap_used, S.swap_total);
-  }
+    mtproxy_ffi_sb_memory((mtproxy_ffi_stats_buffer_t *)sb, flags);
 }
 
 void sb_print_queries(stats_buffer_t *sb, const char *const desc, long long q) {
-  sb_printf(sb, "%s\t%lld\nqps_%s\t%.3lf\n", desc, q, desc,
-            safe_div(q, now - start_time));
+    // Use TLS variables
+    extern __thread int now;
+    extern int start_time;
+    mtproxy_ffi_sb_print_queries((mtproxy_ffi_stats_buffer_t *)sb, desc, q, now, start_time);
 }
 
 int sb_sum_i(void **base, int len, int offset) {
-  int res = 0;
-  int i;
-  for (i = 0; i < len; i++)
-    if (base[i]) {
-      res += *(int *)((base[i]) + offset);
-    }
-  return res;
+    return mtproxy_ffi_sb_sum_i(base, len, offset);
 }
 
 long long sb_sum_ll(void **base, int len, int offset) {
-  long long res = 0;
-  int i;
-  for (i = 0; i < len; i++)
-    if (base[i]) {
-      res += *(long long *)((base[i]) + offset);
-    }
-  return res;
+    return mtproxy_ffi_sb_sum_ll(base, len, offset);
 }
 
 double sb_sum_f(void **base, int len, int offset) {
-  double res = 0;
-  int i;
-  for (i = 0; i < len; i++)
-    if (base[i]) {
-      res += *(double *)((base[i]) + offset);
-    }
-  return res;
+    return mtproxy_ffi_sb_sum_f(base, len, offset);
 }
 
 void sbp_print_date(stats_buffer_t *sb, const char *key, time_t unix_time) {
-  struct tm b;
-  struct tm *t = gmtime_r(&unix_time, &b);
-  if (t) {
-    char s[256];
-    size_t l = strftime(s, sizeof(s), "%c", t);
-    if (l > 0) {
-      sb_printf(sb, "%s\t%s\n", key, s);
-    }
-  }
+    mtproxy_ffi_sbp_print_date((mtproxy_ffi_stats_buffer_t *)sb, key, unix_time);
 }

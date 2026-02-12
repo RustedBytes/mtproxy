@@ -997,6 +997,118 @@ int32_t mtproxy_ffi_read_proc_stat_file(
   int32_t tid,
   mtproxy_ffi_proc_stats_t *out
 );
+// ============================================================================
+// proc-stat/common-stats helpers for observability migration.
+// ============================================================================
+
+// Stats buffer structure for collecting statistics output
+typedef struct mtproxy_ffi_stats_buffer {
+  char *buff;
+  int32_t pos;
+  int32_t size;
+  int32_t flags;
+} mtproxy_ffi_stats_buffer_t;
+
+// Memory statistics structure
+typedef struct mtproxy_ffi_am_memory_stat {
+  int64_t vm_size;
+  int64_t vm_rss;
+  int64_t vm_data;
+  int64_t mem_free;
+  int64_t swap_total;
+  int64_t swap_free;
+  int64_t swap_used;
+  int64_t mem_cached;
+} mtproxy_ffi_am_memory_stat_t;
+
+// Stat function callback type
+typedef void (*mtproxy_ffi_stat_fun_t)(mtproxy_ffi_stats_buffer_t *sb);
+
+// Get memory usage for a process
+int32_t mtproxy_ffi_am_get_memory_usage(
+  int32_t pid,
+  int64_t *a,
+  int32_t m
+);
+
+// Get memory statistics
+int32_t mtproxy_ffi_am_get_memory_stats(
+  mtproxy_ffi_am_memory_stat_t *s,
+  int32_t flags
+);
+
+// Register a stats collector callback function
+int32_t mtproxy_ffi_sb_register_stat_fun(mtproxy_ffi_stat_fun_t func);
+
+// Initialize stats buffer with existing buffer
+void mtproxy_ffi_sb_init(
+  mtproxy_ffi_stats_buffer_t *sb,
+  char *buff,
+  int32_t size
+);
+
+// Allocate stats buffer
+void mtproxy_ffi_sb_alloc(
+  mtproxy_ffi_stats_buffer_t *sb,
+  int32_t size
+);
+
+// Release stats buffer
+void mtproxy_ffi_sb_release(mtproxy_ffi_stats_buffer_t *sb);
+
+// Prepare stats buffer by calling registered callbacks
+void mtproxy_ffi_sb_prepare(mtproxy_ffi_stats_buffer_t *sb);
+
+// Printf to stats buffer (va_list version for wrapping)
+void mtproxy_ffi_sb_vprintf(
+  mtproxy_ffi_stats_buffer_t *sb,
+  const char *format,
+  __builtin_va_list args
+);
+
+// Add memory stats to buffer
+void mtproxy_ffi_sb_memory(
+  mtproxy_ffi_stats_buffer_t *sb,
+  int32_t flags
+);
+
+// Print query stats with QPS calculation
+void mtproxy_ffi_sb_print_queries(
+  mtproxy_ffi_stats_buffer_t *sb,
+  const char *desc,
+  int64_t q,
+  int32_t now_val,
+  int32_t start_time_val
+);
+
+// Sum integers from array of pointers
+int32_t mtproxy_ffi_sb_sum_i(
+  void **base,
+  int32_t len,
+  int32_t offset
+);
+
+// Sum long longs from array of pointers
+int64_t mtproxy_ffi_sb_sum_ll(
+  void **base,
+  int32_t len,
+  int32_t offset
+);
+
+// Sum doubles from array of pointers
+double mtproxy_ffi_sb_sum_f(
+  void **base,
+  int32_t len,
+  int32_t offset
+);
+
+// Print date to stats buffer
+void mtproxy_ffi_sbp_print_date(
+  mtproxy_ffi_stats_buffer_t *sb,
+  const char *key,
+  long unix_time
+);
+
 int32_t mtproxy_ffi_parse_statm(
   const char *buf,
   size_t len,
