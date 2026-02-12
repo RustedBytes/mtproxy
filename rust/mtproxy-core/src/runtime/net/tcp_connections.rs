@@ -120,7 +120,7 @@ pub const fn reader_skip_from_parse_result(
 /// - `0`: continue processing
 #[must_use]
 pub const fn reader_precheck_result(flags: i32) -> i32 {
-    let f = flags as u32;
+    let f = u32::from_ne_bytes(flags.to_ne_bytes());
     if (f & (C_FAILED | C_ERROR | C_NET_FAILED)) != 0 {
         -1
     } else if (f & C_STOPREAD) != 0 {
@@ -133,7 +133,7 @@ pub const fn reader_precheck_result(flags: i32) -> i32 {
 /// Returns whether `cpu_tcp_server_reader` loop should continue processing.
 #[must_use]
 pub const fn reader_should_continue(skip_bytes: i32, flags: i32, status_is_conn_error: i32) -> i32 {
-    let f = flags as u32;
+    let f = u32::from_ne_bytes(flags.to_ne_bytes());
     let blocked = (f & (C_ERROR | C_FAILED | C_NET_FAILED | C_STOPREAD)) != 0;
     if skip_bytes == 0 && !blocked && status_is_conn_error == 0 {
         1

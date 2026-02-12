@@ -82,6 +82,11 @@ fn write_two_digits(out: &mut [u8], value: i32) {
     out[1] = b'0' + ones;
 }
 
+#[inline]
+const fn is_leap_year_div4(year: i32) -> bool {
+    year.trailing_zeros() >= 2
+}
+
 /// Formats unix time to legacy HTTP date representation (`29` bytes, no trailing NUL).
 #[must_use]
 pub fn gen_http_date(mut time: i32) -> [u8; HTTP_DATE_LEN] {
@@ -111,7 +116,7 @@ pub fn gen_http_date(mut time: i32) -> [u8; HTTP_DATE_LEN] {
         }
     }
     let mut month_days = DAYS_PER_MONTH;
-    month_days[1] = if (year & 3) == 0 { 29 } else { 28 };
+    month_days[1] = if is_leap_year_div4(year) { 29 } else { 28 };
 
     let mut mon = 0usize;
     while mon < 12 {
@@ -171,9 +176,9 @@ fn parse_int_prefix(input: &str) -> Option<(i32, &str)> {
     Some((value.saturating_mul(sign), &input[i..]))
 }
 
-fn scanf_like_parse_http_time(
-    date_text: &str,
-) -> Result<(i32, [u8; 3], i32, i32, i32, i32, &str), i32> {
+type ParsedHttpDateTime<'a> = (i32, [u8; 3], i32, i32, i32, i32, &'a str);
+
+fn scanf_like_parse_http_time(date_text: &str) -> Result<ParsedHttpDateTime<'_>, i32> {
     let mut argc = 0i32;
     let mut s = date_text;
 
@@ -300,7 +305,7 @@ pub fn gen_http_time(date_text: &str) -> Result<i32, i32> {
     }
 
     let mut d = (year - 1970) * 365 + ((year - 1969) >> 2) + (day - 1);
-    if (year & 3) == 0 && mon >= 2 {
+    if is_leap_year_div4(year) && mon >= 2 {
         d += 1;
     }
     for days in DAYS_PER_MONTH.iter().take(mon) {

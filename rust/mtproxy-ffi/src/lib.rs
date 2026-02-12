@@ -1,4 +1,31 @@
 //! FFI-facing Rust crate for incremental C/Rust integration.
+#![allow(
+    clippy::bool_to_int_with_if,
+    clippy::borrow_as_ptr,
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap,
+    clippy::cast_ptr_alignment,
+    clippy::cast_sign_loss,
+    clippy::doc_markdown,
+    clippy::enum_variant_names,
+    clippy::items_after_statements,
+    clippy::manual_c_str_literals,
+    clippy::manual_is_multiple_of,
+    clippy::manual_let_else,
+    clippy::manual_ok_err,
+    clippy::manual_unwrap_or,
+    clippy::missing_safety_doc,
+    clippy::never_loop,
+    clippy::pedantic,
+    clippy::redundant_closure_for_method_calls,
+    clippy::semicolon_if_nothing_returned,
+    clippy::struct_field_names,
+    clippy::too_many_arguments,
+    clippy::too_many_lines,
+    clippy::trivially_copy_pass_by_ref,
+    clippy::uninlined_format_args,
+    clippy::wildcard_imports
+)]
 
 use aes::Aes256;
 use cbc::cipher::{BlockDecryptMut, BlockEncryptMut, KeyIvInit, StreamCipher};

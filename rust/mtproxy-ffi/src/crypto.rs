@@ -249,7 +249,7 @@ pub unsafe extern "C" fn mtproxy_ffi_crypto_aes_load_pwd_file(
         return -1;
     }
 
-    let file_name = if filename.is_null() {
+    let pwd_file_path = if filename.is_null() {
         DEFAULT_PWD_FILE.to_owned()
     } else {
         CStr::from_ptr(filename).to_string_lossy().into_owned()
@@ -265,7 +265,7 @@ pub unsafe extern "C" fn mtproxy_ffi_crypto_aes_load_pwd_file(
         }
     }
 
-    let mut file = match fs::File::open(&file_name) {
+    let mut file = match fs::File::open(&pwd_file_path) {
         Ok(file) => file,
         Err(_) => return i32::MIN,
     };
@@ -470,6 +470,7 @@ pub unsafe extern "C" fn mtproxy_ffi_crypto_dh_first_round_stateful(
 /// # Safety
 /// `g_ab`, `g_a`, and `g_b` must point to readable/writable 256-byte buffers.
 #[no_mangle]
+#[allow(clippy::similar_names)]
 pub unsafe extern "C" fn mtproxy_ffi_crypto_dh_second_round_stateful(
     g_ab: *mut u8,
     g_a: *mut u8,
@@ -487,6 +488,7 @@ pub unsafe extern "C" fn mtproxy_ffi_crypto_dh_second_round_stateful(
 /// # Safety
 /// `g_ab`, `g_b`, and `dh_params` must be valid pointers.
 #[no_mangle]
+#[allow(clippy::similar_names)]
 pub unsafe extern "C" fn mtproxy_ffi_crypto_dh_third_round_stateful(
     g_ab: *mut u8,
     g_b: *const u8,
@@ -1023,6 +1025,7 @@ pub unsafe extern "C" fn mtproxy_ffi_crypto_dh_first_round(g_a: *mut u8, a_out: 
 /// # Safety
 /// `g_ab`, `g_a`, `g_b` must point to 256-byte buffers.
 #[no_mangle]
+#[allow(clippy::similar_names)]
 pub unsafe extern "C" fn mtproxy_ffi_crypto_dh_second_round(
     g_ab: *mut u8,
     g_a: *mut u8,
@@ -1057,6 +1060,7 @@ pub unsafe extern "C" fn mtproxy_ffi_crypto_dh_second_round(
 /// # Safety
 /// `g_ab`, `g_b`, `a` must point to 256-byte buffers.
 #[no_mangle]
+#[allow(clippy::similar_names)]
 pub unsafe extern "C" fn mtproxy_ffi_crypto_dh_third_round(
     g_ab: *mut u8,
     g_b: *const u8,
@@ -1473,6 +1477,7 @@ unsafe fn gf32_combine_clmul_impl(powers: &[u32], crc1: u32, len2: i64) -> u64 {
     u64::from(gf32_combine_generic_impl(powers, crc1, len2))
 }
 
+#[allow(clippy::many_single_char_names)]
 fn crc32_find_corrupted_bit_impl(size: i32, d: u32) -> i32 {
     let size = size.saturating_add(4);
     let n = size.saturating_mul(8);

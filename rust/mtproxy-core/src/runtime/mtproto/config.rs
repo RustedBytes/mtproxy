@@ -622,6 +622,7 @@ pub fn cfg_parse_directive_step(
 ///
 /// `input` must point to the beginning of proxy target payload (right after
 /// `proxy` / `proxy_for <dc>` token parse).
+#[allow(clippy::too_many_arguments)]
 pub fn cfg_parse_proxy_target_step(
     input: &[u8],
     current_targets: usize,
@@ -704,6 +705,7 @@ pub fn cfg_parse_proxy_target_step(
 /// This owns directive iteration, scalar state updates, cluster/apply decisions,
 /// and finalization/default-cluster resolution. Proxy host resolution and target
 /// creation side effects are left to the caller via returned `actions`.
+#[allow(clippy::too_many_lines)]
 pub fn cfg_parse_config_full_pass<const MAX_CLUSTERS: usize>(
     input: &[u8],
     defaults: MtprotoConfigDefaults,
@@ -1194,8 +1196,8 @@ pub fn parse_config_directive_blocks<const MAX_CLUSTERS: usize, const MAX_TARGET
     }
 
     let mut cluster_ids = [0i32; MAX_CLUSTERS];
-    for idx in 0..cfg.auth_clusters {
-        cluster_ids[idx] = cfg.auth_cluster[idx].cluster_id;
+    for (idx, cluster_id) in cluster_ids.iter_mut().enumerate().take(cfg.auth_clusters) {
+        *cluster_id = cfg.auth_cluster[idx].cluster_id;
     }
     cfg.default_cluster_index = finalize_parse_config_state(
         cfg.have_proxy,

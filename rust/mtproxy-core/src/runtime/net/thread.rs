@@ -19,6 +19,12 @@ pub enum NotificationEventKind {
     TcpConnWakeup,
 }
 
+/// Error returned by notification-event dispatcher.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum NotificationEventError {
+    UnknownEventType(i32),
+}
+
 /// Maps raw `notification_event.type` into a known event kind.
 #[must_use]
 pub const fn notification_event_kind(event_type: i32) -> Option<NotificationEventKind> {
@@ -48,9 +54,9 @@ pub fn run_notification_event<O: NotificationEventOps>(
     who: *mut c_void,
     event: *mut c_void,
     ops: &mut O,
-) -> Result<(), ()> {
+) -> Result<(), NotificationEventError> {
     let Some(kind) = notification_event_kind(event_type) else {
-        return Err(());
+        return Err(NotificationEventError::UnknownEventType(event_type));
     };
 
     match kind {
@@ -82,9 +88,9 @@ mod tests {
     extern crate std;
 
     use super::{
-        notification_event_kind, run_notification_event, NotificationEventKind,
-        NotificationEventOps, FAIL_CONNECTION_CODE, NEV_TCP_CONN_ALARM, NEV_TCP_CONN_CLOSE,
-        NEV_TCP_CONN_READY, NEV_TCP_CONN_WAKEUP,
+        notification_event_kind, run_notification_event, NotificationEventError,
+        NotificationEventKind, NotificationEventOps, FAIL_CONNECTION_CODE, NEV_TCP_CONN_ALARM,
+        NEV_TCP_CONN_CLOSE, NEV_TCP_CONN_READY, NEV_TCP_CONN_WAKEUP,
     };
     use alloc::vec;
     use core::ffi::c_void;
@@ -248,7 +254,7 @@ mod tests {
         let mut ops = MockOps::new(0);
         assert_eq!(
             run_notification_event(999, ptr(0x61), ptr(0x62), &mut ops),
-            Err(())
+            Err(NotificationEventError::UnknownEventType(999))
         );
         assert!(ops.calls.is_empty());
     }

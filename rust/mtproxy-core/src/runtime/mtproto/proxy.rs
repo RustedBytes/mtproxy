@@ -44,7 +44,7 @@ pub const TL_ERROR_WRONG_ACTOR_ID: i32 = -2002;
 const MTPROTO_EXT_CONN_HASH_MULT_A: u64 = 11_400_714_819_323_198_485;
 const MTPROTO_EXT_CONN_HASH_MULT_B: u64 = 13_043_817_825_332_782_213;
 
-const LRAND48_MULT: u64 = 0x5deece66d;
+const LRAND48_MULT: u64 = 0x0005_deec_e66d;
 const LRAND48_ADD: u64 = 0xb;
 const LRAND48_MASK: u64 = (1_u64 << 48) - 1;
 const LRAND48_SEED_LOW: u64 = 0x330e;
@@ -276,13 +276,12 @@ impl ExtConnectionTable {
     }
 
     fn alloc_entry_slot(&mut self) -> usize {
-        match self.free_entries.pop() {
-            Some(idx) => idx,
-            None => {
-                let idx = self.entries.len();
-                self.entries.push(None);
-                idx
-            }
+        if let Some(idx) = self.free_entries.pop() {
+            idx
+        } else {
+            let idx = self.entries.len();
+            self.entries.push(None);
+            idx
         }
     }
 
@@ -653,7 +652,7 @@ pub fn parse_text_ipv6(ip: &mut [u8; 16], input: &str) -> i32 {
     let mut ptr = 0usize;
     let mut k: Option<usize> = None;
 
-    if bytes.get(0) == Some(&b':') && bytes.get(1) == Some(&b':') {
+    if bytes.first() == Some(&b':') && bytes.get(1) == Some(&b':') {
         k = Some(0);
         ptr = 2;
     }

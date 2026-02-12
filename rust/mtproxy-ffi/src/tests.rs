@@ -1288,11 +1288,11 @@ fn crypto_dh_roundtrip_exports_work() {
     assert_ne!(g_ab, [0u8; DH_KEY_BYTES]);
 
     let mut g_a_srv = [0u8; DH_KEY_BYTES];
-    let mut g_ab_srv = [0u8; DH_KEY_BYTES];
+    let mut g_ab_server = [0u8; DH_KEY_BYTES];
     assert_eq!(
         unsafe {
             mtproxy_ffi_crypto_dh_second_round(
-                g_ab_srv.as_mut_ptr(),
+                g_ab_server.as_mut_ptr(),
                 g_a_srv.as_mut_ptr(),
                 g_a.as_ptr(),
             )
@@ -1300,7 +1300,7 @@ fn crypto_dh_roundtrip_exports_work() {
         i32::try_from(DH_KEY_BYTES).unwrap_or(i32::MAX)
     );
     assert_ne!(g_a_srv, [0u8; DH_KEY_BYTES]);
-    assert_ne!(g_ab_srv, [0u8; DH_KEY_BYTES]);
+    assert_ne!(g_ab_server, [0u8; DH_KEY_BYTES]);
 }
 
 #[test]
@@ -1468,8 +1468,8 @@ fn net_connection_helpers_match_c_semantics() {
     const C_NOWR: i32 = 0x20;
     const C_FAILED: i32 = 0x80;
     const C_NET_FAILED: i32 = 0x80_000;
-    const C_READY_PENDING: i32 = 0x1_00_0000;
-    const C_CONNECTED: i32 = 0x2_00_0000;
+    const C_READY_PENDING: i32 = 0x0100_0000;
+    const C_CONNECTED: i32 = 0x0200_0000;
 
     let evt_spec = i32::from_ne_bytes(EVT_SPEC.to_ne_bytes());
     let evt_write = i32::from_ne_bytes(EVT_WRITE.to_ne_bytes());

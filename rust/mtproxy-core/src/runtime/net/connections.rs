@@ -10,8 +10,8 @@ const C_NOWR: u32 = 0x20;
 const C_FAILED: u32 = 0x80;
 const C_STOPREAD: u32 = 0x800;
 const C_NET_FAILED: u32 = 0x80_000;
-const C_READY_PENDING: u32 = 0x1_00_0000;
-const C_CONNECTED: u32 = 0x2_00_0000;
+const C_READY_PENDING: u32 = 0x0100_0000;
+const C_CONNECTED: u32 = 0x0200_0000;
 
 const EVT_SPEC: u32 = 1;
 const EVT_WRITE: u32 = 2;
@@ -59,24 +59,22 @@ pub fn compute_conn_events(flags: i32, use_epollet: bool) -> i32 {
         } else {
             EVT_READ | EVT_WRITE | EVT_SPEC
         }
+    } else if (f & (C_ERROR | C_FAILED | C_NET_FAILED)) != 0 {
+        0
     } else {
-        if (f & (C_ERROR | C_FAILED | C_NET_FAILED)) != 0 {
-            0
-        } else {
-            let mut events = EVT_SPEC;
-            if (f & (C_WANTRD | C_STOPREAD)) == C_WANTRD {
-                events |= EVT_READ;
-            }
-            if (f & C_WANTWR) != 0 {
-                events |= EVT_WRITE;
-            }
-            if (f & (C_WANTRD | C_NORD)) == (C_WANTRD | C_NORD)
-                || (f & (C_WANTWR | C_NOWR)) == (C_WANTWR | C_NOWR)
-            {
-                events |= EVT_LEVEL;
-            }
-            events
+        let mut events = EVT_SPEC;
+        if (f & (C_WANTRD | C_STOPREAD)) == C_WANTRD {
+            events |= EVT_READ;
         }
+        if (f & C_WANTWR) != 0 {
+            events |= EVT_WRITE;
+        }
+        if (f & (C_WANTRD | C_NORD)) == (C_WANTRD | C_NORD)
+            || (f & (C_WANTWR | C_NOWR)) == (C_WANTWR | C_NOWR)
+        {
+            events |= EVT_LEVEL;
+        }
+        events
     };
     u32_to_i32(out)
 }

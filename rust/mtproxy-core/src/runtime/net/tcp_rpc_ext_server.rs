@@ -16,7 +16,8 @@ pub fn domain_bucket_index(domain: &[u8]) -> i32 {
     for &byte in domain {
         hash = hash.wrapping_mul(239_017).wrapping_add(u32::from(byte));
     }
-    (hash % (DOMAIN_HASH_MOD as u32)) as i32
+    let hash_mod_u32 = u32::try_from(DOMAIN_HASH_MOD).unwrap_or(1);
+    i32::try_from(hash % hash_mod_u32).unwrap_or(0)
 }
 
 /// Computes hash-bucket index for 16-byte TLS client-random cache.
@@ -54,7 +55,8 @@ pub fn select_server_hello_profile(
         return Some((max_len - 1, SERVER_HELLO_PROFILE_RANDOM_NEAR));
     }
 
-    let avg = (f64::from(sum_len) / f64::from(sample_count) + 0.5) as i32;
+    let avg_i64 = (i64::from(sum_len) + i64::from(sample_count / 2)) / i64::from(sample_count);
+    let avg = i32::try_from(avg_i64).unwrap_or(if avg_i64 < 0 { i32::MIN } else { i32::MAX });
     Some((avg, SERVER_HELLO_PROFILE_RANDOM_AVG))
 }
 

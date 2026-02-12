@@ -64,17 +64,11 @@ pub struct TlParsedHeader {
 }
 
 fn saturating_i32_from_usize(value: usize) -> i32 {
-    match i32::try_from(value) {
-        Ok(converted) => converted,
-        Err(_) => i32::MAX,
-    }
+    i32::try_from(value).unwrap_or(i32::MAX)
 }
 
 fn saturating_i64_from_usize(value: usize) -> i64 {
-    match i64::try_from(value) {
-        Ok(converted) => converted,
-        Err(_) => i64::MAX,
-    }
+    i64::try_from(value).unwrap_or(i64::MAX)
 }
 
 fn read_i32_le(data: &[u8], offset: &mut usize) -> Option<i32> {
@@ -103,14 +97,11 @@ fn err_expected_answer_header() -> TlError {
 }
 
 fn parse_flags(data: &[u8], offset: &mut usize, flags: &mut i32) -> Result<(), TlError> {
-    let parsed_flags = match read_i32_le(data, offset) {
-        Some(value) => value,
-        None => {
-            return Err(TlError::new(
-                TL_ERROR_HEADER,
-                "Trying to read 4 bytes at header flags",
-            ))
-        }
+    let Some(parsed_flags) = read_i32_le(data, offset) else {
+        return Err(TlError::new(
+            TL_ERROR_HEADER,
+            "Trying to read 4 bytes at header flags",
+        ));
     };
     if (*flags & parsed_flags) != 0 {
         return Err(TlError::new(
@@ -131,17 +122,15 @@ fn parse_flags(data: &[u8], offset: &mut usize, flags: &mut i32) -> Result<(), T
 /// Parses TL query header bytes (`RPC_INVOKE_REQ` / `RPC_INVOKE_KPHP_REQ`).
 pub fn parse_query_header(data: &[u8]) -> Result<TlParsedHeader, TlError> {
     let mut offset = 0usize;
-    let op = match read_i32_le(data, &mut offset) {
-        Some(value) => value,
-        None => return Err(err_expected_query_header()),
+    let Some(op) = read_i32_le(data, &mut offset) else {
+        return Err(err_expected_query_header());
     };
     if op != RPC_INVOKE_REQ && op != RPC_INVOKE_KPHP_REQ {
         return Err(err_expected_query_header());
     }
 
-    let qid = match read_i64_le(data, &mut offset) {
-        Some(value) => value,
-        None => return Err(err_expected_query_header()),
+    let Some(qid) = read_i64_le(data, &mut offset) else {
+        return Err(err_expected_query_header());
     };
 
     let mut header = TlQueryHeader {
@@ -160,22 +149,19 @@ pub fn parse_query_header(data: &[u8]) -> Result<TlParsedHeader, TlError> {
     }
 
     loop {
-        let marker = match read_i32_le(data, &mut offset) {
-            Some(value) => value,
-            None => return Err(err_expected_query_header()),
+        let Some(marker) = read_i32_le(data, &mut offset) else {
+            return Err(err_expected_query_header());
         };
         match marker {
             RPC_DEST_ACTOR => {
-                let actor_id = match read_i64_le(data, &mut offset) {
-                    Some(value) => value,
-                    None => return Err(err_expected_query_header()),
+                let Some(actor_id) = read_i64_le(data, &mut offset) else {
+                    return Err(err_expected_query_header());
                 };
                 header.actor_id = actor_id;
             }
             RPC_DEST_ACTOR_FLAGS => {
-                let actor_id = match read_i64_le(data, &mut offset) {
-                    Some(value) => value,
-                    None => return Err(err_expected_query_header()),
+                let Some(actor_id) = read_i64_le(data, &mut offset) else {
+                    return Err(err_expected_query_header());
                 };
                 header.actor_id = actor_id;
                 parse_flags(data, &mut offset, &mut header.flags)?;
@@ -197,17 +183,15 @@ pub fn parse_query_header(data: &[u8]) -> Result<TlParsedHeader, TlError> {
 /// Parses TL answer header bytes (`RPC_REQ_ERROR` / `RPC_REQ_RESULT`).
 pub fn parse_answer_header(data: &[u8]) -> Result<TlParsedHeader, TlError> {
     let mut offset = 0usize;
-    let op = match read_i32_le(data, &mut offset) {
-        Some(value) => value,
-        None => return Err(err_expected_answer_header()),
+    let Some(op) = read_i32_le(data, &mut offset) else {
+        return Err(err_expected_answer_header());
     };
     if op != RPC_REQ_ERROR && op != RPC_REQ_RESULT {
         return Err(err_expected_answer_header());
     }
 
-    let qid = match read_i64_le(data, &mut offset) {
-        Some(value) => value,
-        None => return Err(err_expected_answer_header()),
+    let Some(qid) = read_i64_le(data, &mut offset) else {
+        return Err(err_expected_answer_header());
     };
 
     let mut header = TlQueryHeader {
@@ -226,9 +210,8 @@ pub fn parse_answer_header(data: &[u8]) -> Result<TlParsedHeader, TlError> {
             });
         }
 
-        let marker = match read_i32_le(data, &mut offset) {
-            Some(value) => value,
-            None => return Err(err_expected_answer_header()),
+        let Some(marker) = read_i32_le(data, &mut offset) else {
+            return Err(err_expected_answer_header());
         };
 
         match marker {
@@ -353,14 +336,11 @@ impl<'a> TlInState<'a> {
         }
 
         if nbytes >= 0 {
-            let needed = match usize::try_from(nbytes) {
-                Ok(converted) => converted,
-                Err(_) => {
-                    return Err(self.set_error_once(
-                        TL_ERROR_NOT_ENOUGH_DATA,
-                        "Trying to read invalid byte count",
-                    ))
-                }
+            let Ok(needed) = usize::try_from(nbytes) else {
+                return Err(self.set_error_once(
+                    TL_ERROR_NOT_ENOUGH_DATA,
+                    "Trying to read invalid byte count",
+                ));
             };
             if self.unread() < needed {
                 let pos = saturating_i32_from_usize(self.pos);
@@ -371,14 +351,11 @@ impl<'a> TlInState<'a> {
                 ));
             }
         } else {
-            let rollback = match usize::try_from(nbytes.unsigned_abs()) {
-                Ok(converted) => converted,
-                Err(_) => {
-                    return Err(self.set_error_once(
-                        TL_ERROR_NOT_ENOUGH_DATA,
-                        "Trying to read invalid byte count",
-                    ))
-                }
+            let Ok(rollback) = usize::try_from(nbytes.unsigned_abs()) else {
+                return Err(self.set_error_once(
+                    TL_ERROR_NOT_ENOUGH_DATA,
+                    "Trying to read invalid byte count",
+                ));
             };
             if self.pos < rollback {
                 let pos = saturating_i32_from_usize(self.pos);
@@ -396,9 +373,8 @@ impl<'a> TlInState<'a> {
     fn peek_slice(&mut self, len: usize) -> Result<&'a [u8], TlError> {
         let check_len = saturating_i32_from_usize(len);
         self.check(check_len)?;
-        let end = match self.pos.checked_add(len) {
-            Some(value) => value,
-            None => return Err(self.set_error_once(TL_ERROR_INTERNAL, "Input position overflow")),
+        let Some(end) = self.pos.checked_add(len) else {
+            return Err(self.set_error_once(TL_ERROR_INTERNAL, "Input position overflow"));
         };
         match self.data.get(self.pos..end) {
             Some(chunk) => Ok(chunk),
@@ -409,9 +385,8 @@ impl<'a> TlInState<'a> {
     fn read_slice(&mut self, len: usize) -> Result<&'a [u8], TlError> {
         let start = self.pos;
         let chunk = self.peek_slice(len)?;
-        let end = match start.checked_add(len) {
-            Some(value) => value,
-            None => return Err(self.set_error_once(TL_ERROR_INTERNAL, "Input position overflow")),
+        let Some(end) = start.checked_add(len) else {
+            return Err(self.set_error_once(TL_ERROR_INTERNAL, "Input position overflow"));
         };
         self.pos = end;
         Ok(chunk)
@@ -815,9 +790,8 @@ impl<'a> TlOutState<'a> {
     pub fn store_get_ptr(&mut self, size: usize) -> Result<&mut [u8], TlError> {
         self.check(size)?;
         let start = self.cursor();
-        let end = match start.checked_add(size) {
-            Some(value) => value,
-            None => return Err(self.set_error_once(TL_ERROR_INTERNAL, "Output position overflow")),
+        let Some(end) = start.checked_add(size) else {
+            return Err(self.set_error_once(TL_ERROR_INTERNAL, "Output position overflow"));
         };
         if end > self.buffer.len() {
             return Err(self.set_error_once(TL_ERROR_INTERNAL, "Output bounds mismatch"));

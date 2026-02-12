@@ -398,7 +398,7 @@ fn net_thread_run_notification_event_impl(
         event_type, who, event, &mut ops,
     ) {
         Ok(()) => 0,
-        Err(()) => -1,
+        Err(_) => -1,
     }
 }
 

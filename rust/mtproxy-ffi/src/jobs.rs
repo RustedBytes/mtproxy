@@ -565,11 +565,11 @@ fn dequeue_user_queue_item(queue: &ClassQueue, out_ptr: *mut *mut c_void) -> i32
         Ok(guard) => guard,
         Err(poisoned) => poisoned.into_inner(),
     };
-    let received = match receiver.try_recv() {
+    let dequeued = match receiver.try_recv() {
         Ok(ptr) => Some(ptr),
-        Err(TryRecvError::Empty) | Err(TryRecvError::Disconnected) => None,
+        Err(TryRecvError::Empty | TryRecvError::Disconnected) => None,
     };
-    let Some(ptr) = received else {
+    let Some(ptr) = dequeued else {
         return 0;
     };
     // SAFETY: pointer validated by caller-facing wrapper.
@@ -635,16 +635,16 @@ fn dequeue_class_impl(
         Err(poisoned) => poisoned.into_inner(),
     };
 
-    let received = if blocking {
+    let dequeued = if blocking {
         receiver.blocking_recv()
     } else {
         match receiver.try_recv() {
             Ok(job) => Some(job),
-            Err(TryRecvError::Empty) | Err(TryRecvError::Disconnected) => None,
+            Err(TryRecvError::Empty | TryRecvError::Disconnected) => None,
         }
     };
 
-    let Some(job) = received else {
+    let Some(job) = dequeued else {
         return 0;
     };
     // SAFETY: `out_job` validated by caller-facing wrapper.
@@ -685,16 +685,16 @@ fn dequeue_subclass_impl(
         Err(poisoned) => poisoned.into_inner(),
     };
 
-    let received = if blocking {
+    let dequeued = if blocking {
         receiver.blocking_recv()
     } else {
         match receiver.try_recv() {
             Ok(job) => Some(job),
-            Err(TryRecvError::Empty) | Err(TryRecvError::Disconnected) => None,
+            Err(TryRecvError::Empty | TryRecvError::Disconnected) => None,
         }
     };
 
-    let Some(job) = received else {
+    let Some(job) = dequeued else {
         return 0;
     };
     // SAFETY: `out_job` validated by caller-facing wrapper.
