@@ -145,21 +145,14 @@ pub unsafe extern "C" fn mtproxy_ffi_reopen_logs_ext(slave_mode: c_int) {
     }
 
     // Open log file if specified
-    let logname_extern: *const c_char;
-    #[cfg(target_pointer_width = "64")]
-    {
-        extern "C" {
-            static logname: *const c_char;
-        }
-        logname_extern = logname;
+    // Access global C variable 'logname' which may be set by the application
+    extern "C" {
+        static logname: *const c_char;
     }
-    #[cfg(not(target_pointer_width = "64"))]
-    {
-        logname_extern = core::ptr::null();
-    }
+    let logname_ptr = unsafe { logname };
 
-    if !logname_extern.is_null() {
-        let log_fd = open(logname_extern, O_WRONLY | O_APPEND | O_CREAT, 0o640);
+    if !logname_ptr.is_null() {
+        let log_fd = open(logname_ptr, O_WRONLY | O_APPEND | O_CREAT, 0o640);
         if log_fd != -1 {
             dup2(log_fd, 1);
             dup2(log_fd, 2);
@@ -186,6 +179,7 @@ pub extern "C" fn mtproxy_ffi_reopen_logs() {
 
 /// Helper to format and print integer right-to-left.
 fn kwrite_print_int(buf: &mut [u8], pos: &mut usize, name: &[u8], mut value: c_int) {
+    // Negative values are treated as INT_MAX to match original C behavior
     if value < 0 {
         value = c_int::MAX;
     }
@@ -360,7 +354,8 @@ pub unsafe extern "C" fn mtproxy_ffi_kdb_write(
                 if k >= 0.0 {
                     let ts = Timespec {
                         tv_sec: k as c_long,
-                        tv_nsec: (((k - k.floor()) * 1e9) as i64 % 1_000_000_000) as c_long,
+                        // Ensure non-negative nanosecond value using abs() before modulo
+                        tv_nsec: (((k - k.floor()).abs() * 1e9) as i64 % 1_000_000_000) as c_long,
                     };
                     nanosleep(&ts, core::ptr::null_mut());
                 }

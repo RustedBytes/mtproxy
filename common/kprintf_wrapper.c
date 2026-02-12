@@ -65,9 +65,12 @@ extern void mtproxy_ffi_set_reindex_speed(double speed);
 int verbosity;
 const char *logname;
 
+// Default reindex speed in bytes/second (32 MiB)
+constexpr double DEFAULT_REINDEX_SPEED = 32.0 * (1 << 20);
+
 // reindex_speed accessor using Rust implementation
 double *__attribute__((weak)) get_reindex_speed_ptr(void) {
-  static double speed = 32 << 20;
+  static double speed = DEFAULT_REINDEX_SPEED;
   return &speed;
 }
 
@@ -101,10 +104,10 @@ void reopen_logs_ext(int slave_mode) {
 
 // reindex_speed accessor
 __attribute__((constructor)) static void init_reindex_speed(void) {
-  mtproxy_ffi_set_reindex_speed(32.0 * (1 << 20));
+  mtproxy_ffi_set_reindex_speed(DEFAULT_REINDEX_SPEED);
 }
 
-double __attribute__((used)) reindex_speed = 32 << 20;
+double __attribute__((used)) reindex_speed = DEFAULT_REINDEX_SPEED;
 
 // Main kprintf function with varargs - remains in C
 void kprintf(const char *format, ...) {
