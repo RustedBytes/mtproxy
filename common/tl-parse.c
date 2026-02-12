@@ -428,8 +428,6 @@ static inline void __tl_raw_msg_store_flush(struct tl_out_state *tlio_out) {
   // udp_target_flush ((struct udp_target *)TL_OUT_EXTRA);
 }
 
-/* }}} */
-
 /* {{{ Tcp raw msg methods */
 
 static inline void __tl_tcp_raw_msg_store_clear(struct tl_out_state *tlio_out) {
@@ -456,7 +454,6 @@ __tl_tcp_raw_msg_store_flush_unaligned(struct tl_out_state *tlio_out) {
   tcp_rpc_conn_send(JOB_REF_PASS(TL_OUT_EXTRA), TL_OUT_RAW_MSG, 12);
   TL_OUT = NULL;
 }
-/* }}} */
 
 /* {{{ Str methods */
 static inline void __tl_str_fetch_raw_data(struct tl_in_state *tlio_in,
@@ -569,7 +566,6 @@ static inline void __tl_str_store_clear(struct tl_out_state *tlio_out) {
 static inline void __tl_str_store_flush(struct tl_out_state *tlio_out) {
   TL_OUT = 0;
 }
-/* }}} */
 
 const struct tl_in_methods tl_in_raw_msg_methods = {
     .fetch_raw_data = __tl_raw_msg_fetch_raw_data,

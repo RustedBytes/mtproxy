@@ -58,8 +58,9 @@
 
 extern int32_t mtproxy_ffi_crypto_rand_bytes(uint8_t *out, int32_t len);
 extern int32_t mtproxy_ffi_crypto_tls_generate_public_key(uint8_t out[32]);
-extern int32_t mtproxy_ffi_net_tcp_rpc_ext_domain_bucket_index(
-    const uint8_t *domain, int32_t len);
+extern int32_t
+mtproxy_ffi_net_tcp_rpc_ext_domain_bucket_index(const uint8_t *domain,
+                                                int32_t len);
 extern int32_t mtproxy_ffi_net_tcp_rpc_ext_client_random_bucket_index(
     const uint8_t random[16]);
 extern int32_t mtproxy_ffi_net_tcp_rpc_ext_select_server_hello_profile(

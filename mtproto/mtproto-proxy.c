@@ -40,7 +40,6 @@
 
 #include "common/rust-ffi-bridge.h"
 #include "common/tl-parse.h"
-#include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 #include "engine/engine-net.h"
 #include "engine/engine.h"
 #include "kprintf.h"
@@ -56,6 +55,7 @@
 #include "net/net-tcp-rpc-server.h"
 #include "precise-time.h"
 #include "resolver.h"
+#include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 #include "server-functions.h"
 
 #ifndef COMMIT
@@ -1928,8 +1928,8 @@ struct tl_act_extra *mtfront_parse_function(struct tl_in_state *tlio_in,
   }
 
   mtproxy_ffi_mtproto_parse_function_result_t result = {0};
-  int32_t rc =
-      mtproxy_ffi_mtproto_parse_function(buf, (size_t)unread, actor_id, &result);
+  int32_t rc = mtproxy_ffi_mtproto_parse_function(buf, (size_t)unread, actor_id,
+                                                  &result);
   free(buf);
   if (rc < 0) {
     tl_fetch_set_error(TL_ERROR_INTERNAL, "Rust mtfront parser bridge failed");
@@ -2371,7 +2371,7 @@ void mtfront_prepare_parse_options(void) {
       PING_INTERVAL);
 }
 
-void mtfront_parse_extra_args(int argc, char *argv[]) /* {{{ */ {
+void mtfront_parse_extra_args(int argc, char *argv[]) {
   if (argc != 1) {
     usage();
     exit(2);

@@ -48,7 +48,6 @@ SB_SUM_ONE_LL(event_timer_remove_ops);
 SB_SUM_ONE_LL(event_timer_alarms);
 SB_SUM_ONE_I(total_timers);
 MODULE_STAT_FUNCTION_END
-/* }}} */
 
 static __thread event_timer_t **et_heap;
 __thread int et_heap_size;

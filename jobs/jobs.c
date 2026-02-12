@@ -457,9 +457,8 @@ void check_main_thread(void) {
 static void set_job_interrupt_signal_handler(void);
 
 job_t create_async_job_c_impl(job_function_t run_job,
-                              unsigned long long job_signals,
-                              int job_subclass, int custom_bytes,
-                              unsigned long long job_type,
+                              unsigned long long job_signals, int job_subclass,
+                              int custom_bytes, unsigned long long job_type,
                               JOB_REF_ARG(parent_job));
 void job_signal_c_impl(JOB_REF_ARG(job), int signo);
 job_t job_incref_c_impl(job_t job);
@@ -772,8 +771,8 @@ int unlock_job(JOB_REF_ARG(job)) {
             job, job->j_execute, job->j_flags, job->j_refcnt, req_class);
         vkprintf(JOBS_DEBUG, "sub=%p\n", JT->job_class->subclasses);
         job_t queued_job = PTR_MOVE(job);
-        int32_t rc =
-            mtproxy_ffi_jobs_tokio_enqueue_class(tokio_class, (void *)queued_job);
+        int32_t rc = mtproxy_ffi_jobs_tokio_enqueue_class(tokio_class,
+                                                          (void *)queued_job);
         if (rc < 0) {
           kprintf("fatal: rust tokio class enqueue failed (class=%d rc=%d "
                   "job=%p)\n",
@@ -812,7 +811,8 @@ int unlock_job(JOB_REF_ARG(job)) {
         struct mp_queue *JQ = JC->job_queue;
         assert(JQ);
         int tokio_class = (JQ == &MainJobQueue) ? JC_MAIN : req_class;
-        void *subclass_token = (void *)(long)(cur_subclass + JOB_SUBCLASS_OFFSET);
+        void *subclass_token =
+            (void *)(long)(cur_subclass + JOB_SUBCLASS_OFFSET);
         rc = mtproxy_ffi_jobs_tokio_enqueue_class(tokio_class, subclass_token);
         if (rc < 0) {
           kprintf("fatal: rust tokio subclass token enqueue failed "
@@ -1086,7 +1086,7 @@ static void process_one_sublist(unsigned long id, int class) {
   }
 
   permit_rc = mtproxy_ffi_jobs_tokio_subclass_permit_release(JT->thread_class,
-                                                              subclass_id);
+                                                             subclass_id);
   assert(permit_rc == 0);
 }
 
@@ -1281,8 +1281,8 @@ int do_timer_manager_job(job_t job, int op, struct job_thread *JT) {
 
   while (1) {
     job_t W = NULL;
-    int32_t rc = mtproxy_ffi_jobs_tokio_timer_queue_pop(e->tokio_queue_id,
-                                                         (void **)&W);
+    int32_t rc =
+        mtproxy_ffi_jobs_tokio_timer_queue_pop(e->tokio_queue_id, (void **)&W);
     if (rc < 0) {
       kprintf("fatal: rust tokio timer queue pop failed (qid=%d rc=%d)\n",
               e->tokio_queue_id, (int)rc);
@@ -1430,8 +1430,8 @@ void job_timer_insert(job_t job, double timeout) {
   MODULE_STAT->timer_ops_scheduler++;
   assert(m);
   struct job_timer_manager_extra *e = (void *)m->j_custom;
-  int32_t rc =
-      mtproxy_ffi_jobs_tokio_timer_queue_push(e->tokio_queue_id, job_incref(job));
+  int32_t rc = mtproxy_ffi_jobs_tokio_timer_queue_push(e->tokio_queue_id,
+                                                       job_incref(job));
   if (rc < 0) {
     kprintf("fatal: rust tokio timer queue push failed (qid=%d rc=%d)\n",
             e->tokio_queue_id, (int)rc);
@@ -1512,7 +1512,7 @@ void job_message_queue_free(job_t job) {
     while (1) {
       M = NULL;
       int32_t rc = mtproxy_ffi_jobs_tokio_message_queue_pop(Q->tokio_queue_id,
-                                                             (void **)&M);
+                                                            (void **)&M);
       if (rc < 0) {
         kprintf("fatal: rust tokio message queue pop failed (qid=%d rc=%d)\n",
                 Q->tokio_queue_id, (int)rc);
@@ -1600,8 +1600,8 @@ void job_message_queue_work(job_t job,
 
   while (1) {
     struct job_message *msg = NULL;
-    int32_t rc =
-        mtproxy_ffi_jobs_tokio_message_queue_pop(q->tokio_queue_id, (void **)&msg);
+    int32_t rc = mtproxy_ffi_jobs_tokio_message_queue_pop(q->tokio_queue_id,
+                                                          (void **)&msg);
     if (rc < 0) {
       kprintf("fatal: rust tokio message queue pop failed (qid=%d rc=%d)\n",
               q->tokio_queue_id, (int)rc);

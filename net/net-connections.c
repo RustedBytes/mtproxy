@@ -203,7 +203,7 @@ void connection_event_incref(int fd, long long val);
 
 extern int32_t mtproxy_ffi_net_connection_is_active(int32_t flags);
 extern int32_t mtproxy_ffi_net_compute_conn_events(int32_t flags,
-                                                    int32_t use_epollet);
+                                                   int32_t use_epollet);
 extern int32_t mtproxy_ffi_net_add_nat_info(const char *rule_text);
 extern uint32_t mtproxy_ffi_net_translate_ip(uint32_t local_ip);
 
@@ -219,7 +219,7 @@ static int tcp_recv_buffers_total_size;
 static struct iovec tcp_recv_iovec[MAX_TCP_RECV_BUFFERS + 1];
 static struct msg_buffer *tcp_recv_buffers[MAX_TCP_RECV_BUFFERS];
 
-int prealloc_tcp_buffers(void) /* {{{ */ {
+int prealloc_tcp_buffers(void) {
   assert(!tcp_recv_buffers_num);
 
   int i;
@@ -241,10 +241,9 @@ int prealloc_tcp_buffers(void) /* {{{ */ {
   }
   return tcp_recv_buffers_num;
 }
-/* }}} */
 
 int tcp_prepare_iovec(struct iovec *iov, int *iovcnt, int maxcnt,
-                      struct raw_message *raw) /* {{{ */ {
+                      struct raw_message *raw) {
   int t = rwm_prepare_iovec(raw, iov, maxcnt, raw->total_bytes);
   if (t < 0) {
     *iovcnt = maxcnt;
@@ -260,7 +259,6 @@ int tcp_prepare_iovec(struct iovec *iov, int *iovcnt, int maxcnt,
     return raw->total_bytes;
   }
 }
-/* }}} */
 
 void assert_main_thread(void) {}
 void assert_net_cpu_thread(void) {}
@@ -300,9 +298,8 @@ static inline int compute_conn_events(connection_job_t c) {
   return mtproxy_ffi_net_compute_conn_events(CONN_INFO(c)->flags, 0);
 }
 #endif
-/* }}} */
 
-void connection_write_close(connection_job_t C) /* {{{ */ {
+void connection_write_close(connection_job_t C) {
   struct connection_info *c = CONN_INFO(C);
   if (c->status == conn_working) {
     socket_connection_job_t S = c->io_conn;
@@ -315,7 +312,6 @@ void connection_write_close(connection_job_t C) /* {{{ */ {
     job_signal(JOB_REF_CREATE_PASS(C), JS_RUN);
   }
 }
-/* }}} */
 
 /* qack {{{ */
 static inline void disable_qack(int fd) {
@@ -323,12 +319,11 @@ static inline void disable_qack(int fd) {
   assert(setsockopt(fd, IPPROTO_TCP, TCP_QUICKACK, (int[]){0}, sizeof(int)) >=
          0);
 }
-/* }}} */
 
 /* {{{ CPU PART OF CONNECTION */
 
 /* {{{ TIMEOUT */
-int set_connection_timeout(connection_job_t C, double timeout) /* {{{ */ {
+int set_connection_timeout(connection_job_t C, double timeout) {
   struct connection_info *c = CONN_INFO(C);
 
   if (c->flags & C_ERROR) {
@@ -345,21 +340,17 @@ int set_connection_timeout(connection_job_t C, double timeout) /* {{{ */ {
     return 0;
   }
 }
-/* }}} */
 
-int clear_connection_timeout(connection_job_t C) /* {{{ */ {
+int clear_connection_timeout(connection_job_t C) {
   set_connection_timeout(C, 0);
   return 0;
 }
-/* }}} */
-
-/* }}} */
 
 /*
   can be called from any thread and without lock
   just sets error code and sends JS_ABORT to connection job
 */
-void fail_connection(connection_job_t C, int err) /* {{{ */ {
+void fail_connection(connection_job_t C, int err) {
   struct connection_info *c = CONN_INFO(C);
 
   if (!(__sync_fetch_and_or(&c->flags, C_ERROR) & C_ERROR)) {
@@ -371,24 +362,22 @@ void fail_connection(connection_job_t C, int err) /* {{{ */ {
     job_signal(JOB_REF_CREATE_PASS(C), JS_ABORT);
   }
 }
-/* }}} */
 
 /*
   just runs ->reader and ->writer virtual methods
 */
-int cpu_server_read_write(connection_job_t C) /* {{{ */ {
+int cpu_server_read_write(connection_job_t C) {
   struct connection_info *c = CONN_INFO(C);
 
   c->type->reader(C);
   c->type->writer(C);
   return 0;
 }
-/* }}} */
 
 /*
   frees connection structure, including mpq and buffers
 */
-int cpu_server_free_connection(connection_job_t C) /* {{{ */ {
+int cpu_server_free_connection(connection_job_t C) {
   assert_net_cpu_thread();
   assert(C->j_refcnt == 1);
 
@@ -444,7 +433,6 @@ int cpu_server_free_connection(connection_job_t C) /* {{{ */ {
 
   return c->type->free_buffers(C);
 }
-/* }}} */
 
 /*
   deletes link to io_conn
@@ -452,7 +440,7 @@ int cpu_server_free_connection(connection_job_t C) /* {{{ */ {
   aborts pending queries
   updates stats
 */
-int cpu_server_close_connection(connection_job_t C, int who) /* {{{ */ {
+int cpu_server_close_connection(connection_job_t C, int who) {
   assert_net_cpu_thread();
   struct connection_info *c = CONN_INFO(C);
 
@@ -517,9 +505,8 @@ int cpu_server_close_connection(connection_job_t C, int who) /* {{{ */ {
   job_timer_remove(C);
   return 0;
 }
-/* }}} */
 
-int do_connection_job(job_t job, int op, struct job_thread *JT) /* {{{ */ {
+int do_connection_job(job_t job, int op, struct job_thread *JT) {
   connection_job_t C = job;
 
   struct connection_info *c = CONN_INFO(C);
@@ -571,7 +558,6 @@ int do_connection_job(job_t job, int op, struct job_thread *JT) /* {{{ */ {
   }
   return JOB_ERROR;
 }
-/* }}} */
 
 /*
   allocates inbound or outbound connection
@@ -584,7 +570,7 @@ connection_job_t alloc_new_connection(int cfd, conn_target_job_t CTJ,
                                       int basic_type, conn_type_t *conn_type,
                                       void *conn_extra, unsigned peer,
                                       unsigned char peer_ipv6[16],
-                                      int peer_port) /* {{{ */ {
+                                      int peer_port) {
   if (cfd < 0) {
     return NULL;
   }
@@ -797,9 +783,6 @@ connection_job_t alloc_new_connection(int cfd, conn_target_job_t CTJ,
     return NULL;
   }
 }
-/* }}} */
-
-/* }}} */
 
 /* {{{ IO PART OF CONNECTION */
 
@@ -808,7 +791,7 @@ connection_job_t alloc_new_connection(int cfd, conn_target_job_t CTJ,
 
   removes event from evemt heap and epoll
 */
-void fail_socket_connection(socket_connection_job_t C, int who) /* {{{ */ {
+void fail_socket_connection(socket_connection_job_t C, int who) {
   assert_main_thread();
 
   struct socket_connection_info *c = SOCKET_CONN_INFO(C);
@@ -827,13 +810,12 @@ void fail_socket_connection(socket_connection_job_t C, int who) /* {{{ */ {
     fail_connection(c->conn, who);
   }
 }
-/* }}} */
 
 /*
   Frees socket_connection structure
   Removes link to cpu_connection
 */
-int net_server_socket_free(socket_connection_job_t C) /* {{{ */ {
+int net_server_socket_free(socket_connection_job_t C) {
   assert_net_net_thread();
 
   struct socket_connection_info *c = SOCKET_CONN_INFO(C);
@@ -862,13 +844,12 @@ int net_server_socket_free(socket_connection_job_t C) /* {{{ */ {
   MODULE_STAT->allocated_socket_connections--;
   return 0;
 }
-/* }}} */
 
 /*
   Reads data from socket until all data is read
   Then puts it to conn->in_queue and send JS_RUN signal
 */
-int net_server_socket_reader(socket_connection_job_t C) /* {{{ */ {
+int net_server_socket_reader(socket_connection_job_t C) {
   assert_net_net_thread();
   struct socket_connection_info *c = SOCKET_CONN_INFO(C);
 
@@ -972,12 +953,11 @@ int net_server_socket_reader(socket_connection_job_t C) /* {{{ */ {
   }
   return 0;
 }
-/* }}} */
 
 /*
   Get data from out raw message and writes it to socket
 */
-int net_server_socket_writer(socket_connection_job_t C) /* {{{ */ {
+int net_server_socket_writer(socket_connection_job_t C) {
   assert_net_net_thread();
   struct socket_connection_info *c = SOCKET_CONN_INFO(C);
 
@@ -1061,14 +1041,13 @@ int net_server_socket_writer(socket_connection_job_t C) /* {{{ */ {
            c->fd, c->flags);
   return out->total_bytes;
 }
-/* }}} */
 
 /*
   checks if outbound connections become connected
   merges contents of out_packet_queue mpq to out raw message
   runs socket_reader and socket_writer
 */
-int net_server_socket_read_write(socket_connection_job_t C) /* {{{ */ {
+int net_server_socket_read_write(socket_connection_job_t C) {
   assert_net_net_thread();
 
   struct socket_connection_info *c = SOCKET_CONN_INFO(C);
@@ -1120,15 +1099,13 @@ int net_server_socket_read_write(socket_connection_job_t C) /* {{{ */ {
 
   return compute_conn_events(C);
 }
-/* }}} */
 
 /*
   removes C_NOWR and C_NORD flags if necessary
   reads errors from socket
   sends JS_RUN signal to socket_connection
 */
-int net_server_socket_read_write_gateway(int fd, void *data,
-                                         event_t *ev) /* {{{ */ {
+int net_server_socket_read_write_gateway(int fd, void *data, event_t *ev) {
   assert_main_thread();
   if (!data) {
     return EVA_REMOVE;
@@ -1181,10 +1158,8 @@ int net_server_socket_read_write_gateway(int fd, void *data,
   job_signal(JOB_REF_CREATE_PASS(C), JS_RUN);
   return EVA_CONTINUE;
 }
-/* }}} */
 
-int do_socket_connection_job(job_t job, int op,
-                             struct job_thread *JT) /* {{{ */ {
+int do_socket_connection_job(job_t job, int op, struct job_thread *JT) {
   socket_connection_job_t C = job;
 
   struct socket_connection_info *c = SOCKET_CONN_INFO(C);
@@ -1218,14 +1193,12 @@ int do_socket_connection_job(job_t job, int op,
 
   return JOB_ERROR;
 }
-/* }}} */
 
 /*
   creates socket_connection structure
   insert event to epoll
 */
-socket_connection_job_t
-alloc_new_socket_connection(connection_job_t C) /* {{{ */ {
+socket_connection_job_t alloc_new_socket_connection(connection_job_t C) {
   assert_main_thread();
   struct connection_info *c = CONN_INFO(C);
 
@@ -1274,8 +1247,6 @@ alloc_new_socket_connection(connection_job_t C) /* {{{ */ {
   MODULE_STAT->allocated_socket_connections++;
   return S;
 }
-/* }}} */
-/* }}} */
 
 /* {{{ LISTENING CONNECTION */
 
@@ -1283,7 +1254,7 @@ alloc_new_socket_connection(connection_job_t C) /* {{{ */ {
   accepts new connections
   executes alloc_new_connection ()
 */
-int net_accept_new_connections(listening_connection_job_t LCJ) /* {{{ */ {
+int net_accept_new_connections(listening_connection_job_t LCJ) {
   struct listening_connection_info *LC = LISTEN_CONN_INFO(LCJ);
 
   union sockaddr_in46 peer;
@@ -1352,10 +1323,8 @@ int net_accept_new_connections(listening_connection_job_t LCJ) /* {{{ */ {
   }
   return 0;
 }
-/* }}} */
 
-int do_listening_connection_job(job_t job, int op,
-                                struct job_thread *JT) /* {{{ */ {
+int do_listening_connection_job(job_t job, int op, struct job_thread *JT) {
   listening_connection_job_t LCJ = job;
 
   if (op == JS_RUN) {
@@ -1369,10 +1338,9 @@ int do_listening_connection_job(job_t job, int op,
   }
   return JOB_ERROR;
 }
-/* }}} */
 
 int init_listening_connection_ext(int fd, conn_type_t *type, void *extra,
-                                  int mode, int prio) /* {{{ */ {
+                                  int mode, int prio) {
   if (check_conn_functions(type, 1) < 0) {
     return -1;
   }
@@ -1450,9 +1418,6 @@ int init_listening_tcpv6_connection(int fd, conn_type_t *type, void *extra,
                                     int mode) {
   return init_listening_connection_ext(fd, type, extra, mode, -10);
 }
-/* }}} */
-
-/* }}} */
 
 /* {{{ connection refcnt */
 void connection_event_incref(int fd, long long val) {
@@ -1514,11 +1479,10 @@ connection_job_t connection_get_by_fd_generation(int fd, int generation) {
     return C;
   }
 }
-/* }}} */
 
 /* {{{ Sample server functions */
 
-int server_check_ready(connection_job_t C) /* {{{ */ {
+int server_check_ready(connection_job_t C) {
   struct connection_info *c = CONN_INFO(C);
   if (c->status == conn_none || c->status == conn_connecting) {
     return c->ready = cr_notyet;
@@ -1528,25 +1492,21 @@ int server_check_ready(connection_job_t C) /* {{{ */ {
   }
   return c->ready = cr_ok;
 }
-/* }}} */
 
-int server_noop(connection_job_t C) /* {{{ */ { return 0; }
-/* }}} */
+int server_noop(connection_job_t C) { return 0; }
 
-int server_failed(connection_job_t C) /* {{{ */ {
+int server_failed(connection_job_t C) {
   kprintf("connection %d: call to pure virtual method\n", CONN_INFO(C)->fd);
   assert(0);
   return -1;
 }
-/* }}} */
 
-int server_flush(connection_job_t C) /* {{{ */ {
+int server_flush(connection_job_t C) {
   // job_signal (job_incref (C), JS_RUN);
   return 0;
 }
-/* }}} */
 
-int check_conn_functions(conn_type_t *type, int listening) /* {{{ */ {
+int check_conn_functions(conn_type_t *type, int listening) {
   if (type->magic != CONN_FUNC_MAGIC) {
     return -1;
   }
@@ -1640,13 +1600,10 @@ int check_conn_functions(conn_type_t *type, int listening) /* {{{ */ {
   }
   return 0;
 }
-/* }}} */
-
-/* }}} */
 
 /* CONN TARGETS {{{ */
 
-void compute_next_reconnect(conn_target_job_t CT) /* {{{ */ {
+void compute_next_reconnect(conn_target_job_t CT) {
   struct conn_target_info *S = CONN_TARGET_INFO(CT);
   if (S->next_reconnect_timeout < S->reconnect_timeout ||
       S->active_outbound_connections) {
@@ -1659,10 +1616,9 @@ void compute_next_reconnect(conn_target_job_t CT) /* {{{ */ {
         S->next_reconnect_timeout * 1.5 + drand48_j() * 0.2;
   }
 }
-/* }}} */
 
 static void count_connection_num(connection_job_t C, void *good_c,
-                                 void *stopped_c, void *bad_c) /* {{{ */ {
+                                 void *stopped_c, void *bad_c) {
   int cr = CONN_INFO(C)->type->check_ready(C);
   switch (cr) {
   case cr_notyet:
@@ -1681,9 +1637,8 @@ static void count_connection_num(connection_job_t C, void *good_c,
     assert(0);
   }
 }
-/* }}} */
 
-static void find_bad_connection(connection_job_t C, void *x) /* {{{ */ {
+static void find_bad_connection(connection_job_t C, void *x) {
   connection_job_t *T = x;
   if (*T) {
     return;
@@ -1692,12 +1647,11 @@ static void find_bad_connection(connection_job_t C, void *x) /* {{{ */ {
     *T = C;
   }
 }
-/* }}} */
 
 /*
   Deletes failed connections (with flag C_ERROR) from target's tree
 */
-void destroy_dead_target_connections(conn_target_job_t CTJ) /* {{{ */ {
+void destroy_dead_target_connections(conn_target_job_t CTJ) {
   struct conn_target_info *CT = CONN_TARGET_INFO(CTJ);
 
   struct tree_connection *T = CT->conn_tree;
@@ -1749,14 +1703,13 @@ void destroy_dead_target_connections(conn_target_job_t CTJ) /* {{{ */ {
     free_tree_ptr_connection(old);
   }
 }
-/* }}} */
 
 /*
   creates new connections for target
   must be called in main thread, because we can allocate new connections only in
   main thread
 */
-int create_new_connections(conn_target_job_t CTJ) /* {{{ */ {
+int create_new_connections(conn_target_job_t CTJ) {
   assert_main_thread();
 
   destroy_dead_target_connections(CTJ);
@@ -1843,7 +1796,6 @@ int create_new_connections(conn_target_job_t CTJ) /* {{{ */ {
 
   return count;
 }
-/* }}} */
 
 conn_target_job_t HTarget[PRIME_TARGETS];
 pthread_mutex_t TargetsLock = PTHREAD_MUTEX_INITIALIZER;
@@ -1852,7 +1804,7 @@ pthread_mutex_t TargetsLock = PTHREAD_MUTEX_INITIALIZER;
 /* mode = 0 -- lookup, mode = 1 -- insert, mode = -1 -- delete */
 static conn_target_job_t find_target(struct in_addr ad, int port,
                                      conn_type_t *type, void *extra, int mode,
-                                     conn_target_job_t new_target) /* {{{ */ {
+                                     conn_target_job_t new_target) {
   assert(ad.s_addr);
   unsigned h1 = ((unsigned long)type * 0xabacaba + ad.s_addr) % PRIME_TARGETS;
   h1 = (h1 * 239 + port) % PRIME_TARGETS;
@@ -1879,14 +1831,13 @@ static conn_target_job_t find_target(struct in_addr ad, int port,
   }
   return 0;
 }
-/* }}} */
 
 /* must be called with mutex held */
 /* mode = 0 -- lookup, mode = 1 -- insert, mode = -1 -- delete */
-static conn_target_job_t
-find_target_ipv6(unsigned char ad_ipv6[16], int port, conn_type_t *type,
-                 void *extra, int mode,
-                 conn_target_job_t new_target) /* {{{ */ {
+static conn_target_job_t find_target_ipv6(unsigned char ad_ipv6[16], int port,
+                                          conn_type_t *type, void *extra,
+                                          int mode,
+                                          conn_target_job_t new_target) {
   assert(*(long long *)ad_ipv6 || ((long long *)ad_ipv6)[1]);
   unsigned h1 = ((unsigned long)type * 0xabacaba) % PRIME_TARGETS;
   int i;
@@ -1920,9 +1871,8 @@ find_target_ipv6(unsigned char ad_ipv6[16], int port, conn_type_t *type,
   }
   return 0;
 }
-/* }}} */
 
-static int free_target(conn_target_job_t CTJ) /* {{{ */ {
+static int free_target(conn_target_job_t CTJ) {
   pthread_mutex_lock(&TargetsLock);
   struct conn_target_info *CT = CONN_TARGET_INFO(CTJ);
   if (CT->global_refcnt > 0 || CT->conn_tree) {
@@ -1953,11 +1903,10 @@ static int free_target(conn_target_job_t CTJ) /* {{{ */ {
 
   return 1;
 }
-/* }}} */
 
 static void fail_connection_gw(connection_job_t C) { fail_connection(C, -17); }
 
-int clean_unused_target(conn_target_job_t CTJ) /* {{{ */ {
+int clean_unused_target(conn_target_job_t CTJ) {
   assert(CTJ);
   struct conn_target_info *CT = CONN_TARGET_INFO(CTJ);
   assert(CT->type);
@@ -1971,9 +1920,8 @@ int clean_unused_target(conn_target_job_t CTJ) /* {{{ */ {
   job_timer_remove(CTJ);
   return 0;
 }
-/* }}} */
 
-int destroy_target(JOB_REF_ARG(CTJ)) /* {{{ */ {
+int destroy_target(JOB_REF_ARG(CTJ)) {
   struct conn_target_info *CT = CONN_TARGET_INFO(CTJ);
   assert(CT);
   assert(CT->type);
@@ -1992,7 +1940,7 @@ int destroy_target(JOB_REF_ARG(CTJ)) /* {{{ */ {
 }
 /*}}} */
 
-int do_conn_target_job(job_t job, int op, struct job_thread *JT) /* {{{ */ {
+int do_conn_target_job(job_t job, int op, struct job_thread *JT) {
   if (epoll_fd <= 0) {
     job_timer_insert(job, precise_now + 0.01);
     return 0;
@@ -2036,10 +1984,9 @@ int do_conn_target_job(job_t job, int op, struct job_thread *JT) /* {{{ */ {
 
   return JOB_ERROR;
 }
-/* }}} */
 
 conn_target_job_t create_target(struct conn_target_info *source,
-                                int *was_created) /* {{{ */ {
+                                int *was_created) {
   if (check_conn_functions(source->type, 0) < 0) {
     return NULL;
   }
@@ -2109,19 +2056,15 @@ conn_target_job_t create_target(struct conn_target_info *source,
 
   return T;
 }
-/* }}} */
 
-/* }}} */
-
-void tcp_set_max_connections(int maxconn) /* {{{ */ {
+void tcp_set_max_connections(int maxconn) {
   max_connection_fd = maxconn;
   if (!max_special_connections || max_special_connections > maxconn) {
     max_special_connections = maxconn;
   }
 }
-/* }}} */
 
-int create_all_outbound_connections_limited(int limit) /* {{{ */ {
+int create_all_outbound_connections_limited(int limit) {
   return 0;
   /*int count = 0;
   get_utime_monotonic ();
@@ -2149,12 +2092,10 @@ int create_all_outbound_connections_limited(int limit) /* {{{ */ {
   MODULE_STAT->ready_outbound_connections = new_ready_outbound_connections;
   return count;    */
 }
-/* }}} */
 
-int create_all_outbound_connections(void) /* {{{ */ {
+int create_all_outbound_connections(void) {
   return create_all_outbound_connections_limited(0x7fffffff);
 }
-/* }}} */
 
 /* {{{ conn_target_get_connection */
 static void check_connection(connection_job_t C, void *x) {
@@ -2211,7 +2152,6 @@ connection_job_t conn_target_get_connection(conn_target_job_t CT,
 
   return S;
 }
-/* }}} */
 
 void insert_free_later_struct(struct free_later *F) {
   if (!free_later_queue) {
@@ -2237,10 +2177,9 @@ void free_later_act(void) {
   }
 }
 
-void free_connection_tree_ptr(struct tree_connection *T) /* {{{ */ {
+void free_connection_tree_ptr(struct tree_connection *T) {
   free_tree_ptr_connection(T);
 }
-/* }}} */
 
 void incr_active_dh_connections(void) { MODULE_STAT->active_dh_connections++; }
 
@@ -2252,9 +2191,7 @@ int get_cur_conn_generation(void) { return conn_generation; }
 
 // -----
 
-int net_add_nat_info(char *str) {
-  return mtproxy_ffi_net_add_nat_info(str);
-}
+int net_add_nat_info(char *str) { return mtproxy_ffi_net_add_nat_info(str); }
 
 unsigned nat_translate_ip(unsigned local_ip) {
   return mtproxy_ffi_net_translate_ip(local_ip);

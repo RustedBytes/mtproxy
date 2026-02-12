@@ -267,7 +267,7 @@ static inline int tl_store_end_simple(struct tl_out_state *tlio_out) {
 }
 #define tl_store_end_ext(type) tls_end_ext(tlio_out, type)
 
-static inline int tlf_check(struct tl_in_state *tlio_in, int nbytes) /* {{{ */ {
+static inline int tlf_check(struct tl_in_state *tlio_in, int nbytes) {
   if (!TL_IN_TYPE) {
     tlf_set_error(tlio_in, TL_ERROR_INTERNAL,
                   "Trying to read from unitialized in buffer");
@@ -293,25 +293,21 @@ static inline int tlf_check(struct tl_in_state *tlio_in, int nbytes) /* {{{ */ {
   }
   return 0;
 }
-/* }}} */
 
 inline static void __tlf_raw_data(struct tl_in_state *tlio_in, void *buf,
-                                  int size) /* {{{ */ {
+                                  int size) {
   TL_IN_METHODS->fetch_raw_data(tlio_in, buf, size);
   TL_IN_POS += size;
   TL_IN_REMAINING -= size;
 }
-/* }}} */
 
-inline static void __tlf_skip_raw_data(struct tl_in_state *tlio_in,
-                                       int size) /* {{{ */ {
+inline static void __tlf_skip_raw_data(struct tl_in_state *tlio_in, int size) {
   TL_IN_METHODS->fetch_move(tlio_in, size);
   TL_IN_POS += size;
   TL_IN_REMAINING -= size;
 }
-/* }}} */
 
-static inline int tlf_lookup_int(struct tl_in_state *tlio_in) /* {{{ */ {
+static inline int tlf_lookup_int(struct tl_in_state *tlio_in) {
   if (tlf_check(tlio_in, 4) < 0) {
     return -1;
   }
@@ -319,10 +315,10 @@ static inline int tlf_lookup_int(struct tl_in_state *tlio_in) /* {{{ */ {
   TL_IN_METHODS->fetch_lookup(tlio_in, &x, 4);
   return x;
 }
-/* }}} */
+
 #define tl_fetch_lookup_int(...) tlf_lookup_int(tlio_in, ##__VA_ARGS__)
 
-static inline int tlf_lookup_second_int(struct tl_in_state *tlio_in) /* {{{ */ {
+static inline int tlf_lookup_second_int(struct tl_in_state *tlio_in) {
   if (tlf_check(tlio_in, 8) < 0) {
     return -1;
   }
@@ -330,11 +326,11 @@ static inline int tlf_lookup_second_int(struct tl_in_state *tlio_in) /* {{{ */ {
   TL_IN_METHODS->fetch_lookup(tlio_in, x, 8);
   return x[1];
 }
-/* }}} */
+
 #define tl_fetch_lookup_second_int(...)                                        \
   tlf_lookup_second_int(tlio_in, ##__VA_ARGS__)
 
-static inline long long tlf_lookup_long(struct tl_in_state *tlio_in) /* {{{ */ {
+static inline long long tlf_lookup_long(struct tl_in_state *tlio_in) {
   if (tlf_check(tlio_in, 8) < 0) {
     return -1;
   }
@@ -342,21 +338,21 @@ static inline long long tlf_lookup_long(struct tl_in_state *tlio_in) /* {{{ */ {
   TL_IN_METHODS->fetch_lookup(tlio_in, &x, 8);
   return x;
 }
-/* }}} */
+
 #define tl_fetch_lookup_long(...) tlf_lookup_long(tlio_in, ##__VA_ARGS__)
 
 static inline int tlf_lookup_data(struct tl_in_state *tlio_in, void *data,
-                                  int len) /* {{{ */ {
+                                  int len) {
   if (tlf_check(tlio_in, len) < 0) {
     return -1;
   }
   TL_IN_METHODS->fetch_lookup(tlio_in, data, len);
   return len;
 }
-/* }}} */
+
 #define tl_fetch_lookup_data(...) tlf_lookup_data(tlio_in, ##__VA_ARGS__)
 
-static inline int tlf_int(struct tl_in_state *tlio_in) /* {{{ */ {
+static inline int tlf_int(struct tl_in_state *tlio_in) {
   if (__builtin_expect(tlf_check(tlio_in, 4) < 0, 0)) {
     return -1;
   }
@@ -364,10 +360,10 @@ static inline int tlf_int(struct tl_in_state *tlio_in) /* {{{ */ {
   __tlf_raw_data(tlio_in, &x, 4);
   return x;
 }
-/* }}} */
+
 #define tl_fetch_int(...) tlf_int(tlio_in, ##__VA_ARGS__)
 
-static inline double tlf_double(struct tl_in_state *tlio_in) /* {{{ */ {
+static inline double tlf_double(struct tl_in_state *tlio_in) {
   if (__builtin_expect(tlf_check(tlio_in, sizeof(double)) < 0, 0)) {
     return -1;
   }
@@ -375,10 +371,10 @@ static inline double tlf_double(struct tl_in_state *tlio_in) /* {{{ */ {
   __tlf_raw_data(tlio_in, &x, sizeof(x));
   return x;
 }
-/* }}} */
+
 #define tl_fetch_double(...) tlf_double(tlio_in, ##__VA_ARGS__)
 
-static inline long long tlf_long(struct tl_in_state *tlio_in) /* {{{ */ {
+static inline long long tlf_long(struct tl_in_state *tlio_in) {
   if (__builtin_expect(tlf_check(tlio_in, 8) < 0, 0)) {
     return -1;
   }
@@ -386,29 +382,28 @@ static inline long long tlf_long(struct tl_in_state *tlio_in) /* {{{ */ {
   __tlf_raw_data(tlio_in, &x, 8);
   return x;
 }
-/* }}} */
+
 #define tl_fetch_long(...) tlf_long(tlio_in, ##__VA_ARGS__)
 
-static inline void tlf_mark(struct tl_in_state *tlio_in) /* {{{ */ {
+static inline void tlf_mark(struct tl_in_state *tlio_in) {
   TL_IN_METHODS->fetch_mark(tlio_in);
 }
-/* }}} */
+
 #define tl_fetch_mark(...) tlf_mark(tlio_in, ##__VA_ARGS__)
 
-static inline void tlf_mark_restore(struct tl_in_state *tlio_in) /* {{{ */ {
+static inline void tlf_mark_restore(struct tl_in_state *tlio_in) {
   TL_IN_METHODS->fetch_mark_restore(tlio_in);
 }
-/* }}} */
+
 #define tl_fetch_mark_restore(...) tlf_mark_restore(tlio_in, ##__VA_ARGS__)
 
-static inline void tlf_mark_delete(struct tl_in_state *tlio_in) /* {{{ */ {
+static inline void tlf_mark_delete(struct tl_in_state *tlio_in) {
   TL_IN_METHODS->fetch_mark_delete(tlio_in);
 }
-/* }}} */
+
 #define tl_fetch_mark_delete(...) tlf_mark_delete(tlio_in, ##__VA_ARGS__)
 
-static inline int tlf_string_len(struct tl_in_state *tlio_in,
-                                 int max_len) /* {{{ */ {
+static inline int tlf_string_len(struct tl_in_state *tlio_in, int max_len) {
   if (tlf_check(tlio_in, 4) < 0) {
     return -1;
   }
@@ -436,10 +431,10 @@ static inline int tlf_string_len(struct tl_in_state *tlio_in,
   }
   return x;
 }
-/* }}} */
+
 #define tl_fetch_string_len(...) tlf_string_len(tlio_in, ##__VA_ARGS__)
 
-static inline int tlf_pad(struct tl_in_state *tlio_in) /* {{{ */ {
+static inline int tlf_pad(struct tl_in_state *tlio_in) {
   int pad = (-TL_IN_POS) & 3;
   if (tlf_check(tlio_in, pad) < 0) {
     return -1;
@@ -453,11 +448,11 @@ static inline int tlf_pad(struct tl_in_state *tlio_in) /* {{{ */ {
   }
   return pad;
 }
-/* }}} */
+
 #define tl_fetch_pad(...) tlf_pad(tlio_in, ##__VA_ARGS__)
 
 static inline int tlf_raw_data(struct tl_in_state *tlio_in, void *buf,
-                               int len) /* {{{ */ {
+                               int len) {
   assert(!(len & 3));
   if (tlf_check(tlio_in, len) < 0) {
     return -1;
@@ -465,11 +460,11 @@ static inline int tlf_raw_data(struct tl_in_state *tlio_in, void *buf,
   __tlf_raw_data(tlio_in, buf, len);
   return len;
 }
-/* }}} */
+
 #define tl_fetch_raw_data(...) tlf_raw_data(tlio_in, ##__VA_ARGS__)
 
 static inline int tlf_string_data(struct tl_in_state *tlio_in, char *buf,
-                                  int len) /* {{{ */ {
+                                  int len) {
   if (tlf_check(tlio_in, len) < 0) {
     return -1;
   }
@@ -479,11 +474,10 @@ static inline int tlf_string_data(struct tl_in_state *tlio_in, char *buf,
   }
   return len;
 }
-/* }}} */
+
 #define tl_fetch_string_data(...) tlf_string_data(tlio_in, ##__VA_ARGS__)
 
-static inline int tlf_skip_string_data(struct tl_in_state *tlio_in,
-                                       int len) /* {{{ */ {
+static inline int tlf_skip_string_data(struct tl_in_state *tlio_in, int len) {
   if (tlf_check(tlio_in, len) < 0) {
     return -1;
   }
@@ -493,12 +487,12 @@ static inline int tlf_skip_string_data(struct tl_in_state *tlio_in,
   }
   return len;
 }
-/* }}} */
+
 #define tl_fetch_skip_string_data(...)                                         \
   tlf_skip_string_data(tlio_in, ##__VA_ARGS__)
 
 static inline int tlf_string(struct tl_in_state *tlio_in, char *buf,
-                             int max_len) /* {{{ */ {
+                             int max_len) {
   int l = tlf_string_len(tlio_in, max_len);
   if (l < 0) {
     return -1;
@@ -508,11 +502,10 @@ static inline int tlf_string(struct tl_in_state *tlio_in, char *buf,
   }
   return l;
 }
-/* }}} */
+
 #define tl_fetch_string(...) tlf_string(tlio_in, ##__VA_ARGS__)
 
-static inline int tlf_skip_string(struct tl_in_state *tlio_in,
-                                  int max_len) /* {{{ */ {
+static inline int tlf_skip_string(struct tl_in_state *tlio_in, int max_len) {
   int l = tlf_string_len(tlio_in, max_len);
   if (l < 0) {
     return -1;
@@ -522,11 +515,11 @@ static inline int tlf_skip_string(struct tl_in_state *tlio_in,
   }
   return l;
 }
-/* }}} */
+
 #define tl_fetch_skip_string(...) tlf_skip_string(tlio_in, ##__VA_ARGS__)
 
 static inline int tlf_string0(struct tl_in_state *tlio_in, char *buf,
-                              int max_len) /* {{{ */ {
+                              int max_len) {
   int l = tlf_string_len(tlio_in, max_len);
   if (l < 0) {
     return -1;
@@ -537,16 +530,16 @@ static inline int tlf_string0(struct tl_in_state *tlio_in, char *buf,
   buf[l] = 0;
   return l;
 }
-/* }}} */
+
 #define tl_fetch_string0(...) tlf_string0(tlio_in, ##__VA_ARGS__)
 
-static inline int tlf_error(struct tl_in_state *tlio_in) /* {{{ */ {
+static inline int tlf_error(struct tl_in_state *tlio_in) {
   return TL_ERROR != 0;
 }
-/* }}} */
+
 #define tl_fetch_error(...) tlf_error(tlio_in, ##__VA_ARGS__)
 
-static inline int tlf_end(struct tl_in_state *tlio_in) /* {{{ */ {
+static inline int tlf_end(struct tl_in_state *tlio_in) {
   if (TL_IN_REMAINING &&
       !(TL_IN_CUR_FLAGS & (TL_FETCH_FLAG_ALLOW_DATA_AFTER_QUERY))) {
     tlf_set_error_format(tlio_in, TL_ERROR_EXTRA_DATA,
@@ -555,11 +548,10 @@ static inline int tlf_end(struct tl_in_state *tlio_in) /* {{{ */ {
   }
   return 1;
 }
-/* }}} */
+
 #define tl_fetch_end(...) tlf_end(tlio_in, ##__VA_ARGS__)
 
-static inline int tlf_check_str_end(struct tl_in_state *tlio_in,
-                                    int size) /* {{{ */ {
+static inline int tlf_check_str_end(struct tl_in_state *tlio_in, int size) {
   if (TL_IN_REMAINING != size + ((-size - TL_IN_POS) & 3)) {
     tlf_set_error_format(tlio_in, TL_ERROR_EXTRA_DATA,
                          "extra %d bytes after query",
@@ -568,23 +560,23 @@ static inline int tlf_check_str_end(struct tl_in_state *tlio_in,
   }
   return 1;
 }
-/* }}} */
+
 #define tl_fetch_check_str_end(...) tlf_check_str_end(tlio_in, ##__VA_ARGS__)
 
-static inline int tlf_unread(struct tl_in_state *tlio_in) /* {{{ */ {
+static inline int tlf_unread(struct tl_in_state *tlio_in) {
   return TL_IN_REMAINING;
 }
-/* }}} */
+
 #define tl_fetch_unread(...) tlf_unread(tlio_in, ##__VA_ARGS__)
 
-static inline int tlf_skip(struct tl_in_state *tlio_in, int len) /* {{{ */ {
+static inline int tlf_skip(struct tl_in_state *tlio_in, int len) {
   if (tlf_check(tlio_in, len) < 0) {
     return -1;
   }
   __tlf_skip_raw_data(tlio_in, len);
   return len;
 }
-/* }}} */
+
 #define tl_fetch_skip(...) tlf_skip(tlio_in, ##__VA_ARGS__)
 /*
 static inline int tl_fetch_move (int offset) {
@@ -597,7 +589,7 @@ static inline int tl_fetch_move (int offset) {
   return offset;
 }*/
 
-static inline int tls_check(struct tl_out_state *tlio_out, int size) /* {{{ */ {
+static inline int tls_check(struct tl_out_state *tlio_out, int size) {
   if (TL_OUT_TYPE == tl_type_none) {
     return -1;
   }
@@ -606,18 +598,15 @@ static inline int tls_check(struct tl_out_state *tlio_out, int size) /* {{{ */ {
   }
   return 0;
 }
-/* }}} */
 
 static inline void __tls_raw_data(struct tl_out_state *tlio_out,
-                                  const void *buf, int len) /* {{{ */ {
+                                  const void *buf, int len) {
   TL_OUT_METHODS->store_raw_data(tlio_out, buf, len);
   TL_OUT_POS += len;
   TL_OUT_REMAINING -= len;
 }
-/* }}} */
 
-static inline void *tls_get_ptr(struct tl_out_state *tlio_out,
-                                int size) /* {{{ */ {
+static inline void *tls_get_ptr(struct tl_out_state *tlio_out, int size) {
   assert(tls_check(tlio_out, size) >= 0);
   if (!size) {
     return 0;
@@ -628,11 +617,11 @@ static inline void *tls_get_ptr(struct tl_out_state *tlio_out,
   TL_OUT_REMAINING -= size;
   return x;
 }
-/* }}} */
+
 #define tl_store_get_ptr(...) tls_get_ptr(tlio_out, ##__VA_ARGS__)
 
 static inline void *tls_get_prepend_ptr(struct tl_out_state *tlio_out,
-                                        int size) /* {{{ */ {
+                                        int size) {
   assert(tls_check(tlio_out, size) >= 0);
   if (!size) {
     return 0;
@@ -643,38 +632,35 @@ static inline void *tls_get_prepend_ptr(struct tl_out_state *tlio_out,
   TL_OUT_REMAINING -= size;
   return x;
 }
-/* }}} */
+
 #define tl_store_get_prepend_ptr(...)                                          \
   tls_get_prepend_ptr(tlio_out, ##__VA_ARGS__)
 
-static inline int tls_int(struct tl_out_state *tlio_out, int x) /* {{{ */ {
+static inline int tls_int(struct tl_out_state *tlio_out, int x) {
   assert(tls_check(tlio_out, 4) >= 0);
   __tls_raw_data(tlio_out, &x, 4);
   return 0;
 }
-/* }}} */
+
 #define tl_store_int(...) tls_int(tlio_out, ##__VA_ARGS__)
 
-static inline int tls_long(struct tl_out_state *tlio_out,
-                           long long x) /* {{{ */ {
+static inline int tls_long(struct tl_out_state *tlio_out, long long x) {
   assert(tls_check(tlio_out, 8) >= 0);
   __tls_raw_data(tlio_out, &x, 8);
   return 0;
 }
-/* }}} */
+
 #define tl_store_long(...) tls_long(tlio_out, ##__VA_ARGS__)
 
-static inline int tls_double(struct tl_out_state *tlio_out,
-                             double x) /* {{{ */ {
+static inline int tls_double(struct tl_out_state *tlio_out, double x) {
   assert(tls_check(tlio_out, 8) >= 0);
   __tls_raw_data(tlio_out, &x, 8);
   return 0;
 }
-/* }}} */
+
 #define tl_store_double(...) tls_double(tlio_out, ##__VA_ARGS__)
 
-static inline int tls_string_len(struct tl_out_state *tlio_out,
-                                 int len) /* {{{ */ {
+static inline int tls_string_len(struct tl_out_state *tlio_out, int len) {
   assert(tls_check(tlio_out, 4) >= 0);
   assert(len >= 0);
   if (len < 254) {
@@ -686,11 +672,11 @@ static inline int tls_string_len(struct tl_out_state *tlio_out,
   }
   return 0;
 }
-/* }}} */
+
 #define tl_store_string_len(...) tls_string_len(tlio_out, ##__VA_ARGS__)
 
 static inline int tls_raw_msg(struct tl_out_state *tlio_out,
-                              struct raw_message *raw, int dup) /* {{{ */ {
+                              struct raw_message *raw, int dup) {
   assert(tls_check(tlio_out, raw->total_bytes) >= 0);
   int len = raw->total_bytes;
   if (!dup) {
@@ -704,51 +690,51 @@ static inline int tls_raw_msg(struct tl_out_state *tlio_out,
   TL_OUT_REMAINING -= len;
   return 0;
 }
-/* }}} */
+
 #define tl_store_raw_msg(...) tls_raw_msg(tlio_out, ##__VA_ARGS__)
 
-static inline int tls_pad(struct tl_out_state *tlio_out) /* {{{ */ {
+static inline int tls_pad(struct tl_out_state *tlio_out) {
   assert(tls_check(tlio_out, 0) >= 0);
   int x = 0;
   int pad = (-TL_OUT_POS) & 3;
   __tls_raw_data(tlio_out, &x, pad);
   return 0;
 }
-/* }}} */
+
 #define tl_store_pad(...) tls_pad(tlio_out, ##__VA_ARGS__)
 
 static inline int tls_raw_data(struct tl_out_state *tlio_out, const void *s,
-                               int len) /* {{{ */ {
+                               int len) {
   // assert (!(len & 3));
   assert(tls_check(tlio_out, len) >= 0);
   __tls_raw_data(tlio_out, s, len);
   return len;
 }
-/* }}} */
+
 #define tl_store_raw_data(...) tls_raw_data(tlio_out, ##__VA_ARGS__)
 
 static inline int tls_string_data(struct tl_out_state *tlio_out, const char *s,
-                                  int len) /* {{{ */ {
+                                  int len) {
   assert(tls_check(tlio_out, len) >= 0);
   __tls_raw_data(tlio_out, s, len);
   tls_pad(tlio_out);
   return 0;
 }
-/* }}} */
+
 #define tl_store_string_data(...) tls_string_data(tlio_out, ##__VA_ARGS__)
 
 static inline int tls_string(struct tl_out_state *tlio_out, const char *s,
-                             int len) /* {{{ */ {
+                             int len) {
   tls_string_len(tlio_out, len);
   tls_string_data(tlio_out, s, len);
   return 0;
 }
-/* }}} */
+
 #define tls_string0(tlio_out, _s) tls_string(tlio_out, _s, strlen(_s))
 #define tl_store_string(...) tls_string(tlio_out, ##__VA_ARGS__)
 #define tl_store_string0(s) tl_store_string(s, strlen(s))
 
-static inline int tls_clear(struct tl_out_state *tlio_out) /* {{{ */ {
+static inline int tls_clear(struct tl_out_state *tlio_out) {
   assert(TL_OUT);
   TL_OUT_METHODS->store_clear(tlio_out);
   TL_OUT = 0;
@@ -756,17 +742,17 @@ static inline int tls_clear(struct tl_out_state *tlio_out) /* {{{ */ {
   TL_OUT_EXTRA = 0;
   return 0;
 }
-/* }}} */
+
 #define tl_store_clear(...) tls_clear(tlio_out, ##__VA_ARGS__)
 
-static inline int tls_clean(struct tl_out_state *tlio_out) /* {{{ */ {
+static inline int tls_clean(struct tl_out_state *tlio_out) {
   assert(TL_OUT);
   TL_OUT_METHODS->store_read_back(tlio_out, TL_OUT_POS);
   TL_OUT_REMAINING += TL_OUT_POS;
   TL_OUT_POS = 0;
   return 0;
 }
-/* }}} */
+
 #define tl_store_clean(...) tls_clean(tlio_out, ##__VA_ARGS__)
 
 /*static inline int tl_store_read_back_nondestruct (struct tchar *buf, int size)
@@ -778,7 +764,7 @@ size); return size;
 
 static inline int tl_copy_through(struct tl_in_state *tlio_in,
                                   struct tl_out_state *tlio_out, int len,
-                                  int advance) /* {{{ */ {
+                                  int advance) {
   if (TL_IN_TYPE == tl_type_none || TL_OUT_TYPE == tl_type_none) {
     return -1;
   }
@@ -795,10 +781,8 @@ static inline int tl_copy_through(struct tl_in_state *tlio_in,
   TL_OUT_REMAINING -= len;
   return len;
 }
-/* }}} */
 
-static inline int tlf_int_range(struct tl_in_state *tlio_in, int min,
-                                int max) /* {{{ */ {
+static inline int tlf_int_range(struct tl_in_state *tlio_in, int min, int max) {
   int x = tlf_int(tlio_in);
   if (x < min || x > max) {
     tlf_set_error_format(tlio_in, TL_ERROR_VALUE_NOT_IN_RANGE,
@@ -807,7 +791,7 @@ static inline int tlf_int_range(struct tl_in_state *tlio_in, int min,
   }
   return x;
 }
-/* }}} */
+
 #define tl_fetch_int_range(...) tlf_int_range(tlio_in, ##__VA_ARGS__)
 
 static inline int tlf_positive_int(struct tl_in_state *tlio_in) {
@@ -821,8 +805,7 @@ static inline int tlf_nonnegative_int(struct tl_in_state *tlio_in) {
 #define tl_fetch_nonnegative_int(...)                                          \
   tlf_nonnegative_int(tlio_in, ##__VA_ARGS__)
 
-static inline int tlf_int_subset(struct tl_in_state *tlio_in,
-                                 int set) /* {{{ */ {
+static inline int tlf_int_subset(struct tl_in_state *tlio_in, int set) {
   int x = tlf_int(tlio_in);
   if (x & ~set) {
     tlf_set_error_format(
@@ -832,11 +815,11 @@ static inline int tlf_int_subset(struct tl_in_state *tlio_in,
   }
   return x;
 }
-/* }}} */
+
 #define tl_fetch_int_subset(...) tlf_int_subset(tlio_in, ##__VA_ARGS__)
 
 static inline long long tlf_long_range(struct tl_in_state *tlio_in,
-                                       long long min, long long max) /* {{{ */ {
+                                       long long min, long long max) {
   long long x = tlf_long(tlio_in);
   if (x < min || x > max) {
     tlf_set_error_format(tlio_in, TL_ERROR_VALUE_NOT_IN_RANGE,
@@ -845,7 +828,6 @@ static inline long long tlf_long_range(struct tl_in_state *tlio_in,
   }
   return x;
 }
-/* }}} */
 
 static inline long long tlf_positive_long(struct tl_in_state *tlio_in) {
   return tlf_long_range(tlio_in, 1, 0x7fffffffffffffffll);

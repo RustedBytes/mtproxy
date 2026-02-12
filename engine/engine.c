@@ -98,15 +98,13 @@ static void default_sigrtmax_4(void) {}
 static void default_sigrtmax_1(void) {}
 
 static void default_sigrtmax(void) {}
-/* }}} */
 
-void set_signals_handlers(void) /* {{{ */ {
+void set_signals_handlers(void) {
   ksignal(SIGINT, sigint_immediate_handler);
   ksignal(SIGTERM, sigterm_immediate_handler);
 
   set_debug_handlers();
 }
-/* }}} */
 
 /* {{{ PIPE TO WAKEUP MAIN THREAD */
 static int pipe_read_end;
@@ -147,7 +145,6 @@ static int epoll_nop(int fd, void *data, event_t *ev) {
   }
   return EVA_CONTINUE;
 }
-/* }}} */
 
 const char *get_version_string_override(void) __attribute__((weak));
 const char *get_version_string_override(void) {
@@ -162,13 +159,12 @@ const char *get_version_string(void) {
   }
 }
 
-void engine_set_epoll_wait_timeout(int epoll_wait_timeout) /* {{{ */ {
+void engine_set_epoll_wait_timeout(int epoll_wait_timeout) {
   assert(1 <= epoll_wait_timeout && epoll_wait_timeout <= 1000);
   engine_state->epoll_wait_timeout = epoll_wait_timeout;
 }
-/* }}} */
 
-static void raise_file_limit(int maxconn) /* {{{ */ {
+static void raise_file_limit(int maxconn) {
   const int gap = 16;
   if (getuid()) {
     struct rlimit rlim;
@@ -187,7 +183,6 @@ static void raise_file_limit(int maxconn) /* {{{ */ {
     }
   }
 }
-/* }}} */
 
 /* {{{ engine_init */
 
@@ -267,10 +262,9 @@ void engine_init(const char *const pwd_filename, int do_not_open_port) {
 
   kprintf("Started as " PID_PRINT_STR "\n", PID_TO_PRINT(&PID));
 }
-/* }}} */
 
 void server_init(conn_type_t *listen_connection_type,
-                 void *listen_connection_extra) /* {{{ */ {
+                 void *listen_connection_extra) {
   engine_t *E = engine_state;
   server_functions_t *F = E->F;
   assert(F && "server functions aren't defined");
@@ -315,9 +309,8 @@ void server_init(conn_type_t *listen_connection_type,
     ksignal(SIGHUP, default_signal_handler);
   }
 }
-/* }}} */
 
-void server_exit(void) /* {{{ */ {
+void server_exit(void) {
   engine_t *E = engine_state;
   server_functions_t *F = E->F;
 
@@ -329,7 +322,6 @@ void server_exit(void) /* {{{ */ {
     kprintf("Terminated by SIGINT.\n");
   }
 }
-/* }}} */
 
 /* {{{ precise cron */
 
@@ -380,7 +372,6 @@ static void do_precise_cron(void) {
 
   free_later_act();
 }
-/* }}} */
 
 double update_job_stats_gw(void *ex) {
   update_all_thread_stats();
@@ -391,7 +382,7 @@ struct precise_cron_job_extra {
   struct event_timer ev;
 };
 
-int precise_cron_job_run(job_t job, int op, struct job_thread *JT) /* {{{ */ {
+int precise_cron_job_run(job_t job, int op, struct job_thread *JT) {
   if (op != JS_RUN && op != JS_ALARM) {
     return JOB_ERROR;
   }
@@ -403,7 +394,6 @@ int precise_cron_job_run(job_t job, int op, struct job_thread *JT) /* {{{ */ {
   job_timer_insert(job, precise_now + 0.001 * (1 + drand48_j()));
   return 0;
 }
-/* }}} */
 
 int terminate_job_run(job_t job, int op, struct job_thread *JT) {
   if (op == JS_RUN) {
@@ -420,7 +410,7 @@ int terminate_job_run(job_t job, int op, struct job_thread *JT) {
   return JOB_ERROR;
 }
 
-void default_engine_server_start(void) /* {{{ */ {
+void default_engine_server_start(void) {
   engine_t *E = engine_state;
   server_functions_t *F = E->F;
 
@@ -487,7 +477,6 @@ void default_engine_server_start(void) /* {{{ */ {
   kprintf("Did not exit after 120 seconds\n");
   assert(0);
 }
-/* }}} */
 
 #define DATA_BUF_SIZE (1 << 20)
 static char data_buf[DATA_BUF_SIZE + 1];
@@ -529,7 +518,7 @@ unsigned long long default_signal_mask =
     SIG2INT(OUR_SIGRTMAX - 1) | SIG2INT(OUR_SIGRTMAX - 4) |
     SIG2INT(OUR_SIGRTMAX - 8) | SIG2INT(OUR_SIGRTMAX - 9);
 
-static void check_server_functions(void) /* {{{ */ {
+static void check_server_functions(void) {
   engine_t *E = engine_state;
   server_functions_t *F = E->F;
   F->allowed_signals =
@@ -587,9 +576,8 @@ static void check_server_functions(void) /* {{{ */ {
     }
   }
 }
-/* }}} */
 
-void engine_startup(engine_t *E, server_functions_t *F) /* {{{ */ {
+void engine_startup(engine_t *E, server_functions_t *F) {
   E->F = F;
   E->modules = (ENGINE_DEFAULT_ENABLED_MODULES | F->default_modules) &
                ~F->default_modules_disabled;
@@ -608,7 +596,6 @@ void engine_startup(engine_t *E, server_functions_t *F) /* {{{ */ {
 
   check_server_functions();
 }
-/* }}} */
 
 int default_main(server_functions_t *F, int argc, char *argv[]) {
   set_signals_handlers();
@@ -734,7 +721,7 @@ void engine_add_engine_parse_options(void) {
                               LONGOPT_JOBS_SET, "number of tcp-io threads");
 }
 
-void default_parse_extra_args(int argc, char *argv[]) /* {{{ */ {
+void default_parse_extra_args(int argc, char *argv[]) {
   if (argc != 0) {
     vkprintf(0, "Extra args\n");
     usage();

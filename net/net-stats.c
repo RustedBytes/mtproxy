@@ -97,9 +97,9 @@ int prepare_stats(char *buff, int buff_size) {
             "epoll_intr\t%lld\n"
             "PID\t" PID_PRINT_STR "\n",
             my_pid, start_time, now, uptime, tot_idle_time,
-            average_idle_percent, recent_idle_percent_value,
-            ev_heap_size, get_utime(CLOCK_MONOTONIC) - last_epoll_wait_at,
-            epoll_calls, epoll_intr, PID_TO_PRINT(&PID));
+            average_idle_percent, recent_idle_percent_value, ev_heap_size,
+            get_utime(CLOCK_MONOTONIC) - last_epoll_wait_at, epoll_calls,
+            epoll_intr, PID_TO_PRINT(&PID));
 
   connections_prepare_stat(&sb);
   raw_msg_prepare_stat(&sb);

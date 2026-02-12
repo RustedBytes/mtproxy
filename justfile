@@ -40,10 +40,10 @@ inventory:
   make step15-inventory
 
 c-format:
-  rg --files -g '*.c' -g '*.h' common crypto engine jobs mtproto net vv tests | xargs -r clang-format -style=file -i
+  rg --files -g '*.c' -g '*.h' common crypto engine jobs mtproto net vv | xargs -r clang-format -style=file -i
 
 c-format-check:
-  rg --files -g '*.c' -g '*.h' common crypto engine jobs mtproto net vv tests | xargs -r clang-format -style=file --dry-run -Werror
+  rg --files -g '*.c' -g '*.h' common crypto engine jobs mtproto net vv | xargs -r clang-format -style=file --dry-run -Werror
 
 format:
   just rust-format

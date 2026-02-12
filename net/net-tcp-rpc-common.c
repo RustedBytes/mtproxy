@@ -155,7 +155,7 @@ void tcp_rpc_conn_send_data_im(JOB_REF_ARG(C), int len, void *Q) {
 }
 
 int tcp_rpc_default_execute(connection_job_t C, int op,
-                            struct raw_message *raw) /* {{{ */ {
+                            struct raw_message *raw) {
   struct connection_info *c = CONN_INFO(C);
 
   vkprintf(1, "rpcc_execute: fd=%d, op=%d, len=%d\n", c->fd, op,
@@ -177,7 +177,6 @@ int tcp_rpc_default_execute(connection_job_t C, int op,
   c->last_response_time = precise_now;
   return 0;
 }
-/* }}} */
 
 int tcp_rpc_flush_packet(connection_job_t C) {
   return CONN_INFO(C)->type->flush(C);

@@ -60,12 +60,12 @@ int hts_close_connection(connection_job_t c, int who);
 int hts_write_packet(connection_job_t C, struct raw_message *raw);
 extern const char *mtproxy_ffi_net_http_error_msg_text(int32_t *code);
 extern int32_t mtproxy_ffi_net_http_gen_date(char *out, int32_t out_len,
-                                              int32_t time);
+                                             int32_t time);
 extern int32_t mtproxy_ffi_net_http_get_header(const char *q_headers,
-                                                int32_t q_headers_len,
-                                                char *buffer, int32_t b_len,
-                                                const char *arg_name,
-                                                int32_t arg_len);
+                                               int32_t q_headers_len,
+                                               char *buffer, int32_t b_len,
+                                               const char *arg_name,
+                                               int32_t arg_len);
 
 conn_type_t ct_http_server = {.magic = CONN_FUNC_MAGIC,
                               .title = "http_server",
@@ -689,7 +689,7 @@ char *cur_http_date(void) {
 int get_http_header(const char *qHeaders, const int qHeadersLen, char *buffer,
                     int b_len, const char *arg_name, const int arg_len) {
   return mtproxy_ffi_net_http_get_header(qHeaders, qHeadersLen, buffer, b_len,
-                                          arg_name, arg_len);
+                                         arg_name, arg_len);
 }
 
 static char header_pattern[] = "HTTP/1.1 %d %s\r\n"

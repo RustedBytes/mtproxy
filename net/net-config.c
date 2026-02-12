@@ -24,9 +24,9 @@
 
 #include <assert.h>
 #include <fcntl.h>
-#include <stdint.h>
 #include <stdarg.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <unistd.h>
 
 #include "net/net-config.h"

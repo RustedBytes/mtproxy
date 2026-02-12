@@ -51,8 +51,8 @@ int crypto_aes_prepare_stat(stats_buffer_t *sb) {
 
 void fetch_aes_crypto_stat(int *allocated_aes_crypto_ptr,
                            int *allocated_aes_crypto_temp_ptr) {
-  int32_t rc = mtproxy_ffi_crypto_aes_fetch_stat(
-      allocated_aes_crypto_ptr, allocated_aes_crypto_temp_ptr);
+  int32_t rc = mtproxy_ffi_crypto_aes_fetch_stat(allocated_aes_crypto_ptr,
+                                                 allocated_aes_crypto_temp_ptr);
   assert(rc == 0);
 }
 
@@ -73,7 +73,7 @@ int aes_crypto_ctr128_init(connection_job_t c, void *key_data,
 
 int aes_crypto_free(connection_job_t c) {
   int32_t rc = mtproxy_ffi_crypto_aes_conn_free(&CONN_INFO(c)->crypto,
-                                                 &CONN_INFO(c)->crypto_temp);
+                                                &CONN_INFO(c)->crypto_temp);
   return rc == 0 ? 0 : -1;
 }
 
@@ -82,7 +82,8 @@ int aes_crypto_free(connection_job_t c) {
 int aes_load_pwd_file(const char *filename) {
   int32_t rc = mtproxy_ffi_crypto_aes_load_pwd_file(
       filename, (uint8_t *)pwd_config_buf, (int32_t)sizeof(pwd_config_buf),
-      &pwd_config_len, pwd_config_md5, (mtproxy_ffi_aes_secret_t *)&main_secret);
+      &pwd_config_len, pwd_config_md5,
+      (mtproxy_ffi_aes_secret_t *)&main_secret);
   if (rc == 1) {
     aes_initialized = 1;
   }
@@ -111,11 +112,10 @@ int aes_create_keys(struct aes_key_data *R, int am_client,
     return -1;
   }
   int32_t rc = mtproxy_ffi_crypto_aes_create_keys(
-      (mtproxy_ffi_aes_key_data_t *)R, am_client,
-      (const uint8_t *)nonce_server, (const uint8_t *)nonce_client,
-      client_timestamp, server_ip, server_port, server_ipv6, client_ip,
-      client_port, client_ipv6, (const uint8_t *)key->secret, key->secret_len,
-      temp_key, temp_key_len);
+      (mtproxy_ffi_aes_key_data_t *)R, am_client, (const uint8_t *)nonce_server,
+      (const uint8_t *)nonce_client, client_timestamp, server_ip, server_port,
+      server_ipv6, client_ip, client_port, client_ipv6,
+      (const uint8_t *)key->secret, key->secret_len, temp_key, temp_key_len);
   assert(rc == 1 || rc < 0);
   return rc;
 }

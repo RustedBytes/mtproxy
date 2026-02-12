@@ -27,8 +27,8 @@
 #define _FILE_OFFSET_BITS 64
 
 #include <assert.h>
-#include <stdint.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -86,8 +86,7 @@ static inline void free_msg_part(struct msg_part *mp) {
   free(mp);
 }
 
-struct msg_part *new_msg_part(struct msg_part *neighbor,
-                              struct msg_buffer *X) /* {{{ */ {
+struct msg_part *new_msg_part(struct msg_part *neighbor, struct msg_buffer *X) {
   struct msg_part *mp = alloc_msg_part();
   assert(mp);
   assert(mp->magic == MSG_PART_MAGIC);
@@ -98,7 +97,6 @@ struct msg_part *new_msg_part(struct msg_part *neighbor,
   mp->data_end = 0;
   return mp;
 }
-/* }}} */
 
 #define check_msg_part_magic(x)                                                \
   {                                                                            \
@@ -106,7 +104,7 @@ struct msg_part *new_msg_part(struct msg_part *neighbor,
     assert(magic == MSG_PART_MAGIC || magic == MSG_PART_LOCKED_MAGIC);         \
   }
 
-static int msg_part_decref(struct msg_part *mp) /* {{{ */ {
+static int msg_part_decref(struct msg_part *mp) {
   struct msg_part *mpn;
   int cnt = 0;
   while (mp) {
@@ -133,14 +131,13 @@ static int msg_part_decref(struct msg_part *mp) /* {{{ */ {
   }
   return cnt;
 }
-/* }}} */
 
 // after this function non-empty raw message raw should have following
 // properties:
 //   raw->last_offset = raw->last->data_end
 //   raw->last->next = NULL
 //   raw->last is locked, unless refcnt is 1 in full msg_part chain
-struct msg_part *rwm_lock_last_part(struct raw_message *raw) /* {{{ */ {
+struct msg_part *rwm_lock_last_part(struct raw_message *raw) {
   assert(raw->magic == RM_INIT_MAGIC);
 
   if (!raw->first) {
@@ -172,12 +169,11 @@ struct msg_part *rwm_lock_last_part(struct raw_message *raw) /* {{{ */ {
   }
   return locked;
 }
-/* }}} */
 
 // after this function non-empty raw message raw should have following
 // properties:
 //   raw->first_offset == raw->first->offset
-struct msg_part *rwm_lock_first_part(struct raw_message *raw) /* {{{ */ {
+struct msg_part *rwm_lock_first_part(struct raw_message *raw) {
   assert(raw->magic == RM_INIT_MAGIC);
 
   if (!raw->first) {
@@ -209,11 +205,10 @@ struct msg_part *rwm_lock_first_part(struct raw_message *raw) /* {{{ */ {
 
   return NULL;
 }
-/* }}} */
 
 // struct raw_message itself is not freed since it is usually part of a larger
 // structure
-int rwm_free(struct raw_message *raw) /* {{{ */ {
+int rwm_free(struct raw_message *raw) {
   struct msg_part *mp = raw->first;
   int t = raw->magic;
   assert(raw->magic == RM_INIT_MAGIC || raw->magic == RM_TMP_MAGIC);
@@ -221,9 +216,8 @@ int rwm_free(struct raw_message *raw) /* {{{ */ {
   memset(raw, 0, sizeof(*raw));
   return t == RM_TMP_MAGIC ? 0 : msg_part_decref(mp);
 }
-/* }}} */
 
-int rwm_compare(struct raw_message *l, struct raw_message *r) /* {{{ */ {
+int rwm_compare(struct raw_message *l, struct raw_message *r) {
   assert(l->magic == RM_INIT_MAGIC || l->magic == RM_TMP_MAGIC);
   assert(r->magic == RM_INIT_MAGIC || r->magic == RM_TMP_MAGIC);
   if (l && !l->total_bytes) {
@@ -277,7 +271,6 @@ int rwm_compare(struct raw_message *l, struct raw_message *r) /* {{{ */ {
     }
   }
 }
-/* }}} */
 
 // after this function non-empty raw message raw should have following
 // properties:
@@ -285,7 +278,7 @@ int rwm_compare(struct raw_message *l, struct raw_message *r) /* {{{ */ {
 //   raw->first_offset = raw->first->offset
 //   raw->last_offset = raw->last->offset
 //   raw->last->next = NULL
-int fork_message_chain(struct raw_message *raw) /* {{{ */ {
+int fork_message_chain(struct raw_message *raw) {
   assert(raw->magic == RM_INIT_MAGIC);
   struct msg_part *mp = raw->first, **mpp = &raw->first, *mpl = 0;
   int copy_last = 0, res = 0, total_bytes = raw->total_bytes;
@@ -356,27 +349,23 @@ int fork_message_chain(struct raw_message *raw) /* {{{ */ {
   assert(!total_bytes);
   return res;
 }
-/* }}} */
 
-void rwm_clean(struct raw_message *raw) /* {{{ */ {
+void rwm_clean(struct raw_message *raw) {
   assert(raw->magic == RM_INIT_MAGIC || raw->magic == RM_TMP_MAGIC);
   raw->first = raw->last = 0;
   raw->first_offset = raw->last_offset = 0;
   raw->total_bytes = 0;
 }
-/* }}} */
 
-void rwm_clear(struct raw_message *raw) /* {{{ */ {
+void rwm_clear(struct raw_message *raw) {
   assert(raw->magic == RM_INIT_MAGIC || raw->magic == RM_TMP_MAGIC);
   if (raw->first && raw->magic == RM_INIT_MAGIC) {
     msg_part_decref(raw->first);
   }
   rwm_clean(raw);
 }
-/* }}} */
 
-void rwm_clone(struct raw_message *dest_raw,
-               struct raw_message *src_raw) /* {{{ */ {
+void rwm_clone(struct raw_message *dest_raw, struct raw_message *src_raw) {
   assert(src_raw->magic == RM_INIT_MAGIC || src_raw->magic == RM_TMP_MAGIC);
   memcpy(dest_raw, src_raw, sizeof(struct raw_message));
   if (src_raw->magic == RM_INIT_MAGIC && src_raw->first) {
@@ -388,19 +377,16 @@ void rwm_clone(struct raw_message *dest_raw,
   }
   MODULE_STAT->rwm_total_msgs++;
 }
-/* }}} */
 
-void rwm_move(struct raw_message *dest_raw,
-              struct raw_message *src_raw) /* {{{ */ {
+void rwm_move(struct raw_message *dest_raw, struct raw_message *src_raw) {
   assert(src_raw->magic == RM_INIT_MAGIC || src_raw->magic == RM_TMP_MAGIC);
   *dest_raw = *src_raw;
   memset(src_raw, 0, sizeof(*src_raw));
 }
-/* }}} */
 
 int rwm_push_data_ext(struct raw_message *raw, const void *data,
                       int alloc_bytes, int prepend, int small_buffer,
-                      int std_buffer) /* {{{ */ {
+                      int std_buffer) {
   assert(raw->magic == RM_INIT_MAGIC);
   assert(alloc_bytes >= 0);
   if (!alloc_bytes) {
@@ -525,17 +511,14 @@ int rwm_push_data_ext(struct raw_message *raw, const void *data,
   }
   return res;
 }
-/* }}} */
 
-int rwm_push_data(struct raw_message *raw, const void *data,
-                  int alloc_bytes) /* {{{ */ {
+int rwm_push_data(struct raw_message *raw, const void *data, int alloc_bytes) {
   return rwm_push_data_ext(raw, data, alloc_bytes, RM_PREPEND_RESERVE,
                            MSG_SMALL_BUFFER, MSG_STD_BUFFER);
 }
-/* }}} */
 
 int rwm_push_data_front(struct raw_message *raw, const void *data,
-                        int alloc_bytes) /* {{{ */ {
+                        int alloc_bytes) {
   assert(raw->magic == RM_INIT_MAGIC);
   assert(alloc_bytes >= 0);
   if (!alloc_bytes) {
@@ -607,23 +590,19 @@ int rwm_push_data_front(struct raw_message *raw, const void *data,
   assert(0);
   return r;
 }
-/* }}} */
 
-int rwm_create(struct raw_message *raw, const void *data,
-               int alloc_bytes) /* {{{ */ {
+int rwm_create(struct raw_message *raw, const void *data, int alloc_bytes) {
   MODULE_STAT->rwm_total_msgs++;
   memset(raw, 0, sizeof(*raw));
   raw->magic = RM_INIT_MAGIC;
   return rwm_push_data(raw, data, alloc_bytes);
 }
-/* }}} */
 
-int rwm_init(struct raw_message *raw, int alloc_bytes) /* {{{ */ {
+int rwm_init(struct raw_message *raw, int alloc_bytes) {
   return rwm_create(raw, 0, alloc_bytes);
 }
-/* }}} */
 
-void *rwm_prepend_alloc(struct raw_message *raw, int alloc_bytes) /* {{{ */ {
+void *rwm_prepend_alloc(struct raw_message *raw, int alloc_bytes) {
   assert(raw->magic == RM_INIT_MAGIC);
   assert(alloc_bytes >= 0);
   if (!alloc_bytes || alloc_bytes > MSG_STD_BUFFER) {
@@ -670,9 +649,8 @@ void *rwm_prepend_alloc(struct raw_message *raw, int alloc_bytes) /* {{{ */ {
   }
   return raw->first->part->data + mp->offset;
 }
-/* }}} */
 
-void *rwm_postpone_alloc(struct raw_message *raw, int alloc_bytes) /* {{{ */ {
+void *rwm_postpone_alloc(struct raw_message *raw, int alloc_bytes) {
   assert(raw->magic == RM_INIT_MAGIC);
   assert(alloc_bytes >= 0);
   if (!alloc_bytes || alloc_bytes > MSG_STD_BUFFER) {
@@ -719,10 +697,9 @@ void *rwm_postpone_alloc(struct raw_message *raw, int alloc_bytes) /* {{{ */ {
   }
   return mp->part->data;
 }
-/* }}} */
 
 int rwm_prepare_iovec(const struct raw_message *raw, struct iovec *iov,
-                      int iov_len, int bytes) /* {{{ */ {
+                      int iov_len, int bytes) {
   assert(raw->magic == RM_INIT_MAGIC || raw->magic == RM_TMP_MAGIC);
   if (bytes > raw->total_bytes) {
     bytes = raw->total_bytes;
@@ -754,9 +731,8 @@ int rwm_prepare_iovec(const struct raw_message *raw, struct iovec *iov,
   }
   return res;
 }
-/* }}} */
 
-int rwm_process_memcpy(void *extra, const void *data, int len) /* {{{ */ {
+int rwm_process_memcpy(void *extra, const void *data, int len) {
   if (extra) {
     char **d = extra;
     memcpy(*d, data, len);
@@ -764,10 +740,8 @@ int rwm_process_memcpy(void *extra, const void *data, int len) /* {{{ */ {
   }
   return 0;
 }
-/* }}} */
 
-int rwm_fetch_data_back(struct raw_message *raw, void *data,
-                        int bytes) /* {{{ */ {
+int rwm_fetch_data_back(struct raw_message *raw, void *data, int bytes) {
   assert(raw->magic == RM_INIT_MAGIC || raw->magic == RM_TMP_MAGIC);
   if (bytes > raw->total_bytes) {
     bytes = raw->total_bytes;
@@ -780,10 +754,8 @@ int rwm_fetch_data_back(struct raw_message *raw, void *data,
   return rwm_process_ex(raw, bytes, raw->total_bytes - bytes, RMPF_TRUNCATE,
                         rwm_process_memcpy, data ? &data : NULL);
 }
-/* }}} */
 
-int rwm_fetch_lookup_back(struct raw_message *raw, void *data,
-                          int bytes) /* {{{ */ {
+int rwm_fetch_lookup_back(struct raw_message *raw, void *data, int bytes) {
   assert(raw->magic == RM_INIT_MAGIC || raw->magic == RM_TMP_MAGIC);
   if (bytes > raw->total_bytes) {
     bytes = raw->total_bytes;
@@ -796,9 +768,8 @@ int rwm_fetch_lookup_back(struct raw_message *raw, void *data,
   return rwm_process_ex(raw, bytes, raw->total_bytes - bytes, 0,
                         rwm_process_memcpy, data ? &data : NULL);
 }
-/* }}} */
 
-int rwm_trunc(struct raw_message *raw, int len) /* {{{ */ {
+int rwm_trunc(struct raw_message *raw, int len) {
   assert(raw->magic == RM_INIT_MAGIC || raw->magic == RM_TMP_MAGIC);
   if (len >= raw->total_bytes) {
     return raw->total_bytes;
@@ -806,10 +777,8 @@ int rwm_trunc(struct raw_message *raw, int len) /* {{{ */ {
   rwm_fetch_data_back(raw, 0, raw->total_bytes - len);
   return len;
 }
-/* }}} */
 
-int rwm_split(struct raw_message *raw, struct raw_message *tail,
-              int bytes) /* {{{ */ {
+int rwm_split(struct raw_message *raw, struct raw_message *tail, int bytes) {
   assert(raw->magic == RM_INIT_MAGIC || raw->magic == RM_TMP_MAGIC);
   assert(bytes >= 0);
   MODULE_STAT->rwm_total_msgs++;
@@ -869,17 +838,15 @@ int rwm_split(struct raw_message *raw, struct raw_message *tail,
   }
   return 0;
 }
-/* }}} */
 
 int rwm_split_head(struct raw_message *head, struct raw_message *raw,
-                   int bytes) /* {{{ */ {
+                   int bytes) {
   assert(raw->magic == RM_INIT_MAGIC || raw->magic == RM_TMP_MAGIC);
   *head = *raw;
   return rwm_split(head, raw, bytes);
 }
-/* }}} */
 
-int rwm_union(struct raw_message *raw, struct raw_message *tail) /* {{{ */ {
+int rwm_union(struct raw_message *raw, struct raw_message *tail) {
   // rwm_check (raw);
   // rwm_check (tail);
   assert(raw->magic == RM_INIT_MAGIC);
@@ -921,9 +888,8 @@ int rwm_union(struct raw_message *raw, struct raw_message *tail) /* {{{ */ {
   }
   return 0;
 }
-/* }}} */
 
-int rwm_dump_sizes(struct raw_message *raw) /* {{{ */ {
+int rwm_dump_sizes(struct raw_message *raw) {
   assert(raw->magic == RM_INIT_MAGIC || raw->magic == RM_TMP_MAGIC);
   if (!raw->first) {
     fprintf(stderr, "( ) # %d\n", raw->total_bytes);
@@ -948,9 +914,8 @@ int rwm_dump_sizes(struct raw_message *raw) /* {{{ */ {
   }
   return 0;
 }
-/* }}} */
 
-int rwm_check(struct raw_message *raw) /* {{{ */ {
+int rwm_check(struct raw_message *raw) {
   assert(raw->magic == RM_INIT_MAGIC || raw->magic == RM_TMP_MAGIC);
   if (!raw->first) {
     assert(!raw->total_bytes);
@@ -980,9 +945,8 @@ int rwm_check(struct raw_message *raw) /* {{{ */ {
   }
   return 0;
 }
-/* }}} */
 
-int rwm_dump(struct raw_message *raw) /* {{{ */ {
+int rwm_dump(struct raw_message *raw) {
   assert(raw->magic == RM_INIT_MAGIC || raw->magic == RM_TMP_MAGIC);
   struct raw_message t;
   rwm_clone(&t, raw);
@@ -996,11 +960,10 @@ int rwm_dump(struct raw_message *raw) /* {{{ */ {
   rwm_free(&t);
   return 0;
 }
-/* }}} */
 
 int rwm_process_ex(struct raw_message *raw, int bytes, int offset, int flags,
                    int (*process_block)(void *extra, const void *data, int len),
-                   void *extra) /* {{{ */ {
+                   void *extra) {
   // rwm_check (raw);
   assert(raw->magic == RM_INIT_MAGIC || raw->magic == RM_TMP_MAGIC);
 
@@ -1144,38 +1107,33 @@ int rwm_process_ex(struct raw_message *raw, int bytes, int offset, int flags,
   assert(0);
   return 0;
 }
-/* }}} */
 
 int rwm_process_and_advance(struct raw_message *raw, int bytes,
                             int (*process_block)(void *extra, const void *data,
                                                  int len),
-                            void *extra) /* {{{ */ {
+                            void *extra) {
   return rwm_process_ex(raw, bytes, 0, RMPF_ADVANCE, process_block, extra);
 }
-/* }}} */
 
 int rwm_process(struct raw_message *raw, int bytes,
                 int (*process_block)(void *extra, const void *data, int len),
-                void *extra) /* {{{ */ {
+                void *extra) {
   return rwm_process_ex(raw, bytes, 0, 0, process_block, extra);
 }
-/* }}} */
 
 int rwm_process_from_offset(struct raw_message *raw, int bytes, int offset,
                             int (*process_block)(void *extra, const void *data,
                                                  int len),
-                            void *extra) /* {{{ */ {
+                            void *extra) {
   return rwm_process_ex(raw, bytes, offset, 0, process_block, extra);
 }
-/* }}} */
 
 int rwm_transform_from_offset(struct raw_message *raw, int bytes, int offset,
                               int (*transform_block)(void *extra, void *data,
                                                      int len),
-                              void *extra) /* {{{ */ {
+                              void *extra) {
   return rwm_process_ex(raw, bytes, offset, 0, (void *)transform_block, extra);
 }
-/* }}} */
 
 /* rwm_sha1 {{{ */
 struct sha1_copy_state {
@@ -1211,7 +1169,6 @@ int rwm_sha1(struct raw_message *raw, int bytes, unsigned char output[20]) {
 
   return res;
 }
-/* }}} */
 
 /* {{{ crc32c */
 static int crc32c_process(void *extra, const void *data, int len) {
@@ -1227,7 +1184,6 @@ unsigned rwm_crc32c(struct raw_message *raw, int bytes) {
 
   return ~crc32c;
 }
-/* }}} */
 
 /* {{{ crc32 */
 static int crc32_process(void *extra, const void *data, int len) {
@@ -1243,7 +1199,6 @@ unsigned rwm_crc32(struct raw_message *raw, int bytes) {
 
   return ~crc32;
 }
-/* }}} */
 
 /* custom crc32 {{{ */
 struct custom_crc32_data {
@@ -1268,35 +1223,28 @@ unsigned rwm_custom_crc32(struct raw_message *raw, int bytes,
 
   return ~D.crc32;
 }
-/* }}} */
 
-int rwm_process_nop(void *extra, const void *data, int len) /* {{{ */ {
-  return 0;
-}
-/* }}} */
+int rwm_process_nop(void *extra, const void *data, int len) { return 0; }
 
-int rwm_fetch_data(struct raw_message *raw, void *buf, int bytes) /* {{{ */ {
+int rwm_fetch_data(struct raw_message *raw, void *buf, int bytes) {
   if (buf) {
     return rwm_process_and_advance(raw, bytes, rwm_process_memcpy, &buf);
   } else {
     return rwm_process_and_advance(raw, bytes, rwm_process_nop, 0);
   }
 }
-/* }}} */
 
-int rwm_skip_data(struct raw_message *raw, int bytes) /* {{{ */ {
+int rwm_skip_data(struct raw_message *raw, int bytes) {
   return rwm_process_and_advance(raw, bytes, rwm_process_nop, 0);
 }
-/* }}} */
 
-int rwm_fetch_lookup(struct raw_message *raw, void *buf, int bytes) /* {{{ */ {
+int rwm_fetch_lookup(struct raw_message *raw, void *buf, int bytes) {
   if (buf) {
     return rwm_process(raw, bytes, rwm_process_memcpy, &buf);
   } else {
     return rwm_process(raw, bytes, rwm_process_nop, 0);
   }
 }
-/* }}} */
 
 int rwm_get_block_ptr_bytes(struct raw_message *raw) {
   if (!raw->total_bytes) {
@@ -1531,4 +1479,3 @@ int rwm_encrypt_decrypt_to(struct raw_message *raw, struct raw_message *res,
   }
   return r;
 }
-/* }}} */

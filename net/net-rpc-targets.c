@@ -91,7 +91,6 @@ MODULE_STAT_FUNCTION
 SB_SUM_ONE_LL(total_rpc_targets);
 SB_SUM_ONE_LL(total_connections_in_rpc_targets);
 MODULE_STAT_FUNCTION_END
-/* }}} */
 
 static rpc_target_job_t rpc_target_alloc(struct process_id PID) {
   assert_engine_thread();

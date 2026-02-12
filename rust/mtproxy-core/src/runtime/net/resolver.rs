@@ -19,41 +19,9 @@ pub const MAX_BRACKETED_IPV6_LEN: usize = 64;
 pub const HOSTNAME_BUFFER_CAPACITY: usize = 256;
 
 pub const HOST_HASH_SIZES: [usize; 36] = [
-    29,
-    41,
-    59,
-    89,
-    131,
-    197,
-    293,
-    439,
-    659,
-    991,
-    1_481,
-    2_221,
-    3_329,
-    4_993,
-    7_487,
-    11_239,
-    16_843,
-    25_253,
-    37_879,
-    56_821,
-    85_223,
-    127_837,
-    191_773,
-    287_629,
-    431_441,
-    647_161,
-    970_747,
-    1_456_121,
-    2_184_179,
-    3_276_253,
-    4_914_373,
-    7_371_571,
-    11_057_357,
-    16_586_039,
-    24_879_017,
+    29, 41, 59, 89, 131, 197, 293, 439, 659, 991, 1_481, 2_221, 3_329, 4_993, 7_487, 11_239,
+    16_843, 25_253, 37_879, 56_821, 85_223, 127_837, 191_773, 287_629, 431_441, 647_161, 970_747,
+    1_456_121, 2_184_179, 3_276_253, 4_914_373, 7_371_571, 11_057_357, 16_586_039, 24_879_017,
     37_318_507,
 ];
 
@@ -536,12 +504,14 @@ mod tests {
     use super::{
         detect_hostname_candidate, host_ip_to_network_order, is_valid_hostname,
         parse_hostname_file_buffer, parse_ipv6, BuildHostsError, DetectHostnameError,
-        HostLookupPlan, HostsFileMetadata, HostsLoadInput, HostsTable, ResolverState, MAX_HOSTS_SIZE,
+        HostLookupPlan, HostsFileMetadata, HostsLoadInput, HostsTable, ResolverState,
+        MAX_HOSTS_SIZE,
     };
 
     #[test]
     fn hosts_table_parses_hosts_entries_and_lookups() {
-        let hosts = b"127.0.0.1 localhost localhost.localdomain\n192.168.1.5 router\n0.0.0.0 ignored\n";
+        let hosts =
+            b"127.0.0.1 localhost localhost.localdomain\n192.168.1.5 router\n0.0.0.0 ignored\n";
         let table = HostsTable::from_hosts_contents(hosts).unwrap();
         assert_eq!(table.parsed_words(), 3);
         assert!(table.hash_size() >= 29);
@@ -596,7 +566,10 @@ mod tests {
     fn resolver_rejects_invalid_snapshot_sizes() {
         let mut state = ResolverState::new();
         let hosts = b"127.0.0.1 localhost\n";
-        let mismatched = HostsFileMetadata { size: 999, mtime: 1 };
+        let mismatched = HostsFileMetadata {
+            size: 999,
+            mtime: 1,
+        };
         assert_eq!(
             state.kdb_load_hosts(HostsLoadInput::Data {
                 metadata: mismatched,

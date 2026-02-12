@@ -45,8 +45,8 @@ static struct hostent hret = {.h_aliases = 0,
 extern int32_t mtproxy_ffi_resolver_kdb_load_hosts(void);
 extern int32_t mtproxy_ffi_resolver_kdb_hosts_loaded(void);
 extern int32_t mtproxy_ffi_resolver_gethostbyname_plan(const char *name,
-                                                        int32_t *out_kind,
-                                                        uint32_t *out_ipv4);
+                                                       int32_t *out_kind,
+                                                       uint32_t *out_ipv4);
 
 static struct hostent *fallback_gethostbyname(const char *name) {
   return gethostbyname(name) ?: gethostbyname2(name, AF_INET6);

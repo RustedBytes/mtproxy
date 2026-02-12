@@ -519,17 +519,23 @@ fn resolver_reload_hosts_from_system(
 }
 
 fn resolver_kdb_load_hosts_impl() -> i32 {
-    let mut state = RESOLVER_STATE.lock().unwrap_or_else(|poison| poison.into_inner());
+    let mut state = RESOLVER_STATE
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner());
     resolver_reload_hosts_from_system(&mut state)
 }
 
 fn resolver_kdb_hosts_loaded_impl() -> i32 {
-    let state = RESOLVER_STATE.lock().unwrap_or_else(|poison| poison.into_inner());
+    let state = RESOLVER_STATE
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner());
     state.kdb_hosts_loaded()
 }
 
 fn resolver_gethostbyname_plan_impl(name: &[u8]) -> (i32, u32) {
-    let mut state = RESOLVER_STATE.lock().unwrap_or_else(|poison| poison.into_inner());
+    let mut state = RESOLVER_STATE
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner());
     let plan = state.kdb_gethostbyname_plan_with_lazy_load(name, |resolver| {
         let _ = resolver_reload_hosts_from_system(resolver);
     });

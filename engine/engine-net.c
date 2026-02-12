@@ -26,11 +26,12 @@
     Copyright 2015-2016 Telegram Messenger Inc
               2015-2016 Vitaliy Valtman
 */
+
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <stdarg.h>
-#include <unistd.h>
 #include <stdio.h>
+#include <unistd.h>
 
 #include "common/kprintf.h"
 #include "common/server-functions.h"
@@ -40,7 +41,7 @@
 
 #include "net/net-tcp-rpc-client.h"
 
-void default_close_network_sockets(void) /* {{{ */ {
+void default_close_network_sockets(void) {
   engine_t *E = engine_state;
 
   if (E->sfd > 0) {
@@ -48,12 +49,10 @@ void default_close_network_sockets(void) /* {{{ */ {
     E->sfd = -1;
   }
 }
-/* }}} */
 
-int get_port_mod(void) /* {{{ */ { return -1; }
-/* }}} */
+int get_port_mod(void) { return -1; }
 
-int try_open_port(int port, int quit_on_fail) /* {{{ */ {
+int try_open_port(int port, int quit_on_fail) {
   engine_t *E = engine_state;
   if (engine_check_tcp_enabled()) {
     struct in_addr l;
@@ -71,10 +70,9 @@ int try_open_port(int port, int quit_on_fail) /* {{{ */ {
   }
   return 0;
 }
-/* }}} */
 
 int try_open_port_range(int start_port, int end_port, int mod_port,
-                        int rem_port, int quit_on_fail) /* {{{ */ {
+                        int rem_port, int quit_on_fail) {
   int s = start_port;
   for (; start_port <= end_port; start_port++) {
     if (mod_port && rem_port >= 0 &&
@@ -91,9 +89,8 @@ int try_open_port_range(int start_port, int end_port, int mod_port,
   }
   return -1;
 }
-/* }}} */
 
-void engine_do_open_port(void) /* {{{ */ {
+void engine_do_open_port(void) {
   int port_mod = get_port_mod();
 
   int port = engine_state->port;
@@ -113,7 +110,6 @@ void engine_do_open_port(void) /* {{{ */ {
     return;
   }
 }
-/* }}} */
 
 struct tcp_rpc_server_functions default_engine_tcp_rpc_methods = {
     .execute = default_tl_tcp_rpcs_execute,

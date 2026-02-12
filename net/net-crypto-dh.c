@@ -43,7 +43,8 @@ int crypto_dh_prepare_stat(stats_buffer_t *sb) {
 }
 
 void fetch_tot_dh_rounds_stat(long long _tot_dh_rounds[3]) {
-  int32_t rc = mtproxy_ffi_crypto_dh_fetch_tot_rounds((int64_t *)_tot_dh_rounds);
+  int32_t rc =
+      mtproxy_ffi_crypto_dh_fetch_tot_rounds((int64_t *)_tot_dh_rounds);
   assert(rc == 0);
 }
 

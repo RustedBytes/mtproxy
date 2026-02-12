@@ -115,7 +115,7 @@ struct tcp_rpc_client_functions default_tcp_rpc_client = {
 };
 
 static int tcp_rpcc_process_nonce_packet(connection_job_t C,
-                                         struct raw_message *msg) /* {{{ */ {
+                                         struct raw_message *msg) {
   struct connection_info *c = CONN_INFO(C);
 
   struct tcp_rpc_data *D = TCP_RPC_DATA(C);
@@ -263,9 +263,8 @@ static int tcp_rpcc_process_nonce_packet(connection_job_t C,
   vkprintf(2, "Processed nonce packet, crypto flags = %d\n", D->crypto_flags);
   return 0;
 }
-/* }}} */
 
-static int tcp_rpcc_send_handshake_packet(connection_job_t C) /* {{{ */ {
+static int tcp_rpcc_send_handshake_packet(connection_job_t C) {
   struct connection_info *c = CONN_INFO(C);
 
   struct tcp_rpc_data *D = TCP_RPC_DATA(C);
@@ -287,10 +286,9 @@ static int tcp_rpcc_send_handshake_packet(connection_job_t C) /* {{{ */ {
 
   return 0;
 }
-/* }}} */
 
 static int tcp_rpcc_send_handshake_error_packet(connection_job_t C,
-                                                int error_code) /* {{{ */ {
+                                                int error_code) {
   struct connection_info *c = CONN_INFO(C);
 
   struct tcp_rpc_handshake_error_packet P;
@@ -305,11 +303,9 @@ static int tcp_rpcc_send_handshake_error_packet(connection_job_t C,
 
   return 0;
 }
-/* }}} */
 
-static int
-tcp_rpcc_process_handshake_packet(connection_job_t C,
-                                  struct raw_message *msg) /* {{{ */ {
+static int tcp_rpcc_process_handshake_packet(connection_job_t C,
+                                             struct raw_message *msg) {
   // struct connection_info *c = CONN_INFO (C);
 
   struct tcp_rpc_data *D = TCP_RPC_DATA(C);
@@ -361,9 +357,8 @@ tcp_rpcc_process_handshake_packet(connection_job_t C,
   }
   return 0;
 }
-/* }}} */
 
-int tcp_rpcc_parse_execute(connection_job_t C) /* {{{ */ {
+int tcp_rpcc_parse_execute(connection_job_t C) {
   struct connection_info *c = CONN_INFO(C);
 
   vkprintf(4, "%s. in_total_bytes = %d\n", __func__, c->in.total_bytes);
@@ -487,9 +482,8 @@ int tcp_rpcc_parse_execute(connection_job_t C) /* {{{ */ {
   }
   return 0;
 }
-/* }}} */
 
-int tcp_rpcc_connected(connection_job_t C) /* {{{ */ {
+int tcp_rpcc_connected(connection_job_t C) {
   struct connection_info *c = CONN_INFO(C);
 
   TCP_RPC_DATA(C)->out_packet_num = -2;
@@ -528,7 +522,6 @@ int tcp_rpcc_connected(connection_job_t C) /* {{{ */ {
 
   return 0;
 }
-/* }}} */
 
 int tcp_rpcc_close_connection(connection_job_t C, int who) {
   if (TCP_RPCC_FUNC(C)->rpc_close) {

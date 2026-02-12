@@ -57,43 +57,38 @@ int signal_check_pending_and_clear(int sig) {
   }
   return res;
 }
-/* }}} */
 
-void sigint_immediate_handler(const int sig) /* {{{ */ {
+void sigint_immediate_handler(const int sig) {
   static const char message[] = "SIGINT handled immediately.\n";
   kwrite(2, message, sizeof(message) - (size_t)1);
   engine_set_terminal_attributes();
   _exit(1);
 }
-/* }}} */
 
-void sigterm_immediate_handler(const int sig) /* {{{ */ {
+void sigterm_immediate_handler(const int sig) {
   static const char message[] = "SIGTERM handled immediately.\n";
   kwrite(2, message, sizeof(message) - (size_t)1);
   engine_set_terminal_attributes();
   _exit(1);
 }
-/* }}} */
 
-void sigint_handler(const int sig) /* {{{ */ {
+void sigint_handler(const int sig) {
   static const char message[] = "SIGINT handled.\n";
   kwrite(2, message, sizeof(message) - (size_t)1);
   signal_set_pending(SIGINT);
   ksignal(sig, sigint_immediate_handler);
 }
-/* }}} */
 
-void sigterm_handler(const int sig) /* {{{ */ {
+void sigterm_handler(const int sig) {
   static const char message[] = "SIGTERM handled.\n";
   kwrite(2, message, sizeof(message) - (size_t)1);
   signal_set_pending(SIGTERM);
   ksignal(sig, sigterm_immediate_handler);
 }
-/* }}} */
 
 static const char sig_message[] = "received signal ??\n";
 
-void default_signal_handler(const int sig) /* {{{ */ {
+void default_signal_handler(const int sig) {
   char msg[sizeof(sig_message)];
   int i;
   for (i = 0; i < sizeof(sig_message); i++) {
@@ -121,16 +116,13 @@ void quiet_signal_handler(const int sig) {
   signal_set_pending(sig);
 }
 
-/* }}} */
-
 void empty_signal_handler(const int sig) {}
 
-int interrupt_signal_raised(void) /* {{{ */ {
+int interrupt_signal_raised(void) {
   return (pending_signals & SIG_INTERRUPT_MASK) != 0;
 }
-/* }}} */
 
-int engine_process_signals(void) /* {{{ */ {
+int engine_process_signals(void) {
   engine_t *E = engine_state;
   server_functions_t *F = E->F;
 
@@ -154,4 +146,3 @@ int engine_process_signals(void) /* {{{ */ {
 
   return 1;
 }
-/* }}} */

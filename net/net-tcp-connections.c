@@ -41,22 +41,27 @@ extern int32_t mtproxy_ffi_net_tcp_tls_encrypt_chunk_len(int32_t total_bytes,
 extern int32_t mtproxy_ffi_net_tcp_tls_header_needed_bytes(int32_t available);
 extern int32_t mtproxy_ffi_net_tcp_tls_parse_header(const uint8_t header[5],
                                                     int32_t *out_payload_len);
-extern int32_t mtproxy_ffi_net_tcp_tls_decrypt_chunk_len(
-    int32_t available, int32_t left_tls_packet_length);
-extern int32_t mtproxy_ffi_net_tcp_reader_negative_skip_take(
-    int32_t skip_bytes, int32_t available_bytes);
-extern int32_t mtproxy_ffi_net_tcp_reader_negative_skip_next(
-    int32_t skip_bytes, int32_t taken_bytes);
-extern int32_t mtproxy_ffi_net_tcp_reader_positive_skip_next(
-    int32_t skip_bytes, int32_t available_bytes);
+extern int32_t
+mtproxy_ffi_net_tcp_tls_decrypt_chunk_len(int32_t available,
+                                          int32_t left_tls_packet_length);
+extern int32_t
+mtproxy_ffi_net_tcp_reader_negative_skip_take(int32_t skip_bytes,
+                                              int32_t available_bytes);
+extern int32_t
+mtproxy_ffi_net_tcp_reader_negative_skip_next(int32_t skip_bytes,
+                                              int32_t taken_bytes);
+extern int32_t
+mtproxy_ffi_net_tcp_reader_positive_skip_next(int32_t skip_bytes,
+                                              int32_t available_bytes);
 extern int32_t mtproxy_ffi_net_tcp_reader_skip_from_parse_result(
     int32_t parse_res, int32_t buffered_bytes, int32_t need_more_bytes,
     int32_t *out_skip_bytes);
 extern int32_t mtproxy_ffi_net_tcp_reader_precheck_result(int32_t flags);
-extern int32_t mtproxy_ffi_net_tcp_reader_should_continue(
-    int32_t skip_bytes, int32_t flags, int32_t status_is_conn_error);
+extern int32_t
+mtproxy_ffi_net_tcp_reader_should_continue(int32_t skip_bytes, int32_t flags,
+                                           int32_t status_is_conn_error);
 
-int cpu_tcp_free_connection_buffers(connection_job_t C) /* {{{ */ {
+int cpu_tcp_free_connection_buffers(connection_job_t C) {
   struct connection_info *c = CONN_INFO(C);
   assert_net_cpu_thread();
   rwm_free(&c->in);
@@ -65,9 +70,8 @@ int cpu_tcp_free_connection_buffers(connection_job_t C) /* {{{ */ {
   rwm_free(&c->out_p);
   return 0;
 }
-/* }}} */
 
-int cpu_tcp_server_writer(connection_job_t C) /* {{{ */ {
+int cpu_tcp_server_writer(connection_job_t C) {
   assert_net_cpu_thread();
 
   struct connection_info *c = CONN_INFO(C);
@@ -113,9 +117,8 @@ int cpu_tcp_server_writer(connection_job_t C) /* {{{ */ {
 
   return 0;
 }
-/* }}} */
 
-int cpu_tcp_server_reader(connection_job_t C) /* {{{ */ {
+int cpu_tcp_server_reader(connection_job_t C) {
   assert_net_cpu_thread();
   struct connection_info *c = CONN_INFO(C);
 
@@ -180,7 +183,7 @@ int cpu_tcp_server_reader(connection_job_t C) /* {{{ */ {
   }
 
   while (mtproxy_ffi_net_tcp_reader_should_continue(
-             c->skip_bytes, c->flags, c->status == conn_error ? 1 : 0)) {
+      c->skip_bytes, c->flags, c->status == conn_error ? 1 : 0)) {
     int bytes = c->in.total_bytes;
     if (!bytes) {
       break;
@@ -206,9 +209,8 @@ int cpu_tcp_server_reader(connection_job_t C) /* {{{ */ {
 
   return 0;
 }
-/* }}} */
 
-int cpu_tcp_aes_crypto_encrypt_output(connection_job_t C) /* {{{ */ {
+int cpu_tcp_aes_crypto_encrypt_output(connection_job_t C) {
   assert_net_cpu_thread();
   struct connection_info *c = CONN_INFO(C);
 
@@ -224,9 +226,8 @@ int cpu_tcp_aes_crypto_encrypt_output(connection_job_t C) /* {{{ */ {
 
   return mtproxy_ffi_net_tcp_aes_needed_output_bytes(out->total_bytes);
 }
-/* }}} */
 
-int cpu_tcp_aes_crypto_decrypt_input(connection_job_t C) /* {{{ */ {
+int cpu_tcp_aes_crypto_decrypt_input(connection_job_t C) {
   assert_net_cpu_thread();
   struct connection_info *c = CONN_INFO(C);
   struct aes_crypto *T = c->crypto;
@@ -241,16 +242,14 @@ int cpu_tcp_aes_crypto_decrypt_input(connection_job_t C) /* {{{ */ {
 
   return mtproxy_ffi_net_tcp_aes_needed_output_bytes(in->total_bytes);
 }
-/* }}} */
 
-int cpu_tcp_aes_crypto_needed_output_bytes(connection_job_t C) /* {{{ */ {
+int cpu_tcp_aes_crypto_needed_output_bytes(connection_job_t C) {
   struct connection_info *c = CONN_INFO(C);
   assert(c->crypto);
   return mtproxy_ffi_net_tcp_aes_needed_output_bytes(c->out.total_bytes);
 }
-/* }}} */
 
-int cpu_tcp_aes_crypto_ctr128_encrypt_output(connection_job_t C) /* {{{ */ {
+int cpu_tcp_aes_crypto_ctr128_encrypt_output(connection_job_t C) {
   assert_net_cpu_thread();
   struct connection_info *c = CONN_INFO(C);
 
@@ -274,9 +273,8 @@ int cpu_tcp_aes_crypto_ctr128_encrypt_output(connection_job_t C) /* {{{ */ {
 
   return 0;
 }
-/* }}} */
 
-int cpu_tcp_aes_crypto_ctr128_decrypt_input(connection_job_t C) /* {{{ */ {
+int cpu_tcp_aes_crypto_ctr128_decrypt_input(connection_job_t C) {
   assert_net_cpu_thread();
   struct connection_info *c = CONN_INFO(C);
   struct aes_crypto *T = c->crypto;
@@ -320,12 +318,9 @@ int cpu_tcp_aes_crypto_ctr128_decrypt_input(connection_job_t C) /* {{{ */ {
 
   return 0;
 }
-/* }}} */
 
-int cpu_tcp_aes_crypto_ctr128_needed_output_bytes(
-    connection_job_t C) /* {{{ */ {
+int cpu_tcp_aes_crypto_ctr128_needed_output_bytes(connection_job_t C) {
   struct connection_info *c = CONN_INFO(C);
   assert(c->crypto);
   return 0;
 }
-/* }}} */

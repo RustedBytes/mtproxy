@@ -88,6 +88,7 @@ static long long queries_allocated;
 #define X_CMP rpc_custom_op_cmp
 #define TREE_NAME rpc_custom_op
 #define TREE_MALLOC
+
 #include "vv/vv-tree.c"
 static struct tree_rpc_custom_op *rpc_custom_op_tree;
 
@@ -247,13 +248,11 @@ static int process_act_atom_subjob(job_t job, int op, struct job_thread *JT);
 void paramed_type_free(struct paramed_type *P) __attribute__((weak));
 void paramed_type_free(struct paramed_type *P) {}
 
-/* }}} */
-
 static job_t fetch_query(job_t parent, struct tl_in_state *IO,
                          struct raw_message **raw, char **error,
                          int *error_code, long long actor_id, job_t extra_ref,
                          job_t all_list, int status,
-                         struct tl_query_header *h) /* {{{ */ {
+                         struct tl_query_header *h) {
   int fop = tl_get_op_function(IO);
 
   struct tl_act_extra *extra = tl_default_parse_function(IO, actor_id);
@@ -306,10 +305,8 @@ static job_t fetch_query(job_t parent, struct tl_in_state *IO,
 
   return job;
 }
-/* }}} */
 
-static int fetch_all_queries(job_t parent,
-                             struct tl_in_state *tlio_in) /* {{{ */ {
+static int fetch_all_queries(job_t parent, struct tl_in_state *tlio_in) {
   struct query_work_params *P = (struct query_work_params *)parent->j_custom;
 
   struct tl_query_header *h = P->h;
@@ -328,10 +325,8 @@ static int fetch_all_queries(job_t parent,
     return -1;
   }
 }
-/* }}} */
 
-static int process_act_atom_subjob(job_t job, int op,
-                                   struct job_thread *JT) /* {{{ */ {
+static int process_act_atom_subjob(job_t job, int op, struct job_thread *JT) {
   if (op != JS_FINISH) {
     if (parent_job_aborted(job)) {
       return job_fatal(job, ECANCELED);
@@ -452,10 +447,8 @@ static int process_act_atom_subjob(job_t job, int op,
     return JOB_ERROR;
   }
 }
-/* }}} */
 
-static int process_query_job(job_t job, int op,
-                             struct job_thread *JT) /* {{{ */ {
+static int process_query_job(job_t job, int op, struct job_thread *JT) {
   struct query_work_params *P = (struct query_work_params *)job->j_custom;
   struct tl_out_state *IO = NULL;
   switch (op) {
@@ -591,10 +584,8 @@ static int process_query_job(job_t job, int op,
     return JOB_ERROR;
   }
 }
-/* }}} */
 
-static int process_parse_subjob(job_t job, int op,
-                                struct job_thread *JT) /* {{{ */ {
+static int process_parse_subjob(job_t job, int op, struct job_thread *JT) {
   struct query_work_params *P = (struct query_work_params *)job->j_custom;
 
   switch (op) {
@@ -627,10 +618,9 @@ static int process_parse_subjob(job_t job, int op,
     return JOB_ERROR;
   }
 }
-/* }}} */
 
 static int process_query_custom_subjob(job_t job, int op,
-                                       struct job_thread *JT) /* {{{ */ {
+                                       struct job_thread *JT) {
   struct query_work_params *P = (struct query_work_params *)job->j_custom;
   if (op == JS_RUN) {
     struct tl_in_state *IO = tl_in_state_alloc();
@@ -663,12 +653,11 @@ static int process_query_custom_subjob(job_t job, int op,
     return JOB_ERROR;
   }
 }
-/* }}} */
 
 int create_query_job(job_t job, struct raw_message *raw,
                      struct tl_query_header *h, double timeout,
                      struct process_id *remote_pid, enum tl_type out_type,
-                     int fd, int generation) /* {{{ */ {
+                     int fd, int generation) {
   job->j_execute = process_parse_subjob;
   struct process_id pd = *remote_pid;
   remote_pid = &pd;
@@ -692,10 +681,9 @@ int create_query_job(job_t job, struct raw_message *raw,
 
   return JOB_SENDSIG(JS_RUN);
 }
-/* }}} */
 
 int create_query_custom_job(job_t job, struct raw_message *raw, double timeout,
-                            int fd, int generation) /* {{{ */ {
+                            int fd, int generation) {
   job->j_execute = process_query_custom_subjob;
 
   struct query_info *q = QUERY_INFO(job);
@@ -716,9 +704,8 @@ int create_query_custom_job(job_t job, struct raw_message *raw, double timeout,
 
   return JOB_SENDSIG(JS_RUN);
 }
-/* }}} */
 
-int query_job_run(job_t job, int fd, int generation) /* {{{ */ {
+int query_job_run(job_t job, int fd, int generation) {
   struct query_info *q = QUERY_INFO(job);
 
   struct tl_in_state *IO = tl_in_state_alloc();
@@ -767,10 +754,8 @@ int query_job_run(job_t job, int fd, int generation) /* {{{ */ {
   tl_in_state_free(IO);
   return res;
 }
-/* }}} */
 
-static int do_query_job_run(job_t job, int op,
-                            struct job_thread *JT) /* {{{ */ {
+static int do_query_job_run(job_t job, int op, struct job_thread *JT) {
   struct query_info *q = QUERY_INFO(job);
   int fd = 0;
   int generation = 0;
@@ -804,10 +789,9 @@ static int do_query_job_run(job_t job, int op,
     return JOB_ERROR;
   }
 }
-/* }}} */
 
 int do_create_query_job(struct raw_message *raw, int type,
-                        struct process_id *pid, void *conn) /* {{{ */ {
+                        struct process_id *pid, void *conn) {
   job_t job = create_async_job(
       do_query_job_run,
       JSP_PARENT_RWE | JSC_ALLOW(JC_ENGINE, JS_RUN) |
@@ -825,9 +809,6 @@ int do_create_query_job(struct raw_message *raw, int type,
   schedule_job(JOB_REF_PASS(job));
   return 0;
 }
-/* }}} */
-
-/* }}} */
 
 int default_tl_close_conn(connection_job_t c, int who) {
   rpc_target_delete_conn(c);
@@ -835,7 +816,7 @@ int default_tl_close_conn(connection_job_t c, int who) {
 }
 
 int default_tl_tcp_rpcs_execute(connection_job_t c, int op,
-                                struct raw_message *raw) /* {{{ */ {
+                                struct raw_message *raw) {
   CONN_INFO(c)->last_response_time = precise_now;
   // rpc_target_insert_conn (c);
 
@@ -848,10 +829,8 @@ int default_tl_tcp_rpcs_execute(connection_job_t c, int op,
   }
   return 1;
 }
-/* }}} */
 
-int tl_store_stats(struct tl_out_state *tlio_out, const char *s,
-                   int raw) /* {{{ */ {
+int tl_store_stats(struct tl_out_state *tlio_out, const char *s, int raw) {
   int i, key_start = 0, value_start = -1;
   if (!raw) {
     tl_store_int(TL_STAT);
@@ -874,7 +853,6 @@ int tl_store_stats(struct tl_out_state *tlio_out, const char *s,
   }
   return *cnt_ptr;
 }
-/* }}} */
 
 static void default_stat_function(struct tl_out_state *tlio_out) {
   static char buf[(1 << 12)];

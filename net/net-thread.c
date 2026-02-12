@@ -41,9 +41,9 @@ struct notification_event {
 };
 
 extern int32_t mtproxy_ffi_net_thread_run_notification_event(
-    int32_t event_type, void *who, void *event,
-    int32_t (*rpc_ready)(void *who), void (*rpc_close)(void *who),
-    void (*rpc_alarm)(void *who), void (*rpc_wakeup)(void *who),
+    int32_t event_type, void *who, void *event, int32_t (*rpc_ready)(void *who),
+    void (*rpc_close)(void *who), void (*rpc_alarm)(void *who),
+    void (*rpc_wakeup)(void *who),
     void (*fail_connection)(void *who, int32_t code),
     void (*job_decref)(void *who), void (*event_free)(void *event));
 
