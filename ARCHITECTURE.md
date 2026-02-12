@@ -316,7 +316,7 @@ struct job_thread *job = create_async_job(
   -2,                           // Connection FD
   sizeof(crypto_context),       // Context size
   JT_HAVE_TIMER,               // Job flags
-  nullptr                       // Parent job
+  NULL                          // Parent job
 );
 
 // Schedule to CPU thread pool
@@ -666,7 +666,7 @@ struct job_thread *decrypt_job = create_async_job(
   c->fd,
   sizeof(struct tcp_rpc_data),
   JT_HAVE_TIMER,
-  nullptr
+  NULL
 );
 
 // Job execution (in CPU thread)
@@ -1060,7 +1060,7 @@ struct mp_queue {
 
 // Push (multiple producers)
 void mp_queue_push(struct mp_queue *q, struct mp_queue_entry *entry) {
-  entry->next = nullptr;
+  entry->next = NULL;
   
   pthread_spin_lock(&q->lock);
   if (q->tail) {
@@ -1075,14 +1075,14 @@ void mp_queue_push(struct mp_queue *q, struct mp_queue_entry *entry) {
 // Pop (single consumer)
 struct mp_queue_entry *mp_queue_pop(struct mp_queue *q) {
   if (!q->head) {
-    return nullptr;
+    return NULL;
   }
   
   struct mp_queue_entry *entry = q->head;
   q->head = entry->next;
   
   if (!q->head) {
-    q->tail = nullptr;  // Queue now empty
+    q->tail = NULL;  // Queue now empty
   }
   
   return entry;
