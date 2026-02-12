@@ -910,6 +910,7 @@ mod jobs;
 mod kprintf;
 mod mtproto;
 mod net_msg;
+mod net_timers;
 mod server_functions;
 mod stats;
 mod time_cfg_observability;

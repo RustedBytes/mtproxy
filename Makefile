@@ -54,7 +54,7 @@ LIB_OBJS_NORMAL := \
 	${OBJ}/crypto/aesni256.o \
 	${OBJ}/jobs/jobs.o ${OBJ}/common/mp-queue.o \
 	${OBJ}/net/net-events.o ${OBJ}/net/net-msg.o ${OBJ}/net/net-msg-buffers.o \
-	${OBJ}/net/net-config.o ${OBJ}/net/net-crypto-aes.o ${OBJ}/net/net-crypto-dh.o ${OBJ}/net/net-timers.o \
+	${OBJ}/net/net-config.o ${OBJ}/net/net-crypto-aes.o ${OBJ}/net/net-crypto-dh.o \
 	${OBJ}/net/net-connections.o \
 	${OBJ}/net/net-rpc-targets.o \
 	${OBJ}/net/net-tcp-connections.o ${OBJ}/net/net-tcp-rpc-common.o ${OBJ}/net/net-tcp-rpc-client.o ${OBJ}/net/net-tcp-rpc-server.o \

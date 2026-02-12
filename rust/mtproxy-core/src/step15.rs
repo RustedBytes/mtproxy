@@ -12,7 +12,7 @@ pub struct Step15OwnershipEntry {
 }
 
 /// One-to-one ownership map for all C runtime units still linked by default.
-pub const STEP15_OWNERSHIP_MAP: [Step15OwnershipEntry; 43] = [
+pub const STEP15_OWNERSHIP_MAP: [Step15OwnershipEntry; 42] = [
     Step15OwnershipEntry {
         c_translation_unit: "common/common-stats.c",
         rust_crate: "mtproxy-core",
@@ -222,11 +222,6 @@ pub const STEP15_OWNERSHIP_MAP: [Step15OwnershipEntry; 43] = [
         c_translation_unit: "net/net-thread.c",
         rust_crate: "mtproxy-core",
         rust_module: "runtime::net::thread",
-    },
-    Step15OwnershipEntry {
-        c_translation_unit: "net/net-timers.c",
-        rust_crate: "mtproxy-core",
-        rust_module: "runtime::net::timers",
     },
 ];
 
