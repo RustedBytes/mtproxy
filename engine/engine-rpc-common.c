@@ -30,9 +30,10 @@
 #include <sys/time.h>
 
 #include "engine/engine-rpc-common.h"
-#include "engine/engine.h"
 
 #include "common/tl-parse.h"
+#include "engine/engine-rpc.h"
+#include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 
 static int tl_act_nop([[maybe_unused]] job_t job, struct tl_act_extra *extra) {
   tls_int_rust(extra->tlio_out, TL_TRUE);
@@ -60,26 +61,26 @@ tl_simple_parse_function([[maybe_unused]] struct tl_in_state *tlio_in,
   extra->start_rdtsc = rdtsc();
   extra->size = sizeof(*extra);
   extra->act = act;
-  extra->type =
-      QUERY_ALLOW_REPLICA_GET | QUERY_ALLOW_REPLICA_SET | QUERY_ALLOW_UNINIT;
+  extra->type = mtproxy_ffi_engine_rpc_common_default_query_type_mask();
   return extra;
 }
 
 struct tl_act_extra *tl_default_parse_function(struct tl_in_state *tlio_in,
                                                long long actor_id) {
-  if (actor_id != 0) {
-    return nullptr;
-  }
-  auto f = tl_fetch_lookup_int();
+  auto op = tl_fetch_lookup_int();
   if (tl_fetch_error()) {
     return nullptr;
   }
 
-  switch (f) {
-  case TL_ENGINE_STAT:
+  auto decision =
+      mtproxy_ffi_engine_rpc_common_default_parse_decision(actor_id, op);
+  switch (decision) {
+  case MTPROXY_FFI_ENGINE_RPC_COMMON_PARSE_STAT:
     return tl_simple_parse_function(tlio_in, tl_act_stat);
-  case TL_ENGINE_NOP:
+  case MTPROXY_FFI_ENGINE_RPC_COMMON_PARSE_NOP:
     return tl_simple_parse_function(tlio_in, tl_act_nop);
+  case MTPROXY_FFI_ENGINE_RPC_COMMON_PARSE_NONE:
+    return nullptr;
   }
   return nullptr;
 }

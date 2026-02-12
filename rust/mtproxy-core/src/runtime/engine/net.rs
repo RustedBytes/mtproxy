@@ -178,6 +178,47 @@ where
     }
 }
 
+/// Applies `engine_do_open_port()` privileged pre-open logic.
+///
+/// When no privileged pre-open is required, returns `Ok(None)`.
+pub fn open_privileged_port_with<F>(
+    port: i32,
+    start_port: i32,
+    end_port: i32,
+    port_mod: i32,
+    tcp_enabled: bool,
+    quit_on_fail: bool,
+    mut try_open: F,
+) -> Result<Option<i32>, String>
+where
+    F: FnMut(i32) -> bool,
+{
+    match engine_open_port_plan(port, start_port, end_port, port_mod) {
+        PortOpenPlan::None => Ok(None),
+        PortOpenPlan::Direct(target_port) => {
+            try_open_port_with(target_port, tcp_enabled, quit_on_fail, try_open)
+        }
+        PortOpenPlan::Range {
+            start_port,
+            end_port,
+            mod_port,
+            rem_port,
+        } => try_open_port_range_with(
+            start_port,
+            end_port,
+            mod_port,
+            rem_port,
+            quit_on_fail,
+            |candidate| {
+                matches!(
+                    try_open_port_with(candidate, tcp_enabled, false, &mut try_open),
+                    Ok(Some(_))
+                )
+            },
+        ),
+    }
+}
+
 /// Returns whether engine network integration is initialized.
 #[must_use]
 pub fn engine_net_initialized() -> bool {
@@ -276,5 +317,28 @@ mod tests {
             })
             .expect("range should pass");
         assert_eq!(picked, Some(1002));
+    }
+
+    #[test]
+    fn test_open_privileged_port_with_matches_engine_do_open_port_rules() {
+        let direct = open_privileged_port_with(443, 0, 0, DEFAULT_PORT_MOD, true, true, |port| {
+            port == 443
+        })
+        .expect("direct privileged pre-open should pass");
+        assert_eq!(direct, Some(443));
+
+        let range =
+            open_privileged_port_with(0, 1000, 1010, DEFAULT_PORT_MOD, true, true, |port| {
+                port == 1002
+            })
+            .expect("range privileged pre-open should pass");
+        assert_eq!(range, Some(1002));
+
+        let none =
+            open_privileged_port_with(1500, 1500, 1600, DEFAULT_PORT_MOD, true, true, |_port| {
+                true
+            })
+            .expect("non-privileged should be no-op");
+        assert_eq!(none, None);
     }
 }

@@ -465,6 +465,171 @@ fn rpc_target_normalize_pid_impl(pid: &mut MtproxyProcessId, default_ip: u32) {
     pid.utime = core_pid.utime;
 }
 
+type EngineNetTryOpenPortFn = unsafe extern "C" fn(i32, *mut c_void) -> i32;
+type EngineSignalDispatchFn = unsafe extern "C" fn(i32, *mut c_void);
+
+fn engine_rpc_common_default_query_type_mask_impl() -> i32 {
+    mtproxy_core::runtime::engine::rpc_common::default_query_type_mask()
+}
+
+fn engine_rpc_common_default_parse_decision_impl(actor_id: i64, op: i32) -> i32 {
+    match mtproxy_core::runtime::engine::rpc_common::default_parse_decision(actor_id, op) {
+        mtproxy_core::runtime::engine::rpc_common::DefaultParseDecision::None => 0,
+        mtproxy_core::runtime::engine::rpc_common::DefaultParseDecision::Stat => 1,
+        mtproxy_core::runtime::engine::rpc_common::DefaultParseDecision::Nop => 2,
+    }
+}
+
+fn engine_rpc_query_result_type_id_from_qid_impl(qid: i64) -> i32 {
+    mtproxy_core::runtime::engine::rpc::query_result_type_id_from_qid(qid)
+}
+
+fn engine_rpc_query_result_dispatch_decision_impl(has_table: i32, has_handler: i32) -> i32 {
+    match mtproxy_core::runtime::engine::rpc::query_result_dispatch_decision(
+        has_table != 0,
+        has_handler != 0,
+    ) {
+        mtproxy_core::runtime::engine::rpc::QueryResultDispatchDecision::IgnoreNoTable => 0,
+        mtproxy_core::runtime::engine::rpc::QueryResultDispatchDecision::Dispatch => 1,
+        mtproxy_core::runtime::engine::rpc::QueryResultDispatchDecision::SkipUnknown => 2,
+    }
+}
+
+fn engine_rpc_need_dup_impl(flags: i32) -> i32 {
+    if mtproxy_core::runtime::engine::rpc::act_extra_need_dup(flags) {
+        1
+    } else {
+        0
+    }
+}
+
+fn engine_rpc_query_job_dispatch_decision_impl(op: i32, has_custom_tree: i32) -> i32 {
+    match mtproxy_core::runtime::engine::rpc::query_job_dispatch_decision(op, has_custom_tree != 0)
+    {
+        mtproxy_core::runtime::engine::rpc::QueryJobDispatchDecision::InvokeParse => 0,
+        mtproxy_core::runtime::engine::rpc::QueryJobDispatchDecision::Custom => 1,
+        mtproxy_core::runtime::engine::rpc::QueryJobDispatchDecision::Ignore => 2,
+    }
+}
+
+fn engine_rpc_tcp_should_hold_conn_impl(op: i32) -> i32 {
+    if mtproxy_core::runtime::engine::rpc::tcp_op_should_hold_conn(op) {
+        1
+    } else {
+        0
+    }
+}
+
+fn engine_net_default_port_mod_impl() -> i32 {
+    mtproxy_core::runtime::engine::net::DEFAULT_PORT_MOD
+}
+
+fn engine_net_try_open_port_range_impl(
+    start_port: i32,
+    end_port: i32,
+    mod_port: i32,
+    rem_port: i32,
+    quit_on_fail: bool,
+    try_open: Option<EngineNetTryOpenPortFn>,
+    try_open_ctx: *mut c_void,
+) -> Result<Option<i32>, ()> {
+    let Some(try_open_fn) = try_open else {
+        return Err(());
+    };
+    mtproxy_core::runtime::engine::net::try_open_port_range_with(
+        start_port,
+        end_port,
+        mod_port,
+        rem_port,
+        quit_on_fail,
+        |port| unsafe { try_open_fn(port, try_open_ctx) != 0 },
+    )
+    .map_err(|_| ())
+}
+
+fn engine_net_open_privileged_port_impl(
+    port: i32,
+    start_port: i32,
+    end_port: i32,
+    port_mod: i32,
+    tcp_enabled: bool,
+    quit_on_fail: bool,
+    try_open: Option<EngineNetTryOpenPortFn>,
+    try_open_ctx: *mut c_void,
+) -> Result<Option<i32>, ()> {
+    let Some(try_open_fn) = try_open else {
+        return Err(());
+    };
+    mtproxy_core::runtime::engine::net::open_privileged_port_with(
+        port,
+        start_port,
+        end_port,
+        port_mod,
+        tcp_enabled,
+        quit_on_fail,
+        |candidate| unsafe { try_open_fn(candidate, try_open_ctx) != 0 },
+    )
+    .map_err(|_| ())
+}
+
+fn engine_signal_set_pending_impl(sig: i32) {
+    let Ok(sig_u32) = u32::try_from(sig) else {
+        return;
+    };
+    mtproxy_core::runtime::engine::signals::signal_set_pending(sig_u32);
+}
+
+fn engine_signal_check_pending_impl(sig: i32) -> i32 {
+    let Ok(sig_u32) = u32::try_from(sig) else {
+        return 0;
+    };
+    if mtproxy_core::runtime::engine::signals::signal_check_pending(sig_u32) {
+        1
+    } else {
+        0
+    }
+}
+
+fn engine_signal_check_pending_and_clear_impl(sig: i32) -> i32 {
+    let Ok(sig_u32) = u32::try_from(sig) else {
+        return 0;
+    };
+    if mtproxy_core::runtime::engine::signals::signal_check_pending_and_clear(sig_u32) {
+        1
+    } else {
+        0
+    }
+}
+
+fn engine_interrupt_signal_raised_impl() -> i32 {
+    if mtproxy_core::runtime::engine::signals::interrupt_signal_raised() {
+        1
+    } else {
+        0
+    }
+}
+
+fn engine_process_signals_allowed_impl(
+    allowed_signals: u64,
+    dispatch: Option<EngineSignalDispatchFn>,
+    dispatch_ctx: *mut c_void,
+) -> i32 {
+    let processed = mtproxy_core::runtime::engine::signals::engine_process_signals_allowed_with(
+        allowed_signals,
+        |sig| {
+            if let Some(dispatch_fn) = dispatch {
+                let Ok(sig_i32) = i32::try_from(sig) else {
+                    return;
+                };
+                unsafe {
+                    dispatch_fn(sig_i32, dispatch_ctx);
+                }
+            }
+        },
+    );
+    i32::try_from(processed).unwrap_or(i32::MAX)
+}
+
 fn engine_rpc_result_new_flags_impl(old_flags: i32) -> i32 {
     old_flags & 0xffff
 }
@@ -1146,6 +1311,204 @@ pub unsafe extern "C" fn mtproxy_ffi_rpc_target_normalize_pid(
     let pid_ref = unsafe { &mut *pid };
     rpc_target_normalize_pid_impl(pid_ref, default_ip);
     0
+}
+
+/// Returns default query-type mask for `engine-rpc-common` trivial handlers.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_engine_rpc_common_default_query_type_mask() -> i32 {
+    engine_rpc_common_default_query_type_mask_impl()
+}
+
+/// Returns default parser dispatch decision for `(actor_id, op)` tuple.
+///
+/// Result values:
+/// - `0`: no default handler
+/// - `1`: `TL_ENGINE_STAT`
+/// - `2`: `TL_ENGINE_NOP`
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_engine_rpc_common_default_parse_decision(
+    actor_id: i64,
+    op: i32,
+) -> i32 {
+    engine_rpc_common_default_parse_decision_impl(actor_id, op)
+}
+
+/// Extracts query-type id from high bits of query `qid`.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_engine_rpc_query_result_type_id_from_qid(qid: i64) -> i32 {
+    engine_rpc_query_result_type_id_from_qid_impl(qid)
+}
+
+/// Decides query-result routing behavior (`ignore` / `dispatch` / `skip`).
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_engine_rpc_query_result_dispatch_decision(
+    has_table: i32,
+    has_handler: i32,
+) -> i32 {
+    engine_rpc_query_result_dispatch_decision_impl(has_table, has_handler)
+}
+
+/// Decides whether action-extra should be duplicated.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_engine_rpc_need_dup(flags: i32) -> i32 {
+    engine_rpc_need_dup_impl(flags)
+}
+
+/// Classifies `query_job_run` flow by op and custom-op availability.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_engine_rpc_query_job_dispatch_decision(
+    op: i32,
+    has_custom_tree: i32,
+) -> i32 {
+    engine_rpc_query_job_dispatch_decision_impl(op, has_custom_tree)
+}
+
+/// Returns whether tcp-rpc op should keep connection reference.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_engine_rpc_tcp_should_hold_conn(op: i32) -> i32 {
+    engine_rpc_tcp_should_hold_conn_impl(op)
+}
+
+/// Returns default `engine-net` port modulo selector (`-1`).
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_engine_net_default_port_mod() -> i32 {
+    engine_net_default_port_mod_impl()
+}
+
+/// Runs Rust `try_open_port_range` selector with C callback opening ports.
+///
+/// Return codes:
+/// - `0`: selected port written to `out_selected_port`
+/// - `1`: no available port (only when `quit_on_fail == 0`)
+/// - `-1`: invalid arguments
+/// - `-2`: selection/open failure in quit-on-fail mode
+///
+/// # Safety
+/// `out_selected_port` must be a valid writable pointer.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_engine_net_try_open_port_range(
+    start_port: i32,
+    end_port: i32,
+    mod_port: i32,
+    rem_port: i32,
+    quit_on_fail: i32,
+    try_open: Option<EngineNetTryOpenPortFn>,
+    try_open_ctx: *mut c_void,
+    out_selected_port: *mut i32,
+) -> i32 {
+    if out_selected_port.is_null() {
+        return -1;
+    }
+
+    match engine_net_try_open_port_range_impl(
+        start_port,
+        end_port,
+        mod_port,
+        rem_port,
+        quit_on_fail != 0,
+        try_open,
+        try_open_ctx,
+    ) {
+        Ok(Some(port)) => {
+            let out_ref = unsafe { &mut *out_selected_port };
+            *out_ref = port;
+            0
+        }
+        Ok(None) => 1,
+        Err(()) => {
+            if quit_on_fail != 0 {
+                -2
+            } else {
+                -1
+            }
+        }
+    }
+}
+
+/// Runs Rust `engine_do_open_port` privileged pre-open planning with C callback.
+///
+/// Return codes:
+/// - `0`: privileged pre-open selected/opened port (`out_selected_port` set)
+/// - `1`: no privileged pre-open required
+/// - `-1`: invalid arguments
+/// - `-2`: privileged pre-open failed in quit-on-fail mode
+///
+/// # Safety
+/// `out_selected_port` must be a valid writable pointer.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_engine_net_open_privileged_port(
+    port: i32,
+    start_port: i32,
+    end_port: i32,
+    port_mod: i32,
+    tcp_enabled: i32,
+    quit_on_fail: i32,
+    try_open: Option<EngineNetTryOpenPortFn>,
+    try_open_ctx: *mut c_void,
+    out_selected_port: *mut i32,
+) -> i32 {
+    if out_selected_port.is_null() {
+        return -1;
+    }
+
+    match engine_net_open_privileged_port_impl(
+        port,
+        start_port,
+        end_port,
+        port_mod,
+        tcp_enabled != 0,
+        quit_on_fail != 0,
+        try_open,
+        try_open_ctx,
+    ) {
+        Ok(Some(selected_port)) => {
+            let out_ref = unsafe { &mut *out_selected_port };
+            *out_ref = selected_port;
+            0
+        }
+        Ok(None) => 1,
+        Err(()) => {
+            if quit_on_fail != 0 {
+                -2
+            } else {
+                -1
+            }
+        }
+    }
+}
+
+/// Marks one engine signal as pending.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_engine_signal_set_pending(sig: i32) {
+    engine_signal_set_pending_impl(sig);
+}
+
+/// Checks if an engine signal is currently pending (`1` / `0`).
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_engine_signal_check_pending(sig: i32) -> i32 {
+    engine_signal_check_pending_impl(sig)
+}
+
+/// Checks and clears one pending engine signal (`1` / `0`).
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_engine_signal_check_pending_and_clear(sig: i32) -> i32 {
+    engine_signal_check_pending_and_clear_impl(sig)
+}
+
+/// Reports whether interrupt signals are pending (`SIGINT`/`SIGTERM`).
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_engine_interrupt_signal_raised() -> i32 {
+    engine_interrupt_signal_raised_impl()
+}
+
+/// Drains pending engine signals constrained by `allowed_signals`.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_engine_process_signals_allowed(
+    allowed_signals: u64,
+    dispatch: Option<EngineSignalDispatchFn>,
+    dispatch_ctx: *mut c_void,
+) -> i32 {
+    engine_process_signals_allowed_impl(allowed_signals, dispatch, dispatch_ctx)
 }
 
 /// Computes `engine-rpc` result flags normalization (`old_flags & 0xffff`).

@@ -444,6 +444,20 @@ typedef struct mtproxy_ffi_application_boundary {
 } mtproxy_ffi_application_boundary_t;
 
 typedef int32_t (*mtproxy_ffi_jobs_process_fn)(void *job);
+typedef int32_t (*mtproxy_ffi_engine_net_try_open_port_fn)(int32_t port, void *ctx);
+typedef void (*mtproxy_ffi_engine_signal_dispatch_fn)(int32_t sig, void *ctx);
+
+#define MTPROXY_FFI_ENGINE_RPC_COMMON_PARSE_NONE 0
+#define MTPROXY_FFI_ENGINE_RPC_COMMON_PARSE_STAT 1
+#define MTPROXY_FFI_ENGINE_RPC_COMMON_PARSE_NOP  2
+
+#define MTPROXY_FFI_ENGINE_RPC_QR_IGNORE_NO_TABLE 0
+#define MTPROXY_FFI_ENGINE_RPC_QR_DISPATCH        1
+#define MTPROXY_FFI_ENGINE_RPC_QR_SKIP_UNKNOWN    2
+
+#define MTPROXY_FFI_ENGINE_RPC_QJ_INVOKE_PARSE    0
+#define MTPROXY_FFI_ENGINE_RPC_QJ_CUSTOM          1
+#define MTPROXY_FFI_ENGINE_RPC_QJ_IGNORE          2
 
 #define MTPROXY_FFI_TCP_RPC_PACKET_LEN_STATE_SKIP    0
 #define MTPROXY_FFI_TCP_RPC_PACKET_LEN_STATE_READY   1
@@ -731,6 +745,53 @@ int32_t mtproxy_ffi_aesni_ctx_init(
 int32_t mtproxy_ffi_aesni_ctx_free(void *ctx);
 
 // engine-rpc helpers for TL result header normalization.
+int32_t mtproxy_ffi_engine_rpc_common_default_query_type_mask(void);
+int32_t mtproxy_ffi_engine_rpc_common_default_parse_decision(
+  int64_t actor_id,
+  int32_t op
+);
+int32_t mtproxy_ffi_engine_rpc_query_result_type_id_from_qid(int64_t qid);
+int32_t mtproxy_ffi_engine_rpc_query_result_dispatch_decision(
+  int32_t has_table,
+  int32_t has_handler
+);
+int32_t mtproxy_ffi_engine_rpc_need_dup(int32_t flags);
+int32_t mtproxy_ffi_engine_rpc_query_job_dispatch_decision(
+  int32_t op,
+  int32_t has_custom_tree
+);
+int32_t mtproxy_ffi_engine_rpc_tcp_should_hold_conn(int32_t op);
+int32_t mtproxy_ffi_engine_net_default_port_mod(void);
+int32_t mtproxy_ffi_engine_net_try_open_port_range(
+  int32_t start_port,
+  int32_t end_port,
+  int32_t mod_port,
+  int32_t rem_port,
+  int32_t quit_on_fail,
+  mtproxy_ffi_engine_net_try_open_port_fn try_open,
+  void *try_open_ctx,
+  int32_t *out_selected_port
+);
+int32_t mtproxy_ffi_engine_net_open_privileged_port(
+  int32_t port,
+  int32_t start_port,
+  int32_t end_port,
+  int32_t port_mod,
+  int32_t tcp_enabled,
+  int32_t quit_on_fail,
+  mtproxy_ffi_engine_net_try_open_port_fn try_open,
+  void *try_open_ctx,
+  int32_t *out_selected_port
+);
+void mtproxy_ffi_engine_signal_set_pending(int32_t sig);
+int32_t mtproxy_ffi_engine_signal_check_pending(int32_t sig);
+int32_t mtproxy_ffi_engine_signal_check_pending_and_clear(int32_t sig);
+int32_t mtproxy_ffi_engine_interrupt_signal_raised(void);
+int32_t mtproxy_ffi_engine_process_signals_allowed(
+  uint64_t allowed_signals,
+  mtproxy_ffi_engine_signal_dispatch_fn dispatch,
+  void *dispatch_ctx
+);
 int32_t mtproxy_ffi_engine_rpc_result_new_flags(int32_t old_flags);
 int32_t mtproxy_ffi_engine_rpc_result_header_len(int32_t flags);
 

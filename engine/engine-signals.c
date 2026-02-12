@@ -26,7 +26,9 @@
     Copyright 2015-2016 Telegram Messenger Inc
               2015-2016 Vitaliy Valtman
 */
+#include <assert.h>
 #include <signal.h>
+#include <stdint.h>
 #include <unistd.h>
 
 #include "common/kprintf.h"
@@ -34,26 +36,21 @@
 
 #include "engine/engine-signals.h"
 #include "engine/engine.h"
-
-static volatile unsigned long long pending_signals;
+#include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 
 void engine_set_terminal_attributes(void) __attribute__((weak));
 void engine_set_terminal_attributes(void) {}
 
 void signal_set_pending(int sig) {
-  __sync_fetch_and_or(&pending_signals, SIG2INT(sig));
+  mtproxy_ffi_engine_signal_set_pending(sig);
 }
 
 int signal_check_pending(int sig) {
-  return (pending_signals & SIG2INT(sig)) != 0;
+  return mtproxy_ffi_engine_signal_check_pending(sig);
 }
 
 int signal_check_pending_and_clear(int sig) {
-  int res = (pending_signals & SIG2INT(sig)) != 0;
-  if (res) {
-    __sync_fetch_and_and(&pending_signals, ~SIG2INT(sig));
-  }
-  return res;
+  return mtproxy_ffi_engine_signal_check_pending_and_clear(sig);
 }
 
 void sigint_immediate_handler([[maybe_unused]] const int sig) {
@@ -115,30 +112,40 @@ void quiet_signal_handler(const int sig) {
 void empty_signal_handler([[maybe_unused]] const int sig) {}
 
 int interrupt_signal_raised(void) {
-  return (pending_signals & SIG_INTERRUPT_MASK) != 0;
+  return mtproxy_ffi_engine_interrupt_signal_raised();
+}
+
+typedef struct engine_signal_dispatch_ctx {
+  server_functions_t *F;
+  uint64_t allowed_signals;
+} engine_signal_dispatch_ctx_t;
+
+static void engine_signal_dispatch_from_rust(int32_t sig, void *ctx) {
+  auto dispatch_ctx = (engine_signal_dispatch_ctx_t *)ctx;
+  if (dispatch_ctx == nullptr || dispatch_ctx->F == nullptr || sig <= 0 ||
+      sig > OUR_SIGRTMAX) {
+    return;
+  }
+
+  if ((dispatch_ctx->allowed_signals & SIG2INT(sig)) == 0) {
+    return;
+  }
+
+  assert(dispatch_ctx->F->signal_handlers[sig]);
+  dispatch_ctx->F->signal_handlers[sig]();
 }
 
 int engine_process_signals(void) {
-  engine_t *E = engine_state;
-  server_functions_t *F = E->F;
+  auto E = engine_state;
+  auto F = E->F;
+  engine_signal_dispatch_ctx_t ctx = {
+      .F = F,
+      .allowed_signals = F->allowed_signals,
+  };
 
-  long long allowed = F->allowed_signals;
-  long long forbidden = 0;
-  while (1) {
-    long long t = allowed & pending_signals & ~forbidden;
-    if (!t) {
-      break;
-    }
-    int i = __builtin_ctzll(t);
-    if (!i) {
-      i += 64;
-    }
-    assert(F->signal_handlers[i]);
-    if (signal_check_pending_and_clear(i)) {
-      F->signal_handlers[i]();
-    }
-    forbidden |= SIG2INT(i);
-  }
+  int processed = mtproxy_ffi_engine_process_signals_allowed(
+      F->allowed_signals, engine_signal_dispatch_from_rust, &ctx);
+  assert(processed >= 0);
 
   return 1;
 }

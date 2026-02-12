@@ -7,7 +7,18 @@ use super::{
     mtproxy_ffi_crypto_dh_get_params_select, mtproxy_ffi_crypto_dh_is_good_rpc_dh_bin,
     mtproxy_ffi_crypto_dh_second_round, mtproxy_ffi_crypto_dh_third_round,
     mtproxy_ffi_crypto_rand_bytes, mtproxy_ffi_crypto_tls_generate_public_key,
+    mtproxy_ffi_engine_interrupt_signal_raised, mtproxy_ffi_engine_net_default_port_mod,
+    mtproxy_ffi_engine_net_open_privileged_port, mtproxy_ffi_engine_net_try_open_port_range,
+    mtproxy_ffi_engine_process_signals_allowed,
+    mtproxy_ffi_engine_rpc_common_default_parse_decision,
+    mtproxy_ffi_engine_rpc_common_default_query_type_mask,
+    mtproxy_ffi_engine_rpc_need_dup, mtproxy_ffi_engine_rpc_query_job_dispatch_decision,
+    mtproxy_ffi_engine_rpc_query_result_dispatch_decision,
+    mtproxy_ffi_engine_rpc_query_result_type_id_from_qid,
+    mtproxy_ffi_engine_rpc_tcp_should_hold_conn,
     mtproxy_ffi_engine_rpc_result_header_len, mtproxy_ffi_engine_rpc_result_new_flags,
+    mtproxy_ffi_engine_signal_check_pending, mtproxy_ffi_engine_signal_check_pending_and_clear,
+    mtproxy_ffi_engine_signal_set_pending,
     mtproxy_ffi_get_application_boundary, mtproxy_ffi_get_concurrency_boundary,
     mtproxy_ffi_get_crypto_boundary, mtproxy_ffi_get_network_boundary,
     mtproxy_ffi_get_precise_time, mtproxy_ffi_get_rpc_boundary, mtproxy_ffi_get_utime_monotonic,
@@ -91,6 +102,47 @@ use super::{
     TCP_RPC_PACKET_LEN_STATE_READY, TCP_RPC_PACKET_LEN_STATE_SHORT, TCP_RPC_PACKET_LEN_STATE_SKIP,
     TCP_RPC_SERVER_CONTRACT_OPS, TCP_RPC_SERVER_IMPLEMENTED_OPS, TLS_REQUEST_PUBLIC_KEY_BYTES,
 };
+use core::ffi::c_void;
+
+#[repr(C)]
+struct EngineSignalDispatchCapture {
+    calls: i32,
+    last_sig: i32,
+    rearm_signal: i32,
+}
+
+#[repr(C)]
+struct EngineNetTryOpenCapture {
+    success_port: i32,
+    calls: i32,
+    last_port: i32,
+}
+
+unsafe extern "C" fn capture_engine_signal(sig: i32, ctx: *mut c_void) {
+    if ctx.is_null() {
+        return;
+    }
+    let capture = unsafe { &mut *ctx.cast::<EngineSignalDispatchCapture>() };
+    capture.calls += 1;
+    capture.last_sig = sig;
+    if capture.rearm_signal != 0 {
+        mtproxy_ffi_engine_signal_set_pending(sig);
+    }
+}
+
+unsafe extern "C" fn capture_engine_net_try_open(port: i32, ctx: *mut c_void) -> i32 {
+    if ctx.is_null() {
+        return 0;
+    }
+    let capture = unsafe { &mut *ctx.cast::<EngineNetTryOpenCapture>() };
+    capture.calls += 1;
+    capture.last_port = port;
+    if capture.success_port == port {
+        1
+    } else {
+        0
+    }
+}
 
 #[test]
 fn reports_same_api_version_for_rust_and_c_entrypoints() {
@@ -199,6 +251,233 @@ fn application_boundary_contract_is_reported() {
         out.mtproto_proxy_implemented_ops,
         MTPROTO_PROXY_IMPLEMENTED_OPS
     );
+}
+
+#[test]
+fn engine_rpc_common_dispatch_helpers_match_default_c_rules() {
+    let tl_engine_stat = i32::from_ne_bytes(0xefb3_c36b_u32.to_ne_bytes());
+    let tl_engine_nop = i32::from_ne_bytes(0x166b_b7c6_u32.to_ne_bytes());
+
+    assert_eq!(mtproxy_ffi_engine_rpc_common_default_query_type_mask(), 0x7);
+
+    assert_eq!(
+        mtproxy_ffi_engine_rpc_common_default_parse_decision(0, tl_engine_stat),
+        1
+    );
+    assert_eq!(
+        mtproxy_ffi_engine_rpc_common_default_parse_decision(0, tl_engine_nop),
+        2
+    );
+    assert_eq!(
+        mtproxy_ffi_engine_rpc_common_default_parse_decision(1, tl_engine_stat),
+        0
+    );
+    assert_eq!(
+        mtproxy_ffi_engine_rpc_common_default_parse_decision(0, 0x1234_5678),
+        0
+    );
+}
+
+#[test]
+fn engine_rpc_decision_helpers_match_c_routing_rules() {
+    let qid = i64::from_ne_bytes(0xA123_4567_89ab_cdef_u64.to_ne_bytes());
+    assert_eq!(mtproxy_ffi_engine_rpc_query_result_type_id_from_qid(qid), 10);
+    assert_eq!(
+        mtproxy_ffi_engine_rpc_query_result_dispatch_decision(0, 0),
+        0
+    );
+    assert_eq!(
+        mtproxy_ffi_engine_rpc_query_result_dispatch_decision(1, 1),
+        1
+    );
+    assert_eq!(
+        mtproxy_ffi_engine_rpc_query_result_dispatch_decision(1, 0),
+        2
+    );
+
+    assert_eq!(mtproxy_ffi_engine_rpc_need_dup(0), 1);
+    assert_eq!(mtproxy_ffi_engine_rpc_need_dup(1), 0);
+
+    let rpc_invoke_req = i32::from_ne_bytes(0x2374_df3d_u32.to_ne_bytes());
+    let rpc_pong = i32::from_ne_bytes(0x8430_eaa7_u32.to_ne_bytes());
+    assert_eq!(
+        mtproxy_ffi_engine_rpc_query_job_dispatch_decision(rpc_invoke_req, 0),
+        0
+    );
+    assert_eq!(
+        mtproxy_ffi_engine_rpc_query_job_dispatch_decision(0x1234_5678, 1),
+        1
+    );
+    assert_eq!(
+        mtproxy_ffi_engine_rpc_query_job_dispatch_decision(0x1234_5678, 0),
+        2
+    );
+    assert_eq!(mtproxy_ffi_engine_rpc_tcp_should_hold_conn(rpc_pong), 0);
+    assert_eq!(mtproxy_ffi_engine_rpc_tcp_should_hold_conn(0x1234_5678), 1);
+}
+
+#[test]
+fn engine_net_default_port_mod_is_minus_one() {
+    assert_eq!(mtproxy_ffi_engine_net_default_port_mod(), -1);
+}
+
+#[test]
+fn engine_net_try_open_port_range_bridge_selects_and_reports_failures() {
+    let mut capture = EngineNetTryOpenCapture {
+        success_port: 1003,
+        calls: 0,
+        last_port: 0,
+    };
+    let mut selected = -1;
+    let rc = unsafe {
+        mtproxy_ffi_engine_net_try_open_port_range(
+            1000,
+            1010,
+            3,
+            1,
+            1,
+            Some(capture_engine_net_try_open),
+            (&raw mut capture).cast(),
+            &raw mut selected,
+        )
+    };
+    assert_eq!(rc, 0);
+    assert_eq!(selected, 1003);
+    assert!(capture.calls > 0);
+
+    capture.success_port = -1;
+    let rc = unsafe {
+        mtproxy_ffi_engine_net_try_open_port_range(
+            10,
+            12,
+            0,
+            -1,
+            0,
+            Some(capture_engine_net_try_open),
+            (&raw mut capture).cast(),
+            &raw mut selected,
+        )
+    };
+    assert_eq!(rc, 1);
+
+    let rc = unsafe {
+        mtproxy_ffi_engine_net_try_open_port_range(
+            10,
+            12,
+            0,
+            -1,
+            1,
+            Some(capture_engine_net_try_open),
+            (&raw mut capture).cast(),
+            &raw mut selected,
+        )
+    };
+    assert_eq!(rc, -2);
+}
+
+#[test]
+fn engine_net_open_privileged_port_bridge_applies_engine_rules() {
+    let mut capture = EngineNetTryOpenCapture {
+        success_port: 443,
+        calls: 0,
+        last_port: 0,
+    };
+    let mut selected = -1;
+
+    let rc = unsafe {
+        mtproxy_ffi_engine_net_open_privileged_port(
+            443,
+            0,
+            0,
+            -1,
+            1,
+            1,
+            Some(capture_engine_net_try_open),
+            (&raw mut capture).cast(),
+            &raw mut selected,
+        )
+    };
+    assert_eq!(rc, 0);
+    assert_eq!(selected, 443);
+
+    capture.success_port = 1002;
+    let rc = unsafe {
+        mtproxy_ffi_engine_net_open_privileged_port(
+            0,
+            1000,
+            1010,
+            -1,
+            1,
+            1,
+            Some(capture_engine_net_try_open),
+            (&raw mut capture).cast(),
+            &raw mut selected,
+        )
+    };
+    assert_eq!(rc, 0);
+    assert_eq!(selected, 1002);
+
+    let calls_before_none = capture.calls;
+    let rc = unsafe {
+        mtproxy_ffi_engine_net_open_privileged_port(
+            1500,
+            1500,
+            1600,
+            -1,
+            1,
+            1,
+            Some(capture_engine_net_try_open),
+            (&raw mut capture).cast(),
+            &raw mut selected,
+        )
+    };
+    assert_eq!(rc, 1);
+    assert_eq!(capture.calls, calls_before_none);
+}
+
+#[test]
+fn engine_signal_helpers_bridge_pending_and_interrupt_state() {
+    while mtproxy_ffi_engine_signal_check_pending_and_clear(15) != 0 {}
+    assert_eq!(mtproxy_ffi_engine_signal_check_pending(15), 0);
+    assert_eq!(mtproxy_ffi_engine_interrupt_signal_raised(), 0);
+
+    mtproxy_ffi_engine_signal_set_pending(15);
+    assert_eq!(mtproxy_ffi_engine_signal_check_pending(15), 1);
+    assert_eq!(mtproxy_ffi_engine_interrupt_signal_raised(), 1);
+    assert_eq!(mtproxy_ffi_engine_signal_check_pending_and_clear(15), 1);
+    assert_eq!(mtproxy_ffi_engine_signal_check_pending(15), 0);
+}
+
+#[test]
+fn engine_signal_processing_helper_respects_allowed_mask_and_single_pass_rule() {
+    while mtproxy_ffi_engine_signal_check_pending_and_clear(10) != 0 {}
+    while mtproxy_ffi_engine_signal_check_pending_and_clear(15) != 0 {}
+
+    mtproxy_ffi_engine_signal_set_pending(10);
+    mtproxy_ffi_engine_signal_set_pending(15);
+
+    let mut capture = EngineSignalDispatchCapture {
+        calls: 0,
+        last_sig: 0,
+        rearm_signal: 1,
+    };
+    let processed = mtproxy_ffi_engine_process_signals_allowed(
+        1u64 << 10,
+        Some(capture_engine_signal),
+        (&raw mut capture).cast(),
+    );
+    assert_eq!(processed, 1);
+    assert_eq!(capture.calls, 1);
+    assert_eq!(capture.last_sig, 10);
+
+    // SIGUSR1 was re-armed during callback, but C-style single-pass processing
+    // must not dispatch it twice in one drain.
+    assert_eq!(mtproxy_ffi_engine_signal_check_pending(10), 1);
+    // SIGTERM is not in allowed mask and must stay pending.
+    assert_eq!(mtproxy_ffi_engine_signal_check_pending(15), 1);
+
+    assert_eq!(mtproxy_ffi_engine_signal_check_pending_and_clear(10), 1);
+    assert_eq!(mtproxy_ffi_engine_signal_check_pending_and_clear(15), 1);
 }
 
 #[test]

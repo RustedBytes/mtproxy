@@ -137,8 +137,19 @@ pub fn engine_process_signals_with<F>(mut callback: F) -> u32
 where
     F: FnMut(u32),
 {
-    let mut processed = 0_u32;
     let allowed = ALLOWED_SIGNALS.load(Ordering::Acquire);
+    engine_process_signals_allowed_with(allowed, &mut callback)
+}
+
+/// C-style signal processing loop with explicit allowed-signal mask.
+///
+/// This is used by the C runtime bridge where allowed signals are owned by
+/// `server_functions_t::allowed_signals`.
+pub fn engine_process_signals_allowed_with<F>(allowed: u64, mut callback: F) -> u32
+where
+    F: FnMut(u32),
+{
+    let mut processed = 0_u32;
     let mut forbidden = 0_u64;
 
     loop {
@@ -250,6 +261,25 @@ mod tests {
         assert!(register_runtime_signal(12).is_ok());
         assert_ne!(installed_signals_mask() & sig_to_int(12), 0);
         assert_ne!(allowed_signals_mask() & sig_to_int(12), 0);
+    }
+
+    #[test]
+    fn test_engine_process_signals_allowed_with_uses_explicit_mask() {
+        PENDING_SIGNALS.store(0, Ordering::SeqCst);
+        signal_set_pending(SIGTERM);
+        signal_set_pending(SIGUSR1);
+        let mut seen_usr1 = false;
+
+        let processed = engine_process_signals_allowed_with(sig_to_int(SIGUSR1), |sig| {
+            if sig == SIGUSR1 {
+                seen_usr1 = true;
+            }
+        });
+
+        assert_eq!(processed, 1);
+        assert!(seen_usr1);
+        assert!(signal_check_pending(SIGTERM));
+        assert!(!signal_check_pending(SIGUSR1));
     }
 
     #[test]

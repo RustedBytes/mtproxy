@@ -44,6 +44,7 @@
 #include "common/kprintf.h"
 
 #include "engine/engine-rpc-common.h"
+#include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 
 #include "vv/vv-io.h"
 #include "vv/vv-tree.h"
@@ -107,9 +108,6 @@ static struct tl_act_extra *(*tl_parse_function)(struct tl_in_state *tlio_in,
 static int (*tl_get_op_function)(struct tl_in_state *tlio_in);
 static void (*tl_stat_function)(struct tl_out_state *tlio_out);
 
-extern int mtproxy_ffi_engine_rpc_result_new_flags(int old_flags);
-extern int mtproxy_ffi_engine_rpc_result_header_len(int flags);
-
 int tl_result_new_flags(int old_flags) {
   int new_flags = mtproxy_ffi_engine_rpc_result_new_flags(old_flags);
   assert((new_flags & ~0xffff) == 0);
@@ -152,7 +150,9 @@ struct tl_act_extra *tl_default_act_dup(struct tl_act_extra *extra) {
   return new;
 }
 
-int need_dup(struct tl_act_extra *extra) { return !(extra->flags & 1); }
+int need_dup(struct tl_act_extra *extra) {
+  return mtproxy_ffi_engine_rpc_need_dup(extra->flags);
+}
 
 static tl_query_result_fun_t *tl_query_result_functions = NULL;
 
@@ -179,20 +179,21 @@ long long tl_generate_next_qid(int query_type_id);
 
 void engine_work_rpc_req_result(struct tl_in_state *tlio_in,
                                 struct query_work_params *params) {
-  if (!tl_query_result_functions) {
-    return;
-  }
   struct tl_query_header *h = malloc(sizeof(*h));
   if (tlf_query_answer_header(tlio_in, h) < 0) {
     tl_query_header_delete(h);
     return;
   }
   h->qw_params = params;
-  int query_type_id = (((unsigned long long)h->qid) >> 60);
-  tl_query_result_fun_t fun = tl_query_result_functions[query_type_id];
-  if (likely(fun != NULL)) {
+  int query_type_id =
+      mtproxy_ffi_engine_rpc_query_result_type_id_from_qid(h->qid);
+  tl_query_result_fun_t fun =
+      tl_query_result_functions ? tl_query_result_functions[query_type_id] : NULL;
+  int dispatch_decision = mtproxy_ffi_engine_rpc_query_result_dispatch_decision(
+      tl_query_result_functions != NULL, fun != NULL);
+  if (dispatch_decision == MTPROXY_FFI_ENGINE_RPC_QR_DISPATCH) {
     fun(tlio_in, h);
-  } else {
+  } else if (dispatch_decision == MTPROXY_FFI_ENGINE_RPC_QR_SKIP_UNKNOWN) {
     vkprintf(
         1, "Unknown query type %d (qid = 0x%016llx). Skipping query result.\n",
         query_type_id, h->qid);
@@ -717,17 +718,17 @@ int query_job_run(job_t job, int fd, int generation) {
   struct tl_query_header *h = NULL;
 
   int res;
-  if (op != RPC_INVOKE_REQ) {
-    if (rpc_custom_op_tree) {
-      struct raw_message r;
-      rwm_clone(&r, (struct raw_message *)IO->in);
-
-      res = create_query_custom_job(job, &r, 0, fd, generation);
-      rwm_free(&r);
-    } else {
-      res = JOB_COMPLETED;
-    }
+  int dispatch_decision = mtproxy_ffi_engine_rpc_query_job_dispatch_decision(
+      op, rpc_custom_op_tree != NULL);
+  if (dispatch_decision == MTPROXY_FFI_ENGINE_RPC_QJ_CUSTOM) {
+    struct raw_message r;
+    rwm_clone(&r, (struct raw_message *)IO->in);
+    res = create_query_custom_job(job, &r, 0, fd, generation);
+    rwm_free(&r);
+  } else if (dispatch_decision == MTPROXY_FFI_ENGINE_RPC_QJ_IGNORE) {
+    res = JOB_COMPLETED;
   } else {
+    assert(dispatch_decision == MTPROXY_FFI_ENGINE_RPC_QJ_INVOKE_PARSE);
     // vv_incr_stat_counter (STAT_QPS_CNT, 1);
     h = malloc(sizeof(*h));
     tlf_query_header(IO, h);
@@ -823,13 +824,9 @@ int default_tl_tcp_rpcs_execute(connection_job_t c, int op,
   CONN_INFO(c)->last_response_time = precise_now;
   // rpc_target_insert_conn (c);
 
-  if ((unsigned int)op == RPC_PONG) {
-    do_create_query_job(raw, tl_type_tcp_raw_msg, &TCP_RPC_DATA(c)->remote_pid,
-                        NULL);
-  } else {
-    do_create_query_job(raw, tl_type_tcp_raw_msg, &TCP_RPC_DATA(c)->remote_pid,
-                        job_incref(c));
-  }
+  void *conn_ref = mtproxy_ffi_engine_rpc_tcp_should_hold_conn(op) ? job_incref(c) : NULL;
+  do_create_query_job(raw, tl_type_tcp_raw_msg, &TCP_RPC_DATA(c)->remote_pid,
+                      conn_ref);
   return 1;
 }
 

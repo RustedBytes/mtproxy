@@ -1,15 +1,17 @@
 # C-to-Rust Migration Status
 
-This document tracks the progress of migrating the MTProxy C codebase to Rust (Step 15 ownership map in `rust/mtproxy-core/src/step15.rs`).
+This document tracks the progress of migrating the MTProxy C codebase to Rust (Step 15 ownership map in `rust/mtproxy-core/src/step15.rs` and generated inventory in `rust/mtproxy-bin/STEP15_REMAINING_C_UNITS.txt`).
 
 ## Overview
 
 **Goal**: Move all C runtime code to Rust, making `rust/mtproxy-bin` the authoritative runtime binary.
+**Last verified**: 2026-02-12 (local workspace run)
 
 **Current Status**: 
 - **Rust binary**: `mtproxy-rust` with full CLI interface ✅
-- **C units migrated**: 15 complete + 25 partial of 43 total modules (93% in progress or complete)
-- **Tests passing**: 311/312 (1 integration parity test currently unstable in full workspace run)
+- **C units migration coverage**: 15 complete + 25 partial + 3 not started (43 tracked Step 15 modules)
+- **Default legacy-link inventory**: 43/43 Step 15 C translation units are still linked into `mtproto-proxy` (Rust ports exist for many units, cutover removal still pending)
+- **Rust tests (`cargo test --workspace --no-fail-fast -q`)**: 315/315 can pass, but full-workspace runs are still intermittently unstable (observed failures in `runtime_parity` and dependent engine-init state)
 - **Build system**: Rust-first release binary (`make release`) + hybrid legacy C/Rust compatibility path ✅
 
 ## Migration Strategy
@@ -42,12 +44,12 @@ Phase 2 full-parity checklist (remaining for a fully functional Rust C-proxy rep
 - [x] Port job system core functionality
 - [x] Port signal handling infrastructure
 - [x] Port RPC integration
-- [ ] Complete partial implementations (19 modules)
+- [ ] Complete partial implementations (25 modules)
 - [x] Remove C object linkage from release binary
 - [ ] Verify functional parity with integration tests
 
 Phase 3 full-parity checklist (remaining for production-equivalent runtime behavior):
-- [ ] Stabilize integration parity test suite state isolation (current full-workspace flake in `runtime_parity` around engine signal-batch assertions).
+- [ ] Stabilize integration parity test suite state isolation (observed intermittent full-workspace flake in `runtime_parity::parity_engine_server_tick_interrupt_pending_returns_error` plus follow-on engine-init state leakage).
 - [ ] Complete `engine/engine.c` event-loop parity (`epoll_work` loop behavior, pending-main-jobs cadence, interrupt/waiting-exit/terminate-job paths).
 - [ ] Complete `engine/engine-net.c` socket lifecycle parity (listener init path, bind/backlog/address/IPv6 semantics, open/close behavior across lifecycle).
 - [ ] Complete `jobs/jobs.c` scheduler/runtime parity for edge cases (subclass scheduling fairness, timer/message queue interactions, refcount/destructor ordering).

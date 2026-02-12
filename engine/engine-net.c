@@ -29,6 +29,7 @@
 
 #include <arpa/inet.h>
 #include <fcntl.h>
+#include <stdint.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -40,6 +41,7 @@
 #include "engine/engine.h"
 
 #include "net/net-tcp-rpc-client.h"
+#include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 
 void default_close_network_sockets() {
   auto E = engine_state;
@@ -50,7 +52,14 @@ void default_close_network_sockets() {
   }
 }
 
-int get_port_mod() { return -1; }
+int try_open_port(int port, int quit_on_fail);
+
+static int32_t engine_net_try_open_port_callback(int32_t port,
+                                                 [[maybe_unused]] void *ctx) {
+  return (try_open_port(port, 0) >= 0) ? 1 : 0;
+}
+
+int get_port_mod() { return mtproxy_ffi_engine_net_default_port_mod(); }
 
 int try_open_port(int port, int quit_on_fail) {
   auto E = engine_state;
@@ -73,41 +82,47 @@ int try_open_port(int port, int quit_on_fail) {
 
 int try_open_port_range(int start_port, int end_port, int mod_port,
                         int rem_port, int quit_on_fail) {
-  int s = start_port;
-  for (; start_port <= end_port; start_port++) {
-    if (mod_port && rem_port >= 0 &&
-        (start_port % mod_port) != (rem_port % mod_port)) {
-      continue;
-    }
-    if (try_open_port(start_port, 0) >= 0) {
-      return start_port;
-    }
+  int32_t selected_port = -1;
+  int32_t rc = mtproxy_ffi_engine_net_try_open_port_range(
+      start_port, end_port, mod_port, rem_port, quit_on_fail,
+      engine_net_try_open_port_callback, nullptr, &selected_port);
+  if (rc == 0) {
+    return selected_port;
   }
   if (quit_on_fail) {
-    kprintf("cannot open server socket at port %d-%d\n", s, end_port);
+    kprintf("cannot open server socket at port %d-%d\n", start_port, end_port);
     exit(2);
   }
   return -1;
 }
 
 void engine_do_open_port() {
-  auto port_mod = get_port_mod();
-
-  auto port = engine_state->port;
-  auto start_port = engine_state->start_port;
-  auto end_port = engine_state->end_port;
-
-  if (port > 0 && port < PRIVILEGED_TCP_PORTS) {
-    assert(try_open_port(port, 1) >= 0);
+  auto E = engine_state;
+  int32_t selected_port = -1;
+  int32_t rc = mtproxy_ffi_engine_net_open_privileged_port(
+      E->port, E->start_port, E->end_port, get_port_mod(),
+      engine_check_tcp_enabled(), 1, engine_net_try_open_port_callback, nullptr,
+      &selected_port);
+  if (rc == 0) {
+    if (E->port <= 0) {
+      E->port = selected_port;
+    }
+    return;
+  }
+  if (rc == 1) {
     return;
   }
 
-  if (port <= 0 && start_port <= end_port &&
-      start_port < PRIVILEGED_TCP_PORTS) {
-    engine_state->port =
-        try_open_port_range(start_port, end_port, 100, port_mod, 1);
-    assert(engine_state->port >= 0);
-    return;
+  if (E->port > 0 && E->port < PRIVILEGED_TCP_PORTS) {
+    kprintf("cannot open server socket at port %d: %m\n", E->port);
+    exit(1);
+  }
+
+  if (E->port <= 0 && E->start_port <= E->end_port &&
+      E->start_port < PRIVILEGED_TCP_PORTS) {
+    kprintf("cannot open server socket at port %d-%d\n", E->start_port,
+            E->end_port);
+    exit(2);
   }
 }
 
