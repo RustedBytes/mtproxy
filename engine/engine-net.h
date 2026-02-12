@@ -33,13 +33,14 @@
 struct tcp_rpc_server_functions;
 struct http_server_functions;
 
-void default_close_network_sockets(void);
-void engine_do_open_port(void);
+void default_close_network_sockets();
+void engine_do_open_port();
 int try_open_port_range(int start_port, int end_port, int mod_port,
                         int rem_port, int quit_on_fail);
 int try_open_port(int port, int quit_on_fail);
-int get_port_mod(void);
-void engine_server_init(void);
+int get_port_mod();
+void engine_server_init();
 void engine_set_tcp_methods(struct tcp_rpc_server_functions *F);
 void engine_set_http_fallback(conn_type_t *http_type,
                               struct http_server_functions *http_functions);
+void engine_add_net_parse_options();

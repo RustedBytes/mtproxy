@@ -41,8 +41,8 @@
 
 #include "net/net-tcp-rpc-client.h"
 
-void default_close_network_sockets(void) {
-  engine_t *E = engine_state;
+void default_close_network_sockets() {
+  auto E = engine_state;
 
   if (E->sfd > 0) {
     close(E->sfd);
@@ -50,14 +50,14 @@ void default_close_network_sockets(void) {
   }
 }
 
-int get_port_mod(void) { return -1; }
+int get_port_mod() { return -1; }
 
 int try_open_port(int port, int quit_on_fail) {
-  engine_t *E = engine_state;
+  auto E = engine_state;
   if (engine_check_tcp_enabled()) {
-    struct in_addr l;
-    l.s_addr = htonl(0x7f000001);
-    E->sfd = server_socket(port, l, engine_get_backlog(), 0);
+    constexpr in_addr_t loopback_ipv4 = 0x7f00'0001;
+    const struct in_addr loopback = {.s_addr = htonl(loopback_ipv4)};
+    E->sfd = server_socket(port, loopback, engine_get_backlog(), 0);
     vkprintf(1, "opened tcp socket\n");
     if (E->sfd < 0) {
       if (quit_on_fail) {
@@ -90,12 +90,12 @@ int try_open_port_range(int start_port, int end_port, int mod_port,
   return -1;
 }
 
-void engine_do_open_port(void) {
-  int port_mod = get_port_mod();
+void engine_do_open_port() {
+  auto port_mod = get_port_mod();
 
-  int port = engine_state->port;
-  int start_port = engine_state->start_port;
-  int end_port = engine_state->end_port;
+  auto port = engine_state->port;
+  auto start_port = engine_state->start_port;
+  auto end_port = engine_state->end_port;
 
   if (port > 0 && port < PRIVILEGED_TCP_PORTS) {
     assert(try_open_port(port, 1) >= 0);
@@ -130,7 +130,7 @@ void engine_set_http_fallback(conn_type_t *http_type,
   default_engine_tcp_rpc_methods.http_fallback_extra = http_functions;
 }
 
-void engine_server_init(void) {
+void engine_server_init() {
   server_init(&ct_tcp_rpc_server, &default_engine_tcp_rpc_methods);
 }
 
@@ -200,7 +200,7 @@ static int f_parse_option_net(int val) {
     }
     break;
   case 373: {
-    engine_t *E = engine_state;
+    auto E = engine_state;
     assert(E);
     if (inet_pton(AF_INET, optarg, &E->settings_addr) != 1) {
       kprintf("Can not convert '%s' to ip addr: %m\n", optarg);
@@ -219,17 +219,21 @@ static void parse_option_net_builtin(const char *name, int arg, int *var,
 static void parse_option_net_builtin(const char *name, int arg, int *var,
                                      int val, unsigned flags, const char *help,
                                      ...) {
-  char *h = NULL;
+  char *h = nullptr;
   va_list ap;
   va_start(ap, help);
-  assert(vasprintf(&h, help, ap) >= 0);
+  auto h_size = vasprintf(&h, help, ap);
   va_end(ap);
+  if (h_size < 0 || h == nullptr) {
+    kprintf("failed to allocate parse option description\n");
+    exit(1);
+  }
 
   parse_option_ex(name, arg, var, val, flags, f_parse_option_net, "%s", h);
   free(h);
 }
 
-void engine_add_net_parse_options(void) {
+void engine_add_net_parse_options() {
   parse_option_net_builtin("backlog", required_argument, 0, 'b',
                            LONGOPT_TCP_SET, "sets backlog size");
   parse_option_net_builtin("connections", required_argument, 0, 'c',

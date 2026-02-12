@@ -46,11 +46,11 @@
     __ptr_v_save;                                                              \
   })
 
-#define JOB_REF_ARG(__name) int __name##_tag_int, job_t __name
+#define JOB_REF_ARG(__name) [[maybe_unused]] int __name##_tag_int, job_t __name
 #define JOB_REF_PASS(__ptr) 1, PTR_MOVE(__ptr)
-#define JOB_REF_NULL 1, NULL
+#define JOB_REF_NULL 1, nullptr
 #define JOB_REF_CREATE_PASS(__ptr) 1, job_incref(__ptr)
-#define JOB_REF_CREATE_PASS_N(__ptr) 1, __ptr ? job_incref(__ptr) : NULL
+#define JOB_REF_CREATE_PASS_N(__ptr) 1, __ptr ? job_incref(__ptr) : nullptr
 
 struct job_thread;
 struct async_job;
@@ -420,7 +420,7 @@ static inline int job_message_answer_true(struct job_message *M) {
 }
 
 static inline int job_message_continuation(job_t job, struct job_message *M,
-                                           int payload_magic) {
+                                           unsigned int payload_magic) {
   if (M->payload_ints >= 1) {
     assert(M->payload[0] == payload_magic);
     assert(M->payload_ints == 5);

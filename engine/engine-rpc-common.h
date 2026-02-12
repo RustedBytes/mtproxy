@@ -28,8 +28,8 @@
 */
 #pragma once
 
-#define TL_ENGINE_STAT 0xefb3c36b
+constexpr unsigned int TL_ENGINE_STAT = 0xefb3c36bu;
 struct tl_in_state;
 
-struct tl_act_extra *tl_default_parse_function(struct tl_in_state *tlio_in,
-                                               long long actor_id);
+[[nodiscard]] struct tl_act_extra *
+tl_default_parse_function(struct tl_in_state *tlio_in, long long actor_id);

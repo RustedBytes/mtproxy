@@ -36,6 +36,7 @@
 #include "vv/vv-io.h"
 
 #include "common/common-stats.h"
+#include "server-functions.h"
 #include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 
 extern int32_t

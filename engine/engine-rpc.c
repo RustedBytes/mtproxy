@@ -868,7 +868,8 @@ void tl_engine_store_stats(struct tl_out_state *tlio_out) {
 
 void engine_tl_init(struct tl_act_extra *(*parse)(struct tl_in_state *,
                                                   long long),
-                    void (*stat)(), int(get_op)(struct tl_in_state *),
+                    void (*stat)(struct tl_out_state *),
+                    int (*get_op)(struct tl_in_state *),
                     double timeout, const char *name) {
   tl_parse_function = parse;
   tl_stat_function = stat;

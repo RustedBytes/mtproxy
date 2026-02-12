@@ -293,6 +293,7 @@ alloc_new_msg_buffers_chunk(struct msg_buffers_chunk *CH) {
 void free_msg_buffers_chunk_internal(struct msg_buffers_chunk *C,
                                      struct msg_buffers_chunk *CH) {
   assert(C->magic == MSG_CHUNK_USED_LOCKED_MAGIC);
+  struct mp_queue *free_block_queue = C->free_block_queue;
   unsigned magic = CH->magic;
   assert(magic == MSG_CHUNK_HEAD_MAGIC || magic == MSG_CHUNK_HEAD_LOCKED_MAGIC);
   assert(C->buffer_size == CH->buffer_size);
@@ -316,9 +317,6 @@ void free_msg_buffers_chunk_internal(struct msg_buffers_chunk *C,
   __sync_fetch_and_add(&allocated_buffer_chunks, -1);
   MODULE_STAT->allocated_buffer_bytes -= MSG_BUFFERS_CHUNK_SIZE;
 
-  memset(C, 0, sizeof(struct msg_buffers_chunk));
-  free(C);
-
   int si = buffer_size_values - 1;
   while (si > 0 && &ChunkHeaders[si - 1] != CH) {
     si--;
@@ -329,8 +327,10 @@ void free_msg_buffers_chunk_internal(struct msg_buffers_chunk *C,
     ChunkSave[si] = NULL;
   }
 
-  free_mp_queue(C->free_block_queue);
-  C->free_block_queue = NULL;
+  free_mp_queue(free_block_queue);
+
+  memset(C, 0, sizeof(struct msg_buffers_chunk));
+  free(C);
 }
 
 void free_msg_buffers_chunk(struct msg_buffers_chunk *C) {
