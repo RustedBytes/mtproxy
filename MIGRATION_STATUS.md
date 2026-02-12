@@ -67,7 +67,7 @@ This document tracks the progress of migrating the MTProxy C codebase to Rust (S
 
 | C File | Lines | Rust Module | Status | Priority | Notes |
 |--------|-------|-------------|--------|----------|-------|
-| `crypto/aesni256.c` | ~400 | `mtproxy-core::runtime::crypto::aesni256` | 🔴 Not Started | HIGH | AES encryption; performance critical |
+| `crypto/aesni256.c` | ~400 | `mtproxy-ffi::crypto` | 🟢 Complete | HIGH | AES encryption (FFI layer) |
 | `crypto/crc32.c` | ~100 | `mtproxy-core::runtime::common::crc32` | 🟢 Complete | MED | FFI bridge active |
 | `crypto/crc32c.c` | ~100 | `mtproxy-core::runtime::common::crc32c` | 🟢 Complete | MED | FFI bridge active |
 | `crypto/md5.c` | ~150 | `mtproxy-core::runtime::common::md5` | 🟢 Complete | MED | FFI bridge active |
@@ -89,8 +89,8 @@ This document tracks the progress of migrating the MTProxy C codebase to Rust (S
 | `net/net-msg.c` | ~300 | `mtproxy-core::runtime::net::msg` | 🟡 Partial | MED | Message handling |
 | `net/net-msg-buffers.c` | ~200 | `mtproxy-core::runtime::net::msg_buffers` | 🟡 Partial | MED | Buffer management |
 | `net/net-rpc-targets.c` | ~400 | `mtproxy-core::runtime::net::rpc_targets` | 🟡 Partial | MED | RPC target management |
-| `net/net-crypto-aes.c` | ~600 | `mtproxy-core::runtime::crypto::net_crypto_aes` | 🔴 Not Started | HIGH | Network AES crypto |
-| `net/net-crypto-dh.c` | ~500 | `mtproxy-core::runtime::crypto::net_crypto_dh` | 🔴 Not Started | HIGH | Diffie-Hellman |
+| `net/net-crypto-aes.c` | ~600 | `mtproxy-ffi::crypto` | 🟢 Complete | HIGH | Network AES crypto (FFI layer) |
+| `net/net-crypto-dh.c` | ~500 | `mtproxy-ffi::crypto` | 🟢 Complete | HIGH | Diffie-Hellman (FFI layer) |
 | `net/net-timers.c` | ~300 | `mtproxy-core::runtime::net::timers` | 🟡 Partial | MED | Timer management |
 | `net/net-config.c` | ~200 | `mtproxy-core::runtime::net::config` | 🟡 Partial | LOW | Network configuration |
 | `net/net-stats.c` | ~150 | `mtproxy-core::runtime::net::stats` | 🟡 Partial | LOW | Network statistics |
