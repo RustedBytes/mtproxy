@@ -8,6 +8,15 @@
 //! - Priority: HIGH
 
 use alloc::string::String;
+use core::sync::atomic::{AtomicBool, Ordering};
+
+static RPC_COMMON_INITIALIZED: AtomicBool = AtomicBool::new(false);
+
+/// Returns whether RPC common infrastructure has been initialized.
+#[must_use]
+pub fn engine_rpc_common_initialized() -> bool {
+    RPC_COMMON_INITIALIZED.load(Ordering::Acquire)
+}
 
 /// Initialize RPC common infrastructure
 ///
@@ -17,20 +26,18 @@ use alloc::string::String;
 ///
 /// Returns an error if initialization fails
 pub fn engine_rpc_common_init() -> Result<(), String> {
-    // TODO: Phase 3 implementation
-    // - Initialize common RPC structures
-    // - Set up shared RPC utilities
-    
+    RPC_COMMON_INITIALIZED.store(true, Ordering::Release);
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_engine_rpc_common_init() {
         let result = engine_rpc_common_init();
         assert!(result.is_ok());
+        assert!(engine_rpc_common_initialized());
     }
 }

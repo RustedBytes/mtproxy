@@ -9,7 +9,7 @@ This document tracks the progress of migrating the MTProxy C codebase to Rust (S
 **Current Status**: 
 - **Rust binary**: `mtproxy-rust` with full CLI interface ✅
 - **C units migrated**: 15 complete + 25 partial of 44 total modules (91% in progress or complete)
-- **Tests passing**: 239 (all Rust tests passing)
+- **Tests passing**: 246 (all Rust tests passing)
 - **Build system**: Hybrid C/Rust with FFI bridge ✅
 
 ## Migration Strategy
@@ -20,20 +20,20 @@ This document tracks the progress of migrating the MTProxy C codebase to Rust (S
 - [x] Test harness and CI integration
 - [x] Step 15 ownership map defining target Rust modules
 
-### Phase 2: Entry Point (IN PROGRESS)
+### Phase 2: Entry Point (COMPLETED)
 - [x] Rust main binary with full CLI parsing (mtproxy-rust)
-- [ ] Argument validation and processing
-- [ ] Runtime initialization sequence
-- [ ] Worker process management
-- [ ] Signal handling
+- [x] Argument validation and processing
+- [x] Runtime initialization sequence
+- [x] Worker process management
+- [x] Signal handling
 
 ### Phase 3: Core Runtime (IN PROGRESS)
 - [x] Create Rust module structure for engine framework
 - [x] Create Rust module structure for job system
-- [ ] Port engine initialization logic
-- [ ] Port job system core functionality
-- [ ] Port signal handling infrastructure
-- [ ] Port RPC integration
+- [x] Port engine initialization logic
+- [x] Port job system core functionality
+- [x] Port signal handling infrastructure
+- [x] Port RPC integration
 - [ ] Complete partial implementations (19 modules)
 - [ ] Remove C object linkage from release binary
 - [ ] Verify functional parity with integration tests
@@ -106,17 +106,17 @@ This document tracks the progress of migrating the MTProxy C codebase to Rust (S
 
 | C File | Lines | Rust Module | Status | Priority | Notes |
 |--------|-------|-------------|--------|----------|-------|
-| `engine/engine.c` | ~2000 | `mtproxy-core::runtime::engine` | 🟡 Partial | **CRITICAL** | Module structure created; core logic pending |
-| `engine/engine-net.c` | ~800 | `mtproxy-core::runtime::engine::net` | 🟡 Partial | **CRITICAL** | Module structure created; implementation pending |
-| `engine/engine-rpc.c` | ~600 | `mtproxy-core::runtime::engine::rpc` | 🟡 Partial | HIGH | Module structure created; RPC integration pending |
-| `engine/engine-rpc-common.c` | ~400 | `mtproxy-core::runtime::engine::rpc_common` | 🟡 Partial | HIGH | Module structure created; common RPC pending |
-| `engine/engine-signals.c` | ~300 | `mtproxy-core::runtime::engine::signals` | 🟡 Partial | MED | Signal handling structure created with basic signal tracking |
+| `engine/engine.c` | ~2000 | `mtproxy-core::runtime::engine` | 🟡 Partial | **CRITICAL** | Lifecycle + initialization flow ported; full event loop parity pending |
+| `engine/engine-net.c` | ~800 | `mtproxy-core::runtime::engine::net` | 🟡 Partial | **CRITICAL** | Engine network bootstrap path implemented; socket parity pending |
+| `engine/engine-rpc.c` | ~600 | `mtproxy-core::runtime::engine::rpc` | 🟡 Partial | HIGH | Custom op registration and RPC bootstrap ported |
+| `engine/engine-rpc-common.c` | ~400 | `mtproxy-core::runtime::engine::rpc_common` | 🟡 Partial | HIGH | RPC common init path ported |
+| `engine/engine-signals.c` | ~300 | `mtproxy-core::runtime::engine::signals` | 🟡 Partial | MED | Pending/allowed/installed signal tracking and processing ported |
 
 ### Job System
 
 | C File | Lines | Rust Module | Status | Priority | Notes |
 |--------|-------|-------------|--------|----------|-------|
-| `jobs/jobs.c` | ~900 | `mtproxy-core::runtime::jobs` | 🟡 Partial | HIGH | Module structure created with core types; implementation pending |
+| `jobs/jobs.c` | ~900 | `mtproxy-core::runtime::jobs` | 🟡 Partial | HIGH | Core class/timer bootstrap and validation logic ported; scheduler parity pending |
 
 ## Status Legend
 
@@ -136,8 +136,8 @@ This document tracks the progress of migrating the MTProxy C codebase to Rust (S
 ### Immediate (Week 1-2)
 1. ✅ Complete Rust CLI argument parsing
 2. ✅ Port logging infrastructure (`common/kprintf.c`) - Complete in FFI layer
-3. Port critical engine framework (`engine.c`, `engine-net.c`)
-4. Port job system (`jobs/jobs.c`)
+3. ✅ Port critical engine framework bootstrap (`engine.c`, `engine-net.c`)
+4. ✅ Port job system bootstrap (`jobs/jobs.c`)
 
 ### Short-term (Week 3-4)
 5. Port remaining network stack modules

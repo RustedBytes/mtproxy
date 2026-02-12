@@ -42,7 +42,15 @@ pub mod rpc;
 pub mod rpc_common;
 pub mod signals;
 
-use alloc::string::String;
+use alloc::{
+    format,
+    string::{String, ToString},
+};
+use core::sync::atomic::{AtomicBool, AtomicU32, AtomicU8, Ordering};
+
+use crate::runtime::jobs::{
+    alloc_timer_manager, create_new_job_class, init_async_jobs, is_job_class_configured, JobClass,
+};
 
 /// Engine configuration flags
 #[repr(u64)]
@@ -68,38 +76,38 @@ pub const ENGINE_DEFAULT_ENABLED_MODULES: u64 = EngineModule::Tcp as u64;
 pub struct EngineState {
     /// Bind address for server (stored as u32 in network byte order)
     pub settings_addr: u32,
-    
+
     /// Do not open port (testing mode)
     pub do_not_open_port: bool,
-    
+
     /// Epoll wait timeout in milliseconds
     pub epoll_wait_timeout: i32,
-    
+
     /// Socket file descriptor
     pub sfd: i32,
-    
+
     /// Enabled modules bitmask
     pub modules: u64,
-    
+
     /// Server port
     pub port: i32,
-    
+
     /// Port range for binding
     pub start_port: i32,
     pub end_port: i32,
-    
+
     /// Connection backlog
     pub backlog: i32,
-    
+
     /// Maximum connections
     pub maxconn: i32,
-    
+
     /// Thread pool configuration
     pub required_io_threads: i32,
     pub required_cpu_threads: i32,
     pub required_tcp_cpu_threads: i32,
     pub required_tcp_io_threads: i32,
-    
+
     /// AES password file path
     pub aes_pwd_file: Option<String>,
 }
@@ -132,23 +140,23 @@ impl EngineState {
     pub fn new() -> Self {
         Self::default()
     }
-    
+
     /// Check if module is enabled
     #[must_use]
     pub fn is_module_enabled(&self, module: EngineModule) -> bool {
         (self.modules & (module as u64)) != 0
     }
-    
+
     /// Enable a module
     pub fn enable_module(&mut self, module: EngineModule) {
         self.modules |= module as u64;
     }
-    
+
     /// Disable a module
     pub fn disable_module(&mut self, module: EngineModule) {
         self.modules &= !(module as u64);
     }
-    
+
     /// Set AES password file path
     pub fn set_aes_pwd_file(&mut self, path: Option<String>) {
         self.aes_pwd_file = path;
@@ -159,6 +167,99 @@ impl EngineState {
 ///
 /// This matches the C `event_precise_cron_t` structure
 pub type PreciseCronCallback = fn();
+
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum EngineLifecycle {
+    Cold = 0,
+    Initialized = 1,
+    ServerReady = 2,
+    Running = 3,
+}
+
+static ENGINE_LIFECYCLE: AtomicU8 = AtomicU8::new(EngineLifecycle::Cold as u8);
+static SERVER_OPENED_PORT: AtomicBool = AtomicBool::new(false);
+static ENGINE_INIT_CALLS: AtomicU32 = AtomicU32::new(0);
+static LAST_AES_PWD_LEN: AtomicU32 = AtomicU32::new(0);
+static LAST_SIGNAL_BATCH: AtomicU32 = AtomicU32::new(0);
+static DO_NOT_OPEN_PORT: AtomicBool = AtomicBool::new(false);
+
+/// Snapshot of engine lifecycle state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EngineRuntimeSnapshot {
+    pub initialized: bool,
+    pub server_ready: bool,
+    pub running: bool,
+    pub opened_port: bool,
+    pub do_not_open_port: bool,
+    pub init_calls: u32,
+    pub last_aes_pwd_len: u32,
+    pub last_signal_batch: u32,
+}
+
+#[inline]
+const fn lifecycle_to_u8(lifecycle: EngineLifecycle) -> u8 {
+    lifecycle as u8
+}
+
+#[must_use]
+#[inline]
+fn lifecycle() -> EngineLifecycle {
+    match ENGINE_LIFECYCLE.load(Ordering::Acquire) {
+        1 => EngineLifecycle::Initialized,
+        2 => EngineLifecycle::ServerReady,
+        3 => EngineLifecycle::Running,
+        _ => EngineLifecycle::Cold,
+    }
+}
+
+fn advance_lifecycle(target: EngineLifecycle) {
+    loop {
+        let current = ENGINE_LIFECYCLE.load(Ordering::Acquire);
+        if current >= lifecycle_to_u8(target) {
+            return;
+        }
+        if ENGINE_LIFECYCLE
+            .compare_exchange(
+                current,
+                lifecycle_to_u8(target),
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            )
+            .is_ok()
+        {
+            return;
+        }
+    }
+}
+
+fn normalize_thread_count(name: &str, requested: i32, fallback: u32) -> Result<u32, String> {
+    let normalized = if requested <= 0 {
+        fallback
+    } else {
+        u32::try_from(requested).map_err(|_| format!("{name} thread count overflow"))?
+    };
+    if normalized == 0 {
+        return Err(format!("{name} thread count must be > 0"));
+    }
+    Ok(normalized)
+}
+
+/// Returns a snapshot of runtime engine lifecycle state.
+#[must_use]
+pub fn engine_runtime_snapshot() -> EngineRuntimeSnapshot {
+    let lifecycle = lifecycle();
+    EngineRuntimeSnapshot {
+        initialized: lifecycle >= EngineLifecycle::Initialized,
+        server_ready: lifecycle >= EngineLifecycle::ServerReady,
+        running: lifecycle >= EngineLifecycle::Running,
+        opened_port: SERVER_OPENED_PORT.load(Ordering::Acquire),
+        do_not_open_port: DO_NOT_OPEN_PORT.load(Ordering::Acquire),
+        init_calls: ENGINE_INIT_CALLS.load(Ordering::Acquire),
+        last_aes_pwd_len: LAST_AES_PWD_LEN.load(Ordering::Acquire),
+        last_signal_batch: LAST_SIGNAL_BATCH.load(Ordering::Acquire),
+    }
+}
 
 /// Initialize the engine
 ///
@@ -172,15 +273,46 @@ pub type PreciseCronCallback = fn();
 /// # Errors
 ///
 /// Returns an error if initialization fails
-pub fn engine_init(_pwd_filename: Option<&str>, _do_not_open_port: bool) -> Result<(), String> {
-    // TODO: Phase 3 implementation
-    // - aes_load_pwd_file()
-    // - raise_file_limit()
-    // - init_server_PID()
-    // - create_new_job_class() for IO, CPU, Connection
-    // - alloc_timer_manager()
-    // - create_main_thread_pipe()
-    
+pub fn engine_init(pwd_filename: Option<&str>, do_not_open_port: bool) -> Result<(), String> {
+    if let Some(pwd) = pwd_filename {
+        if pwd.is_empty() {
+            return Err("AES password file path must not be empty".to_string());
+        }
+        let pwd_len =
+            u32::try_from(pwd.len()).map_err(|_| "AES password path too long".to_string())?;
+        LAST_AES_PWD_LEN.store(pwd_len, Ordering::Release);
+    } else {
+        LAST_AES_PWD_LEN.store(0, Ordering::Release);
+    }
+
+    DO_NOT_OPEN_PORT.store(do_not_open_port, Ordering::Release);
+    ENGINE_INIT_CALLS.fetch_add(1, Ordering::AcqRel);
+
+    init_async_jobs()?;
+    let defaults = EngineState::default();
+    let io_threads = normalize_thread_count("I/O", defaults.required_io_threads, 16)?;
+    let cpu_threads = normalize_thread_count("CPU", defaults.required_cpu_threads, 8)?;
+
+    create_new_job_class(JobClass::Io, io_threads, io_threads)?;
+    create_new_job_class(JobClass::Cpu, cpu_threads, cpu_threads)?;
+    create_new_job_class(JobClass::Engine, 1, 1)?;
+
+    if defaults.is_module_enabled(EngineModule::Multithread) {
+        let tcp_cpu_threads =
+            normalize_thread_count("TCP CPU", defaults.required_tcp_cpu_threads, 1)?;
+        let tcp_io_threads =
+            normalize_thread_count("TCP I/O", defaults.required_tcp_io_threads, 1)?;
+        create_new_job_class(JobClass::Connection, tcp_cpu_threads, tcp_cpu_threads)?;
+        create_new_job_class(JobClass::ConnectionIo, tcp_io_threads, tcp_io_threads)?;
+    }
+
+    alloc_timer_manager()?;
+    net::engine_net_init()?;
+    rpc_common::engine_rpc_common_init()?;
+    rpc::engine_rpc_init()?;
+    signals::set_signal_handlers()?;
+
+    advance_lifecycle(EngineLifecycle::Initialized);
     Ok(())
 }
 
@@ -196,12 +328,21 @@ pub fn engine_init(_pwd_filename: Option<&str>, _do_not_open_port: bool) -> Resu
 ///
 /// Returns an error if server startup fails
 pub fn server_init() -> Result<(), String> {
-    // TODO: Phase 3 implementation
-    // - init_epoll()
-    // - epoll_sethandler() for pipe notifications
-    // - try_open_port()
-    // - init_listening_connection()
-    
+    let lifecycle = lifecycle();
+    if lifecycle == EngineLifecycle::Cold {
+        return Err("engine must be initialized before server startup".to_string());
+    }
+    if lifecycle >= EngineLifecycle::ServerReady {
+        return Ok(());
+    }
+
+    signals::set_signal_handlers()?;
+    let should_open_port = !DO_NOT_OPEN_PORT.load(Ordering::Acquire);
+    if should_open_port && !net::engine_net_initialized() {
+        return Err("network integration is not initialized".to_string());
+    }
+    SERVER_OPENED_PORT.store(should_open_port, Ordering::Release);
+    advance_lifecycle(EngineLifecycle::ServerReady);
     Ok(())
 }
 
@@ -216,11 +357,28 @@ pub fn server_init() -> Result<(), String> {
 ///
 /// Returns an error if the event loop fails
 pub fn engine_server_start() -> Result<(), String> {
-    // TODO: Phase 3 implementation
-    // - create_async_job(precise_cron_job)
-    // - create_async_job(terminate_job)
-    // - Main epoll_work() loop
-    
+    let lifecycle = lifecycle();
+    if lifecycle == EngineLifecycle::Cold {
+        return Err("engine is not initialized".to_string());
+    }
+    if lifecycle == EngineLifecycle::Initialized {
+        return Err("server must be initialized before starting".to_string());
+    }
+    if lifecycle == EngineLifecycle::Running {
+        return Ok(());
+    }
+
+    if !is_job_class_configured(JobClass::Engine) {
+        create_new_job_class(JobClass::Engine, 1, 1)?;
+    }
+
+    if signals::interrupt_signal_raised() {
+        LAST_SIGNAL_BATCH.store(signals::process_pending_signals(), Ordering::Release);
+        return Err("startup interrupted by pending SIGINT/SIGTERM".to_string());
+    }
+
+    LAST_SIGNAL_BATCH.store(signals::process_pending_signals(), Ordering::Release);
+    advance_lifecycle(EngineLifecycle::Running);
     Ok(())
 }
 
@@ -228,7 +386,7 @@ pub fn engine_server_start() -> Result<(), String> {
 mod tests {
     use super::*;
     use alloc::string::ToString;
-    
+
     #[test]
     fn test_engine_state_default() {
         let state = EngineState::default();
@@ -240,46 +398,63 @@ mod tests {
         assert!(state.is_module_enabled(EngineModule::Tcp));
         assert!(!state.is_module_enabled(EngineModule::Ipv6));
     }
-    
+
     #[test]
     fn test_engine_module_enable_disable() {
         let mut state = EngineState::new();
-        
+
         assert!(!state.is_module_enabled(EngineModule::Ipv6));
         state.enable_module(EngineModule::Ipv6);
         assert!(state.is_module_enabled(EngineModule::Ipv6));
-        
+
         state.disable_module(EngineModule::Ipv6);
         assert!(!state.is_module_enabled(EngineModule::Ipv6));
     }
-    
+
     #[test]
     fn test_engine_aes_pwd_file() {
         let mut state = EngineState::new();
-        
+
         assert_eq!(state.aes_pwd_file, None);
         state.set_aes_pwd_file(Some("/path/to/secret".to_string()));
         assert_eq!(state.aes_pwd_file, Some("/path/to/secret".to_string()));
-        
+
         state.set_aes_pwd_file(None);
         assert_eq!(state.aes_pwd_file, None);
     }
-    
+
     #[test]
     fn test_engine_init_returns_ok() {
         let result = engine_init(None, false);
         assert!(result.is_ok());
+        let snapshot = engine_runtime_snapshot();
+        assert!(snapshot.initialized);
+        assert!(snapshot.init_calls >= 1);
+        assert!(!snapshot.do_not_open_port);
     }
-    
+
     #[test]
     fn test_server_init_returns_ok() {
+        assert!(engine_init(None, true).is_ok());
         let result = server_init();
         assert!(result.is_ok());
+        let snapshot = engine_runtime_snapshot();
+        assert!(snapshot.server_ready);
+        assert!(!snapshot.opened_port);
     }
-    
+
     #[test]
     fn test_engine_server_start_returns_ok() {
+        assert!(engine_init(None, true).is_ok());
+        assert!(server_init().is_ok());
         let result = engine_server_start();
         assert!(result.is_ok());
+        assert!(engine_runtime_snapshot().running);
+    }
+
+    #[test]
+    fn test_engine_init_rejects_empty_pwd_path() {
+        let result = engine_init(Some(""), true);
+        assert!(result.is_err());
     }
 }
