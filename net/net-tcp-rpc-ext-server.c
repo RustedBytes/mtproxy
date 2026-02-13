@@ -98,7 +98,6 @@ conn_type_t ct_tcp_rpc_ext_server = {
 
 int tcp_proxy_pass_parse_execute(connection_job_t C);
 int tcp_proxy_pass_close(connection_job_t C, int who);
-int tcp_proxy_pass_connected(connection_job_t C);
 int tcp_proxy_pass_write_packet(connection_job_t c, struct raw_message *raw);
 
 conn_type_t ct_proxy_pass = {
@@ -107,18 +106,10 @@ conn_type_t ct_proxy_pass = {
     .title = "proxypass",
     .init_accepted = server_failed,
     .parse_execute = tcp_proxy_pass_parse_execute,
-    .connected = tcp_proxy_pass_connected,
     .close = tcp_proxy_pass_close,
     .write_packet = tcp_proxy_pass_write_packet,
     .connected = server_noop,
 };
-
-int tcp_proxy_pass_connected(connection_job_t C) {
-  struct connection_info *c = CONN_INFO(C);
-  vkprintf(1, "proxy pass connected #%d %s:%d -> %s:%d\n", c->fd,
-           show_our_ip(C), c->our_port, show_remote_ip(C), c->remote_port);
-  return 0;
-}
 
 int tcp_proxy_pass_parse_execute(connection_job_t C) {
   struct connection_info *c = CONN_INFO(C);
