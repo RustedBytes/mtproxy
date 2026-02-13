@@ -1,5 +1,4 @@
 use super::MtproxyProcessId;
-use crate::ffi_util::{mut_ref_from_ptr, ref_from_ptr};
 use core::ffi::{c_int, c_void};
 use core::mem::size_of;
 use core::ptr;
@@ -178,31 +177,61 @@ fn sub_bytes(ptr_: *mut c_void, len: c_int) -> *mut c_void {
 }
 
 #[inline]
-unsafe fn in_state_mut<'a>(state: *mut TlInState) -> Option<&'a mut TlInState> {
-    unsafe { mut_ref_from_ptr(state) }
+fn ptr_mut<'a, T>(ptr: *mut T) -> Option<&'a mut T> {
+    unsafe { crate::ffi_util::mut_ref_from_ptr(ptr) }
 }
 
 #[inline]
-unsafe fn out_state_mut<'a>(state: *mut TlOutState) -> Option<&'a mut TlOutState> {
-    unsafe { mut_ref_from_ptr(state) }
+fn ptr_ref<'a, T>(ptr: *const T) -> Option<&'a T> {
+    unsafe { crate::ffi_util::ref_from_ptr(ptr) }
 }
 
 #[inline]
-unsafe fn in_methods_ref(state: &TlInState) -> Option<&TlInMethods> {
-    unsafe { ref_from_ptr(state.in_methods) }
+fn in_state_mut<'a>(state: *mut TlInState) -> Option<&'a mut TlInState> {
+    ptr_mut(state)
 }
 
 #[inline]
-unsafe fn out_methods_ref(state: &TlOutState) -> Option<&TlOutMethods> {
-    unsafe { ref_from_ptr(state.out_methods) }
+fn out_state_mut<'a>(state: *mut TlOutState) -> Option<&'a mut TlOutState> {
+    ptr_mut(state)
 }
 
-unsafe fn in_raw(state: *mut TlInState) -> *mut RawMessage {
-    (*state).in_ptr.cast::<RawMessage>()
+#[inline]
+fn in_methods_ref(state: &TlInState) -> Option<&TlInMethods> {
+    ptr_ref(state.in_methods)
 }
 
-unsafe fn out_raw(state: *mut TlOutState) -> *mut RawMessage {
-    (*state).out_ptr.cast::<RawMessage>()
+#[inline]
+fn out_methods_ref(state: &TlOutState) -> Option<&TlOutMethods> {
+    ptr_ref(state.out_methods)
+}
+
+macro_rules! in_method_cb {
+    ($state:expr, $field:ident) => {
+        in_methods_ref($state).and_then(|methods| methods.$field)
+    };
+}
+
+macro_rules! out_method_cb {
+    ($state:expr, $field:ident) => {
+        out_methods_ref($state).and_then(|methods| methods.$field)
+    };
+}
+
+#[inline]
+fn in_raw(state: *mut TlInState) -> *mut RawMessage {
+    let Some(state_ref) = in_state_mut(state) else {
+        return ptr::null_mut();
+    };
+    state_ref.in_ptr.cast::<RawMessage>()
+}
+
+#[inline]
+fn out_raw(state: *mut TlOutState) -> *mut RawMessage {
+    let Some(state_ref) = out_state_mut(state) else {
+        return ptr::null_mut();
+    };
+    state_ref.out_ptr.cast::<RawMessage>()
 }
 
 unsafe extern "C" fn tl_raw_msg_fetch_raw_data(
@@ -557,7 +586,7 @@ unsafe fn tl_fetch_init_impl(
     methods: *const TlInMethods,
     size: c_int,
 ) -> c_int {
-    let Some(tlio_in_ref) = (unsafe { in_state_mut(tlio_in) }) else {
+    let Some(tlio_in_ref) = in_state_mut(tlio_in) else {
         return -1;
     };
     if in_ptr.is_null() || methods.is_null() {
@@ -581,7 +610,7 @@ unsafe fn tl_fetch_init_impl(
 }
 
 unsafe fn tl_set_error_once(tlio_in: *mut TlInState, errnum: c_int, message: &str) {
-    let Some(tlio_in_ref) = (unsafe { in_state_mut(tlio_in) }) else {
+    let Some(tlio_in_ref) = in_state_mut(tlio_in) else {
         return;
     };
     if !tlio_in_ref.error.is_null() {
@@ -598,14 +627,13 @@ unsafe fn tl_set_error_once(tlio_in: *mut TlInState, errnum: c_int, message: &st
 }
 
 unsafe fn tl_in_skip(tlio_in: *mut TlInState, len: c_int) -> c_int {
-    let Some(tlio_in_ref) = (unsafe { in_state_mut(tlio_in) }) else {
+    let Some(tlio_in_ref) = in_state_mut(tlio_in) else {
         return -1;
     };
     if len < 0 || tlio_in_ref.in_remaining < len {
         return -1;
     }
-    let Some(fetch_move) =
-        (unsafe { in_methods_ref(tlio_in_ref) }).and_then(|methods| methods.fetch_move)
+    let Some(fetch_move) = in_method_cb!(tlio_in_ref, fetch_move)
     else {
         return -1;
     };
@@ -616,14 +644,14 @@ unsafe fn tl_in_skip(tlio_in: *mut TlInState, len: c_int) -> c_int {
 }
 
 unsafe fn tl_in_fetch_raw_any(tlio_in: *mut TlInState, dst: *mut c_void, len: c_int) -> c_int {
-    let Some(tlio_in_ref) = (unsafe { in_state_mut(tlio_in) }) else {
+    let Some(tlio_in_ref) = in_state_mut(tlio_in) else {
         return -1;
     };
     if dst.is_null() || len < 0 || tlio_in_ref.in_remaining < len {
         return -1;
     }
     let Some(fetch_raw_data) =
-        (unsafe { in_methods_ref(tlio_in_ref) }).and_then(|methods| methods.fetch_raw_data)
+        in_method_cb!(tlio_in_ref, fetch_raw_data)
     else {
         return -1;
     };
@@ -634,14 +662,13 @@ unsafe fn tl_in_fetch_raw_any(tlio_in: *mut TlInState, dst: *mut c_void, len: c_
 }
 
 unsafe fn tl_in_lookup_data(tlio_in: *mut TlInState, dst: *mut c_void, len: c_int) -> c_int {
-    let Some(tlio_in_ref) = (unsafe { in_state_mut(tlio_in) }) else {
+    let Some(tlio_in_ref) = in_state_mut(tlio_in) else {
         return -1;
     };
     if dst.is_null() || len < 0 || tlio_in_ref.in_remaining < len {
         return -1;
     }
-    let Some(fetch_lookup) =
-        (unsafe { in_methods_ref(tlio_in_ref) }).and_then(|methods| methods.fetch_lookup)
+    let Some(fetch_lookup) = in_method_cb!(tlio_in_ref, fetch_lookup)
     else {
         return -1;
     };
@@ -655,13 +682,13 @@ unsafe fn tl_query_header_parse_impl(
     is_answer: bool,
 ) -> c_int {
     let header_error_message = expected_query_header_message(is_answer);
-    let Some(tlio_in_ref) = (unsafe { in_state_mut(tlio_in) }) else {
+    let Some(tlio_in_ref) = in_state_mut(tlio_in) else {
         return -1;
     };
-    let Some(header_ref) = (unsafe { mut_ref_from_ptr(header) }) else {
+    let Some(header_ref) = ptr_mut(header) else {
         return -1;
     };
-    let Some(methods) = (unsafe { in_methods_ref(tlio_in_ref) }) else {
+    let Some(methods) = in_methods_ref(tlio_in_ref) else {
         return -1;
     };
     ptr::write_bytes(
@@ -726,7 +753,7 @@ unsafe fn tl_store_init_impl(
     size: c_int,
     qid: i64,
 ) -> c_int {
-    let Some(tlio_out_ref) = (unsafe { out_state_mut(tlio_out) }) else {
+    let Some(tlio_out_ref) = out_state_mut(tlio_out) else {
         return -1;
     };
     if !tlio_out_ref.out_methods.is_null() {
@@ -737,7 +764,7 @@ unsafe fn tl_store_init_impl(
     tlio_out_ref.out_extra = out_extra;
 
     if !out.is_null() {
-        let Some(methods_ref) = (unsafe { ref_from_ptr(methods) }) else {
+        let Some(methods_ref) = ptr_ref(methods) else {
             return -1;
         };
         tlio_out_ref.out_methods = methods;
@@ -768,7 +795,7 @@ unsafe fn tl_out_store_raw_data(
     data: *const c_void,
     len: c_int,
 ) -> c_int {
-    let Some(tlio_out_ref) = (unsafe { out_state_mut(tlio_out) }) else {
+    let Some(tlio_out_ref) = out_state_mut(tlio_out) else {
         return -1;
     };
     if len < 0 {
@@ -787,7 +814,7 @@ unsafe fn tl_out_store_raw_data(
         return -1;
     }
     let Some(store_raw_data) =
-        (unsafe { out_methods_ref(tlio_out_ref) }).and_then(|methods| methods.store_raw_data)
+        out_method_cb!(tlio_out_ref, store_raw_data)
     else {
         return -1;
     };
@@ -856,11 +883,11 @@ unsafe fn tl_out_store_string0(tlio_out: *mut TlOutState, s: *const i8) -> c_int
 }
 
 unsafe fn tl_out_clean(tlio_out: *mut TlOutState) -> c_int {
-    let Some(tlio_out_ref) = (unsafe { out_state_mut(tlio_out) }) else {
+    let Some(tlio_out_ref) = out_state_mut(tlio_out) else {
         return -1;
     };
     let Some(store_read_back) =
-        (unsafe { out_methods_ref(tlio_out_ref) }).and_then(|methods| methods.store_read_back)
+        out_method_cb!(tlio_out_ref, store_read_back)
     else {
         return -1;
     };
@@ -871,7 +898,7 @@ unsafe fn tl_out_clean(tlio_out: *mut TlOutState) -> c_int {
 }
 
 unsafe fn tl_in_check(tlio_in: *mut TlInState, nbytes: c_int) -> c_int {
-    let Some(tlio_in_ref) = (unsafe { in_state_mut(tlio_in) }) else {
+    let Some(tlio_in_ref) = in_state_mut(tlio_in) else {
         return -1;
     };
     if tlio_in_ref.in_type == TL_TYPE_NONE {
@@ -914,7 +941,7 @@ unsafe fn tl_in_check(tlio_in: *mut TlInState, nbytes: c_int) -> c_int {
 }
 
 unsafe fn tl_out_check(tlio_out: *mut TlOutState, size: c_int) -> c_int {
-    let Some(tlio_out_ref) = (unsafe { out_state_mut(tlio_out) }) else {
+    let Some(tlio_out_ref) = out_state_mut(tlio_out) else {
         return -1;
     };
     if size < 0 {
@@ -1005,10 +1032,10 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_store_header(
     tlio_out: *mut TlOutState,
     header: *const TlQueryHeader,
 ) -> c_int {
-    let Some(tlio_out_ref) = (unsafe { out_state_mut(tlio_out) }) else {
+    let Some(tlio_out_ref) = out_state_mut(tlio_out) else {
         return -1;
     };
-    let Some(h) = (unsafe { ref_from_ptr(header) }) else {
+    let Some(h) = ptr_ref(header) else {
         return -1;
     };
     if tlio_out_ref.out_type == TL_TYPE_NONE {
@@ -1065,10 +1092,10 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_store_end_ext(
     op: c_int,
     out_sent_kind: *mut c_int,
 ) -> c_int {
-    let Some(tlio_out_ref) = (unsafe { out_state_mut(tlio_out) }) else {
+    let Some(tlio_out_ref) = out_state_mut(tlio_out) else {
         return -1;
     };
-    if let Some(out_sent_kind_ref) = unsafe { mut_ref_from_ptr(out_sent_kind) } {
+    if let Some(out_sent_kind_ref) = ptr_mut(out_sent_kind) {
         *out_sent_kind_ref = TL_SENT_KIND_NONE;
     }
     if tlio_out_ref.out_type == TL_TYPE_NONE {
@@ -1078,7 +1105,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_store_end_ext(
         return -1;
     }
 
-    let Some(methods) = (unsafe { out_methods_ref(tlio_out_ref) }) else {
+    let Some(methods) = out_methods_ref(tlio_out_ref) else {
         return -1;
     };
     let flags = methods.flags;
@@ -1155,7 +1182,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_store_end_ext(
     tlio_out_ref.out_methods = ptr::null();
     tlio_out_ref.out_extra = ptr::null_mut();
 
-    if let Some(out_sent_kind_ref) = unsafe { mut_ref_from_ptr(out_sent_kind) } {
+    if let Some(out_sent_kind_ref) = ptr_mut(out_sent_kind) {
         *out_sent_kind_ref = sent_kind;
     }
     0
@@ -1163,7 +1190,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_store_end_ext(
 
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_tl_query_header_delete(h: *mut TlQueryHeader) {
-    let Some(h_ref) = (unsafe { mut_ref_from_ptr(h) }) else {
+    let Some(h_ref) = ptr_mut(h) else {
         return;
     };
     let refcnt = (&h_ref.ref_cnt as *const c_int).cast::<core::sync::atomic::AtomicI32>();
@@ -1177,7 +1204,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_query_header_delete(h: *mut TlQueryHeade
 pub unsafe extern "C" fn mtproxy_ffi_tl_query_header_dup(
     h: *mut TlQueryHeader,
 ) -> *mut TlQueryHeader {
-    let Some(h_ref) = (unsafe { mut_ref_from_ptr(h) }) else {
+    let Some(h_ref) = ptr_mut(h) else {
         return ptr::null_mut();
     };
     let refcnt = (&h_ref.ref_cnt as *const c_int).cast::<core::sync::atomic::AtomicI32>();
@@ -1189,7 +1216,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_query_header_dup(
 pub unsafe extern "C" fn mtproxy_ffi_tl_query_header_clone(
     h_old: *const TlQueryHeader,
 ) -> *mut TlQueryHeader {
-    let Some(h_old_ref) = (unsafe { ref_from_ptr(h_old) }) else {
+    let Some(h_old_ref) = ptr_ref(h_old) else {
         return ptr::null_mut();
     };
     let h = libc::malloc(size_of::<TlQueryHeader>()).cast::<TlQueryHeader>();
@@ -1207,10 +1234,10 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_set_error(
     errnum: c_int,
     s: *const i8,
 ) -> c_int {
-    let Some(tlio_in_ref) = (unsafe { in_state_mut(tlio_in) }) else {
+    let Some(tlio_in_ref) = in_state_mut(tlio_in) else {
         return -1;
     };
-    let Some(s_ref) = (unsafe { ref_from_ptr(s) }) else {
+    let Some(s_ref) = ptr_ref(s) else {
         return -1;
     };
     if !tlio_in_ref.error.is_null() {
@@ -1239,7 +1266,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_init_raw_message(
     size: c_int,
     dup: c_int,
 ) -> c_int {
-    let Some(msg_ref) = (unsafe { mut_ref_from_ptr(msg) }) else {
+    let Some(msg_ref) = ptr_mut(msg) else {
         return -1;
     };
     let msg_ptr = msg_ref as *mut RawMessage;
@@ -1275,7 +1302,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_init_str(
     s: *const i8,
     size: c_int,
 ) -> c_int {
-    let Some(s_ref) = (unsafe { ref_from_ptr(s) }) else {
+    let Some(s_ref) = ptr_ref(s) else {
         return -1;
     };
     tl_fetch_init_impl(
@@ -1306,10 +1333,10 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_init_raw_msg(
     pid: *const MtproxyProcessId,
     qid: i64,
 ) -> c_int {
-    let Some(tlio_out_ref) = (unsafe { out_state_mut(tlio_out) }) else {
+    let Some(tlio_out_ref) = out_state_mut(tlio_out) else {
         return -1;
     };
-    let pid_ref = unsafe { ref_from_ptr(pid) };
+    let pid_ref = ptr_ref(pid);
     if let Some(pid_ref) = pid_ref {
         tlio_out_ref.out_pid_buf = *pid_ref;
         tlio_out_ref.out_pid = &raw mut tlio_out_ref.out_pid_buf;
@@ -1342,7 +1369,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_init_raw_msg(
 
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_tl_init_raw_msg_nosend(tlio_out: *mut TlOutState) -> c_int {
-    if (unsafe { out_state_mut(tlio_out) }).is_none() {
+    if out_state_mut(tlio_out).is_none() {
         return -1;
     }
     let d = libc::malloc(size_of::<RawMessage>()).cast::<RawMessage>();
@@ -1373,10 +1400,10 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_init_str_out(
     qid: i64,
     size: c_int,
 ) -> c_int {
-    let Some(tlio_out_ref) = (unsafe { out_state_mut(tlio_out) }) else {
+    let Some(tlio_out_ref) = out_state_mut(tlio_out) else {
         return -1;
     };
-    let Some(s_ref) = (unsafe { ref_from_ptr(s) }) else {
+    let Some(s_ref) = ptr_ref(s) else {
         return -1;
     };
     tlio_out_ref.out_pid = ptr::null_mut();
@@ -1399,10 +1426,10 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_init_tcp_raw_msg(
     qid: i64,
     unaligned: c_int,
 ) -> c_int {
-    let Some(tlio_out_ref) = (unsafe { out_state_mut(tlio_out) }) else {
+    let Some(tlio_out_ref) = out_state_mut(tlio_out) else {
         return -1;
     };
-    let remote_pid_ref = unsafe { ref_from_ptr(remote_pid) };
+    let remote_pid_ref = ptr_ref(remote_pid);
     if let Some(remote_pid_ref) = remote_pid_ref {
         tlio_out_ref.out_pid_buf = *remote_pid_ref;
         tlio_out_ref.out_pid = &raw mut tlio_out_ref.out_pid_buf;
@@ -1467,11 +1494,10 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_lookup_int(tlio_in: *mut TlInState
     if tl_in_check(tlio_in, 4) < 0 {
         return -1;
     }
-    let Some(tlio_in_ref) = (unsafe { in_state_mut(tlio_in) }) else {
+    let Some(tlio_in_ref) = in_state_mut(tlio_in) else {
         return -1;
     };
-    let Some(fetch_lookup) =
-        (unsafe { in_methods_ref(tlio_in_ref) }).and_then(|methods| methods.fetch_lookup)
+    let Some(fetch_lookup) = in_method_cb!(tlio_in_ref, fetch_lookup)
     else {
         return -1;
     };
@@ -1485,11 +1511,10 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_lookup_second_int(tlio_in: *mut Tl
     if tl_in_check(tlio_in, 8) < 0 {
         return -1;
     }
-    let Some(tlio_in_ref) = (unsafe { in_state_mut(tlio_in) }) else {
+    let Some(tlio_in_ref) = in_state_mut(tlio_in) else {
         return -1;
     };
-    let Some(fetch_lookup) =
-        (unsafe { in_methods_ref(tlio_in_ref) }).and_then(|methods| methods.fetch_lookup)
+    let Some(fetch_lookup) = in_method_cb!(tlio_in_ref, fetch_lookup)
     else {
         return -1;
     };
@@ -1503,11 +1528,10 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_lookup_long(tlio_in: *mut TlInStat
     if tl_in_check(tlio_in, 8) < 0 {
         return -1;
     }
-    let Some(tlio_in_ref) = (unsafe { in_state_mut(tlio_in) }) else {
+    let Some(tlio_in_ref) = in_state_mut(tlio_in) else {
         return -1;
     };
-    let Some(fetch_lookup) =
-        (unsafe { in_methods_ref(tlio_in_ref) }).and_then(|methods| methods.fetch_lookup)
+    let Some(fetch_lookup) = in_method_cb!(tlio_in_ref, fetch_lookup)
     else {
         return -1;
     };
@@ -1534,11 +1558,10 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_lookup_data(
     if tl_in_check(tlio_in, len) < 0 {
         return -1;
     }
-    let Some(tlio_in_ref) = (unsafe { in_state_mut(tlio_in) }) else {
+    let Some(tlio_in_ref) = in_state_mut(tlio_in) else {
         return -1;
     };
-    let Some(fetch_lookup) =
-        (unsafe { in_methods_ref(tlio_in_ref) }).and_then(|methods| methods.fetch_lookup)
+    let Some(fetch_lookup) = in_method_cb!(tlio_in_ref, fetch_lookup)
     else {
         return -1;
     };
@@ -1551,11 +1574,11 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_int(tlio_in: *mut TlInState) -> c_
     if tl_in_check(tlio_in, 4) < 0 {
         return -1;
     }
-    let Some(tlio_in_ref) = (unsafe { in_state_mut(tlio_in) }) else {
+    let Some(tlio_in_ref) = in_state_mut(tlio_in) else {
         return -1;
     };
     let Some(fetch_raw_data) =
-        (unsafe { in_methods_ref(tlio_in_ref) }).and_then(|methods| methods.fetch_raw_data)
+        in_method_cb!(tlio_in_ref, fetch_raw_data)
     else {
         return -1;
     };
@@ -1571,11 +1594,11 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_double(tlio_in: *mut TlInState) ->
     if tl_in_check(tlio_in, 8) < 0 {
         return -1.0;
     }
-    let Some(tlio_in_ref) = (unsafe { in_state_mut(tlio_in) }) else {
+    let Some(tlio_in_ref) = in_state_mut(tlio_in) else {
         return -1.0;
     };
     let Some(fetch_raw_data) =
-        (unsafe { in_methods_ref(tlio_in_ref) }).and_then(|methods| methods.fetch_raw_data)
+        in_method_cb!(tlio_in_ref, fetch_raw_data)
     else {
         return -1.0;
     };
@@ -1591,11 +1614,11 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_long(tlio_in: *mut TlInState) -> i
     if tl_in_check(tlio_in, 8) < 0 {
         return -1;
     }
-    let Some(tlio_in_ref) = (unsafe { in_state_mut(tlio_in) }) else {
+    let Some(tlio_in_ref) = in_state_mut(tlio_in) else {
         return -1;
     };
     let Some(fetch_raw_data) =
-        (unsafe { in_methods_ref(tlio_in_ref) }).and_then(|methods| methods.fetch_raw_data)
+        in_method_cb!(tlio_in_ref, fetch_raw_data)
     else {
         return -1;
     };
@@ -1621,11 +1644,11 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_raw_data(
     if buf.is_null() || tl_in_check(tlio_in, len) < 0 {
         return -1;
     }
-    let Some(tlio_in_ref) = (unsafe { in_state_mut(tlio_in) }) else {
+    let Some(tlio_in_ref) = in_state_mut(tlio_in) else {
         return -1;
     };
     let Some(fetch_raw_data) =
-        (unsafe { in_methods_ref(tlio_in_ref) }).and_then(|methods| methods.fetch_raw_data)
+        in_method_cb!(tlio_in_ref, fetch_raw_data)
     else {
         return -1;
     };
@@ -1637,10 +1660,10 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_raw_data(
 
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_mark(tlio_in: *mut TlInState) {
-    let Some(tlio_in_ref) = (unsafe { in_state_mut(tlio_in) }) else {
+    let Some(tlio_in_ref) = in_state_mut(tlio_in) else {
         return;
     };
-    let Some(methods) = (unsafe { in_methods_ref(tlio_in_ref) }) else {
+    let Some(methods) = in_methods_ref(tlio_in_ref) else {
         return;
     };
     if let Some(fetch_mark) = methods.fetch_mark {
@@ -1650,10 +1673,10 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_mark(tlio_in: *mut TlInState) {
 
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_mark_restore(tlio_in: *mut TlInState) {
-    let Some(tlio_in_ref) = (unsafe { in_state_mut(tlio_in) }) else {
+    let Some(tlio_in_ref) = in_state_mut(tlio_in) else {
         return;
     };
-    let Some(methods) = (unsafe { in_methods_ref(tlio_in_ref) }) else {
+    let Some(methods) = in_methods_ref(tlio_in_ref) else {
         return;
     };
     if let Some(fetch_mark_restore) = methods.fetch_mark_restore {
@@ -1663,10 +1686,10 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_mark_restore(tlio_in: *mut TlInSta
 
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_mark_delete(tlio_in: *mut TlInState) {
-    let Some(tlio_in_ref) = (unsafe { in_state_mut(tlio_in) }) else {
+    let Some(tlio_in_ref) = in_state_mut(tlio_in) else {
         return;
     };
-    let Some(methods) = (unsafe { in_methods_ref(tlio_in_ref) }) else {
+    let Some(methods) = in_methods_ref(tlio_in_ref) else {
         return;
     };
     if let Some(fetch_mark_delete) = methods.fetch_mark_delete {
@@ -1775,7 +1798,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_check_str_end(
     tlio_in: *mut TlInState,
     size: c_int,
 ) -> c_int {
-    let Some(tlio_in_ref) = (unsafe { in_state_mut(tlio_in) }) else {
+    let Some(tlio_in_ref) = in_state_mut(tlio_in) else {
         return -1;
     };
     if size < 0 {
@@ -1798,7 +1821,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_check_str_end(
 
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_unread(tlio_in: *mut TlInState) -> c_int {
-    let Some(tlio_in_ref) = (unsafe { in_state_mut(tlio_in) }) else {
+    let Some(tlio_in_ref) = in_state_mut(tlio_in) else {
         return -1;
     };
     tlio_in_ref.in_remaining
@@ -1814,7 +1837,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_skip(tlio_in: *mut TlInState, len:
 
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_end(tlio_in: *mut TlInState) -> c_int {
-    let Some(tlio_in_ref) = (unsafe { in_state_mut(tlio_in) }) else {
+    let Some(tlio_in_ref) = in_state_mut(tlio_in) else {
         return -1;
     };
     if tlio_in_ref.in_remaining != 0
@@ -1832,7 +1855,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_end(tlio_in: *mut TlInState) -> c_
 
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_error(tlio_in: *mut TlInState) -> c_int {
-    let Some(tlio_in_ref) = (unsafe { in_state_mut(tlio_in) }) else {
+    let Some(tlio_in_ref) = in_state_mut(tlio_in) else {
         return 1;
     };
     if tlio_in_ref.error.is_null() {
@@ -1921,14 +1944,14 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_raw_message(
     if tl_in_check(tlio_in, bytes) < 0 {
         return -1;
     }
-    let Some(raw_ref) = (unsafe { mut_ref_from_ptr(raw) }) else {
+    let Some(raw_ref) = ptr_mut(raw) else {
         return -1;
     };
-    let Some(tlio_in_ref) = (unsafe { in_state_mut(tlio_in) }) else {
+    let Some(tlio_in_ref) = in_state_mut(tlio_in) else {
         return -1;
     };
     let Some(fetch_raw_message) =
-        (unsafe { in_methods_ref(tlio_in_ref) }).and_then(|methods| methods.fetch_raw_message)
+        in_method_cb!(tlio_in_ref, fetch_raw_message)
     else {
         return -1;
     };
@@ -1947,14 +1970,14 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_lookup_raw_message(
     if tl_in_check(tlio_in, bytes) < 0 {
         return -1;
     }
-    let Some(raw_ref) = (unsafe { mut_ref_from_ptr(raw) }) else {
+    let Some(raw_ref) = ptr_mut(raw) else {
         return -1;
     };
-    let Some(tlio_in_ref) = (unsafe { in_state_mut(tlio_in) }) else {
+    let Some(tlio_in_ref) = in_state_mut(tlio_in) else {
         return -1;
     };
-    let Some(fetch_lookup_raw_message) = (unsafe { in_methods_ref(tlio_in_ref) })
-        .and_then(|methods| methods.fetch_lookup_raw_message)
+    let Some(fetch_lookup_raw_message) =
+        in_method_cb!(tlio_in_ref, fetch_lookup_raw_message)
     else {
         return -1;
     };
@@ -1970,11 +1993,11 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_store_get_ptr(
     if size <= 0 || tl_out_check(tlio_out, size) < 0 {
         return ptr::null_mut();
     }
-    let Some(tlio_out_ref) = (unsafe { out_state_mut(tlio_out) }) else {
+    let Some(tlio_out_ref) = out_state_mut(tlio_out) else {
         return ptr::null_mut();
     };
     let Some(store_get_ptr) =
-        (unsafe { out_methods_ref(tlio_out_ref) }).and_then(|methods| methods.store_get_ptr)
+        out_method_cb!(tlio_out_ref, store_get_ptr)
     else {
         return ptr::null_mut();
     };
@@ -1995,11 +2018,11 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_store_get_prepend_ptr(
     if size <= 0 || tl_out_check(tlio_out, size) < 0 {
         return ptr::null_mut();
     }
-    let Some(tlio_out_ref) = (unsafe { out_state_mut(tlio_out) }) else {
+    let Some(tlio_out_ref) = out_state_mut(tlio_out) else {
         return ptr::null_mut();
     };
-    let Some(store_get_prepend_ptr) = (unsafe { out_methods_ref(tlio_out_ref) })
-        .and_then(|methods| methods.store_get_prepend_ptr)
+    let Some(store_get_prepend_ptr) =
+        out_method_cb!(tlio_out_ref, store_get_prepend_ptr)
     else {
         return ptr::null_mut();
     };
@@ -2043,18 +2066,18 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_store_raw_msg(
     raw: *mut RawMessage,
     dup: c_int,
 ) -> c_int {
-    let Some(raw_ref) = (unsafe { mut_ref_from_ptr(raw) }) else {
+    let Some(raw_ref) = ptr_mut(raw) else {
         return -1;
     };
     let len = raw_ref.total_bytes;
     if len < 0 || tl_out_check(tlio_out, len) < 0 {
         return -1;
     }
-    let Some(tlio_out_ref) = (unsafe { out_state_mut(tlio_out) }) else {
+    let Some(tlio_out_ref) = out_state_mut(tlio_out) else {
         return -1;
     };
     let Some(store_raw_msg) =
-        (unsafe { out_methods_ref(tlio_out_ref) }).and_then(|methods| methods.store_raw_msg)
+        out_method_cb!(tlio_out_ref, store_raw_msg)
     else {
         return -1;
     };
@@ -2134,14 +2157,13 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_store_string(
 
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_tl_store_clear(tlio_out: *mut TlOutState) -> c_int {
-    let Some(tlio_out_ref) = (unsafe { out_state_mut(tlio_out) }) else {
+    let Some(tlio_out_ref) = out_state_mut(tlio_out) else {
         return -1;
     };
     if tlio_out_ref.out_ptr.is_null() {
         return -1;
     }
-    let Some(store_clear) =
-        (unsafe { out_methods_ref(tlio_out_ref) }).and_then(|methods| methods.store_clear)
+    let Some(store_clear) = out_method_cb!(tlio_out_ref, store_clear)
     else {
         return -1;
     };
@@ -2159,7 +2181,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_store_clean(tlio_out: *mut TlOutState) -
 
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_tl_store_pos(tlio_out: *mut TlOutState) -> c_int {
-    let Some(tlio_out_ref) = (unsafe { out_state_mut(tlio_out) }) else {
+    let Some(tlio_out_ref) = out_state_mut(tlio_out) else {
         return -1;
     };
     tlio_out_ref.out_pos
@@ -2172,10 +2194,10 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_copy_through(
     len: c_int,
     advance: c_int,
 ) -> c_int {
-    let Some(tlio_in_ref) = (unsafe { in_state_mut(tlio_in) }) else {
+    let Some(tlio_in_ref) = in_state_mut(tlio_in) else {
         return -1;
     };
-    let Some(tlio_out_ref) = (unsafe { out_state_mut(tlio_out) }) else {
+    let Some(tlio_out_ref) = out_state_mut(tlio_out) else {
         return -1;
     };
     if len < 0
@@ -2188,7 +2210,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_copy_through(
     }
 
     let in_type = usize::try_from(tlio_in_ref.in_type).unwrap_or(usize::MAX);
-    let Some(methods) = (unsafe { out_methods_ref(tlio_out_ref) }) else {
+    let Some(methods) = out_methods_ref(tlio_out_ref) else {
         return -1;
     };
     if in_type >= methods.copy_through.len() {
