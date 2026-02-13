@@ -49,7 +49,11 @@
 #include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 #include "server-functions.h"
 
-#define JOB_SUBCLASS_OFFSET 3
+static constexpr int JOB_SUBCLASS_OFFSET = 3;
+
+static inline double max_double(const double lhs, const double rhs) {
+  return lhs > rhs ? lhs : rhs;
+}
 
 struct job_thread JobThreads[MAX_JOB_THREADS] __attribute__((aligned(128)));
 
@@ -218,14 +222,12 @@ for (i = 0; i < 16; i++) {
   tot_cpu_load_rs += jb_cpu_load_rs[i];
   tot_cpu_load_rt += jb_cpu_load_rt[i];
 
-#define max(a, b) (a) > (b) ? (a) : (b)
-  max_cpu_load_u = max(max_cpu_load_u, jb_cpu_load_u[i]);
-  max_cpu_load_s = max(max_cpu_load_s, jb_cpu_load_s[i]);
-  max_cpu_load_t = max(max_cpu_load_t, jb_cpu_load_t[i]);
-  max_cpu_load_ru = max(max_cpu_load_ru, jb_cpu_load_ru[i]);
-  max_cpu_load_rs = max(max_cpu_load_rs, jb_cpu_load_rs[i]);
-  max_cpu_load_rt = max(max_cpu_load_rt, jb_cpu_load_rt[i]);
-#undef max
+  max_cpu_load_u = max_double(max_cpu_load_u, jb_cpu_load_u[i]);
+  max_cpu_load_s = max_double(max_cpu_load_s, jb_cpu_load_s[i]);
+  max_cpu_load_t = max_double(max_cpu_load_t, jb_cpu_load_t[i]);
+  max_cpu_load_ru = max_double(max_cpu_load_ru, jb_cpu_load_ru[i]);
+  max_cpu_load_rs = max_double(max_cpu_load_rs, jb_cpu_load_rs[i]);
+  max_cpu_load_rt = max_double(max_cpu_load_rt, jb_cpu_load_rt[i]);
 }
 
 const double m_clk_to_hs =
@@ -381,11 +383,13 @@ void update_all_thread_stats(void) {
 void wakeup_main_thread(void) __attribute__((weak));
 void wakeup_main_thread(void) {}
 
-#define JOB_THREAD_STACK_SIZE (4 << 20)
+static constexpr size_t JOB_THREAD_STACK_SIZE = 4u << 20;
 
-#define JTS_CREATED 1
-#define JTS_RUNNING 2
-#define JTS_PERFORMING 4
+enum {
+  JTS_CREATED = 1 << 0,
+  JTS_RUNNING = 1 << 1,
+  JTS_PERFORMING = 1 << 2,
+};
 
 struct job_class JobClasses[JC_MAX + 1];
 
@@ -1729,7 +1733,7 @@ struct notify_job_extra {
   struct notify_job_subscriber *first, *last;
 };
 
-#define TL_ENGINE_NOTIFICATION_SUBSCRIBE 0x8934a894
+static constexpr unsigned int TL_ENGINE_NOTIFICATION_SUBSCRIBE = 0x8934a894u;
 
 static int notify_job_receive_message(job_t NJ, struct job_message *M,
                                       [[maybe_unused]] void *extra) {

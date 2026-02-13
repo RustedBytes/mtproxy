@@ -36,7 +36,7 @@
 #include "resolver.h"
 #include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 
-#define MAX_CONFIG_SIZE (16 << 20)
+static constexpr int MAX_CONFIG_SIZE = 16 << 20;
 
 static char *config_buff;
 char *config_name, *cfg_start, *cfg_end, *cfg_cur;

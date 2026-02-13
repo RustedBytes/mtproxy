@@ -63,7 +63,7 @@
 
 #include "vv/vv-io.h"
 
-#define DEFAULT_EPOLL_WAIT_TIMEOUT 37
+static constexpr int DEFAULT_EPOLL_WAIT_TIMEOUT = 37;
 
 char *local_progname;
 
@@ -480,7 +480,7 @@ void default_engine_server_start(void) {
   assert(0);
 }
 
-#define DATA_BUF_SIZE (1 << 20)
+static constexpr int DATA_BUF_SIZE = 1 << 20;
 static char data_buf[DATA_BUF_SIZE + 1];
 
 int engine_prepare_stats(void) {

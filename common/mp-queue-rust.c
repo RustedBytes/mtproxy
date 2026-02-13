@@ -9,8 +9,8 @@
 #include "common/kprintf.h"
 #include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 
-#define MQ_MAGIC_RUST 0x53ed7b41
-#define MQ_MAGIC_RUST_SEM 0x53ed7b42
+static constexpr int MQ_MAGIC_RUST = 0x53ed7b41;
+static constexpr int MQ_MAGIC_RUST_SEM = 0x53ed7b42;
 
 static volatile int mpq_rust_bridge_state;
 volatile int mpq_rust_attached_queues;

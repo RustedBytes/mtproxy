@@ -1,4 +1,5 @@
 use super::*;
+use crate::ffi_util::{mut_ref_from_ptr, mut_slice_from_ptr, ref_from_ptr, slice_from_ptr};
 
 fn md5_digest_impl(input: &[u8], out: &mut [u8; DIGEST_MD5_LEN]) -> bool {
     let mut hasher = Md5::new();
@@ -111,11 +112,14 @@ pub unsafe extern "C" fn mtproxy_ffi_crypto_aes_fetch_stat(
     allocated_aes_crypto: *mut i32,
     allocated_aes_crypto_temp: *mut i32,
 ) -> i32 {
-    if !allocated_aes_crypto.is_null() {
-        *allocated_aes_crypto = i64_to_i32_saturating(AES_ALLOCATED_CRYPTO.load(Ordering::Acquire));
+    if let Some(allocated_aes_crypto_ref) = unsafe { mut_ref_from_ptr(allocated_aes_crypto) } {
+        *allocated_aes_crypto_ref =
+            i64_to_i32_saturating(AES_ALLOCATED_CRYPTO.load(Ordering::Acquire));
     }
-    if !allocated_aes_crypto_temp.is_null() {
-        *allocated_aes_crypto_temp =
+    if let Some(allocated_aes_crypto_temp_ref) =
+        unsafe { mut_ref_from_ptr(allocated_aes_crypto_temp) }
+    {
+        *allocated_aes_crypto_temp_ref =
             i64_to_i32_saturating(AES_ALLOCATED_CRYPTO_TEMP.load(Ordering::Acquire));
     }
     0
@@ -133,21 +137,22 @@ pub unsafe extern "C" fn mtproxy_ffi_crypto_aes_conn_init(
     key_data_len: i32,
     use_ctr_mode: i32,
 ) -> i32 {
-    if conn_crypto_slot.is_null() || key_data.is_null() {
+    let Some(slot) = (unsafe { mut_ref_from_ptr(conn_crypto_slot) }) else {
         return -1;
-    }
+    };
+    let Some(key) = (unsafe { ref_from_ptr(key_data) }) else {
+        return -1;
+    };
     let Ok(expected_len) = i32::try_from(core::mem::size_of::<MtproxyAesKeyData>()) else {
         return -1;
     };
     if key_data_len != expected_len {
         return -1;
     }
-    let slot = &mut *conn_crypto_slot;
     if !slot.is_null() {
         return -1;
     }
 
-    let key = &*key_data;
     let cipher_kind = if use_ctr_mode != 0 {
         AESNI_CIPHER_AES_256_CTR
     } else {
@@ -198,8 +203,7 @@ pub unsafe extern "C" fn mtproxy_ffi_crypto_aes_conn_free(
     conn_crypto_slot: *mut *mut c_void,
     conn_crypto_temp_slot: *mut *mut c_void,
 ) -> i32 {
-    if !conn_crypto_slot.is_null() {
-        let slot_ref = &mut *conn_crypto_slot;
+    if let Some(slot_ref) = unsafe { mut_ref_from_ptr(conn_crypto_slot) } {
         let crypto_ptr = *slot_ref;
         if !crypto_ptr.is_null() {
             let ctx = Box::from_raw(crypto_ptr.cast::<MtproxyAesCryptoCtx>());
@@ -210,8 +214,7 @@ pub unsafe extern "C" fn mtproxy_ffi_crypto_aes_conn_free(
         }
     }
 
-    if !conn_crypto_temp_slot.is_null() {
-        let temp_slot_ref = &mut *conn_crypto_temp_slot;
+    if let Some(temp_slot_ref) = unsafe { mut_ref_from_ptr(conn_crypto_temp_slot) } {
         let temp_ptr = *temp_slot_ref;
         if !temp_ptr.is_null() {
             free(temp_ptr);
@@ -236,25 +239,34 @@ pub unsafe extern "C" fn mtproxy_ffi_crypto_aes_load_pwd_file(
     pwd_config_md5_out: *mut c_char,
     main_secret: *mut MtproxyAesSecret,
 ) -> i32 {
-    if pwd_config_buf.is_null()
-        || pwd_config_len_out.is_null()
-        || pwd_config_md5_out.is_null()
-        || main_secret.is_null()
-    {
-        return -1;
-    }
-
     let Ok(buf_capacity) = usize::try_from(pwd_config_capacity) else {
         return -1;
     };
     if buf_capacity < (MAX_PWD_CONFIG_LEN + 4) {
         return -1;
     }
+    let Some(cfg_out) = (unsafe { mut_slice_from_ptr(pwd_config_buf, buf_capacity) }) else {
+        return -1;
+    };
+    let Some(pwd_config_len_out_ref) = (unsafe { mut_ref_from_ptr(pwd_config_len_out) }) else {
+        return -1;
+    };
+    let Some(pwd_config_md5_out_ref) =
+        (unsafe { mut_ref_from_ptr(pwd_config_md5_out.cast::<[u8; 33]>()) })
+    else {
+        return -1;
+    };
+    let Some(main_secret_ref) = (unsafe { mut_ref_from_ptr(main_secret) }) else {
+        return -1;
+    };
 
     let pwd_file_path = if filename.is_null() {
         DEFAULT_PWD_FILE.to_owned()
     } else {
-        CStr::from_ptr(filename).to_string_lossy().into_owned()
+        let Some(filename_ref) = (unsafe { ref_from_ptr(filename) }) else {
+            return -1;
+        };
+        CStr::from_ptr(filename_ref).to_string_lossy().into_owned()
     };
 
     {
@@ -262,7 +274,7 @@ pub unsafe extern "C" fn mtproxy_ffi_crypto_aes_load_pwd_file(
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         if !refresh_aes_nonce_seed(&mut state) {
-            (*main_secret).secret_len = 0;
+            main_secret_ref.secret_len = 0;
             return -1;
         }
     }
@@ -277,29 +289,25 @@ pub unsafe extern "C" fn mtproxy_ffi_crypto_aes_load_pwd_file(
         Err(_) => return -1,
     };
     if read_len > MAX_PWD_CONFIG_LEN {
-        *pwd_config_len_out = 0;
+        *pwd_config_len_out_ref = 0;
         return -1;
     }
 
-    let cfg_out = core::slice::from_raw_parts_mut(pwd_config_buf, buf_capacity);
     cfg_out[..read_len].copy_from_slice(&read_buf[..read_len]);
     cfg_out[read_len..read_len + 4].fill(0);
-    *pwd_config_len_out = i32::try_from(read_len).unwrap_or(i32::MAX);
+    *pwd_config_len_out_ref = i32::try_from(read_len).unwrap_or(i32::MAX);
 
     if !(MIN_PWD_LEN..=MAX_PWD_LEN).contains(&read_len) {
         return -1;
     }
 
-    let md5_out = core::slice::from_raw_parts_mut(pwd_config_md5_out.cast::<u8>(), 33);
-    let md5_out_ref = &mut *md5_out.as_mut_ptr().cast::<[u8; 33]>();
-    if !write_md5_hex(&read_buf[..read_len], md5_out_ref) {
+    if !write_md5_hex(&read_buf[..read_len], pwd_config_md5_out_ref) {
         return -1;
     }
 
-    let secret_ref = &mut *main_secret;
-    secret_ref.secret.fill(0);
-    secret_ref.secret[..read_len].copy_from_slice(&read_buf[..read_len]);
-    secret_ref.secret_len = i32::try_from(read_len).unwrap_or(i32::MAX);
+    main_secret_ref.secret.fill(0);
+    main_secret_ref.secret[..read_len].copy_from_slice(&read_buf[..read_len]);
+    main_secret_ref.secret_len = i32::try_from(read_len).unwrap_or(i32::MAX);
 
     1
 }
@@ -310,10 +318,9 @@ pub unsafe extern "C" fn mtproxy_ffi_crypto_aes_load_pwd_file(
 /// `out` must point to at least 16 writable bytes.
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_crypto_aes_generate_nonce(out: *mut u8) -> i32 {
-    if out.is_null() {
+    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out.cast::<[u8; 16]>()) }) else {
         return -1;
-    }
-    let out_ref = &mut *out.cast::<[u8; 16]>();
+    };
 
     let mut rand_buf = AES_NONCE_RAND_BUF
         .lock()
@@ -397,12 +404,12 @@ pub unsafe extern "C" fn mtproxy_ffi_crypto_free_temp(ptr: *mut c_void, len: i32
 /// `out_dh_params_select` must be writable.
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_crypto_dh_init_params(out_dh_params_select: *mut i32) -> i32 {
-    if out_dh_params_select.is_null() {
+    let Some(out_dh_params_select_ref) = (unsafe { mut_ref_from_ptr(out_dh_params_select) }) else {
         return -1;
-    }
+    };
     let current = i64_to_i32_saturating(DH_PARAMS_SELECT_INIT.load(Ordering::Acquire));
     if current > 0 {
-        *out_dh_params_select = current;
+        *out_dh_params_select_ref = current;
         return 0;
     }
 
@@ -417,11 +424,11 @@ pub unsafe extern "C" fn mtproxy_ffi_crypto_dh_init_params(out_dh_params_select:
         Ordering::Acquire,
     ) {
         Ok(_) => {
-            *out_dh_params_select = select;
+            *out_dh_params_select_ref = select;
             1
         }
         Err(existing) => {
-            *out_dh_params_select = i64_to_i32_saturating(existing);
+            *out_dh_params_select_ref = i64_to_i32_saturating(existing);
             0
         }
     }
@@ -433,10 +440,9 @@ pub unsafe extern "C" fn mtproxy_ffi_crypto_dh_init_params(out_dh_params_select:
 /// `out_rounds` must be writable for three 64-bit integers.
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_crypto_dh_fetch_tot_rounds(out_rounds: *mut i64) -> i32 {
-    if out_rounds.is_null() {
+    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out_rounds.cast::<[i64; 3]>()) }) else {
         return -1;
-    }
-    let out_ref = &mut *out_rounds.cast::<[i64; 3]>();
+    };
     out_ref[0] = DH_TOT_ROUNDS_0.load(Ordering::Acquire);
     out_ref[1] = DH_TOT_ROUNDS_1.load(Ordering::Acquire);
     out_ref[2] = DH_TOT_ROUNDS_2.load(Ordering::Acquire);
@@ -453,10 +459,12 @@ pub unsafe extern "C" fn mtproxy_ffi_crypto_dh_first_round_stateful(
     dh_params: *mut MtproxyCryptoTempDhParams,
     dh_params_select: i32,
 ) -> i32 {
-    if g_a.is_null() || dh_params.is_null() || dh_params_select <= 0 {
+    let Some(dh_params_ref) = (unsafe { mut_ref_from_ptr(dh_params) }) else {
+        return -1;
+    };
+    if dh_params_select <= 0 {
         return -1;
     }
-    let dh_params_ref = &mut *dh_params;
     let rc = mtproxy_ffi_crypto_dh_first_round(g_a, dh_params_ref.a.as_mut_ptr());
     if rc != 1 {
         return -1;
@@ -496,10 +504,9 @@ pub unsafe extern "C" fn mtproxy_ffi_crypto_dh_third_round_stateful(
     g_b: *const u8,
     dh_params: *const MtproxyCryptoTempDhParams,
 ) -> i32 {
-    if dh_params.is_null() {
+    let Some(dh_params_ref) = (unsafe { ref_from_ptr(dh_params) }) else {
         return -1;
-    }
-    let dh_params_ref = &*dh_params;
+    };
     let rc = mtproxy_ffi_crypto_dh_third_round(g_ab, g_b, dh_params_ref.a.as_ptr());
     if rc > 0 {
         DH_TOT_ROUNDS_2.fetch_add(1, Ordering::AcqRel);
@@ -634,14 +641,15 @@ pub unsafe extern "C" fn mtproxy_ffi_crypto_dh_is_good_rpc_dh_bin(
     prime_prefix: *const u8,
     prime_prefix_len: usize,
 ) -> i32 {
-    if data.is_null() || prime_prefix.is_null() {
-        return -1;
-    }
     if len < 8 || prime_prefix_len < 8 {
         return -1;
     }
-    let data_ref = core::slice::from_raw_parts(data, len);
-    let prime_ref = core::slice::from_raw_parts(prime_prefix, prime_prefix_len);
+    let Some(data_ref) = (unsafe { slice_from_ptr(data, len) }) else {
+        return -1;
+    };
+    let Some(prime_ref) = (unsafe { slice_from_ptr(prime_prefix, prime_prefix_len) }) else {
+        return -1;
+    };
     crypto_dh_is_good_rpc_dh_bin_impl(data_ref, prime_ref)
 }
 
@@ -667,38 +675,36 @@ pub unsafe extern "C" fn mtproxy_ffi_crypto_aes_create_keys(
     temp_key: *const u8,
     temp_key_len: i32,
 ) -> i32 {
-    if out.is_null()
-        || nonce_server.is_null()
-        || nonce_client.is_null()
-        || server_ipv6.is_null()
-        || client_ipv6.is_null()
-    {
+    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out) }) else {
         return -1;
-    }
+    };
+    let Some(nonce_server_ref) = (unsafe { ref_from_ptr(nonce_server.cast::<[u8; 16]>()) }) else {
+        return -1;
+    };
+    let Some(nonce_client_ref) = (unsafe { ref_from_ptr(nonce_client.cast::<[u8; 16]>()) }) else {
+        return -1;
+    };
+    let Some(server_ipv6_ref) = (unsafe { ref_from_ptr(server_ipv6.cast::<[u8; 16]>()) }) else {
+        return -1;
+    };
+    let Some(client_ipv6_ref) = (unsafe { ref_from_ptr(client_ipv6.cast::<[u8; 16]>()) }) else {
+        return -1;
+    };
     let Ok(secret_count) = usize::try_from(secret_len) else {
         return -1;
     };
-    if !(MIN_PWD_LEN..=MAX_PWD_LEN).contains(&secret_count) || secret.is_null() {
+    if !(MIN_PWD_LEN..=MAX_PWD_LEN).contains(&secret_count) {
         return -1;
     }
+    let Some(secret_ref) = (unsafe { slice_from_ptr(secret, secret_count) }) else {
+        return -1;
+    };
     let Ok(temp_count_raw) = usize::try_from(temp_key_len) else {
         return -1;
     };
     let temp_count = temp_count_raw.min(AES_CREATE_KEYS_MAX_STR_LEN);
-    if temp_count > 0 && temp_key.is_null() {
+    let Some(temp_ref) = (unsafe { slice_from_ptr(temp_key, temp_count) }) else {
         return -1;
-    }
-
-    let out_ref = &mut *out;
-    let nonce_server_ref = &*nonce_server.cast::<[u8; 16]>();
-    let nonce_client_ref = &*nonce_client.cast::<[u8; 16]>();
-    let server_ipv6_ref = &*server_ipv6.cast::<[u8; 16]>();
-    let client_ipv6_ref = &*client_ipv6.cast::<[u8; 16]>();
-    let secret_ref = core::slice::from_raw_parts(secret, secret_count);
-    let temp_ref = if temp_count == 0 {
-        &[]
-    } else {
-        core::slice::from_raw_parts(temp_key, temp_count)
     };
 
     crypto_aes_create_keys_impl(
@@ -729,24 +735,24 @@ pub unsafe extern "C" fn mtproxy_ffi_aesni_crypt(
     output: *mut u8,
     size: i32,
 ) -> i32 {
-    if evp_ctx.is_null() || size < 0 {
+    if size < 0 {
         return -1;
     }
     let Ok(size_usize) = usize::try_from(size) else {
         return -1;
     };
-    if size_usize > 0 && (input.is_null() || output.is_null()) {
+    let Some(ctx) = (unsafe { mut_ref_from_ptr(evp_ctx.cast::<AesniCipherCtx>()) }) else {
         return -1;
-    }
-    if size_usize > 0 && input != output.cast_const() {
-        core::ptr::copy(input, output, size_usize);
-    }
-    let output_ref = if size_usize == 0 {
-        &mut []
-    } else {
-        core::slice::from_raw_parts_mut(output, size_usize)
     };
-    let ctx = &mut *evp_ctx.cast::<AesniCipherCtx>();
+    let Some(input_ref) = (unsafe { slice_from_ptr(input, size_usize) }) else {
+        return -1;
+    };
+    let Some(output_ref) = (unsafe { mut_slice_from_ptr(output, size_usize) }) else {
+        return -1;
+    };
+    if size_usize > 0 && input_ref.as_ptr() != output_ref.as_ptr() {
+        core::ptr::copy(input_ref.as_ptr(), output_ref.as_mut_ptr(), size_usize);
+    }
     if ctx.crypt_in_place(output_ref) {
         0
     } else {
@@ -974,13 +980,8 @@ pub unsafe extern "C" fn mtproxy_ffi_crypto_rand_bytes(out: *mut u8, len: i32) -
     let Ok(size) = usize::try_from(len) else {
         return -1;
     };
-    if size > 0 && out.is_null() {
+    let Some(out_ref) = (unsafe { mut_slice_from_ptr(out, size) }) else {
         return -1;
-    }
-    let out_ref = if size == 0 {
-        &mut []
-    } else {
-        core::slice::from_raw_parts_mut(out, size)
     };
     if crypto_rand_fill(out_ref) {
         0
@@ -995,10 +996,11 @@ pub unsafe extern "C" fn mtproxy_ffi_crypto_rand_bytes(out: *mut u8, len: i32) -
 /// `out` must point to at least 32 writable bytes.
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_crypto_tls_generate_public_key(out: *mut u8) -> i32 {
-    if out.is_null() {
+    let Some(out_ref) =
+        (unsafe { mut_ref_from_ptr(out.cast::<[u8; TLS_REQUEST_PUBLIC_KEY_BYTES]>()) })
+    else {
         return -1;
-    }
-    let out_ref = &mut *out.cast::<[u8; TLS_REQUEST_PUBLIC_KEY_BYTES]>();
+    };
     crypto_tls_generate_public_key_impl(out_ref)
 }
 
@@ -1014,11 +1016,12 @@ pub extern "C" fn mtproxy_ffi_crypto_dh_get_params_select() -> i32 {
 /// `g_a` and `a_out` must point to writable 256-byte buffers.
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_crypto_dh_first_round(g_a: *mut u8, a_out: *mut u8) -> i32 {
-    if g_a.is_null() || a_out.is_null() {
+    let Some(g_a_ref) = (unsafe { mut_ref_from_ptr(g_a.cast::<[u8; DH_KEY_BYTES]>()) }) else {
         return -1;
-    }
-    let g_a_ref = &mut *g_a.cast::<[u8; DH_KEY_BYTES]>();
-    let a_out_ref = &mut *a_out.cast::<[u8; DH_KEY_BYTES]>();
+    };
+    let Some(a_out_ref) = (unsafe { mut_ref_from_ptr(a_out.cast::<[u8; DH_KEY_BYTES]>()) }) else {
+        return -1;
+    };
     crypto_dh_first_round_impl(g_a_ref, a_out_ref)
 }
 
@@ -1033,12 +1036,15 @@ pub unsafe extern "C" fn mtproxy_ffi_crypto_dh_second_round(
     g_a: *mut u8,
     g_b: *const u8,
 ) -> i32 {
-    if g_ab.is_null() || g_a.is_null() || g_b.is_null() {
+    let Some(g_ab_ref) = (unsafe { mut_ref_from_ptr(g_ab.cast::<[u8; DH_KEY_BYTES]>()) }) else {
         return -1;
-    }
-    let g_ab_ref = &mut *g_ab.cast::<[u8; DH_KEY_BYTES]>();
-    let g_a_ref = &mut *g_a.cast::<[u8; DH_KEY_BYTES]>();
-    let g_b_ref = &*g_b.cast::<[u8; DH_KEY_BYTES]>();
+    };
+    let Some(g_a_ref) = (unsafe { mut_ref_from_ptr(g_a.cast::<[u8; DH_KEY_BYTES]>()) }) else {
+        return -1;
+    };
+    let Some(g_b_ref) = (unsafe { ref_from_ptr(g_b.cast::<[u8; DH_KEY_BYTES]>()) }) else {
+        return -1;
+    };
     let verdict =
         crypto_dh_is_good_rpc_dh_bin_impl(g_b_ref, &RPC_DH_PRIME_BIN[..DH_GOOD_PREFIX_BYTES]);
     if verdict <= 0 {
@@ -1068,12 +1074,15 @@ pub unsafe extern "C" fn mtproxy_ffi_crypto_dh_third_round(
     g_b: *const u8,
     a: *const u8,
 ) -> i32 {
-    if g_ab.is_null() || g_b.is_null() || a.is_null() {
+    let Some(g_ab_ref) = (unsafe { mut_ref_from_ptr(g_ab.cast::<[u8; DH_KEY_BYTES]>()) }) else {
         return -1;
-    }
-    let g_ab_ref = &mut *g_ab.cast::<[u8; DH_KEY_BYTES]>();
-    let g_b_ref = &*g_b.cast::<[u8; DH_KEY_BYTES]>();
-    let a_ref = &*a.cast::<[u8; DH_KEY_BYTES]>();
+    };
+    let Some(g_b_ref) = (unsafe { ref_from_ptr(g_b.cast::<[u8; DH_KEY_BYTES]>()) }) else {
+        return -1;
+    };
+    let Some(a_ref) = (unsafe { ref_from_ptr(a.cast::<[u8; DH_KEY_BYTES]>()) }) else {
+        return -1;
+    };
     let verdict =
         crypto_dh_is_good_rpc_dh_bin_impl(g_b_ref, &RPC_DH_PRIME_BIN[..DH_GOOD_PREFIX_BYTES]);
     if verdict <= 0 {
@@ -1098,11 +1107,15 @@ pub unsafe extern "C" fn mtproxy_ffi_aesni_ctx_init(
     is_encrypt: i32,
     out_ctx: *mut *mut c_void,
 ) -> i32 {
-    if key.is_null() || iv.is_null() || out_ctx.is_null() {
+    let Some(key_ref) = (unsafe { ref_from_ptr(key.cast::<[u8; 32]>()) }) else {
         return -1;
-    }
-    let key_ref = &*key.cast::<[u8; 32]>();
-    let iv_ref = &*iv.cast::<[u8; 16]>();
+    };
+    let Some(iv_ref) = (unsafe { ref_from_ptr(iv.cast::<[u8; 16]>()) }) else {
+        return -1;
+    };
+    let Some(out_ctx_ref) = (unsafe { mut_ref_from_ptr(out_ctx) }) else {
+        return -1;
+    };
     let ctx = match cipher_kind {
         AESNI_CIPHER_AES_256_CBC => {
             if is_encrypt != 0 {
@@ -1123,7 +1136,7 @@ pub unsafe extern "C" fn mtproxy_ffi_aesni_ctx_init(
         _ => return -2,
     };
     let raw_ctx = Box::into_raw(Box::new(ctx)).cast::<c_void>();
-    *out_ctx = raw_ctx;
+    *out_ctx_ref = raw_ctx;
     0
 }
 
@@ -1612,11 +1625,13 @@ fn crc32_check_and_repair_impl(input: &mut [u8], input_crc32: &mut u32) -> i32 {
 /// `data` must point to at least `len` readable bytes when `len > 0`.
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_crc32_partial(data: *const u8, len: usize, crc: u32) -> u32 {
-    if data.is_null() || len == 0 {
+    if len == 0 {
         return crc;
     }
 
-    let bytes = core::slice::from_raw_parts(data, len);
+    let Some(bytes) = (unsafe { slice_from_ptr(data, len) }) else {
+        return crc;
+    };
     crc32_partial_impl(bytes, crc)
 }
 
@@ -1626,11 +1641,13 @@ pub unsafe extern "C" fn mtproxy_ffi_crc32_partial(data: *const u8, len: usize, 
 /// `data` must point to at least `len` readable bytes when `len > 0`.
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_crc32c_partial(data: *const u8, len: usize, crc: u32) -> u32 {
-    if data.is_null() || len == 0 {
+    if len == 0 {
         return crc;
     }
 
-    let bytes = core::slice::from_raw_parts(data, len);
+    let Some(bytes) = (unsafe { slice_from_ptr(data, len) }) else {
+        return crc;
+    };
     crc32c_partial_impl(bytes, crc)
 }
 
@@ -1652,11 +1669,13 @@ pub extern "C" fn mtproxy_ffi_crc32c_combine(crc1: u32, crc2: u32, len2: i64) ->
 /// `data` must point to at least `len` readable bytes when `len > 0`.
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_crc64_partial(data: *const u8, len: usize, crc: u64) -> u64 {
-    if data.is_null() || len == 0 {
+    if len == 0 {
         return crc;
     }
 
-    let bytes = core::slice::from_raw_parts(data, len);
+    let Some(bytes) = (unsafe { slice_from_ptr(data, len) }) else {
+        return crc;
+    };
     crc64_partial_impl(bytes, crc)
 }
 
@@ -1682,10 +1701,12 @@ pub unsafe extern "C" fn mtproxy_ffi_gf32_compute_powers_generic(
     size: usize,
     poly: u32,
 ) {
-    if powers.is_null() || size == 0 {
+    if size == 0 {
         return;
     }
-    let table = core::slice::from_raw_parts_mut(powers, size);
+    let Some(table) = (unsafe { mut_slice_from_ptr(powers, size) }) else {
+        return;
+    };
     gf32_compute_powers_generic_impl(table, size, poly);
 }
 
@@ -1695,10 +1716,9 @@ pub unsafe extern "C" fn mtproxy_ffi_gf32_compute_powers_generic(
 /// `powers` must point to at least 252 writable `u32` entries.
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_gf32_compute_powers_clmul(powers: *mut u32, poly: u32) {
-    if powers.is_null() {
+    let Some(table) = (unsafe { mut_slice_from_ptr(powers, GF32_CLMUL_POWERS_LEN) }) else {
         return;
-    }
-    let table = core::slice::from_raw_parts_mut(powers, GF32_CLMUL_POWERS_LEN);
+    };
     gf32_compute_powers_clmul_impl(table, poly);
 }
 
@@ -1712,10 +1732,12 @@ pub unsafe extern "C" fn mtproxy_ffi_gf32_combine_generic(
     crc1: u32,
     len2: i64,
 ) -> u32 {
-    if powers.is_null() || len2 <= 0 {
+    if len2 <= 0 {
         return crc1;
     }
-    let table = core::slice::from_raw_parts(powers, GF32_GENERIC_POWERS_MAX_LEN);
+    let Some(table) = (unsafe { slice_from_ptr(powers, GF32_GENERIC_POWERS_MAX_LEN) }) else {
+        return crc1;
+    };
     gf32_combine_generic_impl(table, crc1, len2)
 }
 
@@ -1729,10 +1751,12 @@ pub unsafe extern "C" fn mtproxy_ffi_gf32_combine_clmul(
     crc1: u32,
     len2: i64,
 ) -> u64 {
-    if powers.is_null() || len2 <= 0 {
+    if len2 <= 0 {
         return u64::from(crc1);
     }
-    let table = core::slice::from_raw_parts(powers, GF32_CLMUL_POWERS_LEN);
+    let Some(table) = (unsafe { slice_from_ptr(powers, GF32_CLMUL_POWERS_LEN) }) else {
+        return u64::from(crc1);
+    };
     gf32_combine_clmul_impl(table, crc1, len2)
 }
 
@@ -1751,7 +1775,9 @@ pub unsafe extern "C" fn mtproxy_ffi_crc32_repair_bit(input: *mut u8, len: usize
     if input.is_null() {
         return -3;
     }
-    let bytes = core::slice::from_raw_parts_mut(input, len);
+    let Some(bytes) = (unsafe { mut_slice_from_ptr(input, len) }) else {
+        return -3;
+    };
     crc32_repair_bit_impl(bytes, k)
 }
 
@@ -1769,8 +1795,12 @@ pub unsafe extern "C" fn mtproxy_ffi_crc32_check_and_repair(
     if input.is_null() || input_crc32.is_null() {
         return -1;
     }
-    let bytes = core::slice::from_raw_parts_mut(input, len);
-    let crc_ref = &mut *input_crc32;
+    let Some(bytes) = (unsafe { mut_slice_from_ptr(input, len) }) else {
+        return -1;
+    };
+    let Some(crc_ref) = (unsafe { mut_ref_from_ptr(input_crc32) }) else {
+        return -1;
+    };
     crc32_check_and_repair_impl(bytes, crc_ref)
 }
 
@@ -1780,11 +1810,9 @@ pub unsafe extern "C" fn mtproxy_ffi_crc32_check_and_repair(
 /// `pid` must be a valid pointer to writable `MtproxyProcessId`.
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_pid_init_common(pid: *mut MtproxyProcessId) -> i32 {
-    if pid.is_null() {
+    let Some(pid_ref) = (unsafe { mut_ref_from_ptr(pid) }) else {
         return -1;
-    }
-
-    let pid_ref = &mut *pid;
+    };
 
     if pid_ref.pid == 0 {
         let raw_pid = getpid();
@@ -1811,11 +1839,9 @@ pub unsafe extern "C" fn mtproxy_ffi_pid_init_common(pid: *mut MtproxyProcessId)
 /// `pid` must be a valid pointer to writable `MtproxyProcessId`.
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_pid_init_client(pid: *mut MtproxyProcessId, ip: u32) -> i32 {
-    if pid.is_null() {
+    let Some(pid_ref) = (unsafe { mut_ref_from_ptr(pid) }) else {
         return -1;
-    }
-
-    let pid_ref = &mut *pid;
+    };
     if ip != 0 && ip != PID_LOCALHOST_IP {
         pid_ref.ip = ip;
     }
@@ -1833,11 +1859,9 @@ pub unsafe extern "C" fn mtproxy_ffi_pid_init_server(
     ip: u32,
     port: i32,
 ) -> i32 {
-    if pid.is_null() {
+    let Some(pid_ref) = (unsafe { mut_ref_from_ptr(pid) }) else {
         return -1;
-    }
-
-    let pid_ref = &mut *pid;
+    };
     if ip != 0 && ip != PID_LOCALHOST_IP {
         pid_ref.ip = ip;
     }
@@ -1858,12 +1882,12 @@ pub unsafe extern "C" fn mtproxy_ffi_matches_pid(
     x: *const MtproxyProcessId,
     y: *const MtproxyProcessId,
 ) -> i32 {
-    if x.is_null() || y.is_null() {
+    let Some(x_ref) = (unsafe { ref_from_ptr(x) }) else {
         return 0;
-    }
-
-    let x_ref = &*x;
-    let y_ref = &*y;
+    };
+    let Some(y_ref) = (unsafe { ref_from_ptr(y) }) else {
+        return 0;
+    };
     if x_ref == y_ref {
         return 2;
     }
@@ -1885,12 +1909,12 @@ pub unsafe extern "C" fn mtproxy_ffi_process_id_is_newer(
     a: *const MtproxyProcessId,
     b: *const MtproxyProcessId,
 ) -> i32 {
-    if a.is_null() || b.is_null() {
+    let Some(a_ref) = (unsafe { ref_from_ptr(a) }) else {
         return 0;
-    }
-
-    let a_ref = &*a;
-    let b_ref = &*b;
+    };
+    let Some(b_ref) = (unsafe { ref_from_ptr(b) }) else {
+        return 0;
+    };
     if a_ref.ip != b_ref.ip || a_ref.port != b_ref.port {
         return 0;
     }
@@ -1916,11 +1940,9 @@ fn u32_bits_to_i32(v: u32) -> i32 {
 #[no_mangle]
 #[allow(clippy::needless_return)]
 pub unsafe extern "C" fn mtproxy_ffi_cpuid_fill(out: *mut MtproxyCpuid) -> i32 {
-    if out.is_null() {
+    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out) }) else {
         return -1;
-    }
-
-    let out_ref = &mut *out;
+    };
 
     #[cfg(target_arch = "x86_64")]
     {
@@ -1949,38 +1971,18 @@ pub unsafe extern "C" fn mtproxy_ffi_cpuid_fill(out: *mut MtproxyCpuid) -> i32 {
     }
 }
 
-fn as_input_ptr(input: *const u8, len: usize) -> Option<*const u8> {
-    if len == 0 {
-        Some(core::ptr::NonNull::<u8>::dangling().as_ptr().cast_const())
-    } else if input.is_null() {
-        None
-    } else {
-        Some(input)
-    }
-}
-
-fn as_output_slice<const N: usize>(output: *mut u8) -> Option<*mut [u8; N]> {
-    if output.is_null() {
-        return None;
-    }
-
-    Some(output.cast::<[u8; N]>())
-}
-
 /// Computes MD5 digest.
 ///
 /// # Safety
 /// `output` must point to at least 16 writable bytes.
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_md5(input: *const u8, len: usize, output: *mut u8) -> i32 {
-    let Some(out) = as_output_slice::<DIGEST_MD5_LEN>(output) else {
+    let Some(out_ref) = (unsafe { mut_ref_from_ptr(output.cast::<[u8; DIGEST_MD5_LEN]>()) }) else {
         return -1;
     };
-    let out_ref = &mut *out;
-    let Some(input_ptr) = as_input_ptr(input, len) else {
+    let Some(input_ref) = (unsafe { slice_from_ptr(input, len) }) else {
         return -1;
     };
-    let input_ref = core::slice::from_raw_parts(input_ptr, len);
     if md5_digest_impl(input_ref, out_ref) {
         0
     } else {
@@ -2002,11 +2004,9 @@ pub unsafe extern "C" fn mtproxy_ffi_md5_hex(
     if mtproxy_ffi_md5(input, len, digest.as_mut_ptr()) < 0 {
         return -1;
     }
-    if output.is_null() {
+    let Some(out) = (unsafe { mut_slice_from_ptr(output.cast::<u8>(), DIGEST_MD5_LEN * 2) }) else {
         return -1;
-    }
-
-    let out = core::slice::from_raw_parts_mut(output.cast::<u8>(), DIGEST_MD5_LEN * 2);
+    };
     for (i, &byte) in digest.iter().enumerate() {
         out[i * 2] = HEX_LOWER[usize::from(byte >> 4)];
         out[i * 2 + 1] = HEX_LOWER[usize::from(byte & 0x0f)];
@@ -2026,21 +2026,18 @@ pub unsafe extern "C" fn mtproxy_ffi_md5_hmac(
     len: usize,
     output: *mut u8,
 ) -> i32 {
-    let Some(out) = as_output_slice::<DIGEST_MD5_LEN>(output) else {
+    let Some(out_ref) = (unsafe { mut_ref_from_ptr(output.cast::<[u8; DIGEST_MD5_LEN]>()) }) else {
         return -1;
     };
-    let out_ref = &mut *out;
-    let Some(key_ptr) = as_input_ptr(key, key_len) else {
+    let Some(key_ref) = (unsafe { slice_from_ptr(key, key_len) }) else {
         return -1;
     };
-    let Some(input_ptr) = as_input_ptr(input, len) else {
+    let Some(input_ref) = (unsafe { slice_from_ptr(input, len) }) else {
         return -1;
     };
     if c_int::try_from(key_len).is_err() {
         return -1;
     }
-    let key_ref = core::slice::from_raw_parts(key_ptr, key_len);
-    let input_ref = core::slice::from_raw_parts(input_ptr, len);
     let Ok(mut mac) = HmacMd5::new_from_slice(key_ref) else {
         return -1;
     };
@@ -2055,14 +2052,13 @@ pub unsafe extern "C" fn mtproxy_ffi_md5_hmac(
 /// `output` must point to at least 20 writable bytes.
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_sha1(input: *const u8, len: usize, output: *mut u8) -> i32 {
-    let Some(out) = as_output_slice::<DIGEST_SHA1_LEN>(output) else {
+    let Some(out_ref) = (unsafe { mut_ref_from_ptr(output.cast::<[u8; DIGEST_SHA1_LEN]>()) })
+    else {
         return -1;
     };
-    let out_ref = &mut *out;
-    let Some(input_ptr) = as_input_ptr(input, len) else {
+    let Some(input_ref) = (unsafe { slice_from_ptr(input, len) }) else {
         return -1;
     };
-    let input_ref = core::slice::from_raw_parts(input_ptr, len);
     if sha1_digest_impl(input_ref, out_ref) {
         0
     } else {
@@ -2082,19 +2078,17 @@ pub unsafe extern "C" fn mtproxy_ffi_sha1_two_chunks(
     len2: usize,
     output: *mut u8,
 ) -> i32 {
-    let Some(out) = as_output_slice::<DIGEST_SHA1_LEN>(output) else {
+    let Some(out_ref) = (unsafe { mut_ref_from_ptr(output.cast::<[u8; DIGEST_SHA1_LEN]>()) })
+    else {
         return -1;
     };
-    let out_ref = &mut *out;
-    let Some(input1_ptr) = as_input_ptr(input1, len1) else {
+    let Some(first) = (unsafe { slice_from_ptr(input1, len1) }) else {
         return -1;
     };
-    let Some(input2_ptr) = as_input_ptr(input2, len2) else {
+    let Some(second) = (unsafe { slice_from_ptr(input2, len2) }) else {
         return -1;
     };
 
-    let first = core::slice::from_raw_parts(input1_ptr, len1);
-    let second = core::slice::from_raw_parts(input2_ptr, len2);
     let mut hasher = Sha1::new();
     hasher.update(first);
     hasher.update(second);
@@ -2108,14 +2102,13 @@ pub unsafe extern "C" fn mtproxy_ffi_sha1_two_chunks(
 /// `output` must point to at least 32 writable bytes.
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_sha256(input: *const u8, len: usize, output: *mut u8) -> i32 {
-    let Some(out) = as_output_slice::<DIGEST_SHA256_LEN>(output) else {
+    let Some(out_ref) = (unsafe { mut_ref_from_ptr(output.cast::<[u8; DIGEST_SHA256_LEN]>()) })
+    else {
         return -1;
     };
-    let out_ref = &mut *out;
-    let Some(input_ptr) = as_input_ptr(input, len) else {
+    let Some(input_ref) = (unsafe { slice_from_ptr(input, len) }) else {
         return -1;
     };
-    let input_ref = core::slice::from_raw_parts(input_ptr, len);
     if sha256_digest_impl(input_ref, out_ref) {
         0
     } else {
@@ -2135,19 +2128,17 @@ pub unsafe extern "C" fn mtproxy_ffi_sha256_two_chunks(
     len2: usize,
     output: *mut u8,
 ) -> i32 {
-    let Some(out) = as_output_slice::<DIGEST_SHA256_LEN>(output) else {
+    let Some(out_ref) = (unsafe { mut_ref_from_ptr(output.cast::<[u8; DIGEST_SHA256_LEN]>()) })
+    else {
         return -1;
     };
-    let out_ref = &mut *out;
-    let Some(input1_ptr) = as_input_ptr(input1, len1) else {
+    let Some(first) = (unsafe { slice_from_ptr(input1, len1) }) else {
         return -1;
     };
-    let Some(input2_ptr) = as_input_ptr(input2, len2) else {
+    let Some(second) = (unsafe { slice_from_ptr(input2, len2) }) else {
         return -1;
     };
 
-    let first = core::slice::from_raw_parts(input1_ptr, len1);
-    let second = core::slice::from_raw_parts(input2_ptr, len2);
     let mut hasher = Sha256::new();
     hasher.update(first);
     hasher.update(second);
@@ -2167,21 +2158,19 @@ pub unsafe extern "C" fn mtproxy_ffi_sha256_hmac(
     len: usize,
     output: *mut u8,
 ) -> i32 {
-    let Some(out) = as_output_slice::<DIGEST_SHA256_LEN>(output) else {
+    let Some(out_ref) = (unsafe { mut_ref_from_ptr(output.cast::<[u8; DIGEST_SHA256_LEN]>()) })
+    else {
         return -1;
     };
-    let out_ref = &mut *out;
-    let Some(key_ptr) = as_input_ptr(key, key_len) else {
+    let Some(key_ref) = (unsafe { slice_from_ptr(key, key_len) }) else {
         return -1;
     };
-    let Some(input_ptr) = as_input_ptr(input, len) else {
+    let Some(input_ref) = (unsafe { slice_from_ptr(input, len) }) else {
         return -1;
     };
     if c_int::try_from(key_len).is_err() {
         return -1;
     }
-    let key_ref = core::slice::from_raw_parts(key_ptr, key_len);
-    let input_ref = core::slice::from_raw_parts(input_ptr, len);
     let Ok(mut mac) = HmacSha256::new_from_slice(key_ref) else {
         return -1;
     };

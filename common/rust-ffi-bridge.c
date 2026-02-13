@@ -12,7 +12,7 @@
 #include "jobs/jobs.h"
 #include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 
-#define RUST_FFI_EXPECTED_API_VERSION 1u
+static constexpr uint32_t RUST_FFI_EXPECTED_API_VERSION = 1u;
 
 int rust_ffi_startup_check(void) {
   uint32_t api_version = mtproxy_ffi_api_version();

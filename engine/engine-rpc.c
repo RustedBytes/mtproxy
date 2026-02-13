@@ -77,8 +77,6 @@ struct tl_out_state *tl_aio_init_store(enum tl_type type,
   }
 }
 
-#define ENGINE_JOB_CLASS JF_CLASS_MAIN
-
 void register_custom_op_cb(unsigned op,
                            void (*func)(struct tl_in_state *tlio_in,
                                         struct query_work_params *params)) {
