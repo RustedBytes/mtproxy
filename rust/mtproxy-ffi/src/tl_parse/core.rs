@@ -1,4 +1,4 @@
-use super::MtproxyProcessId;
+use crate::MtproxyProcessId;
 use core::ffi::{c_int, c_void};
 use core::mem::size_of;
 use core::ptr;
@@ -633,8 +633,7 @@ unsafe fn tl_in_skip(tlio_in: *mut TlInState, len: c_int) -> c_int {
     if len < 0 || tlio_in_ref.in_remaining < len {
         return -1;
     }
-    let Some(fetch_move) = in_method_cb!(tlio_in_ref, fetch_move)
-    else {
+    let Some(fetch_move) = in_method_cb!(tlio_in_ref, fetch_move) else {
         return -1;
     };
     fetch_move(tlio_in, len);
@@ -650,9 +649,7 @@ unsafe fn tl_in_fetch_raw_any(tlio_in: *mut TlInState, dst: *mut c_void, len: c_
     if dst.is_null() || len < 0 || tlio_in_ref.in_remaining < len {
         return -1;
     }
-    let Some(fetch_raw_data) =
-        in_method_cb!(tlio_in_ref, fetch_raw_data)
-    else {
+    let Some(fetch_raw_data) = in_method_cb!(tlio_in_ref, fetch_raw_data) else {
         return -1;
     };
     fetch_raw_data(tlio_in, dst, len);
@@ -668,8 +665,7 @@ unsafe fn tl_in_lookup_data(tlio_in: *mut TlInState, dst: *mut c_void, len: c_in
     if dst.is_null() || len < 0 || tlio_in_ref.in_remaining < len {
         return -1;
     }
-    let Some(fetch_lookup) = in_method_cb!(tlio_in_ref, fetch_lookup)
-    else {
+    let Some(fetch_lookup) = in_method_cb!(tlio_in_ref, fetch_lookup) else {
         return -1;
     };
     fetch_lookup(tlio_in, dst, len);
@@ -813,9 +809,7 @@ unsafe fn tl_out_store_raw_data(
     if tlio_out_ref.out_remaining < len {
         return -1;
     }
-    let Some(store_raw_data) =
-        out_method_cb!(tlio_out_ref, store_raw_data)
-    else {
+    let Some(store_raw_data) = out_method_cb!(tlio_out_ref, store_raw_data) else {
         return -1;
     };
     store_raw_data(tlio_out, data, len);
@@ -886,9 +880,7 @@ unsafe fn tl_out_clean(tlio_out: *mut TlOutState) -> c_int {
     let Some(tlio_out_ref) = out_state_mut(tlio_out) else {
         return -1;
     };
-    let Some(store_read_back) =
-        out_method_cb!(tlio_out_ref, store_read_back)
-    else {
+    let Some(store_read_back) = out_method_cb!(tlio_out_ref, store_read_back) else {
         return -1;
     };
     store_read_back(tlio_out, tlio_out_ref.out_pos);
@@ -1027,8 +1019,7 @@ unsafe fn tl_fetch_pad_impl(tlio_in: *mut TlInState) -> c_int {
     pad
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_store_header(
+pub(crate) unsafe fn mtproxy_ffi_tl_store_header(
     tlio_out: *mut TlOutState,
     header: *const TlQueryHeader,
 ) -> c_int {
@@ -1086,8 +1077,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_store_header(
     0
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_store_end_ext(
+pub(crate) unsafe fn mtproxy_ffi_tl_store_end_ext(
     tlio_out: *mut TlOutState,
     op: c_int,
     out_sent_kind: *mut c_int,
@@ -1188,8 +1178,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_store_end_ext(
     0
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_query_header_delete(h: *mut TlQueryHeader) {
+pub(crate) unsafe fn mtproxy_ffi_tl_query_header_delete(h: *mut TlQueryHeader) {
     let Some(h_ref) = ptr_mut(h) else {
         return;
     };
@@ -1200,10 +1189,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_query_header_delete(h: *mut TlQueryHeade
     libc::free(h.cast::<c_void>());
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_query_header_dup(
-    h: *mut TlQueryHeader,
-) -> *mut TlQueryHeader {
+pub(crate) unsafe fn mtproxy_ffi_tl_query_header_dup(h: *mut TlQueryHeader) -> *mut TlQueryHeader {
     let Some(h_ref) = ptr_mut(h) else {
         return ptr::null_mut();
     };
@@ -1212,8 +1198,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_query_header_dup(
     h
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_query_header_clone(
+pub(crate) unsafe fn mtproxy_ffi_tl_query_header_clone(
     h_old: *const TlQueryHeader,
 ) -> *mut TlQueryHeader {
     let Some(h_old_ref) = ptr_ref(h_old) else {
@@ -1228,8 +1213,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_query_header_clone(
     h
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_set_error(
+pub(crate) unsafe fn mtproxy_ffi_tl_set_error(
     tlio_in: *mut TlInState,
     errnum: c_int,
     s: *const i8,
@@ -1248,8 +1232,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_set_error(
     0
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_init(
+pub(crate) unsafe fn mtproxy_ffi_tl_fetch_init(
     tlio_in: *mut TlInState,
     in_ptr: *mut c_void,
     type_: c_int,
@@ -1259,8 +1242,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_init(
     tl_fetch_init_impl(tlio_in, in_ptr, type_, methods, size)
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_init_raw_message(
+pub(crate) unsafe fn mtproxy_ffi_tl_init_raw_message(
     tlio_in: *mut TlInState,
     msg: *mut RawMessage,
     size: c_int,
@@ -1286,7 +1268,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_init_raw_message(
         tlio_in,
         r.cast::<c_void>(),
         TL_TYPE_RAW_MSG,
-        core::ptr::addr_of!(tl_in_raw_msg_methods),
+        core::ptr::addr_of!(TL_IN_RAW_MSG_METHODS),
         size,
     );
     if rc < 0 {
@@ -1296,8 +1278,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_init_raw_message(
     rc
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_init_str(
+pub(crate) unsafe fn mtproxy_ffi_tl_init_str(
     tlio_in: *mut TlInState,
     s: *const i8,
     size: c_int,
@@ -1309,13 +1290,12 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_init_str(
         tlio_in,
         (s_ref as *const i8).cast_mut().cast::<c_void>(),
         TL_TYPE_STR,
-        core::ptr::addr_of!(tl_in_str_methods),
+        core::ptr::addr_of!(TL_IN_STR_METHODS),
         size,
     )
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_store_init(
+pub(crate) unsafe fn mtproxy_ffi_tl_store_init(
     tlio_out: *mut TlOutState,
     out: *mut c_void,
     out_extra: *mut c_void,
@@ -1327,8 +1307,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_store_init(
     tl_store_init_impl(tlio_out, out, out_extra, type_, methods, size, qid)
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_init_raw_msg(
+pub(crate) unsafe fn mtproxy_ffi_tl_init_raw_msg(
     tlio_out: *mut TlOutState,
     pid: *const MtproxyProcessId,
     qid: i64,
@@ -1356,7 +1335,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_init_raw_msg(
         d.cast::<c_void>(),
         ptr::null_mut(),
         TL_TYPE_RAW_MSG,
-        core::ptr::addr_of!(tl_out_raw_msg_methods),
+        core::ptr::addr_of!(TL_OUT_RAW_MSG_METHODS),
         1 << 27,
         qid,
     );
@@ -1367,8 +1346,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_init_raw_msg(
     rc
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_init_raw_msg_nosend(tlio_out: *mut TlOutState) -> c_int {
+pub(crate) unsafe fn mtproxy_ffi_tl_init_raw_msg_nosend(tlio_out: *mut TlOutState) -> c_int {
     if out_state_mut(tlio_out).is_none() {
         return -1;
     }
@@ -1382,7 +1360,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_init_raw_msg_nosend(tlio_out: *mut TlOut
         d.cast::<c_void>(),
         d.cast::<c_void>(),
         TL_TYPE_RAW_MSG,
-        core::ptr::addr_of!(tl_out_raw_msg_methods_nosend),
+        core::ptr::addr_of!(TL_OUT_RAW_MSG_METHODS_NOSEND),
         1 << 27,
         0,
     );
@@ -1393,8 +1371,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_init_raw_msg_nosend(tlio_out: *mut TlOut
     rc
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_init_str_out(
+pub(crate) unsafe fn mtproxy_ffi_tl_init_str_out(
     tlio_out: *mut TlOutState,
     s: *mut i8,
     qid: i64,
@@ -1412,14 +1389,13 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_init_str_out(
         (s_ref as *const i8).cast_mut().cast::<c_void>(),
         (s_ref as *const i8).cast_mut().cast::<c_void>(),
         TL_TYPE_STR,
-        core::ptr::addr_of!(tl_out_str_methods),
+        core::ptr::addr_of!(TL_OUT_STR_METHODS),
         size,
         qid,
     )
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_init_tcp_raw_msg(
+pub(crate) unsafe fn mtproxy_ffi_tl_init_tcp_raw_msg(
     tlio_out: *mut TlOutState,
     remote_pid: *const MtproxyProcessId,
     conn: *mut c_void,
@@ -1445,9 +1421,9 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_init_tcp_raw_msg(
         let _ = rwm_init(d, 0);
     }
     let methods = if unaligned != 0 {
-        core::ptr::addr_of!(tl_out_tcp_raw_msg_unaligned_methods)
+        core::ptr::addr_of!(TL_OUT_TCP_RAW_MSG_UNALIGNED_METHODS)
     } else {
-        core::ptr::addr_of!(tl_out_tcp_raw_msg_methods)
+        core::ptr::addr_of!(TL_OUT_TCP_RAW_MSG_METHODS)
     };
     let rc = tl_store_init_impl(
         tlio_out,
@@ -1465,40 +1441,32 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_init_tcp_raw_msg(
     rc
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_query_header_parse(
+pub(crate) unsafe fn mtproxy_ffi_tl_query_header_parse(
     tlio_in: *mut TlInState,
     header: *mut TlQueryHeader,
 ) -> c_int {
     tl_query_header_parse_impl(tlio_in, header, false)
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_query_answer_header_parse(
+pub(crate) unsafe fn mtproxy_ffi_tl_query_answer_header_parse(
     tlio_in: *mut TlInState,
     header: *mut TlQueryHeader,
 ) -> c_int {
     tl_query_header_parse_impl(tlio_in, header, true)
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_check(
-    tlio_in: *mut TlInState,
-    nbytes: c_int,
-) -> c_int {
+pub(crate) unsafe fn mtproxy_ffi_tl_fetch_check(tlio_in: *mut TlInState, nbytes: c_int) -> c_int {
     tl_in_check(tlio_in, nbytes)
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_lookup_int(tlio_in: *mut TlInState) -> c_int {
+pub(crate) unsafe fn mtproxy_ffi_tl_fetch_lookup_int(tlio_in: *mut TlInState) -> c_int {
     if tl_in_check(tlio_in, 4) < 0 {
         return -1;
     }
     let Some(tlio_in_ref) = in_state_mut(tlio_in) else {
         return -1;
     };
-    let Some(fetch_lookup) = in_method_cb!(tlio_in_ref, fetch_lookup)
-    else {
+    let Some(fetch_lookup) = in_method_cb!(tlio_in_ref, fetch_lookup) else {
         return -1;
     };
     let mut value: c_int = -1;
@@ -1506,16 +1474,14 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_lookup_int(tlio_in: *mut TlInState
     value
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_lookup_second_int(tlio_in: *mut TlInState) -> c_int {
+pub(crate) unsafe fn mtproxy_ffi_tl_fetch_lookup_second_int(tlio_in: *mut TlInState) -> c_int {
     if tl_in_check(tlio_in, 8) < 0 {
         return -1;
     }
     let Some(tlio_in_ref) = in_state_mut(tlio_in) else {
         return -1;
     };
-    let Some(fetch_lookup) = in_method_cb!(tlio_in_ref, fetch_lookup)
-    else {
+    let Some(fetch_lookup) = in_method_cb!(tlio_in_ref, fetch_lookup) else {
         return -1;
     };
     let mut values = [0_i32; 2];
@@ -1523,16 +1489,14 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_lookup_second_int(tlio_in: *mut Tl
     values[1]
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_lookup_long(tlio_in: *mut TlInState) -> i64 {
+pub(crate) unsafe fn mtproxy_ffi_tl_fetch_lookup_long(tlio_in: *mut TlInState) -> i64 {
     if tl_in_check(tlio_in, 8) < 0 {
         return -1;
     }
     let Some(tlio_in_ref) = in_state_mut(tlio_in) else {
         return -1;
     };
-    let Some(fetch_lookup) = in_method_cb!(tlio_in_ref, fetch_lookup)
-    else {
+    let Some(fetch_lookup) = in_method_cb!(tlio_in_ref, fetch_lookup) else {
         return -1;
     };
     let mut value: i64 = -1;
@@ -1540,8 +1504,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_lookup_long(tlio_in: *mut TlInStat
     value
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_lookup_data(
+pub(crate) unsafe fn mtproxy_ffi_tl_fetch_lookup_data(
     tlio_in: *mut TlInState,
     data: *mut c_void,
     len: c_int,
@@ -1561,25 +1524,21 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_lookup_data(
     let Some(tlio_in_ref) = in_state_mut(tlio_in) else {
         return -1;
     };
-    let Some(fetch_lookup) = in_method_cb!(tlio_in_ref, fetch_lookup)
-    else {
+    let Some(fetch_lookup) = in_method_cb!(tlio_in_ref, fetch_lookup) else {
         return -1;
     };
     fetch_lookup(tlio_in, data, len);
     len
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_int(tlio_in: *mut TlInState) -> c_int {
+pub(crate) unsafe fn mtproxy_ffi_tl_fetch_int(tlio_in: *mut TlInState) -> c_int {
     if tl_in_check(tlio_in, 4) < 0 {
         return -1;
     }
     let Some(tlio_in_ref) = in_state_mut(tlio_in) else {
         return -1;
     };
-    let Some(fetch_raw_data) =
-        in_method_cb!(tlio_in_ref, fetch_raw_data)
-    else {
+    let Some(fetch_raw_data) = in_method_cb!(tlio_in_ref, fetch_raw_data) else {
         return -1;
     };
     let mut value: c_int = -1;
@@ -1589,17 +1548,14 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_int(tlio_in: *mut TlInState) -> c_
     value
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_double(tlio_in: *mut TlInState) -> f64 {
+pub(crate) unsafe fn mtproxy_ffi_tl_fetch_double(tlio_in: *mut TlInState) -> f64 {
     if tl_in_check(tlio_in, 8) < 0 {
         return -1.0;
     }
     let Some(tlio_in_ref) = in_state_mut(tlio_in) else {
         return -1.0;
     };
-    let Some(fetch_raw_data) =
-        in_method_cb!(tlio_in_ref, fetch_raw_data)
-    else {
+    let Some(fetch_raw_data) = in_method_cb!(tlio_in_ref, fetch_raw_data) else {
         return -1.0;
     };
     let mut value: f64 = -1.0;
@@ -1609,17 +1565,14 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_double(tlio_in: *mut TlInState) ->
     value
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_long(tlio_in: *mut TlInState) -> i64 {
+pub(crate) unsafe fn mtproxy_ffi_tl_fetch_long(tlio_in: *mut TlInState) -> i64 {
     if tl_in_check(tlio_in, 8) < 0 {
         return -1;
     }
     let Some(tlio_in_ref) = in_state_mut(tlio_in) else {
         return -1;
     };
-    let Some(fetch_raw_data) =
-        in_method_cb!(tlio_in_ref, fetch_raw_data)
-    else {
+    let Some(fetch_raw_data) = in_method_cb!(tlio_in_ref, fetch_raw_data) else {
         return -1;
     };
     let mut value: i64 = -1;
@@ -1629,8 +1582,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_long(tlio_in: *mut TlInState) -> i
     value
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_raw_data(
+pub(crate) unsafe fn mtproxy_ffi_tl_fetch_raw_data(
     tlio_in: *mut TlInState,
     buf: *mut c_void,
     len: c_int,
@@ -1647,9 +1599,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_raw_data(
     let Some(tlio_in_ref) = in_state_mut(tlio_in) else {
         return -1;
     };
-    let Some(fetch_raw_data) =
-        in_method_cb!(tlio_in_ref, fetch_raw_data)
-    else {
+    let Some(fetch_raw_data) = in_method_cb!(tlio_in_ref, fetch_raw_data) else {
         return -1;
     };
     fetch_raw_data(tlio_in, buf, len);
@@ -1658,8 +1608,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_raw_data(
     len
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_mark(tlio_in: *mut TlInState) {
+pub(crate) unsafe fn mtproxy_ffi_tl_fetch_mark(tlio_in: *mut TlInState) {
     let Some(tlio_in_ref) = in_state_mut(tlio_in) else {
         return;
     };
@@ -1671,8 +1620,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_mark(tlio_in: *mut TlInState) {
     }
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_mark_restore(tlio_in: *mut TlInState) {
+pub(crate) unsafe fn mtproxy_ffi_tl_fetch_mark_restore(tlio_in: *mut TlInState) {
     let Some(tlio_in_ref) = in_state_mut(tlio_in) else {
         return;
     };
@@ -1684,8 +1632,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_mark_restore(tlio_in: *mut TlInSta
     }
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_mark_delete(tlio_in: *mut TlInState) {
+pub(crate) unsafe fn mtproxy_ffi_tl_fetch_mark_delete(tlio_in: *mut TlInState) {
     let Some(tlio_in_ref) = in_state_mut(tlio_in) else {
         return;
     };
@@ -1697,21 +1644,18 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_mark_delete(tlio_in: *mut TlInStat
     }
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_string_len(
+pub(crate) unsafe fn mtproxy_ffi_tl_fetch_string_len(
     tlio_in: *mut TlInState,
     max_len: c_int,
 ) -> c_int {
     tl_fetch_string_len_impl(tlio_in, max_len)
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_pad(tlio_in: *mut TlInState) -> c_int {
+pub(crate) unsafe fn mtproxy_ffi_tl_fetch_pad(tlio_in: *mut TlInState) -> c_int {
     tl_fetch_pad_impl(tlio_in)
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_string_data(
+pub(crate) unsafe fn mtproxy_ffi_tl_fetch_string_data(
     tlio_in: *mut TlInState,
     buf: *mut i8,
     len: c_int,
@@ -1734,8 +1678,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_string_data(
     len
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_skip_string_data(
+pub(crate) unsafe fn mtproxy_ffi_tl_fetch_skip_string_data(
     tlio_in: *mut TlInState,
     len: c_int,
 ) -> c_int {
@@ -1748,8 +1691,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_skip_string_data(
     len
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_string(
+pub(crate) unsafe fn mtproxy_ffi_tl_fetch_string(
     tlio_in: *mut TlInState,
     buf: *mut i8,
     max_len: c_int,
@@ -1761,8 +1703,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_string(
     mtproxy_ffi_tl_fetch_string_data(tlio_in, buf, len)
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_skip_string(
+pub(crate) unsafe fn mtproxy_ffi_tl_fetch_skip_string(
     tlio_in: *mut TlInState,
     max_len: c_int,
 ) -> c_int {
@@ -1773,8 +1714,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_skip_string(
     mtproxy_ffi_tl_fetch_skip_string_data(tlio_in, len)
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_string0(
+pub(crate) unsafe fn mtproxy_ffi_tl_fetch_string0(
     tlio_in: *mut TlInState,
     buf: *mut i8,
     max_len: c_int,
@@ -1793,8 +1733,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_string0(
     len
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_check_str_end(
+pub(crate) unsafe fn mtproxy_ffi_tl_fetch_check_str_end(
     tlio_in: *mut TlInState,
     size: c_int,
 ) -> c_int {
@@ -1819,24 +1758,21 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_check_str_end(
     1
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_unread(tlio_in: *mut TlInState) -> c_int {
+pub(crate) unsafe fn mtproxy_ffi_tl_fetch_unread(tlio_in: *mut TlInState) -> c_int {
     let Some(tlio_in_ref) = in_state_mut(tlio_in) else {
         return -1;
     };
     tlio_in_ref.in_remaining
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_skip(tlio_in: *mut TlInState, len: c_int) -> c_int {
+pub(crate) unsafe fn mtproxy_ffi_tl_fetch_skip(tlio_in: *mut TlInState, len: c_int) -> c_int {
     if len < 0 || tl_in_check(tlio_in, len) < 0 {
         return -1;
     }
     tl_in_skip(tlio_in, len)
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_end(tlio_in: *mut TlInState) -> c_int {
+pub(crate) unsafe fn mtproxy_ffi_tl_fetch_end(tlio_in: *mut TlInState) -> c_int {
     let Some(tlio_in_ref) = in_state_mut(tlio_in) else {
         return -1;
     };
@@ -1853,8 +1789,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_end(tlio_in: *mut TlInState) -> c_
     1
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_error(tlio_in: *mut TlInState) -> c_int {
+pub(crate) unsafe fn mtproxy_ffi_tl_fetch_error(tlio_in: *mut TlInState) -> c_int {
     let Some(tlio_in_ref) = in_state_mut(tlio_in) else {
         return 1;
     };
@@ -1865,8 +1800,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_error(tlio_in: *mut TlInState) -> 
     }
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_int_range(
+pub(crate) unsafe fn mtproxy_ffi_tl_fetch_int_range(
     tlio_in: *mut TlInState,
     min: c_int,
     max: c_int,
@@ -1882,21 +1816,15 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_int_range(
     value
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_positive_int(tlio_in: *mut TlInState) -> c_int {
+pub(crate) unsafe fn mtproxy_ffi_tl_fetch_positive_int(tlio_in: *mut TlInState) -> c_int {
     mtproxy_ffi_tl_fetch_int_range(tlio_in, 1, 0x7fff_ffff)
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_nonnegative_int(tlio_in: *mut TlInState) -> c_int {
+pub(crate) unsafe fn mtproxy_ffi_tl_fetch_nonnegative_int(tlio_in: *mut TlInState) -> c_int {
     mtproxy_ffi_tl_fetch_int_range(tlio_in, 0, 0x7fff_ffff)
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_int_subset(
-    tlio_in: *mut TlInState,
-    set: c_int,
-) -> c_int {
+pub(crate) unsafe fn mtproxy_ffi_tl_fetch_int_subset(tlio_in: *mut TlInState, set: c_int) -> c_int {
     let value = mtproxy_ffi_tl_fetch_int(tlio_in);
     if (value & !set) != 0 {
         tl_set_error_once(
@@ -1908,8 +1836,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_int_subset(
     value
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_long_range(
+pub(crate) unsafe fn mtproxy_ffi_tl_fetch_long_range(
     tlio_in: *mut TlInState,
     min: i64,
     max: i64,
@@ -1925,18 +1852,15 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_long_range(
     value
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_positive_long(tlio_in: *mut TlInState) -> i64 {
+pub(crate) unsafe fn mtproxy_ffi_tl_fetch_positive_long(tlio_in: *mut TlInState) -> i64 {
     mtproxy_ffi_tl_fetch_long_range(tlio_in, 1, 0x7fff_ffff_ffff_ffff_i64)
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_nonnegative_long(tlio_in: *mut TlInState) -> i64 {
+pub(crate) unsafe fn mtproxy_ffi_tl_fetch_nonnegative_long(tlio_in: *mut TlInState) -> i64 {
     mtproxy_ffi_tl_fetch_long_range(tlio_in, 0, 0x7fff_ffff_ffff_ffff_i64)
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_raw_message(
+pub(crate) unsafe fn mtproxy_ffi_tl_fetch_raw_message(
     tlio_in: *mut TlInState,
     raw: *mut RawMessage,
     bytes: c_int,
@@ -1950,9 +1874,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_raw_message(
     let Some(tlio_in_ref) = in_state_mut(tlio_in) else {
         return -1;
     };
-    let Some(fetch_raw_message) =
-        in_method_cb!(tlio_in_ref, fetch_raw_message)
-    else {
+    let Some(fetch_raw_message) = in_method_cb!(tlio_in_ref, fetch_raw_message) else {
         return -1;
     };
     fetch_raw_message(tlio_in, raw_ref as *mut RawMessage, bytes);
@@ -1961,8 +1883,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_raw_message(
     0
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_lookup_raw_message(
+pub(crate) unsafe fn mtproxy_ffi_tl_fetch_lookup_raw_message(
     tlio_in: *mut TlInState,
     raw: *mut RawMessage,
     bytes: c_int,
@@ -1976,8 +1897,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_lookup_raw_message(
     let Some(tlio_in_ref) = in_state_mut(tlio_in) else {
         return -1;
     };
-    let Some(fetch_lookup_raw_message) =
-        in_method_cb!(tlio_in_ref, fetch_lookup_raw_message)
+    let Some(fetch_lookup_raw_message) = in_method_cb!(tlio_in_ref, fetch_lookup_raw_message)
     else {
         return -1;
     };
@@ -1985,8 +1905,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_lookup_raw_message(
     0
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_store_get_ptr(
+pub(crate) unsafe fn mtproxy_ffi_tl_store_get_ptr(
     tlio_out: *mut TlOutState,
     size: c_int,
 ) -> *mut c_void {
@@ -1996,9 +1915,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_store_get_ptr(
     let Some(tlio_out_ref) = out_state_mut(tlio_out) else {
         return ptr::null_mut();
     };
-    let Some(store_get_ptr) =
-        out_method_cb!(tlio_out_ref, store_get_ptr)
-    else {
+    let Some(store_get_ptr) = out_method_cb!(tlio_out_ref, store_get_ptr) else {
         return ptr::null_mut();
     };
     let p = store_get_ptr(tlio_out, size);
@@ -2010,8 +1927,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_store_get_ptr(
     p
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_store_get_prepend_ptr(
+pub(crate) unsafe fn mtproxy_ffi_tl_store_get_prepend_ptr(
     tlio_out: *mut TlOutState,
     size: c_int,
 ) -> *mut c_void {
@@ -2021,9 +1937,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_store_get_prepend_ptr(
     let Some(tlio_out_ref) = out_state_mut(tlio_out) else {
         return ptr::null_mut();
     };
-    let Some(store_get_prepend_ptr) =
-        out_method_cb!(tlio_out_ref, store_get_prepend_ptr)
-    else {
+    let Some(store_get_prepend_ptr) = out_method_cb!(tlio_out_ref, store_get_prepend_ptr) else {
         return ptr::null_mut();
     };
     let p = store_get_prepend_ptr(tlio_out, size);
@@ -2035,24 +1949,20 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_store_get_prepend_ptr(
     p
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_store_int(tlio_out: *mut TlOutState, x: c_int) -> c_int {
+pub(crate) unsafe fn mtproxy_ffi_tl_store_int(tlio_out: *mut TlOutState, x: c_int) -> c_int {
     tl_out_store_int(tlio_out, x)
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_store_long(tlio_out: *mut TlOutState, x: i64) -> c_int {
+pub(crate) unsafe fn mtproxy_ffi_tl_store_long(tlio_out: *mut TlOutState, x: i64) -> c_int {
     tl_out_store_long(tlio_out, x)
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_store_double(tlio_out: *mut TlOutState, x: f64) -> c_int {
+pub(crate) unsafe fn mtproxy_ffi_tl_store_double(tlio_out: *mut TlOutState, x: f64) -> c_int {
     let bytes = x.to_le_bytes();
     tl_out_store_raw_data(tlio_out, bytes.as_ptr().cast::<c_void>(), 8)
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_store_raw_data(
+pub(crate) unsafe fn mtproxy_ffi_tl_store_raw_data(
     tlio_out: *mut TlOutState,
     data: *const c_void,
     len: c_int,
@@ -2060,8 +1970,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_store_raw_data(
     tl_out_store_raw_data(tlio_out, data, len)
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_store_raw_msg(
+pub(crate) unsafe fn mtproxy_ffi_tl_store_raw_msg(
     tlio_out: *mut TlOutState,
     raw: *mut RawMessage,
     dup: c_int,
@@ -2076,9 +1985,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_store_raw_msg(
     let Some(tlio_out_ref) = out_state_mut(tlio_out) else {
         return -1;
     };
-    let Some(store_raw_msg) =
-        out_method_cb!(tlio_out_ref, store_raw_msg)
-    else {
+    let Some(store_raw_msg) = out_method_cb!(tlio_out_ref, store_raw_msg) else {
         return -1;
     };
     if dup == 0 {
@@ -2093,8 +2000,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_store_raw_msg(
     0
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_store_string_len(
+pub(crate) unsafe fn mtproxy_ffi_tl_store_string_len(
     tlio_out: *mut TlOutState,
     len: c_int,
 ) -> c_int {
@@ -2104,13 +2010,11 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_store_string_len(
     tl_out_store_string_len(tlio_out, usize::try_from(len).unwrap_or(0))
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_store_pad(tlio_out: *mut TlOutState) -> c_int {
+pub(crate) unsafe fn mtproxy_ffi_tl_store_pad(tlio_out: *mut TlOutState) -> c_int {
     tl_out_store_pad(tlio_out)
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_store_string_data(
+pub(crate) unsafe fn mtproxy_ffi_tl_store_string_data(
     tlio_out: *mut TlOutState,
     s: *const i8,
     len: c_int,
@@ -2127,8 +2031,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_store_string_data(
     tl_out_store_pad(tlio_out)
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_store_string(
+pub(crate) unsafe fn mtproxy_ffi_tl_store_string(
     tlio_out: *mut TlOutState,
     s: *const i8,
     len: c_int,
@@ -2155,16 +2058,14 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_store_string(
     tl_out_store_pad(tlio_out)
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_store_clear(tlio_out: *mut TlOutState) -> c_int {
+pub(crate) unsafe fn mtproxy_ffi_tl_store_clear(tlio_out: *mut TlOutState) -> c_int {
     let Some(tlio_out_ref) = out_state_mut(tlio_out) else {
         return -1;
     };
     if tlio_out_ref.out_ptr.is_null() {
         return -1;
     }
-    let Some(store_clear) = out_method_cb!(tlio_out_ref, store_clear)
-    else {
+    let Some(store_clear) = out_method_cb!(tlio_out_ref, store_clear) else {
         return -1;
     };
     store_clear(tlio_out);
@@ -2174,21 +2075,18 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_store_clear(tlio_out: *mut TlOutState) -
     0
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_store_clean(tlio_out: *mut TlOutState) -> c_int {
+pub(crate) unsafe fn mtproxy_ffi_tl_store_clean(tlio_out: *mut TlOutState) -> c_int {
     tl_out_clean(tlio_out)
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_store_pos(tlio_out: *mut TlOutState) -> c_int {
+pub(crate) unsafe fn mtproxy_ffi_tl_store_pos(tlio_out: *mut TlOutState) -> c_int {
     let Some(tlio_out_ref) = out_state_mut(tlio_out) else {
         return -1;
     };
     tlio_out_ref.out_pos
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_copy_through(
+pub(crate) unsafe fn mtproxy_ffi_tl_copy_through(
     tlio_in: *mut TlInState,
     tlio_out: *mut TlOutState,
     len: c_int,
@@ -2229,8 +2127,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_copy_through(
     len
 }
 
-#[no_mangle]
-pub static tl_in_raw_msg_methods: TlInMethods = TlInMethods {
+pub(crate) static TL_IN_RAW_MSG_METHODS: TlInMethods = TlInMethods {
     fetch_raw_data: Some(tl_raw_msg_fetch_raw_data),
     fetch_move: Some(tl_raw_msg_fetch_move),
     fetch_lookup: Some(tl_raw_msg_fetch_lookup),
@@ -2244,8 +2141,7 @@ pub static tl_in_raw_msg_methods: TlInMethods = TlInMethods {
     prepend_bytes: 0,
 };
 
-#[no_mangle]
-pub static tl_in_str_methods: TlInMethods = TlInMethods {
+pub(crate) static TL_IN_STR_METHODS: TlInMethods = TlInMethods {
     fetch_raw_data: Some(tl_str_fetch_raw_data),
     fetch_move: Some(tl_str_fetch_move),
     fetch_lookup: Some(tl_str_fetch_lookup),
@@ -2259,8 +2155,7 @@ pub static tl_in_str_methods: TlInMethods = TlInMethods {
     prepend_bytes: 0,
 };
 
-#[no_mangle]
-pub static tl_out_raw_msg_methods: TlOutMethods = TlOutMethods {
+pub(crate) static TL_OUT_RAW_MSG_METHODS: TlOutMethods = TlOutMethods {
     store_get_ptr: Some(tl_raw_msg_store_get_ptr),
     store_get_prepend_ptr: Some(tl_raw_msg_store_get_prepend_ptr),
     store_raw_data: Some(tl_raw_msg_store_raw_data),
@@ -2287,8 +2182,7 @@ pub static tl_out_raw_msg_methods: TlOutMethods = TlOutMethods {
     prepend_bytes: 0,
 };
 
-#[no_mangle]
-pub static tl_out_raw_msg_methods_nosend: TlOutMethods = TlOutMethods {
+pub(crate) static TL_OUT_RAW_MSG_METHODS_NOSEND: TlOutMethods = TlOutMethods {
     store_get_ptr: Some(tl_raw_msg_store_get_ptr),
     store_get_prepend_ptr: Some(tl_raw_msg_store_get_prepend_ptr),
     store_raw_data: Some(tl_raw_msg_store_raw_data),
@@ -2315,8 +2209,7 @@ pub static tl_out_raw_msg_methods_nosend: TlOutMethods = TlOutMethods {
     prepend_bytes: 0,
 };
 
-#[no_mangle]
-pub static tl_out_tcp_raw_msg_methods: TlOutMethods = TlOutMethods {
+pub(crate) static TL_OUT_TCP_RAW_MSG_METHODS: TlOutMethods = TlOutMethods {
     store_get_ptr: Some(tl_raw_msg_store_get_ptr),
     store_get_prepend_ptr: Some(tl_raw_msg_store_get_prepend_ptr),
     store_raw_data: Some(tl_raw_msg_store_raw_data),
@@ -2343,8 +2236,7 @@ pub static tl_out_tcp_raw_msg_methods: TlOutMethods = TlOutMethods {
     prepend_bytes: 0,
 };
 
-#[no_mangle]
-pub static tl_out_tcp_raw_msg_unaligned_methods: TlOutMethods = TlOutMethods {
+pub(crate) static TL_OUT_TCP_RAW_MSG_UNALIGNED_METHODS: TlOutMethods = TlOutMethods {
     store_get_ptr: Some(tl_raw_msg_store_get_ptr),
     store_get_prepend_ptr: Some(tl_raw_msg_store_get_prepend_ptr),
     store_raw_data: Some(tl_raw_msg_store_raw_data),
@@ -2371,8 +2263,7 @@ pub static tl_out_tcp_raw_msg_unaligned_methods: TlOutMethods = TlOutMethods {
     prepend_bytes: 0,
 };
 
-#[no_mangle]
-pub static tl_out_str_methods: TlOutMethods = TlOutMethods {
+pub(crate) static TL_OUT_STR_METHODS: TlOutMethods = TlOutMethods {
     store_get_ptr: Some(tl_str_store_get_ptr),
     store_get_prepend_ptr: Some(tl_str_store_get_prepend_ptr),
     store_raw_data: Some(tl_str_store_raw_data),

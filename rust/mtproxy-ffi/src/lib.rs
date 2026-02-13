@@ -78,7 +78,7 @@ mod stats;
 #[cfg(test)]
 mod test_consts;
 mod time_cfg_observability;
-mod tl_parse_methods;
+mod tl_parse;
 pub mod vv_io;
 pub mod vv_tree;
 
