@@ -138,9 +138,10 @@ int hts_init_accepted(connection_job_t c) {
 
 int hts_close_connection(connection_job_t c, int who) {
   http_connections--;
+  struct http_server_functions *funcs = HTS_FUNC(c);
 
-  if (HTS_FUNC(c)->ht_close != NULL) {
-    HTS_FUNC(c)->ht_close(c, who);
+  if (funcs->ht_close != NULL) {
+    funcs->ht_close(c, who);
   }
 
   return cpu_server_close_connection(c, who);
@@ -180,23 +181,26 @@ int write_http_error_raw(connection_job_t C, struct raw_message *raw,
 }
 
 int write_http_error(connection_job_t C, int code) {
+  struct connection_info *c = CONN_INFO(C);
   struct raw_message *raw = calloc(sizeof(*raw), 1);
   rwm_init(raw, 0);
   int r = write_http_error_raw(C, raw, code);
 
-  mpq_push_w(CONN_INFO(C)->out_queue, raw, 0);
+  mpq_push_w(c->out_queue, raw, 0);
   job_signal(JOB_REF_CREATE_PASS(C), JS_RUN);
 
   return r;
 }
 
 int hts_write_packet(connection_job_t C, struct raw_message *raw) {
-  rwm_union(&CONN_INFO(C)->out, raw);
+  struct connection_info *c = CONN_INFO(C);
+  rwm_union(&c->out, raw);
   return 0;
 }
 
 int hts_parse_execute(connection_job_t C) {
   struct connection_info *c = CONN_INFO(C);
+  struct http_server_functions *funcs = HTS_FUNC(C);
 
   struct hts_data *D = HTS_DATA(C);
   char *ptr, *ptr_s, *ptr_e;
@@ -573,8 +577,8 @@ int hts_parse_execute(connection_job_t C) {
         D->query_flags |= QF_ERROR;
       }
       if (!(D->query_flags & QF_ERROR)) {
-        if (!HTS_FUNC(C)->execute) {
-          HTS_FUNC(C)->execute = hts_default_execute;
+        if (!funcs->execute) {
+          funcs->execute = hts_default_execute;
         }
 
         int res;
@@ -594,7 +598,7 @@ int hts_parse_execute(connection_job_t C) {
             rwm_trunc(&r, bytes);
           }
 
-          res = HTS_FUNC(C)->execute(C, &r, D->query_type);
+          res = funcs->execute(C, &r, D->query_type);
           rwm_free(&r);
         }
         http_queries++;
@@ -648,23 +652,26 @@ int hts_parse_execute(connection_job_t C) {
 }
 
 int hts_std_wakeup(connection_job_t c) {
-  if (HTS_FUNC(c)->ht_wakeup) {
-    HTS_FUNC(c)->ht_wakeup(c);
+  struct connection_info *conn = CONN_INFO(c);
+  struct http_server_functions *funcs = HTS_FUNC(c);
+  if (funcs->ht_wakeup) {
+    funcs->ht_wakeup(c);
   }
-  CONN_INFO(c)->generation = new_conn_generation();
+  conn->generation = new_conn_generation();
   return 0;
 }
 
 int hts_std_alarm(connection_job_t c) {
-  if (HTS_FUNC(c)->ht_alarm) {
-    HTS_FUNC(c)->ht_alarm(c);
+  struct connection_info *conn = CONN_INFO(c);
+  struct http_server_functions *funcs = HTS_FUNC(c);
+  if (funcs->ht_alarm) {
+    funcs->ht_alarm(c);
   }
-  CONN_INFO(c)->generation = new_conn_generation();
+  conn->generation = new_conn_generation();
   return 0;
 }
 
 int hts_do_wakeup(connection_job_t c) {
-  // struct hts_data *D = HTS_DATA(c);
   assert(0);
   return 0;
 }
@@ -741,11 +748,12 @@ int write_basic_http_header_raw(connection_job_t C, struct raw_message *raw,
 }
 
 void http_flush(connection_job_t C, struct raw_message *raw) {
+  struct connection_info *c = CONN_INFO(C);
   if (raw) {
-    mpq_push_w(CONN_INFO(C)->out_queue, raw, 0);
+    mpq_push_w(c->out_queue, raw, 0);
   }
   struct hts_data *D = HTS_DATA(C);
-  if (!CONN_INFO(C)->pending_queries && !(D->query_flags & QF_KEEPALIVE)) {
+  if (!c->pending_queries && !(D->query_flags & QF_KEEPALIVE)) {
     connection_write_close(C);
     D->parse_state = -1;
   }

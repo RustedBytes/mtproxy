@@ -127,18 +127,19 @@ static rpc_target_job_t rpc_target_alloc(struct process_id PID) {
 void rpc_target_insert_conn(connection_job_t C) {
   assert_engine_thread();
   struct connection_info *c = CONN_INFO(C);
+  struct tcp_rpc_data *D = TCP_RPC_DATA(C);
 
   if (c->flags & (C_ERROR | C_NET_FAILED | C_FAILED)) {
     return;
   }
-  if (TCP_RPC_DATA(C)->in_rpc_target) {
+  if (D->in_rpc_target) {
     return;
   }
 
   assert_net_cpu_thread();
   // st_update_host ();
   struct rpc_target_info t;
-  t.PID = TCP_RPC_DATA(C)->remote_pid;
+  t.PID = D->remote_pid;
   rpc_target_normalize_pid(&t.PID);
 
   vkprintf(
@@ -154,8 +155,8 @@ void rpc_target_insert_conn(connection_job_t C) {
 
   struct rpc_target_info *S = RPC_TARGET_INFO(SS);
 
-  connection_job_t D = tree_lookup_ptr_connection(S->conn_tree, C);
-  assert(!D);
+  connection_job_t existing_conn = tree_lookup_ptr_connection(S->conn_tree, C);
+  assert(!existing_conn);
 
   struct tree_connection *old = get_tree_ptr_connection(&S->conn_tree);
 
@@ -166,21 +167,22 @@ void rpc_target_insert_conn(connection_job_t C) {
   __sync_synchronize();
   free_tree_ptr_connection(old);
 
-  TCP_RPC_DATA(C)->in_rpc_target = 1;
+  D->in_rpc_target = 1;
 }
 
 void rpc_target_delete_conn(connection_job_t C) {
   assert_engine_thread();
   struct connection_info *c = CONN_INFO(C);
+  struct tcp_rpc_data *D = TCP_RPC_DATA(C);
 
-  if (!TCP_RPC_DATA(C)->in_rpc_target) {
+  if (!D->in_rpc_target) {
     return;
   }
 
   assert_net_cpu_thread();
   // st_update_host ();
   struct rpc_target_info t;
-  t.PID = TCP_RPC_DATA(C)->remote_pid;
+  t.PID = D->remote_pid;
   rpc_target_normalize_pid(&t.PID);
 
   vkprintf(
@@ -196,8 +198,8 @@ void rpc_target_delete_conn(connection_job_t C) {
 
   struct rpc_target_info *S = RPC_TARGET_INFO(SS);
 
-  connection_job_t D = tree_lookup_ptr_connection(S->conn_tree, C);
-  assert(D);
+  connection_job_t existing_conn = tree_lookup_ptr_connection(S->conn_tree, C);
+  assert(existing_conn);
 
   struct tree_connection *old = get_tree_ptr_connection(&S->conn_tree);
   S->conn_tree = tree_delete_connection(S->conn_tree, C);
@@ -207,7 +209,7 @@ void rpc_target_delete_conn(connection_job_t C) {
 
   free_tree_ptr_connection(old);
 
-  TCP_RPC_DATA(C)->in_rpc_target = 0;
+  D->in_rpc_target = 0;
 }
 
 rpc_target_job_t rpc_target_lookup(struct process_id *pid) {
@@ -252,6 +254,7 @@ void check_connection(connection_job_t C, void *ex, void *ex2, void *ex3) {
   struct process_id *PID = ex3;
 
   struct connection_info *c = CONN_INFO(C);
+  struct tcp_rpc_data *D = TCP_RPC_DATA(C);
   int r = c->type->check_ready(C);
 
   if ((c->flags & (C_ERROR | C_FAILED | C_NET_FAILED)) || c->error) {
@@ -259,12 +262,12 @@ void check_connection(connection_job_t C, void *ex, void *ex2, void *ex3) {
   }
 
   if (r == cr_ok) {
-    if (!PID || matches_pid(&TCP_RPC_DATA(C)->remote_pid, PID) >= 1) {
+    if (!PID || matches_pid(&D->remote_pid, PID) >= 1) {
       *best_unr = -1;
       *R = C;
     }
   } else if (r == cr_stopped && c->unreliability < *best_unr) {
-    if (!PID || matches_pid(&TCP_RPC_DATA(C)->remote_pid, PID) >= 1) {
+    if (!PID || matches_pid(&D->remote_pid, PID) >= 1) {
       *best_unr = c->unreliability;
       *R = C;
     }
@@ -283,13 +286,14 @@ void check_connection_arr(connection_job_t C, void *ex, void *ex2) {
   struct process_id *PID = ex2;
 
   struct connection_info *c = CONN_INFO(C);
+  struct tcp_rpc_data *D = TCP_RPC_DATA(C);
   int r = c->type->check_ready(C);
 
   if ((c->flags & (C_ERROR | C_FAILED | C_NET_FAILED)) || c->error ||
       r != cr_ok) {
     return;
   }
-  if (PID && matches_pid(&TCP_RPC_DATA(C)->remote_pid, PID) < 1) {
+  if (PID && matches_pid(&D->remote_pid, PID) < 1) {
     return;
   }
 
@@ -382,7 +386,8 @@ int rpc_target_get_state(rpc_target_job_t S, struct process_id *pid) {
     return -1;
   }
 
-  int r = CONN_INFO(C)->type->check_ready(C);
+  struct connection_info *c = CONN_INFO(C);
+  int r = c->type->check_ready(C);
   job_decref(JOB_REF_PASS(C));
 
   if (r == cr_ok) {

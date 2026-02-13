@@ -104,9 +104,10 @@ int cpu_tcp_server_writer(connection_job_t C) {
   }
 
   if (raw->total_bytes && c->io_conn) {
-    mpq_push_w(SOCKET_CONN_INFO(c->io_conn)->out_packet_queue, raw, 0);
+    struct socket_connection_info *io = SOCKET_CONN_INFO(c->io_conn);
+    mpq_push_w(io->out_packet_queue, raw, 0);
     if (stop) {
-      __sync_fetch_and_or(&SOCKET_CONN_INFO(c->io_conn)->flags, C_STOPWRITE);
+      __sync_fetch_and_or(&io->flags, C_STOPWRITE);
     }
     job_signal(JOB_REF_CREATE_PASS(c->io_conn), JS_RUN);
   } else {

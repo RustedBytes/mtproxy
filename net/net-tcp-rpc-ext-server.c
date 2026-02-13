@@ -152,7 +152,8 @@ int tcp_proxy_pass_close(connection_job_t C, int who) {
 }
 
 int tcp_proxy_pass_write_packet(connection_job_t C, struct raw_message *raw) {
-  rwm_union(&CONN_INFO(C)->out, raw);
+  struct connection_info *c = CONN_INFO(C);
+  rwm_union(&c->out, raw);
   return 0;
 }
 
@@ -1030,7 +1031,8 @@ static int proxy_connection(connection_job_t C,
   c->type = &ct_proxy_pass;
   c->extra = job_incref(EJ);
 
-  assert(CONN_INFO(EJ)->io_conn);
+  struct connection_info *e = CONN_INFO(EJ);
+  assert(e->io_conn);
   unlock_job(JOB_REF_PASS(EJ));
 
   return c->type->parse_execute(C);
@@ -1052,6 +1054,7 @@ int tcp_rpcs_ext_init_accepted(connection_job_t C) {
 
 int tcp_rpcs_compact_parse_execute(connection_job_t C) {
   struct tcp_rpc_data *D = TCP_RPC_DATA(C);
+  struct tcp_rpc_server_functions *funcs = TCP_RPCS_FUNC(C);
   if (D->crypto_flags & RPCF_COMPACT_OFF) {
     if (D->in_packet_num != -3) {
       job_timer_remove(C);
@@ -1116,7 +1119,7 @@ int tcp_rpcs_compact_parse_execute(connection_job_t C) {
         // http
         if ((packet_len == *(int *)"HEAD" || packet_len == *(int *)"POST" ||
              packet_len == *(int *)"GET " || packet_len == *(int *)"OPTI") &&
-            TCP_RPCS_FUNC(C)->http_fallback_type) {
+            funcs->http_fallback_type) {
           D->crypto_flags |= RPCF_COMPACT_OFF;
           vkprintf(1, "HTTP type\n");
           return tcp_rpcs_parse_execute(C);
@@ -1499,8 +1502,7 @@ int tcp_rpcs_compact_parse_execute(connection_job_t C) {
       return 0;
     }
 
-    if ((packet_len > TCP_RPCS_FUNC(C)->max_packet_len &&
-         TCP_RPCS_FUNC(C)->max_packet_len > 0)) {
+    if ((packet_len > funcs->max_packet_len && funcs->max_packet_len > 0)) {
       vkprintf(1, "error while parsing packet: bad packet length %d\n",
                packet_len);
       fail_connection(C, -1);
@@ -1542,7 +1544,7 @@ int tcp_rpcs_compact_parse_execute(connection_job_t C) {
     if (packet_type == RPC_PING) {
       res = tcp_rpcs_default_execute(C, packet_type, &msg);
     } else {
-      res = TCP_RPCS_FUNC(C)->execute(C, packet_type, &msg);
+      res = funcs->execute(C, packet_type, &msg);
     }
     if (res <= 0) {
       rwm_free(&msg);

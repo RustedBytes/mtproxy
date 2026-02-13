@@ -595,8 +595,9 @@ void assert_engine_thread(void) {
 socket_connection_job_t alloc_new_socket_connection(connection_job_t C);
 
 static inline int compute_conn_events(socket_connection_job_t c) {
+  struct socket_connection_info *s = SOCKET_CONN_INFO(c);
   int32_t events = mtproxy_ffi_net_compute_conn_events(
-      SOCKET_CONN_INFO(c)->flags, CONNECTIONS_USE_EPOLLET);
+      s->flags, CONNECTIONS_USE_EPOLLET);
   assert(events == 0 || events == (EVT_READ | EVT_WRITE | EVT_SPEC));
   return events;
 }
@@ -625,7 +626,8 @@ void connection_write_close(connection_job_t C) {
 
   if (action & CONNECTION_WRITE_CLOSE_ACTION_SET_IO_STOPREAD) {
     assert(S);
-    __sync_fetch_and_or(&SOCKET_CONN_INFO(S)->flags, C_STOPREAD);
+    struct socket_connection_info *io = SOCKET_CONN_INFO(S);
+    __sync_fetch_and_or(&io->flags, C_STOPREAD);
   }
   if (action & CONNECTION_WRITE_CLOSE_ACTION_SET_CONN_STOPREAD) {
     __sync_fetch_and_or(&c->flags, C_STOPREAD);
@@ -902,8 +904,9 @@ int do_connection_job(job_t job, int op, struct job_thread *JT) {
         connections_module_stat_tls->active_outbound_connections++;
         connections_module_stat_tls->active_connections++;
         if (c->target) {
+          struct conn_target_info *target = CONN_TARGET_INFO(c->target);
           __sync_fetch_and_add(
-              &CONN_TARGET_INFO(c->target)->active_outbound_connections, 1);
+              &target->active_outbound_connections, 1);
         }
 
         int32_t should_promote_status =
@@ -1465,7 +1468,8 @@ int net_server_socket_reader(socket_connection_job_t C) {
     }
 
     assert(c->conn);
-    mpq_push_w(CONN_INFO(c->conn)->in_queue, in, 0);
+    struct connection_info *conn = CONN_INFO(c->conn);
+    mpq_push_w(conn->in_queue, in, 0);
     job_signal(JOB_REF_CREATE_PASS(c->conn), JS_RUN);
   }
   return 0;
@@ -1623,8 +1627,8 @@ int net_server_socket_read_write(socket_connection_job_t C) {
   if (connect_action == SOCKET_READ_WRITE_CONNECT_MARK_CONNECTED) {
     __sync_fetch_and_and(&c->flags, C_PERMANENT);
     __sync_fetch_and_or(&c->flags, C_WANTRD | C_CONNECTED);
-    __sync_fetch_and_or(&CONN_INFO(c->conn)->flags,
-                        C_READY_PENDING | C_CONNECTED);
+    struct connection_info *conn = CONN_INFO(c->conn);
+    __sync_fetch_and_or(&conn->flags, C_READY_PENDING | C_CONNECTED);
 
     c->type->socket_connected(C);
     job_signal(JOB_REF_CREATE_PASS(c->conn), JS_RUN);
@@ -1925,7 +1929,8 @@ int net_accept_new_connections(listening_connection_job_t LCJ) {
                                ntohs(peer.a6.sin6_port));
     }
     if (C) {
-      assert(CONN_INFO(C)->io_conn);
+      struct connection_info *conn = CONN_INFO(C);
+      assert(conn->io_conn);
       unlock_job(JOB_REF_PASS(C));
     }
   }
@@ -1940,6 +1945,7 @@ int do_listening_connection_job(job_t job, int op, struct job_thread *JT) {
   };
 
   listening_connection_job_t LCJ = job;
+  struct listening_connection_info *LC = LISTEN_CONN_INFO(LCJ);
 
   int32_t action =
       mtproxy_ffi_net_connections_listening_job_action(op, JS_RUN, JS_AUX);
@@ -1951,9 +1957,8 @@ int do_listening_connection_job(job_t job, int op, struct job_thread *JT) {
     net_accept_new_connections(LCJ);
     return 0;
   } else if (action == LISTENING_JOB_ACTION_AUX) {
-    vkprintf(2, "**Invoking epoll_insert(%d,%d)\n", LISTEN_CONN_INFO(LCJ)->fd,
-             EVT_RWX);
-    epoll_insert(LISTEN_CONN_INFO(LCJ)->fd, EVT_RWX);
+    vkprintf(2, "**Invoking epoll_insert(%d,%d)\n", LC->fd, EVT_RWX);
+    epoll_insert(LC->fd, EVT_RWX);
     return 0;
   }
   return JOB_ERROR;
@@ -2104,7 +2109,9 @@ connection_job_t connection_get_by_fd(int fd) {
 
   int32_t is_listening_job = (C->j_execute == &do_listening_connection_job);
   int32_t is_socket_job = (C->j_execute == &do_socket_connection_job);
-  int32_t socket_flags = is_socket_job ? SOCKET_CONN_INFO(C)->flags : 0;
+  struct socket_connection_info *socket =
+      is_socket_job ? SOCKET_CONN_INFO(C) : NULL;
+  int32_t socket_flags = socket ? socket->flags : 0;
   int32_t action = mtproxy_ffi_net_connections_connection_get_by_fd_action(
       is_listening_job, is_socket_job, socket_flags);
   assert(action == CONN_GET_BY_FD_ACTION_RETURN_SELF ||
@@ -2132,9 +2139,10 @@ connection_job_t connection_get_by_fd(int fd) {
 connection_job_t connection_get_by_fd_generation(int fd, int generation) {
   connection_job_t C = connection_get_by_fd(fd);
   if (C) {
+    struct connection_info *c = CONN_INFO(C);
     int32_t generation_matches =
         mtproxy_ffi_net_connections_connection_generation_matches(
-            CONN_INFO(C)->generation, generation);
+            c->generation, generation);
     assert(generation_matches == 0 || generation_matches == 1);
     if (!generation_matches) {
       job_decref(JOB_REF_PASS(C));
@@ -2156,7 +2164,8 @@ int server_check_ready(connection_job_t C) {
 int server_noop(connection_job_t C) { return 0; }
 
 int server_failed(connection_job_t C) {
-  kprintf("connection %d: call to pure virtual method\n", CONN_INFO(C)->fd);
+  struct connection_info *c = CONN_INFO(C);
+  kprintf("connection %d: call to pure virtual method\n", c->fd);
   assert(0);
   return -1;
 }
@@ -2353,7 +2362,8 @@ void compute_next_reconnect(conn_target_job_t CT) {
 
 static void count_connection_num(connection_job_t C, void *good_c,
                                  void *stopped_c, void *bad_c) {
-  int cr = CONN_INFO(C)->type->check_ready(C);
+  struct connection_info *c = CONN_INFO(C);
+  int cr = c->type->check_ready(C);
   int32_t bucket = mtproxy_ffi_net_connections_target_ready_bucket(cr);
   if (bucket == 0) {
     return;
@@ -2371,9 +2381,10 @@ static void count_connection_num(connection_job_t C, void *good_c,
 
 static void find_bad_connection(connection_job_t C, void *x) {
   connection_job_t *T = x;
+  struct connection_info *c = CONN_INFO(C);
   int32_t should_select =
       mtproxy_ffi_net_connections_target_find_bad_should_select(
-          *T != NULL, CONN_INFO(C)->flags);
+          *T != NULL, c->flags);
   assert(should_select == 0 || should_select == 1);
   if (should_select) {
     *T = C;
@@ -2397,9 +2408,10 @@ void destroy_dead_target_connections(conn_target_job_t CTJ) {
 
     int32_t active_outbound_delta = 0;
     int32_t outbound_delta = 0;
+    struct connection_info *c = CONN_INFO(CJ);
     int32_t rc_deltas =
         mtproxy_ffi_net_connections_target_remove_dead_connection_deltas(
-            CONN_INFO(CJ)->flags, &active_outbound_delta, &outbound_delta);
+            c->flags, &active_outbound_delta, &outbound_delta);
     assert(rc_deltas == 0);
     __sync_fetch_and_add(&CT->active_outbound_connections,
                          active_outbound_delta);
@@ -2512,7 +2524,8 @@ int create_new_connections(conn_target_job_t CTJ) {
       assert(should_insert == 0 || should_insert == 1);
       if (should_insert) {
         assert(C);
-        assert(CONN_INFO(C)->io_conn);
+        struct connection_info *conn = CONN_INFO(C);
+        assert(conn->io_conn);
         count++;
         unlock_job(JOB_REF_CREATE_PASS(C));
         T = tree_insert_connection(T, C, lrand48_j());
@@ -2592,7 +2605,8 @@ static conn_target_job_t find_target(struct in_addr ad, int port,
          miss_action == TARGET_LOOKUP_MISS_RETURN_NULL ||
          miss_action == TARGET_LOOKUP_MISS_ASSERT_INVALID);
   if (miss_action == TARGET_LOOKUP_MISS_INSERT_NEW) {
-    CONN_TARGET_INFO(new_target)->hnext = HTarget[h1];
+    struct conn_target_info *new_target_info = CONN_TARGET_INFO(new_target);
+    new_target_info->hnext = HTarget[h1];
     HTarget[h1] = new_target;
     return new_target;
   }
@@ -2656,7 +2670,8 @@ static conn_target_job_t find_target_ipv6(unsigned char ad_ipv6[16], int port,
          miss_action == TARGET_LOOKUP_MISS_RETURN_NULL ||
          miss_action == TARGET_LOOKUP_MISS_ASSERT_INVALID);
   if (miss_action == TARGET_LOOKUP_MISS_INSERT_NEW) {
-    CONN_TARGET_INFO(new_target)->hnext = HTarget[h1];
+    struct conn_target_info *new_target_info = CONN_TARGET_INFO(new_target);
+    new_target_info->hnext = HTarget[h1];
     HTarget[h1] = new_target;
     return new_target;
   }
@@ -2932,8 +2947,10 @@ struct conn_target_pick_ctx {
 static void target_pick_policy_callback(connection_job_t C, void *x) {
   struct conn_target_pick_ctx *ctx = x;
   connection_job_t *P = ctx->selected;
+  struct connection_info *candidate = CONN_INFO(C);
   int32_t has_selected = (*P != NULL);
-  int32_t selected_ready = has_selected ? CONN_INFO(*P)->ready : 0;
+  struct connection_info *selected = has_selected ? CONN_INFO(*P) : NULL;
+  int32_t selected_ready = has_selected ? selected->ready : 0;
   int32_t should_skip = mtproxy_ffi_net_connections_target_pick_should_skip(
       ctx->allow_stopped, has_selected, selected_ready);
   assert(should_skip == 0 || should_skip == 1);
@@ -2941,12 +2958,11 @@ static void target_pick_policy_callback(connection_job_t C, void *x) {
     return;
   }
 
-  int32_t candidate_ready = CONN_INFO(C)->type->check_ready(C);
-  int32_t selected_unreliability =
-      has_selected ? CONN_INFO(*P)->unreliability : 0;
+  int32_t candidate_ready = candidate->type->check_ready(C);
+  int32_t selected_unreliability = has_selected ? selected->unreliability : 0;
   int32_t should_select = mtproxy_ffi_net_connections_target_pick_should_select(
       ctx->allow_stopped, candidate_ready, has_selected, selected_unreliability,
-      CONN_INFO(C)->unreliability);
+      candidate->unreliability);
   assert(should_select == 0 || should_select == 1);
   if (should_select) {
     *P = C;

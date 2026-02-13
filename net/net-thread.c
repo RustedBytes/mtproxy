@@ -51,25 +51,29 @@ extern int32_t mtproxy_ffi_net_thread_run_notification_event(
 
 static int32_t net_thread_rpc_ready_bridge(void *who) {
   connection_job_t C = who;
-  if (TCP_RPCC_FUNC(C)->rpc_ready) {
-    return TCP_RPCC_FUNC(C)->rpc_ready(C);
+  struct tcp_rpc_client_functions *funcs = TCP_RPCC_FUNC(C);
+  if (funcs->rpc_ready) {
+    return funcs->rpc_ready(C);
   }
   return 0;
 }
 
 static void net_thread_rpc_close_bridge(void *who) {
   connection_job_t C = who;
-  TCP_RPCC_FUNC(C)->rpc_close(C, 0);
+  struct tcp_rpc_client_functions *funcs = TCP_RPCC_FUNC(C);
+  funcs->rpc_close(C, 0);
 }
 
 static void net_thread_rpc_alarm_bridge(void *who) {
   connection_job_t C = who;
-  TCP_RPCC_FUNC(C)->rpc_alarm(C);
+  struct tcp_rpc_client_functions *funcs = TCP_RPCC_FUNC(C);
+  funcs->rpc_alarm(C);
 }
 
 static void net_thread_rpc_wakeup_bridge(void *who) {
   connection_job_t C = who;
-  TCP_RPCC_FUNC(C)->rpc_wakeup(C);
+  struct tcp_rpc_client_functions *funcs = TCP_RPCC_FUNC(C);
+  funcs->rpc_wakeup(C);
 }
 
 static void net_thread_fail_connection_bridge(void *who, int32_t code) {

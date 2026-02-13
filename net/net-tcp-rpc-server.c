@@ -144,6 +144,7 @@ int tcp_rpcs_default_execute(connection_job_t C, int op,
 
 static int tcp_rpcs_process_nonce_packet(connection_job_t C,
                                          struct raw_message *msg) {
+  struct tcp_rpc_server_functions *funcs = TCP_RPCS_FUNC(C);
   struct tcp_rpc_data *D = TCP_RPC_DATA(C);
   union {
     struct tcp_rpc_nonce_packet s;
@@ -269,7 +270,7 @@ static int tcp_rpcs_process_nonce_packet(connection_job_t C,
     }
   }
 
-  res = TCP_RPCS_FUNC(C)->rpc_init_crypto(C, &P.s);
+  res = funcs->rpc_init_crypto(C, &P.s);
   if (res < 0) {
     return -6;
   }
@@ -305,6 +306,7 @@ static int tcp_rpcs_send_handshake_error_packet(connection_job_t c,
 
 static int tcp_rpcs_process_handshake_packet(connection_job_t C,
                                              struct raw_message *msg) {
+  struct tcp_rpc_server_functions *funcs = TCP_RPCS_FUNC(C);
   struct connection_info *c = CONN_INFO(C);
 
   struct tcp_rpc_data *D = TCP_RPC_DATA(C);
@@ -331,7 +333,7 @@ static int tcp_rpcs_process_handshake_packet(connection_job_t C,
   assert(rwm_fetch_data(msg, &P, packet_len) == packet_len);
   memcpy(&D->remote_pid, &P.sender_pid, sizeof(struct process_id));
   if (!matches_pid(&PID, &P.peer_pid) &&
-      !(TCP_RPCS_FUNC(C)->mode_flags & TCP_RPC_IGNORE_PID)) {
+      !(funcs->mode_flags & TCP_RPC_IGNORE_PID)) {
     vkprintf(1,
              "PID mismatch during handshake: local %08x:%d:%d:%d, remote "
              "%08x:%d:%d:%d\n",
@@ -352,6 +354,7 @@ static int tcp_rpcs_process_handshake_packet(connection_job_t C,
 
 int tcp_rpcs_parse_execute(connection_job_t C) {
   struct connection_info *c = CONN_INFO(C);
+  struct tcp_rpc_server_functions *funcs = TCP_RPCS_FUNC(C);
 
   vkprintf(4, "%s. in_total_bytes = %d\n", __func__, c->in.total_bytes);
   struct tcp_rpc_data *D = TCP_RPC_DATA(C);
@@ -385,11 +388,11 @@ int tcp_rpcs_parse_execute(connection_job_t C) {
       if (D->in_packet_num <= -2 &&
           (packet_len == *(int *)"HEAD" || packet_len == *(int *)"POST" ||
            packet_len == *(int *)"GET " || packet_len == *(int *)"OPTI") &&
-          TCP_RPCS_FUNC(C)->http_fallback_type) {
+          funcs->http_fallback_type) {
         vkprintf(1, "switching to http fallback for connection %d\n", c->fd);
         memset(c->custom_data, 0, sizeof(c->custom_data));
-        c->type = TCP_RPCS_FUNC(C)->http_fallback_type;
-        c->extra = TCP_RPCS_FUNC(C)->http_fallback_extra;
+        c->type = funcs->http_fallback_type;
+        c->extra = funcs->http_fallback_extra;
 
         if (c->type->init_accepted(C) < 0) {
           vkprintf(1, "http init_accepted() returns error for connection %d\n",
@@ -406,7 +409,7 @@ int tcp_rpcs_parse_execute(connection_job_t C) {
     }
 
     int packet_len_state = tcp_rpc_server_packet_len_state(
-        packet_len, TCP_RPCS_FUNC(C)->max_packet_len);
+        packet_len, funcs->max_packet_len);
     if (packet_len_state == -1) {
       vkprintf(1, "error while parsing packet: bad packet length %d\n",
                packet_len);
@@ -493,7 +496,7 @@ int tcp_rpcs_parse_execute(connection_job_t C) {
       if (packet_type == RPC_PING) {
         res = tcp_rpcs_default_execute(C, packet_type, &msg);
       } else {
-        res = TCP_RPCS_FUNC(C)->execute(C, packet_type, &msg);
+        res = funcs->execute(C, packet_type, &msg);
       }
       if (res <= 0) {
         rwm_free(&msg);
@@ -532,7 +535,8 @@ int tcp_rpcs_alarm(connection_job_t C) {
 }
 
 int tcp_rpcs_close_connection(connection_job_t C, int who) {
-  if (TCP_RPCS_FUNC(C)->rpc_close) {
+  struct tcp_rpc_server_functions *funcs = TCP_RPCS_FUNC(C);
+  if (funcs->rpc_close) {
     notification_event_insert_tcp_conn_close(C);
   }
 
@@ -543,12 +547,14 @@ int tcp_rpcs_do_wakeup(connection_job_t c) { return 0; }
 
 int tcp_rpcs_init_accepted(connection_job_t C) {
   struct connection_info *c = CONN_INFO(C);
+  struct tcp_rpc_server_functions *funcs = TCP_RPCS_FUNC(C);
+  struct tcp_rpc_data *D = TCP_RPC_DATA(C);
 
   c->last_query_sent_time = precise_now;
-  TCP_RPC_DATA(C)->custom_crc_partial = crc32_partial;
+  D->custom_crc_partial = crc32_partial;
 
-  if (TCP_RPCS_FUNC(C)->rpc_check_perm) {
-    int res = TCP_RPCS_FUNC(C)->rpc_check_perm(C);
+  if (funcs->rpc_check_perm) {
+    int res = funcs->rpc_check_perm(C);
     vkprintf(4,
              "tcp_rpcs_check_perm for connection %d: [%s]:%d -> [%s]:%d = %d\n",
              c->fd, show_remote_ip(C), c->remote_port, show_our_ip(C),
@@ -561,29 +567,32 @@ int tcp_rpcs_init_accepted(connection_job_t C) {
       return -1;
     }
 
-    TCP_RPC_DATA(C)->crypto_flags = res;
+    D->crypto_flags = res;
   } else {
-    TCP_RPC_DATA(C)->crypto_flags = RPCF_ALLOW_UNENC;
+    D->crypto_flags = RPCF_ALLOW_UNENC;
   }
 
-  TCP_RPC_DATA(C)->in_packet_num = -2;
-  TCP_RPC_DATA(C)->out_packet_num = -2;
+  D->in_packet_num = -2;
+  D->out_packet_num = -2;
 
   return 0;
 }
 
 int tcp_rpcs_init_accepted_nohs(connection_job_t c) {
-  TCP_RPC_DATA(c)->crypto_flags = RPCF_QUICKACK | RPCF_ALLOW_UNENC;
-  TCP_RPC_DATA(c)->in_packet_num = -3;
-  TCP_RPC_DATA(c)->custom_crc_partial = crc32_partial;
-  if (TCP_RPCS_FUNC(c)->rpc_ready) {
+  struct tcp_rpc_server_functions *funcs = TCP_RPCS_FUNC(c);
+  struct tcp_rpc_data *D = TCP_RPC_DATA(c);
+  D->crypto_flags = RPCF_QUICKACK | RPCF_ALLOW_UNENC;
+  D->in_packet_num = -3;
+  D->custom_crc_partial = crc32_partial;
+  if (funcs->rpc_ready) {
     notification_event_insert_tcp_conn_ready(c);
   }
   return 0;
 }
 
 int tcp_rpcs_init_fake_crypto(connection_job_t c) {
-  if (!(TCP_RPC_DATA(c)->crypto_flags & RPCF_ALLOW_UNENC)) {
+  struct tcp_rpc_data *D = TCP_RPC_DATA(c);
+  if (!(D->crypto_flags & RPCF_ALLOW_UNENC)) {
     return -1;
   }
 
@@ -592,9 +601,8 @@ int tcp_rpcs_init_fake_crypto(connection_job_t c) {
   buf.type = RPC_NONCE;
   buf.crypto_schema = RPC_CRYPTO_NONE;
 
-  assert((TCP_RPC_DATA(c)->crypto_flags & (RPCF_ALLOW_ENC | RPCF_ENC_SENT)) ==
-         0);
-  TCP_RPC_DATA(c)->crypto_flags |= RPCF_ENC_SENT;
+  assert((D->crypto_flags & (RPCF_ALLOW_ENC | RPCF_ENC_SENT)) == 0);
+  D->crypto_flags |= RPCF_ENC_SENT;
 
   tcp_rpc_conn_send_data_init(c, sizeof(buf), &buf);
 

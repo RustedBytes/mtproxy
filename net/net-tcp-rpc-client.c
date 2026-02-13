@@ -115,7 +115,7 @@ struct tcp_rpc_client_functions default_tcp_rpc_client = {
 static int tcp_rpcc_process_nonce_packet(connection_job_t C,
                                          struct raw_message *msg) {
   struct connection_info *c = CONN_INFO(C);
-
+  struct tcp_rpc_client_functions *funcs = TCP_RPCC_FUNC(C);
   struct tcp_rpc_data *D = TCP_RPC_DATA(C);
   union {
     struct tcp_rpc_nonce_packet s;
@@ -246,8 +246,9 @@ static int tcp_rpcc_process_nonce_packet(connection_job_t C,
       }
       c->crypto_temp = 0;
     }
-    res = TCP_RPCC_FUNC(C)->rpc_start_crypto(
-        C, P.s.crypto_nonce, P.s.key_select, temp_dh, temp_dh_len);
+    res =
+        funcs->rpc_start_crypto(C, P.s.crypto_nonce, P.s.key_select, temp_dh,
+                                temp_dh_len);
     if (res < 0) {
       return -6;
     }
@@ -303,7 +304,7 @@ static int tcp_rpcc_send_handshake_error_packet(connection_job_t C,
 static int tcp_rpcc_process_handshake_packet(connection_job_t C,
                                              struct raw_message *msg) {
   // struct connection_info *c = CONN_INFO (C);
-
+  struct tcp_rpc_client_functions *funcs = TCP_RPCC_FUNC(C);
   struct tcp_rpc_data *D = TCP_RPC_DATA(C);
   struct tcp_rpc_handshake_packet P;
 
@@ -321,7 +322,7 @@ static int tcp_rpcc_process_handshake_packet(connection_job_t C,
   }
   assert(rwm_fetch_data(msg, &P, packet_len) == packet_len);
   if (!matches_pid(&P.sender_pid, &D->remote_pid) &&
-      !(TCP_RPCC_FUNC(C)->mode_flags & TCP_RPC_IGNORE_PID)) {
+      !(funcs->mode_flags & TCP_RPC_IGNORE_PID)) {
     vkprintf(1,
              "PID mismatch during client RPC handshake: local %08x:%d:%d:%d, "
              "remote %08x:%d:%d:%d\n",
@@ -356,6 +357,7 @@ static int tcp_rpcc_process_handshake_packet(connection_job_t C,
 
 int tcp_rpcc_parse_execute(connection_job_t C) {
   struct connection_info *c = CONN_INFO(C);
+  struct tcp_rpc_client_functions *funcs = TCP_RPCC_FUNC(C);
 
   vkprintf(4, "%s. in_total_bytes = %d\n", __func__, c->in.total_bytes);
   struct tcp_rpc_data *D = TCP_RPC_DATA(C);
@@ -373,7 +375,7 @@ int tcp_rpcc_parse_execute(connection_job_t C) {
     int packet_len;
     assert(rwm_fetch_lookup(&c->in, &packet_len, 4) == 4);
     int packet_len_state = tcp_rpc_client_packet_len_state(
-        packet_len, TCP_RPCC_FUNC(C)->max_packet_len);
+        packet_len, funcs->max_packet_len);
     if (packet_len_state == -1) {
       vkprintf(1, "error while parsing packet: bad packet length %d\n",
                packet_len);
@@ -447,7 +449,7 @@ int tcp_rpcc_parse_execute(connection_job_t C) {
         }
       } else if (packet_num == -1) {
         res = tcp_rpcc_process_handshake_packet(C, &msg);
-        if (res >= 0 && TCP_RPCC_FUNC(C)->rpc_ready) {
+        if (res >= 0 && funcs->rpc_ready) {
           notification_event_insert_tcp_conn_ready(C);
         }
       } else {
@@ -469,7 +471,7 @@ int tcp_rpcc_parse_execute(connection_job_t C) {
     if (packet_type == RPC_PING) {
       res = tcp_rpc_default_execute(C, packet_type, &msg);
     } else {
-      res = TCP_RPCC_FUNC(C)->execute(C, packet_type, &msg);
+      res = funcs->execute(C, packet_type, &msg);
     }
 
     if (res <= 0) {
@@ -481,12 +483,14 @@ int tcp_rpcc_parse_execute(connection_job_t C) {
 
 int tcp_rpcc_connected(connection_job_t C) {
   struct connection_info *c = CONN_INFO(C);
+  struct tcp_rpc_client_functions *funcs = TCP_RPCC_FUNC(C);
+  struct tcp_rpc_data *D = TCP_RPC_DATA(C);
 
-  TCP_RPC_DATA(C)->out_packet_num = -2;
+  D->out_packet_num = -2;
   c->last_query_sent_time = precise_now;
 
-  if (TCP_RPCC_FUNC(C)->rpc_check_perm) {
-    int res = TCP_RPCC_FUNC(C)->rpc_check_perm(C);
+  if (funcs->rpc_check_perm) {
+    int res = funcs->rpc_check_perm(C);
     if (res < 0) {
       return res;
     }
@@ -494,33 +498,34 @@ int tcp_rpcc_connected(connection_job_t C) {
     if (!(res & (RPCF_ALLOW_UNENC | RPCF_ALLOW_ENC))) {
       return -1;
     }
-    TCP_RPC_DATA(C)->crypto_flags = res;
+    D->crypto_flags = res;
   } else {
-    TCP_RPC_DATA(C)->crypto_flags = RPCF_ALLOW_ENC | RPCF_ALLOW_UNENC;
+    D->crypto_flags = RPCF_ALLOW_ENC | RPCF_ALLOW_UNENC;
   }
   vkprintf(
       2,
       "RPC connection #%d: [%s]:%d -> [%s]:%d connected, crypto_flags = %d\n",
       c->fd, show_our_ip(C), c->our_port, show_remote_ip(C), c->remote_port,
-      TCP_RPC_DATA(C)->crypto_flags);
+      D->crypto_flags);
 
-  assert(TCP_RPCC_FUNC(C)->rpc_init_crypto);
-  int res = TCP_RPCC_FUNC(C)->rpc_init_crypto(C);
+  assert(funcs->rpc_init_crypto);
+  int res = funcs->rpc_init_crypto(C);
 
   if (res > 0) {
-    assert(TCP_RPC_DATA(C)->crypto_flags & RPCF_ENC_SENT);
+    assert(D->crypto_flags & RPCF_ENC_SENT);
   } else {
     return -1;
   }
 
-  assert(TCP_RPCC_FUNC(C)->flush_packet);
-  TCP_RPCC_FUNC(C)->flush_packet(C);
+  assert(funcs->flush_packet);
+  funcs->flush_packet(C);
 
   return 0;
 }
 
 int tcp_rpcc_close_connection(connection_job_t C, int who) {
-  if (TCP_RPCC_FUNC(C)->rpc_close) {
+  struct tcp_rpc_client_functions *funcs = TCP_RPCC_FUNC(C);
+  if (funcs->rpc_close) {
     notification_event_insert_tcp_conn_close(C);
   }
 
@@ -528,19 +533,21 @@ int tcp_rpcc_close_connection(connection_job_t C, int who) {
 }
 
 int tcp_rpc_client_check_ready(connection_job_t c) {
-  return TCP_RPCC_FUNC(c)->check_ready(c);
+  struct tcp_rpc_client_functions *funcs = TCP_RPCC_FUNC(c);
+  return funcs->check_ready(c);
 }
 
 int tcp_rpcc_default_check_ready(connection_job_t C) {
   struct connection_info *c = CONN_INFO(C);
+  struct tcp_rpc_data *D = TCP_RPC_DATA(C);
 
   if (c->flags & C_ERROR) {
     return c->ready = cr_failed;
   }
 
   const double CONNECT_TIMEOUT = 3.0;
-  if (c->status == conn_connecting || TCP_RPC_DATA(C)->in_packet_num < 0) {
-    // if (TCP_RPC_DATA(C)->in_packet_num == -1 && c->status == conn_running) {
+  if (c->status == conn_connecting || D->in_packet_num < 0) {
+    // if (D->in_packet_num == -1 && c->status == conn_running) {
     //   return c->ready = cr_ok;
     // }
 
@@ -561,7 +568,8 @@ int tcp_rpcc_default_check_ready(connection_job_t C) {
 }
 
 int tcp_rpcc_init_fake_crypto(connection_job_t c) {
-  if (!(TCP_RPC_DATA(c)->crypto_flags & RPCF_ALLOW_UNENC)) {
+  struct tcp_rpc_data *D = TCP_RPC_DATA(c);
+  if (!(D->crypto_flags & RPCF_ALLOW_UNENC)) {
     return -1;
   }
 
@@ -572,23 +580,23 @@ int tcp_rpcc_init_fake_crypto(connection_job_t c) {
 
   tcp_rpc_conn_send_data(JOB_REF_CREATE_PASS(c), sizeof(buf), &buf);
 
-  assert((TCP_RPC_DATA(c)->crypto_flags & (RPCF_ALLOW_ENC | RPCF_ENC_SENT)) ==
-         0);
-  TCP_RPC_DATA(c)->crypto_flags |= RPCF_ENC_SENT;
+  assert((D->crypto_flags & (RPCF_ALLOW_ENC | RPCF_ENC_SENT)) == 0);
+  D->crypto_flags |= RPCF_ENC_SENT;
 
   return 1;
 }
 
 int tcp_rpcc_init_outbound(connection_job_t C) {
   struct connection_info *c = CONN_INFO(C);
+  struct tcp_rpc_client_functions *funcs = TCP_RPCC_FUNC(C);
 
   vkprintf(3, "rpcc_init_outbound (%d)\n", c->fd);
   struct tcp_rpc_data *D = TCP_RPC_DATA(C);
   c->last_query_sent_time = precise_now;
   D->custom_crc_partial = crc32_partial;
 
-  if (TCP_RPCC_FUNC(C)->rpc_check_perm) {
-    int res = TCP_RPCC_FUNC(C)->rpc_check_perm(C);
+  if (funcs->rpc_check_perm) {
+    int res = funcs->rpc_check_perm(C);
     if (res < 0) {
       return res;
     }
@@ -627,14 +635,15 @@ int tcp_rpcc_default_check_perm(connection_job_t C) {
 
 int tcp_rpcc_init_crypto(connection_job_t C) {
   struct connection_info *c = CONN_INFO(C);
+  struct tcp_rpc_data *D = TCP_RPC_DATA(C);
 
-  if (!(TCP_RPC_DATA(C)->crypto_flags & RPCF_ALLOW_ENC)) {
+  if (!(D->crypto_flags & RPCF_ALLOW_ENC)) {
     return tcp_rpcc_init_fake_crypto(C);
   }
 
-  TCP_RPC_DATA(C)->nonce_time = time(0);
+  D->nonce_time = time(0);
 
-  aes_generate_nonce(TCP_RPC_DATA(C)->nonce);
+  aes_generate_nonce(D->nonce);
 
   if (!dh_params_select) {
     assert(init_dh_params() >= 0);
@@ -649,15 +658,15 @@ int tcp_rpcc_init_crypto(connection_job_t C) {
   int len = sizeof(struct tcp_rpc_nonce_packet);
 
   memset(&buf, 0, sizeof(buf));
-  memcpy(buf.s.crypto_nonce, TCP_RPC_DATA(C)->nonce, 16);
-  buf.s.crypto_ts = TCP_RPC_DATA(C)->nonce_time;
+  memcpy(buf.s.crypto_nonce, D->nonce, 16);
+  buf.s.crypto_ts = D->nonce_time;
   buf.s.type = RPC_NONCE;
   buf.s.key_select = main_secret.key_signature;
   buf.s.crypto_schema = RPC_CRYPTO_AES;
   int extra_keys = buf.x.extra_keys_count = 0;
   assert(extra_keys >= 0 && extra_keys <= RPC_MAX_EXTRA_KEYS);
 
-  if (TCP_RPC_DATA(C)->crypto_flags & RPCF_REQ_DH) {
+  if (D->crypto_flags & RPCF_REQ_DH) {
     buf.s.crypto_schema = RPC_CRYPTO_AES_DH;
     len = sizeof(struct tcp_rpc_nonce_dh_packet) +
           4 * (extra_keys - RPC_MAX_EXTRA_KEYS);
@@ -678,9 +687,9 @@ int tcp_rpcc_init_crypto(connection_job_t C) {
 
   tcp_rpc_conn_send_data(JOB_REF_CREATE_PASS(C), len, &buf);
 
-  assert((TCP_RPC_DATA(C)->crypto_flags & (RPCF_ALLOW_ENC | RPCF_ENC_SENT)) ==
+  assert((D->crypto_flags & (RPCF_ALLOW_ENC | RPCF_ENC_SENT)) ==
          RPCF_ALLOW_ENC);
-  TCP_RPC_DATA(C)->crypto_flags |= RPCF_ENC_SENT;
+  D->crypto_flags |= RPCF_ENC_SENT;
 
   assert(!c->crypto);
 

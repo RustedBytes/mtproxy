@@ -59,12 +59,13 @@ static void tcp_rpc_compact_encode_header(int payload_len, int is_medium,
 void tcp_rpc_conn_send_init(connection_job_t C, struct raw_message *raw,
                             int flags) {
   struct connection_info *c = CONN_INFO(C);
+  struct tcp_rpc_data *D = TCP_RPC_DATA(C);
   vkprintf(3, "%s: sending message of size %d to conn fd=%d\n", __func__,
            raw->total_bytes, c->fd);
   assert(!(raw->total_bytes & 3));
   int Q[2];
   Q[0] = raw->total_bytes + 12;
-  Q[1] = TCP_RPC_DATA(C)->out_packet_num++;
+  Q[1] = D->out_packet_num++;
   struct raw_message *r = malloc(sizeof(*r));
   if (flags & 1) {
     rwm_clone(r, raw);
@@ -73,25 +74,27 @@ void tcp_rpc_conn_send_init(connection_job_t C, struct raw_message *raw,
   }
   rwm_push_data_front(r, Q, 8);
   unsigned crc32 =
-      rwm_custom_crc32(r, r->total_bytes, TCP_RPC_DATA(C)->custom_crc_partial);
+      rwm_custom_crc32(r, r->total_bytes, D->custom_crc_partial);
   rwm_push_data(r, &crc32, 4);
 
   socket_connection_job_t S = c->io_conn;
 
   if (S) {
-    mpq_push_w(SOCKET_CONN_INFO(S)->out_packet_queue, r, 0);
+    struct socket_connection_info *socket = SOCKET_CONN_INFO(S);
+    mpq_push_w(socket->out_packet_queue, r, 0);
     job_signal(JOB_REF_CREATE_PASS(S), JS_RUN);
   }
 }
 
 void tcp_rpc_conn_send_im(JOB_REF_ARG(C), struct raw_message *raw, int flags) {
   struct connection_info *c = CONN_INFO(C);
+  struct tcp_rpc_data *D = TCP_RPC_DATA(C);
   vkprintf(3, "%s: sending message of size %d to conn fd=%d\n", __func__,
            raw->total_bytes, c->fd);
   assert(!(raw->total_bytes & 3));
   int Q[2];
   Q[0] = raw->total_bytes + 12;
-  Q[1] = TCP_RPC_DATA(C)->out_packet_num++;
+  Q[1] = D->out_packet_num++;
   struct raw_message *r = malloc(sizeof(*r));
   if (flags & 1) {
     rwm_clone(r, raw);
@@ -100,7 +103,7 @@ void tcp_rpc_conn_send_im(JOB_REF_ARG(C), struct raw_message *raw, int flags) {
   }
   rwm_push_data_front(r, Q, 8);
   unsigned crc32 =
-      rwm_custom_crc32(r, r->total_bytes, TCP_RPC_DATA(C)->custom_crc_partial);
+      rwm_custom_crc32(r, r->total_bytes, D->custom_crc_partial);
   rwm_push_data(r, &crc32, 4);
 
   rwm_union(&c->out, r);
@@ -177,46 +180,50 @@ int tcp_rpc_default_execute(connection_job_t C, int op,
 }
 
 int tcp_rpc_flush_packet(connection_job_t C) {
-  return CONN_INFO(C)->type->flush(C);
+  struct connection_info *c = CONN_INFO(C);
+  return c->type->flush(C);
 }
 
 int tcp_rpc_write_packet(connection_job_t C, struct raw_message *raw) {
+  struct connection_info *c = CONN_INFO(C);
+  struct tcp_rpc_data *D = TCP_RPC_DATA(C);
   int Q[2];
-  if (!(TCP_RPC_DATA(C)->flags & (RPC_F_COMPACT | RPC_F_MEDIUM))) {
+  if (!(D->flags & (RPC_F_COMPACT | RPC_F_MEDIUM))) {
     Q[0] = raw->total_bytes + 12;
-    Q[1] = TCP_RPC_DATA(C)->out_packet_num++;
+    Q[1] = D->out_packet_num++;
 
     rwm_push_data_front(raw, Q, 8);
     unsigned crc32 = rwm_custom_crc32(raw, raw->total_bytes,
-                                      TCP_RPC_DATA(C)->custom_crc_partial);
+                                      D->custom_crc_partial);
     rwm_push_data(raw, &crc32, 4);
 
-    rwm_union(&CONN_INFO(C)->out, raw);
+    rwm_union(&c->out, raw);
   }
 
   return 0;
 }
 
 int tcp_rpc_write_packet_compact(connection_job_t C, struct raw_message *raw) {
+  struct tcp_rpc_data *D = TCP_RPC_DATA(C);
+  struct connection_info *c = CONN_INFO(C);
   if (raw->total_bytes == 5) {
     int flag = 0;
     assert(rwm_fetch_data(raw, &flag, 1) == 1);
     assert(flag == 0xdd);
-    rwm_union(&CONN_INFO(C)->out, raw);
+    rwm_union(&c->out, raw);
     return 0;
   }
-  if ((CONN_INFO(C)->flags & C_IS_TLS) &&
-      CONN_INFO(C)->left_tls_packet_length == -1) {
+  if ((c->flags & C_IS_TLS) && c->left_tls_packet_length == -1) {
     // uninited TLS connection
-    rwm_union(&CONN_INFO(C)->out, raw);
+    rwm_union(&c->out, raw);
     return 0;
   }
 
-  if (!(TCP_RPC_DATA(C)->flags & (RPC_F_COMPACT | RPC_F_MEDIUM))) {
+  if (!(D->flags & (RPC_F_COMPACT | RPC_F_MEDIUM))) {
     return tcp_rpc_write_packet(C, raw);
   }
 
-  if (TCP_RPC_DATA(C)->flags & RPC_F_PAD) {
+  if (D->flags & RPC_F_PAD) {
     int x = lrand48_j();
     int y = lrand48_j() & 3;
     assert(rwm_push_data(raw, &x, y) == y);
@@ -224,17 +231,16 @@ int tcp_rpc_write_packet_compact(connection_job_t C, struct raw_message *raw) {
 
   int len = raw->total_bytes;
   assert(!(len & 0xfc000000));
-  if (!(TCP_RPC_DATA(C)->flags & RPC_F_PAD)) {
+  if (!(D->flags & RPC_F_PAD)) {
     assert(!(len & 3));
   }
   int prefix_word = 0;
   int prefix_bytes = 0;
-  tcp_rpc_compact_encode_header(len,
-                                (TCP_RPC_DATA(C)->flags & RPC_F_MEDIUM) ? 1 : 0,
+  tcp_rpc_compact_encode_header(len, (D->flags & RPC_F_MEDIUM) ? 1 : 0,
                                 &prefix_word, &prefix_bytes);
   assert(prefix_bytes == 1 || prefix_bytes == 4);
   rwm_push_data_front(raw, &prefix_word, prefix_bytes);
-  rwm_union(&CONN_INFO(C)->out, raw);
+  rwm_union(&c->out, raw);
 
   return 0;
 }

@@ -57,23 +57,26 @@ void fetch_aes_crypto_stat(int *allocated_aes_crypto_ptr,
 }
 
 int aes_crypto_init(connection_job_t c, void *key_data, int key_data_len) {
+  struct connection_info *conn = CONN_INFO(c);
   int32_t rc = mtproxy_ffi_crypto_aes_conn_init(
-      &CONN_INFO(c)->crypto, (const mtproxy_ffi_aes_key_data_t *)key_data,
-      key_data_len, 0);
+      &conn->crypto, (const mtproxy_ffi_aes_key_data_t *)key_data, key_data_len,
+      0);
   return rc == 0 ? 0 : -1;
 }
 
 int aes_crypto_ctr128_init(connection_job_t c, void *key_data,
                            int key_data_len) {
+  struct connection_info *conn = CONN_INFO(c);
   int32_t rc = mtproxy_ffi_crypto_aes_conn_init(
-      &CONN_INFO(c)->crypto, (const mtproxy_ffi_aes_key_data_t *)key_data,
-      key_data_len, 1);
+      &conn->crypto, (const mtproxy_ffi_aes_key_data_t *)key_data, key_data_len,
+      1);
   return rc == 0 ? 0 : -1;
 }
 
 int aes_crypto_free(connection_job_t c) {
-  int32_t rc = mtproxy_ffi_crypto_aes_conn_free(&CONN_INFO(c)->crypto,
-                                                &CONN_INFO(c)->crypto_temp);
+  struct connection_info *conn = CONN_INFO(c);
+  int32_t rc = mtproxy_ffi_crypto_aes_conn_free(&conn->crypto,
+                                                &conn->crypto_temp);
   return rc == 0 ? 0 : -1;
 }
 
