@@ -37,15 +37,17 @@ impl RpcPacketType {
 }
 
 /// Process identifier for RPC connections (IP address + port + PID).
+///
+/// This matches the C `struct process_id` layout from `common/pid.h`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[repr(C)]
 pub struct ProcessId {
     /// IPv4 address in network byte order.
     pub ip: u32,
-    /// Port number.
-    pub port: u16,
-    /// Process ID.
-    pub pid: i32,
+    /// Port number (signed to match C struct).
+    pub port: i16,
+    /// Process ID (unsigned 16-bit to match C struct).
+    pub pid: u16,
     /// Unique instance ID.
     pub utime: i32,
 }
@@ -53,7 +55,7 @@ pub struct ProcessId {
 impl ProcessId {
     /// Creates a new `ProcessId`.
     #[must_use]
-    pub const fn new(ip: u32, port: u16, pid: i32, utime: i32) -> Self {
+    pub const fn new(ip: u32, port: i16, pid: u16, utime: i32) -> Self {
         Self { ip, port, pid, utime }
     }
 
