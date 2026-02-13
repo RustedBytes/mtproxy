@@ -12,11 +12,11 @@ pub enum RpcPacketType {
     /// Ping request.
     Ping = 0x7bde_f2a4,
     /// Pong response (value needs cast from u32).
-    Pong = -1948322907,
+    Pong = -1_948_322_907,
 }
 
 impl RpcPacketType {
-    /// Converts i32 to RpcPacketType if it matches a known type.
+    /// Converts `i32` to `RpcPacketType` if it matches a known type.
     #[must_use]
     pub const fn from_i32(value: i32) -> Option<Self> {
         match value {
@@ -24,12 +24,12 @@ impl RpcPacketType {
             0x7682_eef5 => Some(Self::Handshake),
             0x6a27_beda => Some(Self::HandshakeError),
             0x7bde_f2a4 => Some(Self::Ping),
-            -1948322907 => Some(Self::Pong), // 0x8bde_f3a5 as i32
+            -1_948_322_907 => Some(Self::Pong), // 0x8bde_f3a5 as i32
             _ => None,
         }
     }
 
-    /// Converts RpcPacketType to i32.
+    /// Converts `RpcPacketType` to `i32`.
     #[must_use]
     pub const fn to_i32(self) -> i32 {
         self as i32
@@ -50,13 +50,13 @@ pub struct ProcessId {
 }
 
 impl ProcessId {
-    /// Creates a new ProcessId.
+    /// Creates a new `ProcessId`.
     #[must_use]
     pub const fn new(ip: u32, port: u16, pid: i32, utime: i32) -> Self {
         Self { ip, port, pid, utime }
     }
 
-    /// Checks if ProcessId is valid (non-zero).
+    /// Checks if `ProcessId` is valid (non-zero).
     #[must_use]
     pub const fn is_valid(&self) -> bool {
         self.ip != 0 || self.port != 0 || self.pid != 0
@@ -105,7 +105,7 @@ mod tests {
         assert_eq!(RpcPacketType::from_i32(0x7682_eef5), Some(RpcPacketType::Handshake));
         assert_eq!(RpcPacketType::from_i32(0x6a27_beda), Some(RpcPacketType::HandshakeError));
         assert_eq!(RpcPacketType::from_i32(0x7bde_f2a4), Some(RpcPacketType::Ping));
-        assert_eq!(RpcPacketType::from_i32(-1948322907), Some(RpcPacketType::Pong)); // 0x8bde_f3a5
+        assert_eq!(RpcPacketType::from_i32(-1_948_322_907), Some(RpcPacketType::Pong)); // 0x8bde_f3a5
         assert_eq!(RpcPacketType::from_i32(0), None);
     }
 

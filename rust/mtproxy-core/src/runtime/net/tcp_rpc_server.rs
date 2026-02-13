@@ -179,14 +179,13 @@ pub fn packet_len_state(packet_len: i32, max_packet_len: i32) -> i32 {
 }
 
 /// Validates packet type for server connection.
-#[must_use]
 pub fn validate_packet_type(packet_type: i32, state: ServerState) -> Result<RpcPacketType, ServerError> {
     match RpcPacketType::from_i32(packet_type) {
         Some(RpcPacketType::Nonce) if state == ServerState::Accepted => Ok(RpcPacketType::Nonce),
         Some(RpcPacketType::Handshake) if state == ServerState::NonceReceived => {
             Ok(RpcPacketType::Handshake)
         }
-        Some(RpcPacketType::Ping) | Some(RpcPacketType::Pong) if state == ServerState::Ready => {
+        Some(RpcPacketType::Ping | RpcPacketType::Pong) if state == ServerState::Ready => {
             Ok(RpcPacketType::from_i32(packet_type).unwrap())
         }
         _ => Err(ServerError::InvalidPacketType(packet_type)),

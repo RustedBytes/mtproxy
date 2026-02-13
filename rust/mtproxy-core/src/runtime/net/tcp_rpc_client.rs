@@ -8,7 +8,11 @@ pub const PACKET_LEN_STATE_INVALID: i32 = -1;
 pub const PACKET_LEN_STATE_SHORT: i32 = -2;
 
 /// RPC crypto flags for client connections.
+///
+/// This struct uses individual boolean fields instead of bitflags to maintain
+/// clarity and type safety for encryption negotiation state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct CryptoFlags {
     pub allow_unencrypted: bool,
     pub allow_encrypted: bool,
@@ -212,14 +216,13 @@ pub fn packet_len_state(packet_len: i32, max_packet_len: i32) -> i32 {
 }
 
 /// Validates packet type for client connection.
-#[must_use]
 pub fn validate_packet_type(packet_type: i32, state: ClientState) -> Result<RpcPacketType, ClientError> {
     match RpcPacketType::from_i32(packet_type) {
         Some(RpcPacketType::Nonce) if state == ClientState::NonceSent => Ok(RpcPacketType::Nonce),
         Some(RpcPacketType::Handshake) if state == ClientState::HandshakeSent => {
             Ok(RpcPacketType::Handshake)
         }
-        Some(RpcPacketType::Ping) | Some(RpcPacketType::Pong) if state == ClientState::Ready => {
+        Some(RpcPacketType::Ping | RpcPacketType::Pong) if state == ClientState::Ready => {
             Ok(RpcPacketType::from_i32(packet_type).unwrap())
         }
         _ => Err(ClientError::InvalidPacketType(packet_type)),
