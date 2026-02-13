@@ -101,9 +101,6 @@ conn_type_t ct_tcp_rpc_client = {
     .flags = C_RAWMSG,
 };
 
-// int tcp_rpcc_default_execute (connection_job_t c, int op, struct raw_message
-// *raw);
-
 struct tcp_rpc_client_functions default_tcp_rpc_client = {
     .execute = tcp_rpc_default_execute,
     .check_ready = tcp_rpcc_default_check_ready,
@@ -193,7 +190,6 @@ static int tcp_rpcc_process_nonce_packet(connection_job_t C,
     }
     if (D->crypto_flags & RPCF_ALLOW_UNENC) {
       if (D->crypto_flags & RPCF_ALLOW_ENC) {
-        // release_all_unprocessed (&c->Out);
         assert(!c->out_p.total_bytes);
       }
       D->crypto_flags = RPCF_ALLOW_UNENC;
@@ -237,7 +233,6 @@ static int tcp_rpcc_process_nonce_packet(connection_job_t C,
       if (temp_dh_len != 256) {
         return -8;
       }
-      // active_dh_connections++;
       incr_active_dh_connections();
       __sync_fetch_and_or(&c->flags, C_ISDH);
     }

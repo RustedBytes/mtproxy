@@ -86,7 +86,6 @@ int cpu_tcp_server_writer(connection_job_t C) {
     if (!raw) {
       break;
     }
-    // rwm_union (out, raw);
     c->type->write_packet(C, raw);
     free(raw);
   }

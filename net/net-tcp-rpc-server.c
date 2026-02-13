@@ -396,7 +396,6 @@ int tcp_rpcs_parse_execute(connection_job_t C) {
           fail_connection(C, -33);
           return 0;
         }
-        // nbit_set (&c->Q, &c->In);
         return c->type->parse_execute(C);
       }
       vkprintf(1, "error while parsing packet: bad packet length %d\n",
@@ -514,7 +513,6 @@ int tcp_rpcs_wakeup(connection_job_t C) {
     __sync_fetch_and_or(&c->flags, C_WANTWR);
   }
 
-  // c->generation = ++conn_generation;
   c->pending_queries = 0;
   return 0;
 }
@@ -528,7 +526,6 @@ int tcp_rpcs_alarm(connection_job_t C) {
     __sync_fetch_and_or(&c->flags, C_WANTWR);
   }
 
-  // c->generation = ++conn_generation;
   c->pending_queries = 0;
   return 0;
 }
@@ -610,8 +607,6 @@ int tcp_rpcs_default_check_perm(connection_job_t C) {
 int tcp_rpcs_init_crypto(connection_job_t C, struct tcp_rpc_nonce_packet *P) {
   struct connection_info *c = CONN_INFO(C);
 
-  //  fprintf (stderr, "rpcs_init_crypto (%p [fd=%d], '%.*s')\n", c, c->fd,
-  //  key_len, key);
   struct tcp_rpc_data *D = TCP_RPC_DATA(C);
 
   if (c->crypto) {

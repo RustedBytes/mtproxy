@@ -21,7 +21,7 @@
 
 #pragma once
 
-extern char *config_file, *cfg_start, *cfg_end, *cfg_cur;
+extern char *cfg_start, *cfg_end, *cfg_cur;
 extern int config_bytes, cfg_lno, cfg_lex;
 
 int cfg_skipspc(void);
@@ -30,7 +30,6 @@ int cfg_getlex(void);
 int cfg_getword(void);
 int cfg_getstr(void);
 void syntax(const char *msg, ...);
-void syntax_warning(const char *msg, ...);
 int expect_lexem(int lexem);
 int expect_word(const char *name, int len);
 void reset_config(void);

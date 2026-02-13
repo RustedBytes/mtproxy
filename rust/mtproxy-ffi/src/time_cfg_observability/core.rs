@@ -315,6 +315,42 @@ pub unsafe extern "C" fn mtproxy_ffi_cfg_skipspc(
     0
 }
 
+fn cfg_remaining_len_global() -> usize {
+    let cur = unsafe { cfg_cur };
+    let end = unsafe { cfg_end };
+    if cur.is_null() || end.is_null() || (cur as usize) >= (end as usize) {
+        return 0;
+    }
+    let diff = unsafe { end.offset_from(cur) };
+    if diff <= 0 {
+        return 0;
+    }
+    usize::try_from(diff).unwrap_or(0)
+}
+
+/// parse-config: global-cursor variant of `cfg_skipspc()`.
+///
+/// # Safety
+/// Uses and mutates process-global parser cursors (`cfg_cur`, `cfg_lno`).
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_cfg_skipspc_global() -> i32 {
+    let mut out = MtproxyCfgScanResult::default();
+    let rc = unsafe {
+        mtproxy_ffi_cfg_skipspc(
+            cfg_cur.cast_const(),
+            cfg_remaining_len_global(),
+            cfg_lno,
+            &raw mut out,
+        )
+    };
+    if rc != 0 {
+        return 0;
+    }
+    unsafe { cfg_cur = cfg_cur.add(out.advance) };
+    unsafe { cfg_lno = out.line_no };
+    out.ch
+}
+
 /// parse-config: skip horizontal spaces and report cursor movement.
 ///
 /// # Safety
@@ -337,6 +373,29 @@ pub unsafe extern "C" fn mtproxy_ffi_cfg_skspc(
     0
 }
 
+/// parse-config: global-cursor variant of `cfg_skspc()`.
+///
+/// # Safety
+/// Uses and mutates process-global parser cursors (`cfg_cur`, `cfg_lno`).
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_cfg_skspc_global() -> i32 {
+    let mut out = MtproxyCfgScanResult::default();
+    let rc = unsafe {
+        mtproxy_ffi_cfg_skspc(
+            cfg_cur.cast_const(),
+            cfg_remaining_len_global(),
+            cfg_lno,
+            &raw mut out,
+        )
+    };
+    if rc != 0 {
+        return 0;
+    }
+    unsafe { cfg_cur = cfg_cur.add(out.advance) };
+    unsafe { cfg_lno = out.line_no };
+    out.ch
+}
+
 /// parse-config: word token length at current cursor.
 ///
 /// # Safety
@@ -349,6 +408,16 @@ pub unsafe extern "C" fn mtproxy_ffi_cfg_getword_len(cur: *const c_char, len: us
     cfg_getword_len_impl(bytes)
 }
 
+/// parse-config: global-cursor variant of `cfg_getword()`.
+///
+/// # Safety
+/// Uses process-global parser cursor state.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_cfg_getword_global() -> i32 {
+    let _ = unsafe { mtproxy_ffi_cfg_skspc_global() };
+    unsafe { mtproxy_ffi_cfg_getword_len(cfg_cur.cast_const(), cfg_remaining_len_global()) }
+}
+
 /// parse-config: generic string token length at current cursor.
 ///
 /// # Safety
@@ -359,6 +428,41 @@ pub unsafe extern "C" fn mtproxy_ffi_cfg_getstr_len(cur: *const c_char, len: usi
         return -1;
     };
     cfg_getstr_len_impl(bytes)
+}
+
+/// parse-config: global-cursor variant of `cfg_getstr()`.
+///
+/// # Safety
+/// Uses process-global parser cursor state.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_cfg_getstr_global() -> i32 {
+    let _ = unsafe { mtproxy_ffi_cfg_skspc_global() };
+    unsafe { mtproxy_ffi_cfg_getstr_len(cfg_cur.cast_const(), cfg_remaining_len_global()) }
+}
+
+/// parse-config: global-cursor variant of `cfg_getlex()`.
+///
+/// # Safety
+/// Uses and mutates process-global parser cursor and lex state.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_cfg_getlex_global() -> i32 {
+    let ch = unsafe { mtproxy_ffi_cfg_skipspc_global() };
+    let lex = match ch {
+        59 | 58 | 123 | 125 => {
+            let cur = unsafe { cfg_cur };
+            if cur.is_null() {
+                -1
+            } else {
+                let c = unsafe { i32::from(*cur.cast::<u8>()) };
+                unsafe { cfg_cur = cfg_cur.add(1) };
+                c
+            }
+        }
+        0 => 0,
+        _ => -1,
+    };
+    unsafe { cfg_lex = lex };
+    lex
 }
 
 /// parse-config: unsigned integer scan.
@@ -380,6 +484,24 @@ pub unsafe extern "C" fn mtproxy_ffi_cfg_getint(
     let out_ref = unsafe { &mut *out };
     *out_ref = cfg_parse_unsigned(bytes);
     0
+}
+
+/// parse-config: global-cursor variant of `cfg_getint()`.
+///
+/// # Safety
+/// Uses and mutates process-global parser cursor state.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_cfg_getint_global() -> i64 {
+    let _ = unsafe { mtproxy_ffi_cfg_skspc_global() };
+    let mut out = MtproxyCfgIntResult::default();
+    let rc = unsafe {
+        mtproxy_ffi_cfg_getint(cfg_cur.cast_const(), cfg_remaining_len_global(), &raw mut out)
+    };
+    if rc != 0 {
+        return 0;
+    }
+    unsafe { cfg_cur = cfg_cur.add(out.consumed) };
+    out.value
 }
 
 /// parse-config: unsigned integer scan with zero-digit sentinel.
@@ -411,6 +533,27 @@ pub unsafe extern "C" fn mtproxy_ffi_cfg_getint_zero(
     0
 }
 
+/// parse-config: global-cursor variant of `cfg_getint_zero()`.
+///
+/// # Safety
+/// Uses and mutates process-global parser cursor state.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_cfg_getint_zero_global() -> i64 {
+    let _ = unsafe { mtproxy_ffi_cfg_skspc_global() };
+    let mut out = MtproxyCfgIntResult::default();
+    let rc = unsafe {
+        mtproxy_ffi_cfg_getint_zero(cfg_cur.cast_const(), cfg_remaining_len_global(), &raw mut out)
+    };
+    if rc != 0 {
+        return -1;
+    }
+    if out.consumed == 0 {
+        return -1;
+    }
+    unsafe { cfg_cur = cfg_cur.add(out.consumed) };
+    out.value
+}
+
 /// parse-config: signed integer scan with zero-digit sentinel.
 ///
 /// # Safety
@@ -430,6 +573,377 @@ pub unsafe extern "C" fn mtproxy_ffi_cfg_getint_signed_zero(
     let out_ref = unsafe { &mut *out };
     *out_ref = cfg_parse_signed_zero(bytes);
     0
+}
+
+/// parse-config: global-cursor variant of `cfg_getint_signed_zero()`.
+///
+/// # Safety
+/// Uses and mutates process-global parser cursor state.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_cfg_getint_signed_zero_global() -> i64 {
+    let _ = unsafe { mtproxy_ffi_cfg_skspc_global() };
+    let mut out = MtproxyCfgIntResult::default();
+    let rc = unsafe {
+        mtproxy_ffi_cfg_getint_signed_zero(
+            cfg_cur.cast_const(),
+            cfg_remaining_len_global(),
+            &raw mut out,
+        )
+    };
+    if rc != 0 {
+        return i64::MIN;
+    }
+    if out.consumed == 0 {
+        return i64::MIN;
+    }
+    unsafe { cfg_cur = cfg_cur.add(out.consumed) };
+    out.value
+}
+
+/// parse-config: `expect_lexem()` equivalent against global `cfg_lex`.
+///
+/// # Safety
+/// Calls C `syntax()` for diagnostics on mismatch.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_cfg_expect_lexem(lexem: i32) -> i32 {
+    if unsafe { cfg_lex } == lexem {
+        0
+    } else {
+        unsafe { syntax(b"%c expected\0".as_ptr().cast(), lexem) };
+        -1
+    }
+}
+
+/// parse-config: `expect_word()` equivalent against global cursor.
+///
+/// # Safety
+/// `name` must point to at least `len` readable bytes.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_cfg_expect_word(name: *const c_char, len: i32) -> i32 {
+    if name.is_null() || len < 0 {
+        return -1;
+    }
+    let l = unsafe { mtproxy_ffi_cfg_getword_global() };
+    if l < 0 || l != len {
+        unsafe { syntax(b"Expected %.*s\0".as_ptr().cast(), len, name) };
+        return -1;
+    }
+    let Ok(len_usize) = usize::try_from(len) else {
+        unsafe { syntax(b"Expected %.*s\0".as_ptr().cast(), len, name) };
+        return -1;
+    };
+    let src = unsafe { core::slice::from_raw_parts(name.cast::<u8>(), len_usize) };
+    let cur = unsafe { cfg_cur };
+    if cur.is_null() {
+        unsafe { syntax(b"Expected %.*s\0".as_ptr().cast(), len, name) };
+        return -1;
+    }
+    let cur_slice = unsafe { core::slice::from_raw_parts(cur.cast::<u8>(), len_usize) };
+    if src != cur_slice {
+        unsafe { syntax(b"Expected %.*s\0".as_ptr().cast(), len, name) };
+        return -1;
+    }
+    unsafe { cfg_cur = cfg_cur.add(len_usize) };
+    0
+}
+
+/// parse-config: resets parser cursors over an already loaded config buffer.
+///
+/// # Safety
+/// All pointer arguments must be valid and writable.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_cfg_reset_config(
+    config_buff_ptr: *mut c_char,
+    config_bytes_value: i32,
+    cfg_start_ptr: *mut *mut c_char,
+    cfg_end_ptr: *mut *mut c_char,
+    cfg_cur_ptr: *mut *mut c_char,
+    cfg_lno_ptr: *mut i32,
+) -> i32 {
+    if config_buff_ptr.is_null()
+        || cfg_start_ptr.is_null()
+        || cfg_end_ptr.is_null()
+        || cfg_cur_ptr.is_null()
+        || cfg_lno_ptr.is_null()
+        || config_bytes_value < 0
+    {
+        return -1;
+    }
+    let Ok(config_len) = usize::try_from(config_bytes_value) else {
+        return -1;
+    };
+    let end_ptr = unsafe { config_buff_ptr.add(config_len) };
+    unsafe {
+        *cfg_start_ptr = config_buff_ptr;
+        *cfg_cur_ptr = config_buff_ptr;
+        *cfg_end_ptr = end_ptr;
+        *end_ptr = 0;
+        *cfg_lno_ptr = 0;
+    }
+    0
+}
+
+/// parse-config: loads config file into mutable buffer and resets parser cursors.
+///
+/// Return codes:
+/// - `>= 0`: file descriptor to keep open
+/// - `-1`: cannot open file
+/// - `-2`: read failure
+/// - `-3`: file exceeds max size
+/// - `-4`: allocation failure
+///
+/// # Safety
+/// Pointer arguments must be valid and writable according to their roles.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_cfg_load_config(
+    file: *const c_char,
+    fd: i32,
+    max_config_size: i32,
+    config_buff_ptr: *mut *mut c_char,
+    config_name_ptr: *mut *mut c_char,
+    config_bytes_ptr: *mut i32,
+    cfg_start_ptr: *mut *mut c_char,
+    cfg_end_ptr: *mut *mut c_char,
+    cfg_cur_ptr: *mut *mut c_char,
+    cfg_lno_ptr: *mut i32,
+) -> i32 {
+    if config_buff_ptr.is_null()
+        || config_name_ptr.is_null()
+        || config_bytes_ptr.is_null()
+        || cfg_start_ptr.is_null()
+        || cfg_end_ptr.is_null()
+        || cfg_cur_ptr.is_null()
+        || cfg_lno_ptr.is_null()
+        || max_config_size <= 0
+    {
+        return -2;
+    }
+    let Ok(max_len) = usize::try_from(max_config_size) else {
+        return -2;
+    };
+
+    let mut effective_fd = fd;
+    if effective_fd < 0 {
+        if file.is_null() {
+            return -1;
+        }
+        effective_fd = unsafe { libc::open(file.cast(), libc::O_RDONLY) };
+        if effective_fd < 0 {
+            return -1;
+        }
+    }
+
+    let mut buff = unsafe { *config_buff_ptr };
+    if buff.is_null() {
+        let Some(alloc_size) = max_len.checked_add(4) else {
+            return -4;
+        };
+        let alloc_ptr = unsafe { libc::malloc(alloc_size) };
+        if alloc_ptr.is_null() {
+            return -4;
+        }
+        buff = alloc_ptr.cast::<c_char>();
+        unsafe { *config_buff_ptr = buff };
+    }
+
+    let read_res = unsafe { libc::read(effective_fd, buff.cast(), max_len.saturating_add(1)) };
+    if read_res < 0 {
+        return -2;
+    }
+    let Ok(read_len) = usize::try_from(read_res) else {
+        return -2;
+    };
+    if read_len > max_len {
+        return -3;
+    }
+
+    let read_i32 = i32::try_from(read_len).unwrap_or(i32::MAX);
+    unsafe { *config_bytes_ptr = read_i32 };
+
+    let prev_name = unsafe { *config_name_ptr };
+    if !prev_name.is_null() {
+        unsafe { libc::free(prev_name.cast()) };
+    }
+    unsafe { *config_name_ptr = core::ptr::null_mut() };
+    if !file.is_null() {
+        let name_dup = unsafe { libc::strdup(file.cast()) };
+        unsafe { *config_name_ptr = name_dup.cast() };
+    }
+
+    let reset_rc = unsafe {
+        mtproxy_ffi_cfg_reset_config(
+            buff,
+            read_i32,
+            cfg_start_ptr,
+            cfg_end_ptr,
+            cfg_cur_ptr,
+            cfg_lno_ptr,
+        )
+    };
+    if reset_rc < 0 {
+        return -2;
+    }
+
+    effective_fd
+}
+
+/// parse-config: computes lowercase hex MD5 over raw config bytes.
+///
+/// # Safety
+/// `config_buff` must point to `config_bytes` readable bytes, `out` must point
+/// to at least 32 writable bytes.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_cfg_md5_hex_config(
+    config_buff_ptr: *const c_char,
+    config_bytes_value: i32,
+    out: *mut c_char,
+) -> i32 {
+    if config_buff_ptr.is_null() || out.is_null() || config_bytes_value < 0 {
+        return -1;
+    }
+    let Ok(config_len) = usize::try_from(config_bytes_value) else {
+        return -1;
+    };
+    let data = unsafe { core::slice::from_raw_parts(config_buff_ptr.cast::<u8>(), config_len) };
+    let digest = Md5::digest(data);
+    let out_bytes = unsafe { core::slice::from_raw_parts_mut(out.cast::<u8>(), 32) };
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    for (idx, byte) in digest.iter().copied().enumerate() {
+        let hi = usize::from((byte >> 4) & 0x0f);
+        let lo = usize::from(byte & 0x0f);
+        out_bytes[idx * 2] = HEX[hi];
+        out_bytes[idx * 2 + 1] = HEX[lo];
+    }
+    0
+}
+
+/// parse-config: releases config buffers and optionally closes config fd.
+///
+/// Return codes:
+/// - `0`: cleanup completed
+/// - `-1`: closing `*fd` failed (`errno` preserved by libc)
+///
+/// # Safety
+/// Pointer arguments must be valid and writable according to their roles.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_cfg_close_config(
+    config_buff_ptr: *mut *mut c_char,
+    config_name_ptr: *mut *mut c_char,
+    config_bytes_ptr: *mut i32,
+    cfg_start_ptr: *mut *mut c_char,
+    cfg_end_ptr: *mut *mut c_char,
+    cfg_cur_ptr: *mut *mut c_char,
+    fd_ptr: *mut i32,
+) -> i32 {
+    if config_buff_ptr.is_null()
+        || config_name_ptr.is_null()
+        || config_bytes_ptr.is_null()
+        || cfg_start_ptr.is_null()
+        || cfg_end_ptr.is_null()
+        || cfg_cur_ptr.is_null()
+    {
+        return -1;
+    }
+
+    let buff = unsafe { *config_buff_ptr };
+    if !buff.is_null() {
+        unsafe { libc::free(buff.cast()) };
+        unsafe { *config_buff_ptr = core::ptr::null_mut() };
+    }
+
+    let name = unsafe { *config_name_ptr };
+    if !name.is_null() {
+        unsafe { libc::free(name.cast()) };
+        unsafe { *config_name_ptr = core::ptr::null_mut() };
+    }
+
+    unsafe { *config_bytes_ptr = 0 };
+    unsafe { *cfg_cur_ptr = core::ptr::null_mut() };
+    unsafe { *cfg_start_ptr = core::ptr::null_mut() };
+    unsafe { *cfg_end_ptr = core::ptr::null_mut() };
+
+    if !fd_ptr.is_null() {
+        let fd = unsafe { *fd_ptr };
+        if fd >= 0 {
+            if unsafe { libc::close(fd) } != 0 {
+                return -1;
+            }
+            unsafe { *fd_ptr = -1 };
+        }
+    }
+
+    0
+}
+
+unsafe fn cfg_gethost_impl(verb: i32) -> *mut MtproxyHostEnt {
+    let cursor = unsafe { cfg_cur };
+    let end = unsafe { cfg_end };
+    if cursor.is_null() || end.is_null() || (cursor as usize) >= (end as usize) {
+        unsafe { syntax(b"hostname expected\0".as_ptr().cast()) };
+        return core::ptr::null_mut();
+    }
+
+    let rem = unsafe { end.offset_from(cursor) };
+    if rem <= 0 {
+        unsafe { syntax(b"hostname expected\0".as_ptr().cast()) };
+        return core::ptr::null_mut();
+    }
+    let Ok(rem_len) = usize::try_from(rem) else {
+        unsafe { syntax(b"hostname expected\0".as_ptr().cast()) };
+        return core::ptr::null_mut();
+    };
+
+    let bytes = unsafe { core::slice::from_raw_parts(cursor.cast::<u8>(), rem_len) };
+    let word_len_i32 = cfg_getword_len_impl(bytes);
+    let Ok(word_len) = usize::try_from(word_len_i32) else {
+        unsafe { syntax(b"hostname expected\0".as_ptr().cast()) };
+        return core::ptr::null_mut();
+    };
+    if word_len == 0 || word_len > 63 {
+        unsafe { syntax(b"hostname expected\0".as_ptr().cast()) };
+        return core::ptr::null_mut();
+    }
+
+    let host_end = unsafe { cursor.add(word_len) };
+    let saved = unsafe { *host_end };
+    unsafe { *host_end = 0 };
+    let host = unsafe { kdb_gethostbyname(cursor.cast_const()) };
+    let valid_host = if host.is_null() {
+        false
+    } else {
+        let h_addr_list = unsafe { (*host).h_addr_list };
+        !h_addr_list.is_null() && !(unsafe { *h_addr_list }).is_null()
+    };
+
+    unsafe { *host_end = saved };
+    unsafe { cfg_cur = host_end };
+
+    if !valid_host {
+        if unsafe { verbosity } >= verb {
+            unsafe { syntax(b"cannot resolve '%s'\n\0".as_ptr().cast(), cursor) };
+        }
+        return core::ptr::null_mut();
+    }
+
+    host
+}
+
+/// parse-config: resolves one host token at global parser cursor.
+///
+/// # Safety
+/// Uses and mutates global parser cursor state (`cfg_cur`, `cfg_end`).
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_cfg_gethost_ex(verb: i32) -> *mut c_void {
+    unsafe { cfg_gethost_impl(verb) }.cast()
+}
+
+/// parse-config: resolves one host token with default verbosity threshold.
+///
+/// # Safety
+/// Uses and mutates global parser cursor state (`cfg_cur`, `cfg_end`).
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_cfg_gethost() -> *mut c_void {
+    unsafe { cfg_gethost_impl(0) }.cast()
 }
 
 #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]

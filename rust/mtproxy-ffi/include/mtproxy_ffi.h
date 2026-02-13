@@ -1069,29 +1069,71 @@ int32_t mtproxy_ffi_cfg_skipspc(
   int32_t line_no,
   mtproxy_ffi_cfg_scan_result_t *out
 );
+int32_t mtproxy_ffi_cfg_skipspc_global(void);
 int32_t mtproxy_ffi_cfg_skspc(
   const char *cur,
   size_t len,
   int32_t line_no,
   mtproxy_ffi_cfg_scan_result_t *out
 );
+int32_t mtproxy_ffi_cfg_skspc_global(void);
 int32_t mtproxy_ffi_cfg_getword_len(const char *cur, size_t len);
+int32_t mtproxy_ffi_cfg_getword_global(void);
 int32_t mtproxy_ffi_cfg_getstr_len(const char *cur, size_t len);
+int32_t mtproxy_ffi_cfg_getstr_global(void);
+int32_t mtproxy_ffi_cfg_getlex_global(void);
 int32_t mtproxy_ffi_cfg_getint(
   const char *cur,
   size_t len,
   mtproxy_ffi_cfg_int_result_t *out
 );
+int64_t mtproxy_ffi_cfg_getint_global(void);
 int32_t mtproxy_ffi_cfg_getint_zero(
   const char *cur,
   size_t len,
   mtproxy_ffi_cfg_int_result_t *out
 );
+int64_t mtproxy_ffi_cfg_getint_zero_global(void);
 int32_t mtproxy_ffi_cfg_getint_signed_zero(
   const char *cur,
   size_t len,
   mtproxy_ffi_cfg_int_result_t *out
 );
+int64_t mtproxy_ffi_cfg_getint_signed_zero_global(void);
+int32_t mtproxy_ffi_cfg_expect_lexem(int32_t lexem);
+int32_t mtproxy_ffi_cfg_expect_word(const char *name, int32_t len);
+int32_t mtproxy_ffi_cfg_reset_config(
+  char *config_buff,
+  int32_t config_bytes,
+  char **cfg_start,
+  char **cfg_end,
+  char **cfg_cur,
+  int32_t *cfg_lno
+);
+int32_t mtproxy_ffi_cfg_load_config(
+  const char *file,
+  int32_t fd,
+  int32_t max_config_size,
+  char **config_buff,
+  char **config_name,
+  int32_t *config_bytes,
+  char **cfg_start,
+  char **cfg_end,
+  char **cfg_cur,
+  int32_t *cfg_lno
+);
+int32_t mtproxy_ffi_cfg_md5_hex_config(const char *config_buff, int32_t config_bytes, char *out);
+int32_t mtproxy_ffi_cfg_close_config(
+  char **config_buff,
+  char **config_name,
+  int32_t *config_bytes,
+  char **cfg_start,
+  char **cfg_end,
+  char **cfg_cur,
+  int32_t *fd
+);
+void *mtproxy_ffi_cfg_gethost_ex(int32_t verb);
+void *mtproxy_ffi_cfg_gethost(void);
 
 // TL header parsing helpers for incremental migration.
 int32_t mtproxy_ffi_tl_parse_query_header(

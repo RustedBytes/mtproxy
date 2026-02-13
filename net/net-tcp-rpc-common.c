@@ -165,8 +165,6 @@ int tcp_rpc_default_execute(connection_job_t C, int op,
     int P[3];
     assert(rwm_fetch_data(raw, P, 12) == 12);
     P[0] = RPC_PONG;
-    // P[1] = Q[1];
-    // P[2] = Q[2];
 
     vkprintf(2, "received ping from " IP_PRINT_STR ":%d (val = %lld)\n",
              IP_TO_PRINT(c->remote_ip), (int)c->remote_port,

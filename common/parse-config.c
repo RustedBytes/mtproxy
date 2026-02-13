@@ -20,18 +20,10 @@
 */
 
 #include <assert.h>
-#include <fcntl.h>
 #include <stdarg.h>
-#include <stdint.h>
 #include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
 
 #include "common/parse-config.h"
-#include "crypto/md5.h"
-#include "kprintf.h"
-#include "resolver.h"
 #include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 
 static constexpr int MAX_CONFIG_SIZE = 16 << 20;
@@ -40,90 +32,22 @@ static char *config_buff;
 char *config_name, *cfg_start, *cfg_end, *cfg_cur;
 int config_bytes, cfg_lno, cfg_lex = -1;
 
-static size_t cfg_remaining_len(void) {
-  if (!cfg_cur || !cfg_end || cfg_cur >= cfg_end) {
-    return 0;
-  }
-  return (size_t)(cfg_end - cfg_cur);
-}
+int cfg_skipspc(void) { return mtproxy_ffi_cfg_skipspc_global(); }
 
-int cfg_skipspc(void) {
-  mtproxy_ffi_cfg_scan_result_t out = {0};
-  int rc = mtproxy_ffi_cfg_skipspc(cfg_cur, cfg_remaining_len(), cfg_lno, &out);
-  assert(rc == 0);
-  cfg_cur += out.advance;
-  cfg_lno = out.line_no;
-  return out.ch;
-}
+int cfg_skspc(void) { return mtproxy_ffi_cfg_skspc_global(); }
 
-int cfg_skspc(void) {
-  mtproxy_ffi_cfg_scan_result_t out = {0};
-  int rc = mtproxy_ffi_cfg_skspc(cfg_cur, cfg_remaining_len(), cfg_lno, &out);
-  assert(rc == 0);
-  cfg_cur += out.advance;
-  cfg_lno = out.line_no;
-  return out.ch;
-}
+int cfg_getlex(void) { return mtproxy_ffi_cfg_getlex_global(); }
 
-int cfg_getlex(void) {
-  switch (cfg_skipspc()) {
-  case ';':
-  case ':':
-  case '{':
-  case '}':
-    return cfg_lex = *cfg_cur++;
-  case 0:
-    return cfg_lex = 0;
-  }
-  return cfg_lex = -1;
-}
+int cfg_getword(void) { return mtproxy_ffi_cfg_getword_global(); }
 
-int cfg_getword(void) {
-  cfg_skspc();
-  int32_t n = mtproxy_ffi_cfg_getword_len(cfg_cur, cfg_remaining_len());
-  assert(n >= 0);
-  return n;
-}
+int cfg_getstr(void) { return mtproxy_ffi_cfg_getstr_global(); }
 
-int cfg_getstr(void) {
-  cfg_skspc();
-  int32_t n = mtproxy_ffi_cfg_getstr_len(cfg_cur, cfg_remaining_len());
-  assert(n >= 0);
-  return n;
-}
+long long cfg_getint(void) { return mtproxy_ffi_cfg_getint_global(); }
 
-long long cfg_getint(void) {
-  cfg_skspc();
-  mtproxy_ffi_cfg_int_result_t out = {0};
-  int rc = mtproxy_ffi_cfg_getint(cfg_cur, cfg_remaining_len(), &out);
-  assert(rc == 0);
-  cfg_cur += out.consumed;
-  return out.value;
-}
-
-long long cfg_getint_zero(void) {
-  cfg_skspc();
-  mtproxy_ffi_cfg_int_result_t out = {0};
-  int rc = mtproxy_ffi_cfg_getint_zero(cfg_cur, cfg_remaining_len(), &out);
-  assert(rc == 0);
-  if (!out.consumed) {
-    return -1;
-  }
-  cfg_cur += out.consumed;
-  return out.value;
-}
+long long cfg_getint_zero(void) { return mtproxy_ffi_cfg_getint_zero_global(); }
 
 long long cfg_getint_signed_zero(void) {
-  cfg_skspc();
-  mtproxy_ffi_cfg_int_result_t out = {0};
-  int rc =
-      mtproxy_ffi_cfg_getint_signed_zero(cfg_cur, cfg_remaining_len(), &out);
-  assert(rc == 0);
-  if (!out.consumed) {
-    return (-1LL << 63);
-  }
-  cfg_cur += out.consumed;
-  return out.value;
+  return mtproxy_ffi_cfg_getint_signed_zero_global();
 }
 
 void syntax(const char *msg, ...) {
@@ -145,127 +69,60 @@ void syntax(const char *msg, ...) {
   fprintf(stderr, " near %.*s%s\n", len, cfg_cur, len >= 20 ? " ..." : "");
 }
 
-void syntax_warning(const char *msg, ...) {
-  va_list args;
-  if (cfg_lno) {
-    fprintf(stderr, "%s:%d: ", config_name, cfg_lno);
-  }
-  fputs("warning: ", stderr);
-  va_start(args, msg);
-  vfprintf(stderr, msg, args);
-  va_end(args);
-  int len = 0;
-  while (cfg_cur[len] && cfg_cur[len] != 13 && cfg_cur[len] != 10 && len < 20) {
-    len++;
-  }
-  fprintf(stderr, " near %.*s%s\n", len, cfg_cur, len >= 20 ? " ..." : "");
-}
-
 int expect_lexem(int lexem) {
-  if (cfg_lex != lexem) {
-    syntax("%c expected", lexem);
-    return -1;
-  } else {
-    return 0;
-  }
+  return mtproxy_ffi_cfg_expect_lexem(lexem);
 }
 
 int expect_word(const char *name, int len) {
-  int l = cfg_getword();
-  if (len != l || memcmp(name, cfg_cur, len)) {
-    syntax("Expected %.*s", len, name);
-    return -1;
-  }
-  cfg_cur += l;
-  return 0;
+  return mtproxy_ffi_cfg_expect_word(name, len);
 }
 
 struct hostent *cfg_gethost_ex(int verb) {
-  struct hostent *h;
-  int l = cfg_getword();
-  if (!l || l > 63) {
-    syntax("hostname expected");
-    return 0;
-  }
-  char c = cfg_cur[l];
-  // hostname = cfg_cur;
-  cfg_cur[l] = 0;
-
-  if (!(h = kdb_gethostbyname(cfg_cur)) || !h->h_addr_list || !h->h_addr) {
-    if (verbosity >= verb) {
-      syntax("cannot resolve '%s'\n", cfg_cur);
-    }
-    *(cfg_cur += l) = c;
-    return 0;
-  }
-  *(cfg_cur += l) = c;
-  return h;
+  return (struct hostent *)mtproxy_ffi_cfg_gethost_ex(verb);
 }
 
-struct hostent *cfg_gethost(void) { return cfg_gethost_ex(0); }
+struct hostent *cfg_gethost(void) {
+  return (struct hostent *)mtproxy_ffi_cfg_gethost();
+}
 
 void reset_config(void) {
-  assert(config_buff);
-  cfg_cur = cfg_start = config_buff;
-  cfg_end = cfg_start + config_bytes;
-  *cfg_end = 0;
-  cfg_lno = 0;
+  int rc = mtproxy_ffi_cfg_reset_config(config_buff, config_bytes, &cfg_start,
+                                        &cfg_end, &cfg_cur, &cfg_lno);
+  assert(rc == 0);
 }
 
 int load_config(const char *file, int fd) {
-  if (!config_buff) {
-    config_buff = malloc(MAX_CONFIG_SIZE + 4);
-    assert(config_buff);
+  int rc = mtproxy_ffi_cfg_load_config(file, fd, MAX_CONFIG_SIZE, &config_buff,
+                                       &config_name, &config_bytes, &cfg_start,
+                                       &cfg_end, &cfg_cur, &cfg_lno);
+  if (rc == -1) {
+    fprintf(stderr, "Can not open file %s: %m\n", file);
+    return -1;
   }
-  if (fd < 0) {
-    fd = open(file, O_RDONLY);
-    if (fd < 0) {
-      fprintf(stderr, "Can not open file %s: %m\n", file);
-      return -1;
-    }
-  }
-  int r;
-  config_bytes = r = read(fd, config_buff, MAX_CONFIG_SIZE + 1);
-  if (r < 0) {
+  if (rc == -2) {
     fprintf(stderr, "error reading configuration file %s: %m\n", config_name);
     return -2;
   }
-  if (r > MAX_CONFIG_SIZE) {
+  if (rc == -3) {
     fprintf(stderr, "configuration file %s too long (max %d bytes)\n",
             config_name, MAX_CONFIG_SIZE);
     return -2;
   }
-  if (config_name) {
-    free(config_name);
+  if (rc < 0) {
+    fprintf(stderr, "error reading configuration file %s\n", config_name);
+    return -2;
   }
-  if (file) {
-    config_name = strdup(file);
-  }
-
-  reset_config();
-  return fd;
+  return rc;
 }
 
 void md5_hex_config(char *out) {
-  assert(config_buff);
-  md5_hex(config_buff, config_bytes, out);
+  int rc = mtproxy_ffi_cfg_md5_hex_config(config_buff, config_bytes, out);
+  assert(rc == 0);
 }
 
 void close_config(int *fd) {
-  if (config_buff) {
-    free(config_buff);
-    config_buff = NULL;
-  }
-  if (config_name) {
-    free(config_name);
-    config_name = NULL;
-  }
-  config_bytes = 0;
-  cfg_cur = cfg_start = cfg_end = NULL;
-  if (fd) {
-    if (*fd >= 0) {
-      assert(!close(*fd));
-      *fd = -1;
-    }
-  }
+  int rc = mtproxy_ffi_cfg_close_config(&config_buff, &config_name,
+                                        &config_bytes, &cfg_start, &cfg_end,
+                                        &cfg_cur, fd);
+  assert(rc == 0);
 }

@@ -541,6 +541,7 @@ unsafe extern "C" {
     pub(crate) fn reset_config();
     pub(crate) fn md5_hex_config(out: *mut c_char);
     pub(crate) fn cfg_gethost() -> *mut MtproxyHostEnt;
+    pub(crate) fn kdb_gethostbyname(name: *const c_char) -> *mut MtproxyHostEnt;
     pub(crate) fn destroy_target(ctj_tag_int: c_int, ctj: MtproxyConnTargetJob) -> c_int;
     pub(crate) fn create_target(
         source: *mut MtproxyConnTargetInfo,
@@ -554,6 +555,8 @@ unsafe extern "C" {
     pub(crate) static mut default_cfg_ct: MtproxyConnTargetInfo;
     pub(crate) static mut cfg_cur: *mut c_char;
     pub(crate) static mut cfg_end: *mut c_char;
+    pub(crate) static mut cfg_lno: c_int;
+    pub(crate) static mut cfg_lex: c_int;
     pub(crate) static mut config_filename: *mut c_char;
     pub(crate) static mut config_bytes: c_int;
     pub(crate) static mut CurConf: *mut MtproxyMfConfig;
