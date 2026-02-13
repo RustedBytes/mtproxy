@@ -185,8 +185,8 @@ pub fn validate_packet_type(packet_type: i32, state: ServerState) -> Result<RpcP
         Some(RpcPacketType::Handshake) if state == ServerState::NonceReceived => {
             Ok(RpcPacketType::Handshake)
         }
-        Some(RpcPacketType::Ping | RpcPacketType::Pong) if state == ServerState::Ready => {
-            Ok(RpcPacketType::from_i32(packet_type).unwrap())
+        Some(pkt @ (RpcPacketType::Ping | RpcPacketType::Pong)) if state == ServerState::Ready => {
+            Ok(pkt)
         }
         _ => Err(ServerError::InvalidPacketType(packet_type)),
     }

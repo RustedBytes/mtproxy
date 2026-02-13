@@ -222,8 +222,8 @@ pub fn validate_packet_type(packet_type: i32, state: ClientState) -> Result<RpcP
         Some(RpcPacketType::Handshake) if state == ClientState::HandshakeSent => {
             Ok(RpcPacketType::Handshake)
         }
-        Some(RpcPacketType::Ping | RpcPacketType::Pong) if state == ClientState::Ready => {
-            Ok(RpcPacketType::from_i32(packet_type).unwrap())
+        Some(pkt @ (RpcPacketType::Ping | RpcPacketType::Pong)) if state == ClientState::Ready => {
+            Ok(pkt)
         }
         _ => Err(ClientError::InvalidPacketType(packet_type)),
     }

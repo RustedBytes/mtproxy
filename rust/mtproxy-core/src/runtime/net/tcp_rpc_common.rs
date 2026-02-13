@@ -11,7 +11,7 @@ pub enum RpcPacketType {
     HandshakeError = 0x6a27_beda,
     /// Ping request.
     Ping = 0x7bde_f2a4,
-    /// Pong response (value needs cast from u32).
+    /// Pong response (`0x8bde_f3a5` as `i32` = `-1948322907`).
     Pong = -1_948_322_907,
 }
 

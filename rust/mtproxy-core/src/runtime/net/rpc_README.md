@@ -84,8 +84,8 @@ All RPC packets follow this structure:
 - **Nonce (0x7acb87aa)**: Encryption negotiation
 - **Handshake (0x7682eef5)**: Process ID verification
 - **HandshakeError (0x6a27beda)**: Handshake failure response
-- **Ping (0x7bdeef2a4)**: Keep-alive request
-- **Pong (-1948322907)**: Keep-alive response
+- **Ping (0x7bdef2a4)**: Keep-alive request
+- **Pong (0x8bdef3a5)**: Keep-alive response
 
 ## Encryption Modes
 
