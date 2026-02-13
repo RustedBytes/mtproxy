@@ -474,7 +474,8 @@ pub(super) fn dequeue_subclass_impl(
 
 #[cfg(test)]
 mod tests {
-    use super::{
+    use super::JOB_CLASS_MAIN;
+    use crate::{
         mtproxy_ffi_jobs_tokio_dequeue_class, mtproxy_ffi_jobs_tokio_dequeue_subclass,
         mtproxy_ffi_jobs_tokio_drain_main, mtproxy_ffi_jobs_tokio_enqueue_class,
         mtproxy_ffi_jobs_tokio_enqueue_main, mtproxy_ffi_jobs_tokio_enqueue_subclass,
@@ -487,7 +488,7 @@ mod tests {
         mtproxy_ffi_jobs_tokio_subclass_permit_acquire,
         mtproxy_ffi_jobs_tokio_subclass_permit_release, mtproxy_ffi_jobs_tokio_timer_queue_create,
         mtproxy_ffi_jobs_tokio_timer_queue_destroy, mtproxy_ffi_jobs_tokio_timer_queue_pop,
-        mtproxy_ffi_jobs_tokio_timer_queue_push, JOB_CLASS_MAIN,
+        mtproxy_ffi_jobs_tokio_timer_queue_push,
     };
     use core::ffi::c_void;
     use core::ptr;

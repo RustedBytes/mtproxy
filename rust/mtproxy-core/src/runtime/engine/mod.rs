@@ -565,9 +565,34 @@ pub fn engine_server_tick() -> Result<u32, String> {
 mod tests {
     use super::*;
     use alloc::string::ToString;
+    use core::hint::spin_loop;
+    use core::sync::atomic::{AtomicBool, Ordering};
+
+    static ENGINE_TEST_LOCK: AtomicBool = AtomicBool::new(false);
+
+    struct EngineTestGuard;
+
+    impl Drop for EngineTestGuard {
+        fn drop(&mut self) {
+            ENGINE_TEST_LOCK.store(false, Ordering::Release);
+        }
+    }
+
+    fn lock_engine_test_runtime() -> EngineTestGuard {
+        loop {
+            if ENGINE_TEST_LOCK
+                .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+                .is_ok()
+            {
+                return EngineTestGuard;
+            }
+            spin_loop();
+        }
+    }
 
     #[test]
     fn test_engine_state_default() {
+        let _guard = lock_engine_test_runtime();
         let state = EngineState::default();
         assert_eq!(state.port, 0);
         assert_eq!(state.backlog, 128);
@@ -580,6 +605,7 @@ mod tests {
 
     #[test]
     fn test_engine_module_enable_disable() {
+        let _guard = lock_engine_test_runtime();
         let mut state = EngineState::new();
 
         assert!(!state.is_module_enabled(EngineModule::Ipv6));
@@ -592,6 +618,7 @@ mod tests {
 
     #[test]
     fn test_engine_aes_pwd_file() {
+        let _guard = lock_engine_test_runtime();
         let mut state = EngineState::new();
 
         assert_eq!(state.aes_pwd_file, None);
@@ -604,6 +631,7 @@ mod tests {
 
     #[test]
     fn test_engine_init_returns_ok() {
+        let _guard = lock_engine_test_runtime();
         let result = engine_init(None, false);
         assert!(result.is_ok());
         let snapshot = engine_runtime_snapshot();
@@ -614,6 +642,7 @@ mod tests {
 
     #[test]
     fn test_server_init_returns_ok() {
+        let _guard = lock_engine_test_runtime();
         assert!(engine_init(None, true).is_ok());
         let result = server_init();
         assert!(result.is_ok());
@@ -625,6 +654,7 @@ mod tests {
 
     #[test]
     fn test_engine_server_start_returns_ok() {
+        let _guard = lock_engine_test_runtime();
         assert!(engine_init(None, true).is_ok());
         assert!(server_init().is_ok());
         let was_running = engine_runtime_snapshot().running;
@@ -639,6 +669,7 @@ mod tests {
 
     #[test]
     fn test_engine_server_tick_returns_idle_after_startup_batch() {
+        let _guard = lock_engine_test_runtime();
         assert!(engine_init(None, true).is_ok());
         assert!(server_init().is_ok());
         let was_running = engine_runtime_snapshot().running;
@@ -654,6 +685,7 @@ mod tests {
 
     #[test]
     fn test_engine_server_tick_drains_usr1_signal_batch() {
+        let _guard = lock_engine_test_runtime();
         assert!(engine_init(None, true).is_ok());
         assert!(server_init().is_ok());
         let _ = signals::signal_check_pending_and_clear(signals::SIGUSR1);
@@ -669,6 +701,7 @@ mod tests {
 
     #[test]
     fn test_engine_server_tick_interrupt_pending_returns_error() {
+        let _guard = lock_engine_test_runtime();
         assert!(engine_init(None, true).is_ok());
         assert!(server_init().is_ok());
         let _ = signals::signal_check_pending_and_clear(signals::SIGINT);
@@ -684,6 +717,7 @@ mod tests {
 
     #[test]
     fn test_engine_init_rejects_empty_pwd_path() {
+        let _guard = lock_engine_test_runtime();
         let result = engine_init(Some(""), true);
         assert!(result.is_err());
     }

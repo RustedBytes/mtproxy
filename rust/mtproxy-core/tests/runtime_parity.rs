@@ -1,4 +1,5 @@
 use std::vec::Vec;
+use std::sync::{Mutex, MutexGuard};
 
 use mtproxy_core::runtime::{
     engine::net::{select_listener_port_with, DEFAULT_PORT_MOD},
@@ -25,6 +26,20 @@ fn clear_pending_signals() {
     for sig in 1_u32..=64_u32 {
         let _ = signal_check_pending_and_clear(sig);
     }
+}
+
+static ENGINE_PARITY_LOCK: Mutex<()> = Mutex::new(());
+
+fn lock_engine_parity() -> MutexGuard<'static, ()> {
+    match ENGINE_PARITY_LOCK.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    }
+}
+
+fn clear_interrupt_signals() {
+    let _ = signal_check_pending_and_clear(SIGINT);
+    let _ = signal_check_pending_and_clear(SIGTERM);
 }
 
 #[test]
@@ -236,22 +251,13 @@ fn parity_runtime_scheduler_dequeue_process_flow() {
 
 #[test]
 fn parity_engine_server_tick_uses_persistent_scheduler() {
+    let _guard = lock_engine_parity();
     assert!(engine_init(None, true).is_ok());
     assert!(server_init().is_ok());
     let was_running = engine_runtime_snapshot().running;
-    let _ = mtproxy_core::runtime::engine::signals::signal_check_pending_and_clear(
-        mtproxy_core::runtime::engine::signals::SIGINT,
-    );
-    let _ = mtproxy_core::runtime::engine::signals::signal_check_pending_and_clear(
-        mtproxy_core::runtime::engine::signals::SIGTERM,
-    );
+    clear_interrupt_signals();
     assert!(engine_server_start().is_ok());
-    let _ = mtproxy_core::runtime::engine::signals::signal_check_pending_and_clear(
-        mtproxy_core::runtime::engine::signals::SIGINT,
-    );
-    let _ = mtproxy_core::runtime::engine::signals::signal_check_pending_and_clear(
-        mtproxy_core::runtime::engine::signals::SIGTERM,
-    );
+    clear_interrupt_signals();
     let tick = engine_server_tick().expect("tick should run in running lifecycle");
     if !was_running {
         assert!(tick <= 1);
@@ -261,12 +267,13 @@ fn parity_engine_server_tick_uses_persistent_scheduler() {
 
 #[test]
 fn parity_engine_server_tick_drains_usr1_and_tracks_signal_batch() {
+    let _guard = lock_engine_parity();
     assert!(engine_init(None, true).is_ok());
     assert!(server_init().is_ok());
     let _ = signal_check_pending_and_clear(SIGUSR1);
-    let _ = signal_check_pending_and_clear(SIGINT);
-    let _ = signal_check_pending_and_clear(SIGTERM);
+    clear_interrupt_signals();
     assert!(engine_server_start().is_ok());
+    clear_interrupt_signals();
 
     signal_set_pending(SIGUSR1);
     let _ = engine_server_tick().expect("tick should run while engine is active");
@@ -276,10 +283,10 @@ fn parity_engine_server_tick_drains_usr1_and_tracks_signal_batch() {
 
 #[test]
 fn parity_engine_server_tick_interrupt_pending_returns_error() {
+    let _guard = lock_engine_parity();
     assert!(engine_init(None, true).is_ok());
     assert!(server_init().is_ok());
-    let _ = signal_check_pending_and_clear(SIGINT);
-    let _ = signal_check_pending_and_clear(SIGTERM);
+    clear_interrupt_signals();
     assert!(engine_server_start().is_ok());
 
     signal_set_pending(SIGTERM);

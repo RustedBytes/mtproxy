@@ -2070,7 +2070,7 @@ fn pid_helpers_match_expected_semantics() {
     let mut pid = MtproxyProcessId::default();
     let rc = unsafe { mtproxy_ffi_pid_init_common(&raw mut pid) };
     assert_eq!(rc, 0);
-    let raw_pid = unsafe { super::getpid() };
+    let raw_pid = i32::try_from(std::process::id()).unwrap_or_default();
     let raw_pid_bits = u32::from_ne_bytes(raw_pid.to_ne_bytes());
     let expected_pid = u16::try_from(raw_pid_bits & u32::from(u16::MAX)).unwrap_or_default();
     assert_eq!(pid.pid, expected_pid);
@@ -2368,7 +2368,7 @@ fn observability_helpers_parse_and_format() {
     assert_eq!(ps.state, i8::from_ne_bytes([b'R']));
 
     let mut ps_live = MtproxyProcStats::default();
-    let pid = unsafe { super::getpid() };
+    let pid = i32::try_from(std::process::id()).unwrap_or_default();
     assert_eq!(
         unsafe { mtproxy_ffi_read_proc_stat_file(pid, 0, &raw mut ps_live) },
         0
