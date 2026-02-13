@@ -1072,11 +1072,9 @@ unsafe fn get_my_ipv4_impl() -> c_uint {
         let ip = u32::from_be((*ip_addr).sin_addr.s_addr);
         let mask = u32::from_be((*mask_addr).sin_addr.s_addr);
 
-        if (ip >> 24) == 10 && (mask < my_netmask || (my_ip >> 24) != 10) {
-            my_ip = ip;
-            my_netmask = mask;
-            my_iface = current.ifa_name;
-        } else if (ip >> 24) != 127 && mask < my_netmask && (my_ip >> 24) != 10 {
+        if ((ip >> 24) == 10 && (mask < my_netmask || (my_ip >> 24) != 10))
+            || ((ip >> 24) != 127 && mask < my_netmask && (my_ip >> 24) != 10)
+        {
             my_ip = ip;
             my_netmask = mask;
             my_iface = current.ifa_name;

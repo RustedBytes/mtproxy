@@ -84,9 +84,7 @@ fn parse_option_arg_mode(arg: c_int) -> bool {
 }
 
 fn find_option_index_by_value(entries: &[ParseOptionEntry], value: c_int) -> Option<usize> {
-    entries
-        .iter()
-        .position(|entry| entry.vals.iter().any(|&v| v == value))
+    entries.iter().position(|entry| entry.vals.contains(&value))
 }
 
 fn find_option_index_by_name(entries: &[ParseOptionEntry], name: &str) -> Option<usize> {
@@ -648,8 +646,9 @@ pub unsafe extern "C" fn rust_sf_parse_engine_options_long(
     // SAFETY: engine_options globals are writable and arrays have fixed size.
     unsafe {
         engine_options_num = argc;
+        let engine_options_ptr = core::ptr::addr_of_mut!(engine_options).cast::<*mut c_char>();
         for i in 0..argc_usize {
-            engine_options[i] = *argv.add(i);
+            *engine_options_ptr.add(i) = *argv.add(i);
         }
     }
 

@@ -521,11 +521,11 @@ fn crypto_dh_is_good_rpc_dh_bin_impl(data: &[u8], prime_prefix: &[u8]) -> i32 {
     if data[..8].iter().all(|b| *b == 0) {
         return 0;
     }
-    for i in 0..8 {
-        if data[i] > prime_prefix[i] {
+    for (&data_byte, &prefix_byte) in data.iter().zip(prime_prefix.iter()).take(8) {
+        if data_byte > prefix_byte {
             return 0;
         }
-        if data[i] < prime_prefix[i] {
+        if data_byte < prefix_byte {
             return 1;
         }
     }
@@ -584,8 +584,8 @@ fn crypto_aes_create_keys_impl(
     str_len += 16;
 
     let first_len = str_len.min(temp_key.len());
-    for i in 0..first_len {
-        material[i] ^= temp_key[i];
+    for (dst, src) in material[..first_len].iter_mut().zip(temp_key.iter().take(first_len)) {
+        *dst ^= *src;
     }
     if temp_key.len() > first_len {
         material[first_len..temp_key.len()].copy_from_slice(&temp_key[first_len..]);
@@ -962,9 +962,7 @@ fn crypto_tls_generate_public_key_impl(out: &mut [u8; TLS_REQUEST_PUBLIC_KEY_BYT
     out[..TLS_REQUEST_PUBLIC_KEY_BYTES - num_size].fill(0);
     let bytes = x.as_biguint().to_bytes_be();
     out[TLS_REQUEST_PUBLIC_KEY_BYTES - num_size..].copy_from_slice(&bytes);
-    for i in 0..(TLS_REQUEST_PUBLIC_KEY_BYTES / 2) {
-        out.swap(i, TLS_REQUEST_PUBLIC_KEY_BYTES - 1 - i);
-    }
+    out.reverse();
     0
 }
 

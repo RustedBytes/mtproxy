@@ -40,8 +40,17 @@ const TL_ERROR_VALUE_NOT_IN_RANGE: c_int =
 const TL_ERROR_INTERNAL: c_int = mtproxy_core::runtime::config::tl_parse::TL_ERROR_INTERNAL;
 const TL_PARSE_ERROR_FALLBACK: &[u8] = b"TL parse error\0";
 
+#[inline]
+fn expected_query_header_message(is_answer: bool) -> &'static str {
+    if is_answer {
+        "Expected RPC_REQ_ERROR or RPC_REQ_RESULT"
+    } else {
+        "Expected RPC_INVOKE_REQ or RPC_INVOKE_KPHP_REQ"
+    }
+}
+
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 pub struct RawMessage {
     first: *mut c_void,
     last: *mut c_void,
@@ -179,12 +188,12 @@ unsafe fn out_state_mut<'a>(state: *mut TlOutState) -> Option<&'a mut TlOutState
 }
 
 #[inline]
-unsafe fn in_methods_ref<'a>(state: &'a TlInState) -> Option<&'a TlInMethods> {
+unsafe fn in_methods_ref(state: &TlInState) -> Option<&TlInMethods> {
     unsafe { ref_from_ptr(state.in_methods) }
 }
 
 #[inline]
-unsafe fn out_methods_ref<'a>(state: &'a TlOutState) -> Option<&'a TlOutMethods> {
+unsafe fn out_methods_ref(state: &TlOutState) -> Option<&TlOutMethods> {
     unsafe { ref_from_ptr(state.out_methods) }
 }
 
@@ -306,14 +315,7 @@ unsafe extern "C" fn tl_raw_msg_store_read_back_nondestruct(
     buf: *mut c_void,
     len: c_int,
 ) {
-    let mut r = RawMessage {
-        first: ptr::null_mut(),
-        last: ptr::null_mut(),
-        total_bytes: 0,
-        magic: 0,
-        first_offset: 0,
-        last_offset: 0,
-    };
+    let mut r = RawMessage::default();
     rwm_clone(&mut r, out_raw(tlio_out));
     debug_assert!(rwm_fetch_data_back(&mut r, buf, len) == len);
     let _ = rwm_free(&mut r);
@@ -326,26 +328,12 @@ unsafe extern "C" fn tl_raw_msg_raw_msg_copy_through(
     advance: c_int,
 ) {
     if advance == 0 {
-        let mut r = RawMessage {
-            first: ptr::null_mut(),
-            last: ptr::null_mut(),
-            total_bytes: 0,
-            magic: 0,
-            first_offset: 0,
-            last_offset: 0,
-        };
+        let mut r = RawMessage::default();
         rwm_clone(&mut r, in_raw(tlio_in));
         let _ = rwm_trunc(&mut r, len);
         let _ = rwm_union(out_raw(tlio_out), &mut r);
     } else {
-        let mut r = RawMessage {
-            first: ptr::null_mut(),
-            last: ptr::null_mut(),
-            total_bytes: 0,
-            magic: 0,
-            first_offset: 0,
-            last_offset: 0,
-        };
+        let mut r = RawMessage::default();
         let _ = rwm_split_head(&mut r, in_raw(tlio_in), len);
         let _ = rwm_union(out_raw(tlio_out), &mut r);
         debug_assert!((*in_raw(tlio_in)).magic == RM_INIT_MAGIC);
@@ -666,6 +654,7 @@ unsafe fn tl_query_header_parse_impl(
     header: *mut TlQueryHeader,
     is_answer: bool,
 ) -> c_int {
+    let header_error_message = expected_query_header_message(is_answer);
     let Some(tlio_in_ref) = (unsafe { in_state_mut(tlio_in) }) else {
         return -1;
     };
@@ -683,44 +672,20 @@ unsafe fn tl_query_header_parse_impl(
     let total_unread = tlio_in_ref.in_remaining;
     let prepend = methods.prepend_bytes;
     if prepend > 0 && tl_in_skip(tlio_in, prepend) < 0 {
-        tl_set_error_once(
-            tlio_in,
-            TL_ERROR_HEADER,
-            if is_answer {
-                "Expected RPC_REQ_ERROR or RPC_REQ_RESULT"
-            } else {
-                "Expected RPC_INVOKE_REQ or RPC_INVOKE_KPHP_REQ"
-            },
-        );
+        tl_set_error_once(tlio_in, TL_ERROR_HEADER, header_error_message);
         return -1;
     }
 
     let unread = tlio_in_ref.in_remaining;
     if unread < 0 {
-        tl_set_error_once(
-            tlio_in,
-            TL_ERROR_HEADER,
-            if is_answer {
-                "Expected RPC_REQ_ERROR or RPC_REQ_RESULT"
-            } else {
-                "Expected RPC_INVOKE_REQ or RPC_INVOKE_KPHP_REQ"
-            },
-        );
+        tl_set_error_once(tlio_in, TL_ERROR_HEADER, header_error_message);
         return -1;
     }
     let unread_usize = usize::try_from(unread).unwrap_or(0);
     let mut buf = vec![0u8; unread_usize];
     if unread > 0 && tl_in_lookup_data(tlio_in, buf.as_mut_ptr().cast::<c_void>(), unread) != unread
     {
-        tl_set_error_once(
-            tlio_in,
-            TL_ERROR_HEADER,
-            if is_answer {
-                "Expected RPC_REQ_ERROR or RPC_REQ_RESULT"
-            } else {
-                "Expected RPC_INVOKE_REQ or RPC_INVOKE_KPHP_REQ"
-            },
-        );
+        tl_set_error_once(tlio_in, TL_ERROR_HEADER, header_error_message);
         return -1;
     }
 
@@ -739,15 +704,7 @@ unsafe fn tl_query_header_parse_impl(
 
     let consumed = c_int::try_from(parsed.consumed).unwrap_or(c_int::MAX);
     if consumed <= 0 || consumed > unread || tl_in_skip(tlio_in, consumed) < 0 {
-        tl_set_error_once(
-            tlio_in,
-            TL_ERROR_HEADER,
-            if is_answer {
-                "Expected RPC_REQ_ERROR or RPC_REQ_RESULT"
-            } else {
-                "Expected RPC_INVOKE_REQ or RPC_INVOKE_KPHP_REQ"
-            },
-        );
+        tl_set_error_once(tlio_in, TL_ERROR_HEADER, header_error_message);
         return -1;
     }
 
@@ -886,15 +843,14 @@ unsafe fn tl_out_store_string0(tlio_out: *mut TlOutState, s: *const i8) -> c_int
     if tl_out_store_string_len(tlio_out, len) < 0 {
         return -1;
     }
-    if len > 0 {
-        if tl_out_store_raw_data(
+    if len > 0
+        && tl_out_store_raw_data(
             tlio_out,
             s.cast::<c_void>(),
             c_int::try_from(len).unwrap_or(c_int::MAX),
         ) < 0
-        {
-            return -1;
-        }
+    {
+        return -1;
     }
     tl_out_store_pad(tlio_out)
 }
@@ -2105,14 +2061,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tl_store_raw_msg(
     if dup == 0 {
         store_raw_msg(tlio_out, raw_ref as *mut RawMessage);
     } else {
-        let mut cloned = RawMessage {
-            first: ptr::null_mut(),
-            last: ptr::null_mut(),
-            total_bytes: 0,
-            magic: 0,
-            first_offset: 0,
-            last_offset: 0,
-        };
+        let mut cloned = RawMessage::default();
         rwm_clone(&mut cloned, raw_ref as *mut RawMessage);
         store_raw_msg(tlio_out, &mut cloned);
     }

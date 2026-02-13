@@ -404,11 +404,9 @@ fn spawn_workers(worker_processes: u32) -> Result<(), String> {
 fn run_with_parsed_args(args: Args) -> i32 {
     // Display bootstrap information
     let signature = mtproxy_core::bootstrap_signature();
-    let remaining_c_units = mtproxy_core::step15::step15_remaining_c_units();
 
     if args.verbosity > 0 {
         eprintln!("{signature}");
-        eprintln!("Step 15 migration status: {remaining_c_units} C units remaining\n");
     }
 
     // Validate arguments
