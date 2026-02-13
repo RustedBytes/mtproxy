@@ -260,7 +260,10 @@ pub(super) fn queue_for_subclass(
     Some(map.entry(key).or_insert_with(alloc_queue).clone())
 }
 
-pub(super) fn permit_pool_for_class(bridge: &TokioJobsBridge, job_class: i32) -> Option<Arc<ClassPermitPool>> {
+pub(super) fn permit_pool_for_class(
+    bridge: &TokioJobsBridge,
+    job_class: i32,
+) -> Option<Arc<ClassPermitPool>> {
     class_index(job_class)?;
     let mut map = match bridge.subclass_permits.lock() {
         Ok(guard) => guard,
@@ -273,7 +276,10 @@ pub(super) fn permit_pool_for_class(bridge: &TokioJobsBridge, job_class: i32) ->
     )
 }
 
-pub(super) fn alloc_user_queue(map: &Mutex<HashMap<i32, Arc<ClassQueue>>>, bridge: &TokioJobsBridge) -> i32 {
+pub(super) fn alloc_user_queue(
+    map: &Mutex<HashMap<i32, Arc<ClassQueue>>>,
+    bridge: &TokioJobsBridge,
+) -> i32 {
     let queue_id = bridge.next_queue_id.fetch_add(1, Ordering::Relaxed);
     if queue_id <= 0 {
         return -3;

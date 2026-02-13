@@ -69,9 +69,7 @@ void syntax(const char *msg, ...) {
   fprintf(stderr, " near %.*s%s\n", len, cfg_cur, len >= 20 ? " ..." : "");
 }
 
-int expect_lexem(int lexem) {
-  return mtproxy_ffi_cfg_expect_lexem(lexem);
-}
+int expect_lexem(int lexem) { return mtproxy_ffi_cfg_expect_lexem(lexem); }
 
 int expect_word(const char *name, int len) {
   return mtproxy_ffi_cfg_expect_word(name, len);
@@ -121,8 +119,8 @@ void md5_hex_config(char *out) {
 }
 
 void close_config(int *fd) {
-  int rc = mtproxy_ffi_cfg_close_config(&config_buff, &config_name,
-                                        &config_bytes, &cfg_start, &cfg_end,
-                                        &cfg_cur, fd);
+  int rc =
+      mtproxy_ffi_cfg_close_config(&config_buff, &config_name, &config_bytes,
+                                   &cfg_start, &cfg_end, &cfg_cur, fd);
   assert(rc == 0);
 }

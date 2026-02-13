@@ -1,5 +1,7 @@
+pub(super) use crate::ffi_util::{
+    mut_ref_from_ptr, mut_slice_from_ptr, ref_from_ptr, slice_from_ptr,
+};
 use crate::*;
-pub(super) use crate::ffi_util::{mut_ref_from_ptr, mut_slice_from_ptr, ref_from_ptr, slice_from_ptr};
 
 pub(super) const AES_CREATE_KEYS_MAX_STR_LEN: usize =
     16 + 16 + 4 + 4 + 2 + 6 + 4 + 2 + MAX_PWD_LEN + 16 + 16 + 4 + (16 * 2) + 256;
@@ -438,7 +440,10 @@ pub(super) fn crypto_rand_fill(out: &mut [u8]) -> bool {
     rustls_default_provider().secure_random.fill(out).is_ok()
 }
 
-pub(super) fn crypto_dh_first_round_impl(g_a: &mut [u8; DH_KEY_BYTES], a_out: &mut [u8; DH_KEY_BYTES]) -> i32 {
+pub(super) fn crypto_dh_first_round_impl(
+    g_a: &mut [u8; DH_KEY_BYTES],
+    a_out: &mut [u8; DH_KEY_BYTES],
+) -> i32 {
     loop {
         if !crypto_rand_fill(a_out) {
             return -1;
@@ -478,7 +483,9 @@ pub(super) fn tls_get_double_x(x: &BnOwned, modulus: &BnOwned) -> Option<BnOwned
     Some(BnOwned(mod_mul(&numerator, &denominator_inv, p)))
 }
 
-pub(super) fn crypto_tls_generate_public_key_impl(out: &mut [u8; TLS_REQUEST_PUBLIC_KEY_BYTES]) -> i32 {
+pub(super) fn crypto_tls_generate_public_key_impl(
+    out: &mut [u8; TLS_REQUEST_PUBLIC_KEY_BYTES],
+) -> i32 {
     let Some(modulus) = BnOwned::from_hex_nul(TLS_X25519_MOD_HEX) else {
         return -1;
     };

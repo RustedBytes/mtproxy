@@ -495,7 +495,11 @@ pub unsafe extern "C" fn mtproxy_ffi_cfg_getint_global() -> i64 {
     let _ = unsafe { mtproxy_ffi_cfg_skspc_global() };
     let mut out = MtproxyCfgIntResult::default();
     let rc = unsafe {
-        mtproxy_ffi_cfg_getint(cfg_cur.cast_const(), cfg_remaining_len_global(), &raw mut out)
+        mtproxy_ffi_cfg_getint(
+            cfg_cur.cast_const(),
+            cfg_remaining_len_global(),
+            &raw mut out,
+        )
     };
     if rc != 0 {
         return 0;
@@ -542,7 +546,11 @@ pub unsafe extern "C" fn mtproxy_ffi_cfg_getint_zero_global() -> i64 {
     let _ = unsafe { mtproxy_ffi_cfg_skspc_global() };
     let mut out = MtproxyCfgIntResult::default();
     let rc = unsafe {
-        mtproxy_ffi_cfg_getint_zero(cfg_cur.cast_const(), cfg_remaining_len_global(), &raw mut out)
+        mtproxy_ffi_cfg_getint_zero(
+            cfg_cur.cast_const(),
+            cfg_remaining_len_global(),
+            &raw mut out,
+        )
     };
     if rc != 0 {
         return -1;

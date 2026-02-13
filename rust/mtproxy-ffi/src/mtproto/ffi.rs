@@ -23,8 +23,6 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_proxy_usage(program_name: *const c_
     0
 }
 
-
-
 /// Runs the Rust MTProxy entrypoint using C `argc`/`argv`.
 ///
 /// # Safety
@@ -40,8 +38,6 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_proxy_main(
     };
     mtproxy_bin::entrypoint::run_from_argv(&args)
 }
-
-
 
 /// Clears runtime config snapshot and optionally destroys target objects.
 ///
@@ -81,8 +77,6 @@ pub unsafe extern "C" fn clear_config(mc: *mut MtproxyMfConfig, do_destroy_targe
     mc_ref.auth_clusters = 0;
     mc_ref.auth_stats = MtproxyMfGroupStats { tot_clusters: 0 };
 }
-
-
 
 /// Resolves and returns auth cluster by `cluster_id`.
 ///
@@ -142,8 +136,6 @@ pub unsafe extern "C" fn mf_cluster_lookup(
     }
 }
 
-
-
 /// Resolves target hostname from parser cursor and stores it into `default_cfg_ct`.
 ///
 /// # Safety
@@ -187,7 +179,6 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_resolve_default_target_from_cfg
     -1
 }
 
-
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_set_default_target_endpoint(
     port: u16,
@@ -202,8 +193,6 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_set_default_target_endpoint(
         default_cfg_ct.reconnect_timeout = reconnect_timeout;
     }
 }
-
-
 
 /// Creates one target from `default_cfg_ct` and stores it into config slots.
 ///
@@ -247,13 +236,10 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_create_target(
     }
 }
 
-
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_now_or_time() -> c_int {
     unsafe { time(core::ptr::null_mut()) as c_int }
 }
-
-
 
 /// Parses dotted IPv4 text into host-order integer (`a<<24|b<<16|c<<8|d`).
 ///
@@ -274,8 +260,6 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_parse_text_ipv4(
     *out_ref = parsed;
     0
 }
-
-
 
 /// Parses textual IPv6 and writes 16-byte network-order output.
 ///
@@ -303,8 +287,6 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_parse_text_ipv6(
     *out_consumed_ref = consumed;
     0
 }
-
-
 
 /// Classifies MTProto packet shape from fixed unencrypted header bytes.
 ///
@@ -348,8 +330,6 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_inspect_packet_header(
     0
 }
 
-
-
 /// Parses RPC client packet TL envelope for `mtproto-proxy` dispatch.
 ///
 /// # Safety
@@ -374,8 +354,6 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_parse_client_packet(
     0
 }
 
-
-
 /// Parses mtfront function envelope from unread TL bytes.
 ///
 /// # Safety
@@ -397,8 +375,6 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_parse_function(
     mtproto_parse_function_impl(bytes, actor_id, out_ref);
     0
 }
-
-
 
 /// Returns scalar config state initialized by `preinit_config()`.
 ///
@@ -435,8 +411,6 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_preinit(
     };
     MTPROTO_CFG_PREINIT_OK
 }
-
-
 
 /// Decides cluster-apply action for `proxy` / `proxy_for` directives.
 ///
@@ -483,8 +457,6 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_decide_cluster_apply(
     }
 }
 
-
-
 /// Parses one extended lexer token from `mtproto-config`.
 ///
 /// # Safety
@@ -509,8 +481,6 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_getlex_ext(
     };
     MTPROTO_CFG_GETLEX_EXT_OK
 }
-
-
 
 /// Parses one directive token and scalar argument from `mtproto-config`.
 ///
@@ -546,8 +516,6 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_scan_directive_token(
         Err(err) => mtproto_cfg_scan_directive_token_err_to_code(err),
     }
 }
-
-
 
 /// Parses one directive step from `mtproto-config` control flow.
 ///
@@ -615,8 +583,6 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_parse_directive_step(
         Err(err) => mtproto_cfg_parse_directive_step_err_to_code(err),
     }
 }
-
-
 
 /// Parses proxy target payload (`host:port;`) and computes cluster/apply mutation.
 ///
@@ -753,8 +719,6 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_parse_proxy_target_step(
         Err(err) => mtproto_cfg_parse_proxy_target_step_err_to_code(err),
     }
 }
-
-
 
 /// Executes one full `parse_config()` directive pass and returns proxy side-effect plan.
 ///
@@ -930,8 +894,6 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_parse_full_pass(
     }
 }
 
-
-
 /// Parses a required trailing semicolon from `mtproto-config`.
 ///
 /// # Safety
@@ -962,8 +924,6 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_expect_semicolon(
         Err(_) => MTPROTO_CFG_EXPECT_SEMICOLON_ERR_INVALID_ARGS,
     }
 }
-
-
 
 /// Looks up a cluster index by `cluster_id` mirroring `mf_cluster_lookup()`.
 ///
@@ -1017,8 +977,6 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_lookup_cluster_index(
     MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_OK
 }
 
-
-
 /// Finalizes parse-loop invariants and resolves optional default-cluster index.
 ///
 /// # Safety
@@ -1066,8 +1024,6 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_finalize(
         Err(err) => mtproto_cfg_finalize_err_to_code(err),
     }
 }
-
-
 
 /// Full `parse_config()` runtime path extracted from C implementation.
 ///
@@ -1301,8 +1257,6 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_parse_config(
     unsafe { free(actions.cast()) };
     res
 }
-
-
 
 /// Full `do_reload_config()` runtime path extracted from C implementation.
 ///

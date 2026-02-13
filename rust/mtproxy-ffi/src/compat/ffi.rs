@@ -10,8 +10,6 @@ pub extern "C" fn mtproxy_ffi_api_version() -> u32 {
     crate::FFI_API_VERSION
 }
 
-
-
 /// Performs a minimal startup compatibility handshake.
 ///
 /// Return codes:
@@ -25,8 +23,6 @@ pub extern "C" fn mtproxy_ffi_startup_handshake(expected_api_version: u32) -> i3
         -1
     }
 }
-
-
 
 /// Returns extracted Step 9 boundary contract for mp-queue/jobs migration.
 ///
@@ -49,8 +45,6 @@ pub unsafe extern "C" fn mtproxy_ffi_get_concurrency_boundary(
     0
 }
 
-
-
 /// Returns extracted Step 10 boundary contract for net-core migration.
 ///
 /// # Safety
@@ -71,8 +65,6 @@ pub unsafe extern "C" fn mtproxy_ffi_get_network_boundary(out: *mut MtproxyNetwo
     };
     0
 }
-
-
 
 /// Returns extracted Step 11 boundary contract for RPC/TCP migration.
 ///
@@ -97,8 +89,6 @@ pub unsafe extern "C" fn mtproxy_ffi_get_rpc_boundary(out: *mut MtproxyRpcBounda
     0
 }
 
-
-
 /// Returns extracted Step 12 boundary contract for crypto integration migration.
 ///
 /// # Safety
@@ -119,8 +109,6 @@ pub unsafe extern "C" fn mtproxy_ffi_get_crypto_boundary(out: *mut MtproxyCrypto
     };
     0
 }
-
-
 
 /// Returns extracted Step 13 boundary contract for engine/mtproto app migration.
 ///
@@ -143,15 +131,11 @@ pub unsafe extern "C" fn mtproxy_ffi_get_application_boundary(
     0
 }
 
-
-
 /// Converts net event flags into Linux epoll flags.
 #[no_mangle]
 pub extern "C" fn mtproxy_ffi_net_epoll_conv_flags(flags: i32) -> i32 {
     net_epoll_conv_flags_impl(flags)
 }
-
-
 
 /// Reloads `/etc/hosts` into resolver cache and mirrors `kdb_load_hosts()`.
 #[no_mangle]
@@ -159,15 +143,11 @@ pub extern "C" fn mtproxy_ffi_resolver_kdb_load_hosts() -> i32 {
     resolver_kdb_load_hosts_impl()
 }
 
-
-
 /// Returns current resolver cache load state (`kdb_hosts_loaded`).
 #[no_mangle]
 pub extern "C" fn mtproxy_ffi_resolver_kdb_hosts_loaded() -> i32 {
     resolver_kdb_hosts_loaded_impl()
 }
-
-
 
 /// Returns lookup plan for `kdb_gethostbyname()`.
 ///
@@ -196,23 +176,17 @@ pub unsafe extern "C" fn mtproxy_ffi_resolver_gethostbyname_plan(
     0
 }
 
-
-
 /// Converts Linux epoll flags into net event flags.
 #[no_mangle]
 pub extern "C" fn mtproxy_ffi_net_epoll_unconv_flags(epoll_flags: i32) -> i32 {
     net_epoll_unconv_flags_impl(epoll_flags)
 }
 
-
-
 /// Computes timeout in milliseconds until wakeup.
 #[no_mangle]
 pub extern "C" fn mtproxy_ffi_net_timers_wait_msec(wakeup_time: f64, now: f64) -> i32 {
     net_timers_wait_msec_impl(wakeup_time, now)
 }
-
-
 
 /// Selects best key signature from main and extra key list.
 ///
@@ -245,23 +219,17 @@ pub unsafe extern "C" fn mtproxy_ffi_net_select_best_key_signature(
     net_select_best_key_signature_impl(main_secret_len, main_key_signature, key_signature, extra)
 }
 
-
-
 /// Returns whether a connection is active (`C_CONNECTED && !C_READY_PENDING`).
 #[no_mangle]
 pub extern "C" fn mtproxy_ffi_net_connection_is_active(flags: i32) -> i32 {
     net_connection_is_active_impl(flags)
 }
 
-
-
 /// Computes `compute_conn_events` result from connection flags.
 #[no_mangle]
 pub extern "C" fn mtproxy_ffi_net_compute_conn_events(flags: i32, use_epollet: i32) -> i32 {
     net_compute_conn_events_impl(flags, use_epollet)
 }
-
-
 
 /// Adds one NAT rule from `--nat-info` payload (`<local-addr>:<global-addr>`).
 ///
@@ -281,15 +249,11 @@ pub unsafe extern "C" fn mtproxy_ffi_net_add_nat_info(rule_text: *const c_char) 
     net_add_nat_info_impl(rule_text)
 }
 
-
-
 /// Applies NAT translation for IPv4 host-order address.
 #[no_mangle]
 pub extern "C" fn mtproxy_ffi_net_translate_ip(local_ip: u32) -> u32 {
     net_translate_ip_impl(local_ip)
 }
-
-
 
 /// Classifies first TL-string marker byte from `net-msg.c`.
 #[no_mangle]
@@ -297,15 +261,11 @@ pub extern "C" fn mtproxy_ffi_net_msg_tl_marker_kind(marker: i32) -> i32 {
     net_msg_tl_marker_kind_impl(marker)
 }
 
-
-
 /// Computes TL-string padding bytes (`(-len) & 3`).
 #[no_mangle]
 pub extern "C" fn mtproxy_ffi_net_msg_tl_padding(total_bytes: i32) -> i32 {
     net_msg_tl_padding_impl(total_bytes)
 }
-
-
 
 /// Computes effective byte count for `rwm_encrypt_decrypt_to`.
 #[no_mangle]
@@ -317,8 +277,6 @@ pub extern "C" fn mtproxy_ffi_net_msg_encrypt_decrypt_effective_bytes(
     net_msg_encrypt_decrypt_effective_bytes_impl(requested_bytes, total_bytes, block_size)
 }
 
-
-
 /// Computes net-stats recent idle percent helper.
 #[no_mangle]
 pub extern "C" fn mtproxy_ffi_net_stats_recent_idle_percent(
@@ -327,8 +285,6 @@ pub extern "C" fn mtproxy_ffi_net_stats_recent_idle_percent(
 ) -> c_double {
     net_stats_recent_idle_percent_impl(a_idle_time, a_idle_quotient)
 }
-
-
 
 /// Computes net-stats average idle percent helper.
 #[no_mangle]
@@ -339,15 +295,11 @@ pub extern "C" fn mtproxy_ffi_net_stats_average_idle_percent(
     net_stats_average_idle_percent_impl(tot_idle_time, uptime)
 }
 
-
-
 /// Returns AES-aligned byte count for `net-tcp-connections` block ciphers.
 #[no_mangle]
 pub extern "C" fn mtproxy_ffi_net_tcp_aes_aligned_len(total_bytes: i32) -> i32 {
     net_tcp_aes_aligned_len_impl(total_bytes)
 }
-
-
 
 /// Returns pending AES block padding bytes for `net-tcp-connections`.
 #[no_mangle]
@@ -355,23 +307,17 @@ pub extern "C" fn mtproxy_ffi_net_tcp_aes_needed_output_bytes(total_bytes: i32) 
     net_tcp_aes_needed_output_bytes_impl(total_bytes)
 }
 
-
-
 /// Computes CTR encrypt chunk length (TLS-aware cap at 1425).
 #[no_mangle]
 pub extern "C" fn mtproxy_ffi_net_tcp_tls_encrypt_chunk_len(total_bytes: i32, is_tls: i32) -> i32 {
     net_tcp_tls_encrypt_chunk_len_impl(total_bytes, is_tls)
 }
 
-
-
 /// Returns bytes still required to parse a TLS record header.
 #[no_mangle]
 pub extern "C" fn mtproxy_ffi_net_tcp_tls_header_needed_bytes(available: i32) -> i32 {
     net_tcp_tls_header_needed_bytes_impl(available)
 }
-
-
 
 /// Parses TLS record header (`17 03 03 xx xx`) and outputs payload length.
 ///
@@ -397,8 +343,6 @@ pub unsafe extern "C" fn mtproxy_ffi_net_tcp_tls_parse_header(
     }
 }
 
-
-
 /// Clamps decrypt chunk length to remaining TLS payload bytes.
 #[no_mangle]
 pub extern "C" fn mtproxy_ffi_net_tcp_tls_decrypt_chunk_len(
@@ -407,8 +351,6 @@ pub extern "C" fn mtproxy_ffi_net_tcp_tls_decrypt_chunk_len(
 ) -> i32 {
     net_tcp_tls_decrypt_chunk_len_impl(available, left_tls_packet_length)
 }
-
-
 
 /// Computes byte count to consume when `skip_bytes < 0`.
 #[no_mangle]
@@ -419,8 +361,6 @@ pub extern "C" fn mtproxy_ffi_net_tcp_reader_negative_skip_take(
     net_tcp_reader_negative_skip_take_impl(skip_bytes, available_bytes)
 }
 
-
-
 /// Computes next negative skip state after consuming bytes.
 #[no_mangle]
 pub extern "C" fn mtproxy_ffi_net_tcp_reader_negative_skip_next(
@@ -430,8 +370,6 @@ pub extern "C" fn mtproxy_ffi_net_tcp_reader_negative_skip_next(
     net_tcp_reader_negative_skip_next_impl(skip_bytes, taken_bytes)
 }
 
-
-
 /// Computes next positive skip state after receiving bytes.
 #[no_mangle]
 pub extern "C" fn mtproxy_ffi_net_tcp_reader_positive_skip_next(
@@ -440,8 +378,6 @@ pub extern "C" fn mtproxy_ffi_net_tcp_reader_positive_skip_next(
 ) -> i32 {
     net_tcp_reader_positive_skip_next_impl(skip_bytes, available_bytes)
 }
-
-
 
 /// Converts `parse_execute` result into updated `skip_bytes` when required.
 ///
@@ -471,15 +407,11 @@ pub unsafe extern "C" fn mtproxy_ffi_net_tcp_reader_skip_from_parse_result(
     }
 }
 
-
-
 /// Classifies reader precheck outcome from connection flags.
 #[no_mangle]
 pub extern "C" fn mtproxy_ffi_net_tcp_reader_precheck_result(flags: i32) -> i32 {
     net_tcp_reader_precheck_result_impl(flags)
 }
-
-
 
 /// Evaluates the main reader-loop continuation guard.
 #[no_mangle]
@@ -490,8 +422,6 @@ pub extern "C" fn mtproxy_ffi_net_tcp_reader_should_continue(
 ) -> i32 {
     net_tcp_reader_should_continue_impl(skip_bytes, flags, status_is_conn_error)
 }
-
-
 
 /// Computes proxy-domain hash bucket index (`mod 257`).
 ///
@@ -514,8 +444,6 @@ pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_domain_bucket_index(
     net_tcp_rpc_ext_domain_bucket_index_impl(domain)
 }
 
-
-
 /// Computes 16-byte client-random cache hash bucket index (`14` bits).
 ///
 /// # Safety
@@ -529,8 +457,6 @@ pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_client_random_bucket_index(
     };
     net_tcp_rpc_ext_client_random_bucket_index_impl(&random_buf)
 }
-
-
 
 /// Selects server-hello encrypted-size profile from probe stats.
 ///
@@ -560,8 +486,6 @@ pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_select_server_hello_profile
     *out_profile_ref = profile;
     0
 }
-
-
 
 /// Runs one net-thread notification event via Rust dispatcher.
 ///
@@ -614,8 +538,6 @@ pub unsafe extern "C" fn mtproxy_ffi_net_thread_run_notification_event(
     )
 }
 
-
-
 /// Returns HTTP status text and normalizes unknown status code to `500`.
 ///
 /// # Safety
@@ -630,8 +552,6 @@ pub unsafe extern "C" fn mtproxy_ffi_net_http_error_msg_text(code: *mut i32) -> 
     *code_ref = normalized_code;
     message_ptr
 }
-
-
 
 /// Formats unix time as legacy HTTP date (`29` bytes, no trailing NUL required).
 ///
@@ -660,8 +580,6 @@ pub unsafe extern "C" fn mtproxy_ffi_net_http_gen_date(
     0
 }
 
-
-
 /// Parses legacy HTTP date into unix time.
 ///
 /// # Safety
@@ -689,8 +607,6 @@ pub unsafe extern "C" fn mtproxy_ffi_net_http_gen_time(
         Err(code) => code,
     }
 }
-
-
 
 /// Extracts one HTTP header value from raw header block.
 ///
@@ -740,8 +656,6 @@ pub unsafe extern "C" fn mtproxy_ffi_net_http_get_header(
     net_http_get_header_impl(headers, out, name)
 }
 
-
-
 /// Selects message-buffer size-class index matching C allocation policy.
 ///
 /// # Safety
@@ -763,8 +677,6 @@ pub unsafe extern "C" fn mtproxy_ffi_msg_buffers_pick_size_index(
     };
     msg_buffers_pick_size_index_impl(sizes, size_hint)
 }
-
-
 
 /// Encodes compact/medium tcp-rpc length prefix exactly like C path.
 ///
@@ -789,8 +701,6 @@ pub unsafe extern "C" fn mtproxy_ffi_tcp_rpc_encode_compact_header(
     0
 }
 
-
-
 /// Classifies packet length for non-compact tcp-rpc client parser path.
 #[no_mangle]
 pub extern "C" fn mtproxy_ffi_tcp_rpc_client_packet_len_state(
@@ -800,15 +710,11 @@ pub extern "C" fn mtproxy_ffi_tcp_rpc_client_packet_len_state(
     tcp_rpc_client_packet_len_state_impl(packet_len, max_packet_len)
 }
 
-
-
 /// Returns `1` when tcp-rpc server packet header is malformed before fallback.
 #[no_mangle]
 pub extern "C" fn mtproxy_ffi_tcp_rpc_server_packet_header_malformed(packet_len: i32) -> i32 {
     tcp_rpc_server_packet_header_malformed_impl(packet_len)
 }
-
-
 
 /// Classifies packet length for non-compact tcp-rpc server parser path.
 #[no_mangle]
@@ -818,8 +724,6 @@ pub extern "C" fn mtproxy_ffi_tcp_rpc_server_packet_len_state(
 ) -> i32 {
     tcp_rpc_server_packet_len_state_impl(packet_len, max_packet_len)
 }
-
-
 
 /// Normalizes rpc-target PID (`ip=0` -> `default_ip`) to match C behavior.
 ///
@@ -837,15 +741,11 @@ pub unsafe extern "C" fn mtproxy_ffi_rpc_target_normalize_pid(
     0
 }
 
-
-
 /// Returns default query-type mask for `engine-rpc-common` trivial handlers.
 #[no_mangle]
 pub extern "C" fn mtproxy_ffi_engine_rpc_common_default_query_type_mask() -> i32 {
     engine_rpc_common_default_query_type_mask_impl()
 }
-
-
 
 /// Returns default parser dispatch decision for `(actor_id, op)` tuple.
 ///
@@ -861,15 +761,11 @@ pub extern "C" fn mtproxy_ffi_engine_rpc_common_default_parse_decision(
     engine_rpc_common_default_parse_decision_impl(actor_id, op)
 }
 
-
-
 /// Extracts query-type id from high bits of query `qid`.
 #[no_mangle]
 pub extern "C" fn mtproxy_ffi_engine_rpc_query_result_type_id_from_qid(qid: i64) -> i32 {
     engine_rpc_query_result_type_id_from_qid_impl(qid)
 }
-
-
 
 /// Decides query-result routing behavior (`ignore` / `dispatch` / `skip`).
 #[no_mangle]
@@ -880,15 +776,11 @@ pub extern "C" fn mtproxy_ffi_engine_rpc_query_result_dispatch_decision(
     engine_rpc_query_result_dispatch_decision_impl(has_table, has_handler)
 }
 
-
-
 /// Decides whether action-extra should be duplicated.
 #[no_mangle]
 pub extern "C" fn mtproxy_ffi_engine_rpc_need_dup(flags: i32) -> i32 {
     engine_rpc_need_dup_impl(flags)
 }
-
-
 
 /// Classifies `query_job_run` flow by op and custom-op availability.
 #[no_mangle]
@@ -899,23 +791,17 @@ pub extern "C" fn mtproxy_ffi_engine_rpc_query_job_dispatch_decision(
     engine_rpc_query_job_dispatch_decision_impl(op, has_custom_tree)
 }
 
-
-
 /// Returns whether tcp-rpc op should keep connection reference.
 #[no_mangle]
 pub extern "C" fn mtproxy_ffi_engine_rpc_tcp_should_hold_conn(op: i32) -> i32 {
     engine_rpc_tcp_should_hold_conn_impl(op)
 }
 
-
-
 /// Returns default `engine-net` port modulo selector (`-1`).
 #[no_mangle]
 pub extern "C" fn mtproxy_ffi_engine_net_default_port_mod() -> i32 {
     engine_net_default_port_mod_impl()
 }
-
-
 
 /// Runs Rust `try_open_port_range` selector with C callback opening ports.
 ///
@@ -965,8 +851,6 @@ pub unsafe extern "C" fn mtproxy_ffi_engine_net_try_open_port_range(
         }
     }
 }
-
-
 
 /// Runs Rust `engine_do_open_port` privileged pre-open planning with C callback.
 ///
@@ -1019,15 +903,11 @@ pub unsafe extern "C" fn mtproxy_ffi_engine_net_open_privileged_port(
     }
 }
 
-
-
 /// Marks one engine signal as pending.
 #[no_mangle]
 pub extern "C" fn mtproxy_ffi_engine_signal_set_pending(sig: i32) {
     engine_signal_set_pending_impl(sig);
 }
-
-
 
 /// Checks if an engine signal is currently pending (`1` / `0`).
 #[no_mangle]
@@ -1035,23 +915,17 @@ pub extern "C" fn mtproxy_ffi_engine_signal_check_pending(sig: i32) -> i32 {
     engine_signal_check_pending_impl(sig)
 }
 
-
-
 /// Checks and clears one pending engine signal (`1` / `0`).
 #[no_mangle]
 pub extern "C" fn mtproxy_ffi_engine_signal_check_pending_and_clear(sig: i32) -> i32 {
     engine_signal_check_pending_and_clear_impl(sig)
 }
 
-
-
 /// Reports whether interrupt signals are pending (`SIGINT`/`SIGTERM`).
 #[no_mangle]
 pub extern "C" fn mtproxy_ffi_engine_interrupt_signal_raised() -> i32 {
     engine_interrupt_signal_raised_impl()
 }
-
-
 
 /// Drains pending engine signals constrained by `allowed_signals`.
 #[no_mangle]
@@ -1063,23 +937,17 @@ pub extern "C" fn mtproxy_ffi_engine_process_signals_allowed(
     engine_process_signals_allowed_impl(allowed_signals, dispatch, dispatch_ctx)
 }
 
-
-
 /// Computes `engine-rpc` result flags normalization (`old_flags & 0xffff`).
 #[no_mangle]
 pub extern "C" fn mtproxy_ffi_engine_rpc_result_new_flags(old_flags: i32) -> i32 {
     engine_rpc_result_new_flags_impl(old_flags)
 }
 
-
-
 /// Computes `engine-rpc` result header length from flags.
 #[no_mangle]
 pub extern "C" fn mtproxy_ffi_engine_rpc_result_header_len(flags: i32) -> i32 {
     engine_rpc_result_header_len_impl(flags)
 }
-
-
 
 /// Computes mtproto external-connection hash bucket.
 #[no_mangle]
@@ -1090,8 +958,6 @@ pub extern "C" fn mtproxy_ffi_mtproto_ext_conn_hash(
 ) -> i32 {
     mtproto_ext_conn_hash_impl(in_fd, in_conn_id, hash_shift)
 }
-
-
 
 /// Computes mtproto connection tag (`1 + (generation & 0xffffff)`).
 #[no_mangle]

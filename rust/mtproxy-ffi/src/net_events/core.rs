@@ -112,7 +112,8 @@ unsafe extern "C" {
 }
 
 pub(super) static mut EV_TIMESTAMP: c_longlong = 0;
-pub(super) static mut EV_HEAP: [*mut EventDescr; MAX_EVENTS + 1] = [ptr::null_mut(); MAX_EVENTS + 1];
+pub(super) static mut EV_HEAP: [*mut EventDescr; MAX_EVENTS + 1] =
+    [ptr::null_mut(); MAX_EVENTS + 1];
 pub(super) static mut NEW_EV_LIST: [libc::epoll_event; MAX_EVENTS] =
     [libc::epoll_event { events: 0, u64: 0 }; MAX_EVENTS];
 
@@ -833,7 +834,11 @@ pub(super) unsafe fn server_socket_impl(
     socket_fd
 }
 
-pub(super) unsafe fn client_socket_impl(in_addr: libc::in_addr_t, port: c_int, mode: c_int) -> c_int {
+pub(super) unsafe fn client_socket_impl(
+    in_addr: libc::in_addr_t,
+    port: c_int,
+    mode: c_int,
+) -> c_int {
     if (mode & SM_IPV6) != 0 {
         return -1;
     }
@@ -953,7 +958,11 @@ pub(super) unsafe fn client_socket_impl(in_addr: libc::in_addr_t, port: c_int, m
     socket_fd
 }
 
-pub(super) unsafe fn client_socket_ipv6_impl(in6_addr_ptr: *const u8, port: c_int, mode: c_int) -> c_int {
+pub(super) unsafe fn client_socket_ipv6_impl(
+    in6_addr_ptr: *const u8,
+    port: c_int,
+    mode: c_int,
+) -> c_int {
     if (mode & SM_IPV6) == 0 {
         return -1;
     }
@@ -1306,4 +1315,3 @@ pub(super) unsafe fn show_ipv6_impl(ipv6: *const u8) -> *const c_char {
     SHOW_IPV6_OFFSET += written + 1;
     res.cast()
 }
-

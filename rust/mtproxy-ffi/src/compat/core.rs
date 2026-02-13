@@ -1,7 +1,7 @@
-use crate::*;
 pub(super) use crate::ffi_util::{
     copy_bytes, mut_ref_from_ptr, mut_slice_from_ptr, ref_from_ptr, slice_from_ptr,
 };
+use crate::*;
 use std::os::unix::fs::MetadataExt;
 
 /// Mirrors core API version for Rust callers.
@@ -117,7 +117,10 @@ pub(super) fn net_tcp_tls_parse_header_impl(header: &[u8; 5]) -> Result<i32, ()>
     mtproxy_core::runtime::net::tcp_connections::tls_header_payload_len(header).ok_or(())
 }
 
-pub(super) fn net_tcp_tls_decrypt_chunk_len_impl(available: i32, left_tls_packet_length: i32) -> i32 {
+pub(super) fn net_tcp_tls_decrypt_chunk_len_impl(
+    available: i32,
+    left_tls_packet_length: i32,
+) -> i32 {
     mtproxy_core::runtime::net::tcp_connections::tls_decrypt_chunk_len(
         available,
         left_tls_packet_length,
@@ -355,7 +358,10 @@ pub(super) fn engine_rpc_query_result_type_id_from_qid_impl(qid: i64) -> i32 {
     mtproxy_core::runtime::engine::rpc::query_result_type_id_from_qid(qid)
 }
 
-pub(super) fn engine_rpc_query_result_dispatch_decision_impl(has_table: i32, has_handler: i32) -> i32 {
+pub(super) fn engine_rpc_query_result_dispatch_decision_impl(
+    has_table: i32,
+    has_handler: i32,
+) -> i32 {
     match mtproxy_core::runtime::engine::rpc::query_result_dispatch_decision(
         has_table != 0,
         has_handler != 0,

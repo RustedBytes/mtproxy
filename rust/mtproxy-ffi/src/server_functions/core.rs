@@ -83,7 +83,10 @@ pub(super) fn parse_option_arg_mode(arg: c_int) -> bool {
     arg == NO_ARGUMENT || arg == REQUIRED_ARGUMENT || arg == OPTIONAL_ARGUMENT
 }
 
-pub(super) fn find_option_index_by_value(entries: &[ParseOptionEntry], value: c_int) -> Option<usize> {
+pub(super) fn find_option_index_by_value(
+    entries: &[ParseOptionEntry],
+    value: c_int,
+) -> Option<usize> {
     entries.iter().position(|entry| entry.vals.contains(&value))
 }
 
@@ -421,7 +424,12 @@ pub(super) fn parse_short_options(
     Ok(consumed_next)
 }
 
-pub(super) fn install_signal_handler(sig: c_int, handler: usize, with_siginfo: bool, fatal_on_fail: bool) {
+pub(super) fn install_signal_handler(
+    sig: c_int,
+    handler: usize,
+    with_siginfo: bool,
+    fatal_on_fail: bool,
+) {
     // SAFETY: zeroed sigaction is valid and then fully initialized.
     let mut action: libc::sigaction = unsafe { std::mem::zeroed() };
     action.sa_sigaction = handler;

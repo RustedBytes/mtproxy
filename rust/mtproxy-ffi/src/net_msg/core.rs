@@ -103,8 +103,10 @@ pub struct RawMessage {
     pub last_offset: c_int,
 }
 
-pub(super) type ProcessBlockFn = Option<unsafe extern "C" fn(*mut c_void, *const c_void, c_int) -> c_int>;
-pub(super) type TransformBlockFn = Option<unsafe extern "C" fn(*mut c_void, *mut c_void, c_int) -> c_int>;
+pub(super) type ProcessBlockFn =
+    Option<unsafe extern "C" fn(*mut c_void, *const c_void, c_int) -> c_int>;
+pub(super) type TransformBlockFn =
+    Option<unsafe extern "C" fn(*mut c_void, *mut c_void, c_int) -> c_int>;
 pub(super) type Crc32PartialFunc = Option<unsafe extern "C" fn(*const c_void, c_long, u32) -> u32>;
 
 unsafe extern "C" {
@@ -177,7 +179,6 @@ unsafe fn msg_buffer_decref(buffer: *mut MsgBuffer) {
 }
 
 unsafe fn msg_part_decref(mut mp: *mut MsgPart) -> c_int {
-
     let mut cnt = 0;
     while !mp.is_null() {
         check_msg_part_magic(mp);
@@ -751,7 +752,11 @@ pub(super) unsafe fn rwm_push_data_front_impl(
     r
 }
 
-pub(super) unsafe fn rwm_create_impl(raw: *mut RawMessage, data: *const c_void, alloc_bytes: c_int) -> c_int {
+pub(super) unsafe fn rwm_create_impl(
+    raw: *mut RawMessage,
+    data: *const c_void,
+    alloc_bytes: c_int,
+) -> c_int {
     RWM_TOTAL_MSGS.fetch_add(1, Ordering::Relaxed);
     ptr::write_bytes(raw.cast::<u8>(), 0, size_of::<RawMessage>());
     (*raw).magic = RM_INIT_MAGIC;
@@ -765,7 +770,10 @@ pub(super) unsafe fn rwm_create_impl(raw: *mut RawMessage, data: *const c_void, 
     )
 }
 
-pub(super) unsafe fn rwm_prepend_alloc_impl(raw: *mut RawMessage, alloc_bytes: c_int) -> *mut c_void {
+pub(super) unsafe fn rwm_prepend_alloc_impl(
+    raw: *mut RawMessage,
+    alloc_bytes: c_int,
+) -> *mut c_void {
     assert!((*raw).magic == RM_INIT_MAGIC);
     assert!(alloc_bytes >= 0);
     if alloc_bytes == 0 || alloc_bytes > MSG_STD_BUFFER {
@@ -835,7 +843,10 @@ pub(super) unsafe fn rwm_prepend_alloc_impl(raw: *mut RawMessage, alloc_bytes: c
         .cast::<c_void>()
 }
 
-pub(super) unsafe fn rwm_postpone_alloc_impl(raw: *mut RawMessage, alloc_bytes: c_int) -> *mut c_void {
+pub(super) unsafe fn rwm_postpone_alloc_impl(
+    raw: *mut RawMessage,
+    alloc_bytes: c_int,
+) -> *mut c_void {
     assert!((*raw).magic == RM_INIT_MAGIC);
     assert!(alloc_bytes >= 0);
     if alloc_bytes == 0 || alloc_bytes > MSG_STD_BUFFER {
@@ -1046,7 +1057,11 @@ pub(super) unsafe fn rwm_trunc_impl(raw: *mut RawMessage, len: c_int) -> c_int {
     len
 }
 
-pub(super) unsafe fn rwm_split_impl(raw: *mut RawMessage, tail: *mut RawMessage, mut bytes: c_int) -> c_int {
+pub(super) unsafe fn rwm_split_impl(
+    raw: *mut RawMessage,
+    tail: *mut RawMessage,
+    mut bytes: c_int,
+) -> c_int {
     assert!((*raw).magic == RM_INIT_MAGIC || (*raw).magic == RM_TMP_MAGIC);
     assert!(bytes >= 0);
 
@@ -1128,7 +1143,11 @@ pub(super) unsafe fn rwm_split_impl(raw: *mut RawMessage, tail: *mut RawMessage,
     0
 }
 
-pub(super) unsafe fn rwm_split_head_impl(head: *mut RawMessage, raw: *mut RawMessage, bytes: c_int) -> c_int {
+pub(super) unsafe fn rwm_split_head_impl(
+    head: *mut RawMessage,
+    raw: *mut RawMessage,
+    bytes: c_int,
+) -> c_int {
     assert!((*raw).magic == RM_INIT_MAGIC || (*raw).magic == RM_TMP_MAGIC);
     ptr::copy_nonoverlapping(raw, head, 1);
     rwm_split_impl(head, raw, bytes)
@@ -1649,7 +1668,11 @@ pub(super) unsafe fn rwm_custom_crc32_impl(
     !d.crc32
 }
 
-pub(super) unsafe fn rwm_fetch_data_impl(raw: *mut RawMessage, buf: *mut c_void, bytes: c_int) -> c_int {
+pub(super) unsafe fn rwm_fetch_data_impl(
+    raw: *mut RawMessage,
+    buf: *mut c_void,
+    bytes: c_int,
+) -> c_int {
     if !buf.is_null() {
         let mut out = buf.cast::<u8>();
         rwm_process_ex_impl(
@@ -1683,7 +1706,11 @@ pub(super) unsafe fn rwm_skip_data_impl(raw: *mut RawMessage, bytes: c_int) -> c
     )
 }
 
-pub(super) unsafe fn rwm_fetch_lookup_impl(raw: *mut RawMessage, buf: *mut c_void, bytes: c_int) -> c_int {
+pub(super) unsafe fn rwm_fetch_lookup_impl(
+    raw: *mut RawMessage,
+    buf: *mut c_void,
+    bytes: c_int,
+) -> c_int {
     if !buf.is_null() {
         let mut out = buf.cast::<u8>();
         rwm_process_ex_impl(
@@ -2081,4 +2108,3 @@ pub(super) unsafe fn rwm_encrypt_decrypt_to_impl(
     }
     r
 }
-

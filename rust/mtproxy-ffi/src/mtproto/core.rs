@@ -1,7 +1,12 @@
+pub(super) use crate::ffi_util::{
+    mut_ref_from_ptr, mut_slice_from_ptr, ref_from_ptr, slice_from_ptr,
+};
 use crate::*;
-pub(super) use crate::ffi_util::{mut_ref_from_ptr, mut_slice_from_ptr, ref_from_ptr, slice_from_ptr};
 
-pub(super) fn mtproto_proxy_collect_argv(argc: i32, argv: *const *const c_char) -> Option<Vec<String>> {
+pub(super) fn mtproto_proxy_collect_argv(
+    argc: i32,
+    argv: *const *const c_char,
+) -> Option<Vec<String>> {
     if argc < 0 {
         return None;
     }
@@ -37,7 +42,10 @@ pub(super) fn cfg_bytes_from_cstr(cur: *const c_char, len: usize) -> Option<&'st
 }
 
 #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-pub(super) fn copy_mtproto_parse_error_message(out: &mut MtproxyMtprotoParseFunctionResult, message: &str) {
+pub(super) fn copy_mtproto_parse_error_message(
+    out: &mut MtproxyMtprotoParseFunctionResult,
+    message: &str,
+) {
     let bytes = message.as_bytes();
     let cap = out.error.len().saturating_sub(1);
     let n = bytes.len().min(cap);
@@ -69,7 +77,10 @@ pub(super) fn mtproto_cfg_collect_auth_cluster_ids(
     bounded
 }
 
-pub(super) fn mtproto_cfg_default_cluster_index(mc: &MtproxyMfConfig, auth_clusters: usize) -> Option<usize> {
+pub(super) fn mtproto_cfg_default_cluster_index(
+    mc: &MtproxyMfConfig,
+    auth_clusters: usize,
+) -> Option<usize> {
     if mc.default_cluster.is_null() {
         return None;
     }
@@ -117,7 +128,10 @@ pub(super) fn mtproto_cfg_clear_cluster(
 /// Calls C runtime `time(0)` via FFI.
 #[allow(clippy::cast_possible_truncation)]
 
-pub(super) fn mtproto_parse_client_packet_impl(data: &[u8], out: &mut MtproxyMtprotoClientPacketParseResult) {
+pub(super) fn mtproto_parse_client_packet_impl(
+    data: &[u8],
+    out: &mut MtproxyMtprotoClientPacketParseResult,
+) {
     use mtproxy_core::runtime::mtproto::proxy::RpcClientPacket;
 
     match mtproxy_core::runtime::mtproto::proxy::parse_client_packet(data) {
