@@ -26,8 +26,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
-#include <sys/types.h>
 #include <unistd.h>
 
 #include "common/parse-config.h"
@@ -41,22 +39,6 @@ static constexpr int MAX_CONFIG_SIZE = 16 << 20;
 static char *config_buff;
 char *config_name, *cfg_start, *cfg_end, *cfg_cur;
 int config_bytes, cfg_lno, cfg_lex = -1;
-
-extern int32_t mtproxy_ffi_cfg_skipspc(const char *cur, size_t len,
-                                       int32_t line_no,
-                                       mtproxy_ffi_cfg_scan_result_t *out);
-extern int32_t mtproxy_ffi_cfg_skspc(const char *cur, size_t len,
-                                     int32_t line_no,
-                                     mtproxy_ffi_cfg_scan_result_t *out);
-extern int32_t mtproxy_ffi_cfg_getword_len(const char *cur, size_t len);
-extern int32_t mtproxy_ffi_cfg_getstr_len(const char *cur, size_t len);
-extern int32_t mtproxy_ffi_cfg_getint(const char *cur, size_t len,
-                                      mtproxy_ffi_cfg_int_result_t *out);
-extern int32_t mtproxy_ffi_cfg_getint_zero(const char *cur, size_t len,
-                                           mtproxy_ffi_cfg_int_result_t *out);
-extern int32_t
-mtproxy_ffi_cfg_getint_signed_zero(const char *cur, size_t len,
-                                   mtproxy_ffi_cfg_int_result_t *out);
 
 static size_t cfg_remaining_len(void) {
   if (!cfg_cur || !cfg_end || cfg_cur >= cfg_end) {

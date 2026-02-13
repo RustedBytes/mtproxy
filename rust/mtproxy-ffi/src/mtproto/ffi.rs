@@ -2,9 +2,6 @@
 
 use super::core::*;
 use crate::*;
-use core::ffi::*;
-use std::ffi::CStr;
-use std::vec::Vec;
 
 /// Prints CLI usage/help for the Rust MTProxy entrypoint.
 ///

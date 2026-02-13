@@ -39,6 +39,7 @@
 
 #include "common/kprintf.h"
 #include "common/server-functions.h"
+#include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 
 #include "vv/vv-io.h"
 
@@ -88,88 +89,6 @@ mtproxy_ffi_tl_query_header_parse(struct tl_in_state *tlio_in,
 extern int32_t
 mtproxy_ffi_tl_query_answer_header_parse(struct tl_in_state *tlio_in,
                                          struct tl_query_header *header);
-extern int32_t mtproxy_ffi_tl_fetch_check(struct tl_in_state *tlio_in,
-                                          int32_t nbytes);
-extern int32_t mtproxy_ffi_tl_fetch_lookup_int(struct tl_in_state *tlio_in);
-extern int32_t
-mtproxy_ffi_tl_fetch_lookup_second_int(struct tl_in_state *tlio_in);
-extern int64_t mtproxy_ffi_tl_fetch_lookup_long(struct tl_in_state *tlio_in);
-extern int32_t mtproxy_ffi_tl_fetch_lookup_data(struct tl_in_state *tlio_in,
-                                                void *data, int32_t len);
-extern int32_t mtproxy_ffi_tl_fetch_int(struct tl_in_state *tlio_in);
-extern double mtproxy_ffi_tl_fetch_double(struct tl_in_state *tlio_in);
-extern int64_t mtproxy_ffi_tl_fetch_long(struct tl_in_state *tlio_in);
-extern int32_t mtproxy_ffi_tl_fetch_raw_data(struct tl_in_state *tlio_in,
-                                             void *buf, int32_t len);
-extern void mtproxy_ffi_tl_fetch_mark(struct tl_in_state *tlio_in);
-extern void mtproxy_ffi_tl_fetch_mark_restore(struct tl_in_state *tlio_in);
-extern void mtproxy_ffi_tl_fetch_mark_delete(struct tl_in_state *tlio_in);
-extern int32_t mtproxy_ffi_tl_fetch_string_len(struct tl_in_state *tlio_in,
-                                               int32_t max_len);
-extern int32_t mtproxy_ffi_tl_fetch_pad(struct tl_in_state *tlio_in);
-extern int32_t mtproxy_ffi_tl_fetch_string_data(struct tl_in_state *tlio_in,
-                                                char *buf, int32_t len);
-extern int32_t
-mtproxy_ffi_tl_fetch_skip_string_data(struct tl_in_state *tlio_in, int32_t len);
-extern int32_t mtproxy_ffi_tl_fetch_string(struct tl_in_state *tlio_in,
-                                           char *buf, int32_t max_len);
-extern int32_t mtproxy_ffi_tl_fetch_skip_string(struct tl_in_state *tlio_in,
-                                                int32_t max_len);
-extern int32_t mtproxy_ffi_tl_fetch_string0(struct tl_in_state *tlio_in,
-                                            char *buf, int32_t max_len);
-extern int32_t mtproxy_ffi_tl_fetch_check_str_end(struct tl_in_state *tlio_in,
-                                                  int32_t size);
-extern int32_t mtproxy_ffi_tl_fetch_unread(struct tl_in_state *tlio_in);
-extern int32_t mtproxy_ffi_tl_fetch_skip(struct tl_in_state *tlio_in,
-                                         int32_t len);
-extern int32_t mtproxy_ffi_tl_fetch_end(struct tl_in_state *tlio_in);
-extern int32_t mtproxy_ffi_tl_fetch_error(struct tl_in_state *tlio_in);
-extern int32_t mtproxy_ffi_tl_fetch_int_range(struct tl_in_state *tlio_in,
-                                              int32_t min, int32_t max);
-extern int32_t mtproxy_ffi_tl_fetch_positive_int(struct tl_in_state *tlio_in);
-extern int32_t
-mtproxy_ffi_tl_fetch_nonnegative_int(struct tl_in_state *tlio_in);
-extern int32_t mtproxy_ffi_tl_fetch_int_subset(struct tl_in_state *tlio_in,
-                                               int32_t set);
-extern int64_t mtproxy_ffi_tl_fetch_long_range(struct tl_in_state *tlio_in,
-                                               int64_t min, int64_t max);
-extern int64_t mtproxy_ffi_tl_fetch_positive_long(struct tl_in_state *tlio_in);
-extern int64_t
-mtproxy_ffi_tl_fetch_nonnegative_long(struct tl_in_state *tlio_in);
-extern int32_t mtproxy_ffi_tl_fetch_raw_message(struct tl_in_state *tlio_in,
-                                                struct raw_message *raw,
-                                                int32_t bytes);
-extern int32_t
-mtproxy_ffi_tl_fetch_lookup_raw_message(struct tl_in_state *tlio_in,
-                                        struct raw_message *raw, int32_t bytes);
-extern void *mtproxy_ffi_tl_store_get_ptr(struct tl_out_state *tlio_out,
-                                          int32_t size);
-extern void *mtproxy_ffi_tl_store_get_prepend_ptr(struct tl_out_state *tlio_out,
-                                                  int32_t size);
-extern int32_t mtproxy_ffi_tl_store_int(struct tl_out_state *tlio_out,
-                                        int32_t value);
-extern int32_t mtproxy_ffi_tl_store_long(struct tl_out_state *tlio_out,
-                                         int64_t value);
-extern int32_t mtproxy_ffi_tl_store_double(struct tl_out_state *tlio_out,
-                                           double value);
-extern int32_t mtproxy_ffi_tl_store_raw_data(struct tl_out_state *tlio_out,
-                                             const void *data, int32_t len);
-extern int32_t mtproxy_ffi_tl_store_raw_msg(struct tl_out_state *tlio_out,
-                                            struct raw_message *raw,
-                                            int32_t dup);
-extern int32_t mtproxy_ffi_tl_store_string_len(struct tl_out_state *tlio_out,
-                                               int32_t len);
-extern int32_t mtproxy_ffi_tl_store_pad(struct tl_out_state *tlio_out);
-extern int32_t mtproxy_ffi_tl_store_string_data(struct tl_out_state *tlio_out,
-                                                const char *s, int32_t len);
-extern int32_t mtproxy_ffi_tl_store_string(struct tl_out_state *tlio_out,
-                                           const char *s, int32_t len);
-extern int32_t mtproxy_ffi_tl_store_clear(struct tl_out_state *tlio_out);
-extern int32_t mtproxy_ffi_tl_store_clean(struct tl_out_state *tlio_out);
-extern int32_t mtproxy_ffi_tl_store_pos(struct tl_out_state *tlio_out);
-extern int32_t mtproxy_ffi_tl_copy_through(struct tl_in_state *tlio_in,
-                                           struct tl_out_state *tlio_out,
-                                           int32_t len, int32_t advance);
 
 struct tl_parse_module_stat {
   long long rpc_queries_received, rpc_answers_error, rpc_answers_received;

@@ -20,13 +20,9 @@
 */
 #include "common/proc-stat.h"
 
-#include <stdint.h>
 #include <string.h>
 
 #include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
-
-extern int32_t mtproxy_ffi_read_proc_stat_file(int32_t pid, int32_t tid,
-                                               mtproxy_ffi_proc_stats_t *out);
 
 static void copy_proc_stats_from_rust(struct proc_stats *dst,
                                       const mtproxy_ffi_proc_stats_t *src) {

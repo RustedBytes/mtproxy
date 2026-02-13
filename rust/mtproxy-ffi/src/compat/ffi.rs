@@ -2,7 +2,6 @@
 
 use super::core::*;
 use crate::*;
-use core::ffi::*;
 use std::ffi::CStr;
 
 /// Returns FFI API version to C callers.

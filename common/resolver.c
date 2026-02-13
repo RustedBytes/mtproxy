@@ -23,12 +23,8 @@
 #define _FILE_OFFSET_BITS 64
 
 #include <arpa/inet.h>
-#include <assert.h>
-#include <fcntl.h>
-#include <netdb.h>
 #include <stdint.h>
 #include <string.h>
-#include <unistd.h>
 
 #include "resolver.h"
 #include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
@@ -42,12 +38,6 @@ static struct hostent hret = {.h_aliases = 0,
                               .h_length = 4,
                               .h_addr_list = h_array};
 
-extern int32_t mtproxy_ffi_resolver_kdb_load_hosts(void);
-extern int32_t mtproxy_ffi_resolver_kdb_hosts_loaded(void);
-extern int32_t mtproxy_ffi_resolver_gethostbyname_plan(const char *name,
-                                                       int32_t *out_kind,
-                                                       uint32_t *out_ipv4);
-
 static struct hostent *fallback_gethostbyname(const char *name) {
   return gethostbyname(name) ?: gethostbyname2(name, AF_INET6);
 }
@@ -56,12 +46,6 @@ int kdb_load_hosts(void) {
   int32_t rc = mtproxy_ffi_resolver_kdb_load_hosts();
   kdb_hosts_loaded = mtproxy_ffi_resolver_kdb_hosts_loaded();
   return (int)rc;
-}
-
-int parse_ipv6(unsigned short ipv6[8], char *str) {
-  (void)ipv6;
-  (void)str;
-  return -1;
 }
 
 struct hostent *kdb_gethostbyname(const char *name) {

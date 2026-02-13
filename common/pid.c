@@ -26,22 +26,9 @@
 #define _FILE_OFFSET_BITS 64
 
 #include <assert.h>
-#include <sys/types.h>
-#include <unistd.h>
 
 #include "common/pid.h"
 #include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
-
-extern int32_t mtproxy_ffi_pid_init_common(mtproxy_ffi_process_id_t *pid);
-extern int32_t mtproxy_ffi_pid_init_client(mtproxy_ffi_process_id_t *pid,
-                                           uint32_t ip);
-extern int32_t mtproxy_ffi_pid_init_server(mtproxy_ffi_process_id_t *pid,
-                                           uint32_t ip, int32_t port);
-extern int32_t mtproxy_ffi_matches_pid(const mtproxy_ffi_process_id_t *x,
-                                       const mtproxy_ffi_process_id_t *y);
-extern int32_t
-mtproxy_ffi_process_id_is_newer(const mtproxy_ffi_process_id_t *a,
-                                const mtproxy_ffi_process_id_t *b);
 
 npid_t PID;
 

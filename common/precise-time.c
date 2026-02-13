@@ -19,11 +19,6 @@
               2014 Anton Maydell
 */
 
-#include <assert.h>
-#include <stdint.h>
-#include <sys/time.h>
-#include <unistd.h>
-
 #include "precise-time.h"
 #include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 
@@ -32,15 +27,6 @@ __thread double precise_now;
 __thread long long precise_now_rdtsc;
 long long precise_time;
 long long precise_time_rdtsc;
-
-extern double mtproxy_ffi_get_utime_monotonic(void);
-extern double mtproxy_ffi_get_double_time(void);
-extern double mtproxy_ffi_get_utime(int32_t clock_id);
-extern int64_t mtproxy_ffi_get_precise_time(uint32_t precision);
-extern double mtproxy_ffi_precise_now_value(void);
-extern int64_t mtproxy_ffi_precise_now_rdtsc_value(void);
-extern int64_t mtproxy_ffi_precise_time_value(void);
-extern int64_t mtproxy_ffi_precise_time_rdtsc_value(void);
 
 double get_utime_monotonic(void) {
   double res = mtproxy_ffi_get_utime_monotonic();

@@ -3,75 +3,75 @@
 //! The C translation unit `common/server-functions.c` is now an ABI shim.
 //! The main behavior is implemented in this Rust module.
 
-use core::ffi::{c_char, c_int, c_longlong, c_void};
-use std::collections::HashSet;
-use std::ffi::{CStr, CString};
-use std::sync::{LazyLock, Mutex, MutexGuard};
+pub(super) use core::ffi::{c_char, c_int, c_longlong, c_void};
+pub(super) use std::collections::HashSet;
+pub(super) use std::ffi::{CStr, CString};
+pub(super) use std::sync::{LazyLock, Mutex, MutexGuard};
 
-const MAX_ENGINE_OPTIONS: usize = 1_000;
-const NO_ARGUMENT: c_int = 0;
-const REQUIRED_ARGUMENT: c_int = 1;
-const OPTIONAL_ARGUMENT: c_int = 2;
-const LONGOPT_COMMON_SET: u32 = 0x0000_1000;
-const MSG_DEFAULT_MAX_ALLOCATED_BYTES: i64 = 1_i64 << 28;
+pub(super) const MAX_ENGINE_OPTIONS: usize = 1_000;
+pub(super) const NO_ARGUMENT: c_int = 0;
+pub(super) const REQUIRED_ARGUMENT: c_int = 1;
+pub(super) const OPTIONAL_ARGUMENT: c_int = 2;
+pub(super) const LONGOPT_COMMON_SET: u32 = 0x0000_1000;
+pub(super) const MSG_DEFAULT_MAX_ALLOCATED_BYTES: i64 = 1_i64 << 28;
 
-const OPT_VERBOSITY: c_int = b'v' as c_int;
-const OPT_HELP: c_int = b'h' as c_int;
-const OPT_USER: c_int = b'u' as c_int;
-const OPT_LOG: c_int = b'l' as c_int;
-const OPT_DAEMONIZE: c_int = b'd' as c_int;
-const OPT_NICE: c_int = 202;
-const OPT_MSG_BUFFERS_SIZE: c_int = 208;
+pub(super) const OPT_VERBOSITY: c_int = b'v' as c_int;
+pub(super) const OPT_HELP: c_int = b'h' as c_int;
+pub(super) const OPT_USER: c_int = b'u' as c_int;
+pub(super) const OPT_LOG: c_int = b'l' as c_int;
+pub(super) const OPT_DAEMONIZE: c_int = b'd' as c_int;
+pub(super) const OPT_NICE: c_int = 202;
+pub(super) const OPT_MSG_BUFFERS_SIZE: c_int = 208;
 
 unsafe extern "C" {
-    static mut verbosity: c_int;
-    static mut logname: *const c_char;
-    static mut daemonize: c_int;
-    static mut username: *const c_char;
-    static mut optarg: *mut c_char;
-    static mut optind: c_int;
-    static mut max_allocated_buffer_bytes: c_longlong;
+    pub(super) static mut verbosity: c_int;
+    pub(super) static mut logname: *const c_char;
+    pub(super) static mut daemonize: c_int;
+    pub(super) static mut username: *const c_char;
+    pub(super) static mut optarg: *mut c_char;
+    pub(super) static mut optind: c_int;
+    pub(super) static mut max_allocated_buffer_bytes: c_longlong;
 
-    static mut engine_options_num: c_int;
-    static mut engine_options: [*mut c_char; MAX_ENGINE_OPTIONS];
+    pub(super) static mut engine_options_num: c_int;
+    pub(super) static mut engine_options: [*mut c_char; MAX_ENGINE_OPTIONS];
 
-    fn usage() -> !;
+    pub(super) fn usage() -> !;
 }
 
 #[derive(Clone, Copy)]
-enum CallbackKind {
+pub(super) enum CallbackKind {
     Default,
     Builtin,
     C(unsafe extern "C" fn(c_int) -> c_int),
 }
 
 #[derive(Clone)]
-struct ParseOptionEntry {
-    vals: Vec<c_int>,
-    base_val: c_int,
-    smallest_val: c_int,
-    longopts: Vec<String>,
-    callback: CallbackKind,
-    help: Option<String>,
-    flags: u32,
-    arg: c_int,
+pub(super) struct ParseOptionEntry {
+    pub(super) vals: Vec<c_int>,
+    pub(super) base_val: c_int,
+    pub(super) smallest_val: c_int,
+    pub(super) longopts: Vec<String>,
+    pub(super) callback: CallbackKind,
+    pub(super) help: Option<String>,
+    pub(super) flags: u32,
+    pub(super) arg: c_int,
 }
 
 #[derive(Default)]
-struct ParseRegistry {
-    entries: Vec<ParseOptionEntry>,
+pub(super) struct ParseRegistry {
+    pub(super) entries: Vec<ParseOptionEntry>,
 }
 
-static PARSE_REGISTRY: LazyLock<Mutex<ParseRegistry>> =
+pub(super) static PARSE_REGISTRY: LazyLock<Mutex<ParseRegistry>> =
     LazyLock::new(|| Mutex::new(ParseRegistry::default()));
-static DEBUG_MAIN_PTHREAD_ID: LazyLock<Mutex<Option<libc::pthread_t>>> =
+pub(super) static DEBUG_MAIN_PTHREAD_ID: LazyLock<Mutex<Option<libc::pthread_t>>> =
     LazyLock::new(|| Mutex::new(None));
 
-fn lock_unpoisoned<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+pub(super) fn lock_unpoisoned<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(|poison| poison.into_inner())
 }
 
-fn c_str_to_owned(ptr: *const c_char) -> Option<String> {
+pub(super) fn c_str_to_owned(ptr: *const c_char) -> Option<String> {
     if ptr.is_null() {
         return None;
     }
@@ -79,21 +79,21 @@ fn c_str_to_owned(ptr: *const c_char) -> Option<String> {
     unsafe { CStr::from_ptr(ptr).to_str().ok().map(ToOwned::to_owned) }
 }
 
-fn parse_option_arg_mode(arg: c_int) -> bool {
+pub(super) fn parse_option_arg_mode(arg: c_int) -> bool {
     arg == NO_ARGUMENT || arg == REQUIRED_ARGUMENT || arg == OPTIONAL_ARGUMENT
 }
 
-fn find_option_index_by_value(entries: &[ParseOptionEntry], value: c_int) -> Option<usize> {
+pub(super) fn find_option_index_by_value(entries: &[ParseOptionEntry], value: c_int) -> Option<usize> {
     entries.iter().position(|entry| entry.vals.contains(&value))
 }
 
-fn find_option_index_by_name(entries: &[ParseOptionEntry], name: &str) -> Option<usize> {
+pub(super) fn find_option_index_by_name(entries: &[ParseOptionEntry], name: &str) -> Option<usize> {
     entries
         .iter()
         .position(|entry| entry.longopts.iter().any(|current| current == name))
 }
 
-fn parse_option_add_internal(
+pub(super) fn parse_option_add_internal(
     name: &str,
     arg: c_int,
     val: c_int,
@@ -125,9 +125,9 @@ fn parse_option_add_internal(
     0
 }
 
-struct CallbackArg {
-    ptr: *mut c_char,
-    _owned: Option<CString>,
+pub(super) struct CallbackArg {
+    pub(super) ptr: *mut c_char,
+    pub(super) _owned: Option<CString>,
 }
 
 impl CallbackArg {
@@ -156,7 +156,7 @@ impl CallbackArg {
     }
 }
 
-fn atoi_from_optarg(opt: Option<&CallbackArg>) -> c_int {
+pub(super) fn atoi_from_optarg(opt: Option<&CallbackArg>) -> c_int {
     let Some(opt) = opt else {
         return 0;
     };
@@ -164,7 +164,7 @@ fn atoi_from_optarg(opt: Option<&CallbackArg>) -> c_int {
     unsafe { libc::atoi(opt.as_ptr()) }
 }
 
-unsafe fn dup_c_ptr(ptr: *mut c_char) -> *const c_char {
+pub(super) unsafe fn dup_c_ptr(ptr: *mut c_char) -> *const c_char {
     if ptr.is_null() {
         return std::ptr::null();
     }
@@ -172,7 +172,7 @@ unsafe fn dup_c_ptr(ptr: *mut c_char) -> *const c_char {
     unsafe { libc::strdup(ptr).cast_const() }
 }
 
-fn invoke_builtin(option_val: c_int, opt: Option<&CallbackArg>) -> c_int {
+pub(super) fn invoke_builtin(option_val: c_int, opt: Option<&CallbackArg>) -> c_int {
     match option_val {
         OPT_VERBOSITY => {
             // SAFETY: global C integer is writable and linked from C runtime.
@@ -242,7 +242,7 @@ fn invoke_builtin(option_val: c_int, opt: Option<&CallbackArg>) -> c_int {
                 return -1;
             };
             // SAFETY: optarg pointer is valid for rust_parse_memory_limit call.
-            let parsed = unsafe { rust_parse_memory_limit(opt.as_ptr()) };
+            let parsed = unsafe { super::ffi::rust_parse_memory_limit(opt.as_ptr()) };
             if parsed < 0 {
                 return -1;
             }
@@ -256,7 +256,7 @@ fn invoke_builtin(option_val: c_int, opt: Option<&CallbackArg>) -> c_int {
     }
 }
 
-fn invoke_callback(entry: &ParseOptionEntry, opt: Option<&CallbackArg>) -> c_int {
+pub(super) fn invoke_callback(entry: &ParseOptionEntry, opt: Option<&CallbackArg>) -> c_int {
     match entry.callback {
         CallbackKind::Default => -1,
         CallbackKind::Builtin => invoke_builtin(entry.base_val, opt),
@@ -273,14 +273,14 @@ fn invoke_callback(entry: &ParseOptionEntry, opt: Option<&CallbackArg>) -> c_int
     }
 }
 
-fn parse_one_option(entry: &ParseOptionEntry, opt: Option<CallbackArg>) -> c_int {
+pub(super) fn parse_one_option(entry: &ParseOptionEntry, opt: Option<CallbackArg>) -> c_int {
     if invoke_callback(entry, opt.as_ref()) < 0 {
         return -1;
     }
     0
 }
 
-fn parse_long_option(
+pub(super) fn parse_long_option(
     token_ptr: *mut c_char,
     argc: usize,
     argv: *mut *mut c_char,
@@ -352,7 +352,7 @@ fn parse_long_option(
     }
 }
 
-fn parse_short_options(
+pub(super) fn parse_short_options(
     token_ptr: *mut c_char,
     argc: usize,
     argv: *mut *mut c_char,
@@ -421,378 +421,7 @@ fn parse_short_options(
     Ok(consumed_next)
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn rust_sf_init_parse_options(
-    keep_mask: u32,
-    keep_options_custom_list: *const u32,
-    keep_options_custom_list_len: usize,
-) {
-    let keep_values: HashSet<c_int> = if keep_options_custom_list.is_null() {
-        HashSet::new()
-    } else {
-        // SAFETY: caller provides pointer/length pair.
-        unsafe {
-            std::slice::from_raw_parts(keep_options_custom_list, keep_options_custom_list_len)
-        }
-        .iter()
-        .filter_map(|&v| c_int::try_from(v).ok())
-        .collect()
-    };
-
-    let mut registry = lock_unpoisoned(&PARSE_REGISTRY);
-    registry
-        .entries
-        .retain(|entry| (entry.flags & keep_mask) != 0 || keep_values.contains(&entry.base_val));
-    registry.entries.sort_by_key(|entry| entry.smallest_val);
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn rust_sf_parse_option_add(
-    name: *const c_char,
-    arg: c_int,
-    val: c_int,
-    flags: u32,
-    func: Option<unsafe extern "C" fn(c_int) -> c_int>,
-    help: *const c_char,
-) -> c_int {
-    let Some(name) = c_str_to_owned(name) else {
-        return -1;
-    };
-
-    let callback = match func {
-        Some(callback) => CallbackKind::C(callback),
-        None => CallbackKind::Default,
-    };
-
-    parse_option_add_internal(&name, arg, val, flags, callback, c_str_to_owned(help))
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn rust_sf_parse_option_alias(name: *const c_char, val: c_int) -> c_int {
-    let Some(name) = c_str_to_owned(name) else {
-        return -1;
-    };
-
-    let mut registry = lock_unpoisoned(&PARSE_REGISTRY);
-    if find_option_index_by_value(&registry.entries, val).is_some() {
-        return -1;
-    }
-
-    let Some(index) = find_option_index_by_name(&registry.entries, &name) else {
-        return -1;
-    };
-
-    let entry = &mut registry.entries[index];
-    entry.vals.push(val);
-    entry.smallest_val = entry.smallest_val.min(val);
-    registry.entries.sort_by_key(|item| item.smallest_val);
-    0
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn rust_sf_parse_option_long_alias(
-    name: *const c_char,
-    alias_name: *const c_char,
-) -> c_int {
-    let Some(name) = c_str_to_owned(name) else {
-        return -1;
-    };
-    let Some(alias_name) = c_str_to_owned(alias_name) else {
-        return -1;
-    };
-
-    let mut registry = lock_unpoisoned(&PARSE_REGISTRY);
-    if find_option_index_by_name(&registry.entries, &alias_name).is_some() {
-        return -1;
-    }
-
-    let Some(index) = find_option_index_by_name(&registry.entries, &name) else {
-        return -1;
-    };
-
-    registry.entries[index].longopts.push(alias_name);
-    0
-}
-
-#[no_mangle]
-pub extern "C" fn rust_sf_remove_parse_option(val: c_int) -> c_int {
-    let mut registry = lock_unpoisoned(&PARSE_REGISTRY);
-    let Some(index) = find_option_index_by_value(&registry.entries, val) else {
-        return -1;
-    };
-
-    if registry.entries[index].vals.len() == 1 {
-        registry.entries.remove(index);
-        return 0;
-    }
-
-    let entry = &mut registry.entries[index];
-    entry.vals.retain(|&candidate| candidate != val);
-
-    if entry.base_val == val {
-        entry.base_val = entry.vals.iter().copied().min().unwrap_or(entry.base_val);
-    }
-
-    entry.smallest_val = entry
-        .vals
-        .iter()
-        .copied()
-        .min()
-        .unwrap_or(entry.smallest_val);
-    registry.entries.sort_by_key(|item| item.smallest_val);
-    0
-}
-
-#[no_mangle]
-pub extern "C" fn rust_sf_parse_usage() -> c_int {
-    let registry = lock_unpoisoned(&PARSE_REGISTRY);
-    let max_width = registry
-        .entries
-        .iter()
-        .map(|entry| {
-            let mut width = 0usize;
-            for &val in &entry.vals {
-                if val <= 127 {
-                    width += 3;
-                }
-            }
-            for name in &entry.longopts {
-                width += name.len() + 3;
-            }
-            if entry.arg == REQUIRED_ARGUMENT || entry.arg == OPTIONAL_ARGUMENT {
-                width += 6;
-            }
-            width
-        })
-        .max()
-        .unwrap_or(0);
-
-    for entry in &registry.entries {
-        let mut cur = 0usize;
-        print!("\t");
-
-        for long_idx in 0..entry.longopts.len() {
-            if cur > 0 {
-                print!("/");
-                cur += 1;
-            }
-            let name = &entry.longopts[long_idx];
-            print!("--{name}");
-            cur += name.len() + 2;
-        }
-
-        for &val in &entry.vals {
-            if !(0..=127).contains(&val) {
-                continue;
-            }
-            if cur > 0 {
-                print!("/");
-                cur += 1;
-            }
-            print!("-{}", char::from(val as u8));
-            cur += 2;
-        }
-
-        if entry.arg == REQUIRED_ARGUMENT {
-            print!(" <arg>");
-            cur += 6;
-        } else if entry.arg == OPTIONAL_ARGUMENT {
-            print!(" {{arg}}");
-            cur += 6;
-        }
-
-        while cur < max_width {
-            print!(" ");
-            cur += 1;
-        }
-
-        print!("\t");
-        if let Some(help) = &entry.help {
-            let mut first = true;
-            for line in help.split('\n') {
-                if !first {
-                    print!("\n\t");
-                    for _ in 0..max_width {
-                        print!(" ");
-                    }
-                    print!("\t");
-                }
-                print!("{line}");
-                first = false;
-            }
-            println!();
-        } else {
-            println!("no help provided");
-        }
-    }
-
-    0
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn rust_sf_parse_engine_options_long(
-    argc: c_int,
-    argv: *mut *mut c_char,
-) -> c_int {
-    if argc < 0 || argv.is_null() {
-        return -1;
-    }
-
-    let argc_usize = usize::try_from(argc).unwrap_or(0);
-    if argc_usize > MAX_ENGINE_OPTIONS {
-        return -1;
-    }
-
-    // SAFETY: engine_options globals are writable and arrays have fixed size.
-    unsafe {
-        engine_options_num = argc;
-        let engine_options_ptr = core::ptr::addr_of_mut!(engine_options).cast::<*mut c_char>();
-        for i in 0..argc_usize {
-            *engine_options_ptr.add(i) = *argv.add(i);
-        }
-    }
-
-    let registry = lock_unpoisoned(&PARSE_REGISTRY);
-
-    let mut index = 1usize;
-    let mut first_non_option: Option<usize> = None;
-    while index < argc_usize {
-        // SAFETY: index is within argv bounds.
-        let token_ptr = unsafe { *argv.add(index) };
-        if token_ptr.is_null() {
-            break;
-        }
-
-        // SAFETY: token_ptr is a valid C string from argv.
-        let token = unsafe { CStr::from_ptr(token_ptr).to_bytes() };
-        if token == b"--" {
-            if first_non_option.is_none() {
-                first_non_option = Some(index + 1);
-            }
-            break;
-        }
-
-        let consumed_next = if token.len() > 2 && token[0] == b'-' && token[1] == b'-' {
-            match parse_long_option(token_ptr, argc_usize, argv, index, &registry) {
-                Ok(consumed) => consumed,
-                Err(_) => return -1,
-            }
-        } else if token.len() > 1 && token[0] == b'-' {
-            match parse_short_options(token_ptr, argc_usize, argv, index, &registry) {
-                Ok(consumed) => consumed,
-                Err(_) => return -1,
-            }
-        } else {
-            if first_non_option.is_none() {
-                first_non_option = Some(index);
-            }
-            0
-        };
-
-        index += 1 + consumed_next;
-    }
-
-    // SAFETY: optind is process-global getopt state.
-    unsafe {
-        optind = c_int::try_from(first_non_option.unwrap_or(argc_usize)).unwrap_or(argc);
-    }
-
-    0
-}
-
-#[no_mangle]
-pub extern "C" fn rust_sf_add_builtin_parse_options() -> c_int {
-    if parse_option_add_internal(
-        "verbosity",
-        OPTIONAL_ARGUMENT,
-        OPT_VERBOSITY,
-        LONGOPT_COMMON_SET,
-        CallbackKind::Builtin,
-        Some("sets or increases verbosity level".to_owned()),
-    )
-    .is_negative()
-    {
-        return -1;
-    }
-
-    if parse_option_add_internal(
-        "help",
-        NO_ARGUMENT,
-        OPT_HELP,
-        LONGOPT_COMMON_SET,
-        CallbackKind::Builtin,
-        Some("prints help and exits".to_owned()),
-    )
-    .is_negative()
-    {
-        return -1;
-    }
-
-    if parse_option_add_internal(
-        "user",
-        REQUIRED_ARGUMENT,
-        OPT_USER,
-        LONGOPT_COMMON_SET,
-        CallbackKind::Builtin,
-        Some("sets user name to make setuid".to_owned()),
-    )
-    .is_negative()
-    {
-        return -1;
-    }
-
-    if parse_option_add_internal(
-        "log",
-        REQUIRED_ARGUMENT,
-        OPT_LOG,
-        LONGOPT_COMMON_SET,
-        CallbackKind::Builtin,
-        Some("sets log file name".to_owned()),
-    )
-    .is_negative()
-    {
-        return -1;
-    }
-
-    if parse_option_add_internal(
-        "daemonize",
-        OPTIONAL_ARGUMENT,
-        OPT_DAEMONIZE,
-        LONGOPT_COMMON_SET,
-        CallbackKind::Builtin,
-        Some("changes between daemonize/not daemonize mode".to_owned()),
-    )
-    .is_negative()
-    {
-        return -1;
-    }
-
-    if parse_option_add_internal(
-        "nice",
-        REQUIRED_ARGUMENT,
-        OPT_NICE,
-        LONGOPT_COMMON_SET,
-        CallbackKind::Builtin,
-        Some("sets niceness".to_owned()),
-    )
-    .is_negative()
-    {
-        return -1;
-    }
-
-    parse_option_add_internal(
-        "msg-buffers-size",
-        REQUIRED_ARGUMENT,
-        OPT_MSG_BUFFERS_SIZE,
-        LONGOPT_COMMON_SET,
-        CallbackKind::Builtin,
-        Some(format!(
-            "sets maximal buffers size (default {MSG_DEFAULT_MAX_ALLOCATED_BYTES})"
-        )),
-    )
-}
-
-fn install_signal_handler(sig: c_int, handler: usize, with_siginfo: bool, fatal_on_fail: bool) {
+pub(super) fn install_signal_handler(sig: c_int, handler: usize, with_siginfo: bool, fatal_on_fail: bool) {
     // SAFETY: zeroed sigaction is valid and then fully initialized.
     let mut action: libc::sigaction = unsafe { std::mem::zeroed() };
     action.sa_sigaction = handler;
@@ -819,7 +448,7 @@ fn install_signal_handler(sig: c_int, handler: usize, with_siginfo: bool, fatal_
     }
 }
 
-fn rust_sf_kill_main_internal() {
+pub(super) fn rust_sf_kill_main_internal() {
     let maybe_main_thread = *lock_unpoisoned(&DEBUG_MAIN_PTHREAD_ID);
     let Some(main_thread) = maybe_main_thread else {
         return;
@@ -834,7 +463,7 @@ fn rust_sf_kill_main_internal() {
     }
 }
 
-extern "C" fn rust_sf_extended_debug_handler(
+pub(super) extern "C" fn rust_sf_extended_debug_handler(
     sig: c_int,
     _info: *mut libc::siginfo_t,
     _cont: *mut c_void,
@@ -843,7 +472,7 @@ extern "C" fn rust_sf_extended_debug_handler(
     unsafe {
         libc::signal(sig, libc::SIG_DFL);
     }
-    rust_print_backtrace();
+    super::ffi::rust_print_backtrace();
     rust_sf_kill_main_internal();
 
     // SAFETY: immediate process termination inside signal handler.
@@ -852,115 +481,9 @@ extern "C" fn rust_sf_extended_debug_handler(
     }
 }
 
-#[no_mangle]
-pub extern "C" fn rust_sf_ksignal(sig: c_int, handler: Option<extern "C" fn(c_int)>) {
-    if let Some(handler) = handler {
-        install_signal_handler(sig, handler as usize, false, false);
-    }
-}
+pub(super) const DEFAULT_ENGINE_USER: &str = "mtproxy";
 
-#[no_mangle]
-pub extern "C" fn rust_sf_set_debug_handlers() {
-    let handler = rust_sf_extended_debug_handler as *const () as usize;
-    install_signal_handler(libc::SIGSEGV, handler, true, true);
-    install_signal_handler(libc::SIGABRT, handler, true, true);
-    install_signal_handler(libc::SIGFPE, handler, true, true);
-    install_signal_handler(libc::SIGBUS, handler, true, true);
-
-    let mut debug_thread = lock_unpoisoned(&DEBUG_MAIN_PTHREAD_ID);
-    // SAFETY: pthread_self is always safe.
-    *debug_thread = Some(unsafe { libc::pthread_self() });
-}
-
-/// FFI wrapper: Parse memory limit with K/M/G/T suffixes.
-///
-/// # Safety
-/// `s` must be a valid null-terminated C string.
-#[no_mangle]
-pub unsafe extern "C" fn rust_parse_memory_limit(s: *const c_char) -> c_longlong {
-    if s.is_null() {
-        return -1;
-    }
-
-    // SAFETY: s is a valid C string.
-    let c_str = unsafe { CStr::from_ptr(s) };
-    let rust_str = match c_str.to_str() {
-        Ok(s) => s,
-        Err(_) => return -1,
-    };
-
-    match mtproxy_core::runtime::bootstrap::server_functions::parse_memory_limit(rust_str) {
-        Ok(value) => value,
-        Err(_) => -1,
-    }
-}
-
-/// FFI wrapper: Change user and group privileges.
-///
-/// # Safety
-/// `username` and `groupname` must be valid null-terminated C strings or NULL.
-#[no_mangle]
-pub unsafe extern "C" fn rust_change_user_group(
-    username_ptr: *const c_char,
-    groupname: *const c_char,
-) -> c_int {
-    let username_opt = if username_ptr.is_null() {
-        None
-    } else {
-        // SAFETY: username is either NULL or valid C string.
-        unsafe { CStr::from_ptr(username_ptr) }.to_str().ok()
-    };
-
-    let groupname_opt = if groupname.is_null() {
-        None
-    } else {
-        // SAFETY: groupname is either NULL or valid C string.
-        unsafe { CStr::from_ptr(groupname) }.to_str().ok()
-    };
-
-    match internal_change_user_group(username_opt, groupname_opt) {
-        Ok(()) => 0,
-        Err(()) => -1,
-    }
-}
-
-/// FFI wrapper: Change user privileges.
-///
-/// # Safety
-/// `username` must be a valid null-terminated C string or NULL.
-#[no_mangle]
-pub unsafe extern "C" fn rust_change_user(username_ptr: *const c_char) -> c_int {
-    let username_opt = if username_ptr.is_null() {
-        None
-    } else {
-        // SAFETY: username is either NULL or valid C string.
-        unsafe { CStr::from_ptr(username_ptr) }.to_str().ok()
-    };
-
-    match internal_change_user(username_opt) {
-        Ok(()) => 0,
-        Err(()) => -1,
-    }
-}
-
-/// FFI wrapper: Raise file descriptor limit.
-#[no_mangle]
-pub extern "C" fn rust_raise_file_rlimit(maxfiles: c_int) -> c_int {
-    match internal_raise_file_rlimit(maxfiles) {
-        Ok(()) => 0,
-        Err(()) => -1,
-    }
-}
-
-/// FFI wrapper: Print stack backtrace.
-#[no_mangle]
-pub extern "C" fn rust_print_backtrace() {
-    internal_print_backtrace();
-}
-
-const DEFAULT_ENGINE_USER: &str = "mtproxy";
-
-fn internal_change_user_group(
+pub(super) fn internal_change_user_group(
     username_opt: Option<&str>,
     groupname_opt: Option<&str>,
 ) -> Result<(), ()> {
@@ -1005,7 +528,7 @@ fn internal_change_user_group(
     Ok(())
 }
 
-fn internal_change_user(username_opt: Option<&str>) -> Result<(), ()> {
+pub(super) fn internal_change_user(username_opt: Option<&str>) -> Result<(), ()> {
     // SAFETY: uid queries are safe.
     let uid = unsafe { libc::getuid() };
     // SAFETY: uid queries are safe.
@@ -1046,7 +569,7 @@ fn internal_change_user(username_opt: Option<&str>) -> Result<(), ()> {
     Ok(())
 }
 
-fn internal_raise_file_rlimit(maxfiles: c_int) -> Result<(), ()> {
+pub(super) fn internal_raise_file_rlimit(maxfiles: c_int) -> Result<(), ()> {
     let mut rlim = libc::rlimit {
         rlim_cur: 0,
         rlim_max: 0,
@@ -1075,7 +598,7 @@ fn internal_raise_file_rlimit(maxfiles: c_int) -> Result<(), ()> {
     Ok(())
 }
 
-fn internal_print_backtrace() {
+pub(super) fn internal_print_backtrace() {
     const MAX_FRAMES: usize = 64;
     let mut buffer: [*mut c_void; MAX_FRAMES] = [std::ptr::null_mut(); MAX_FRAMES];
 
@@ -1096,16 +619,16 @@ fn internal_print_backtrace() {
     }
 }
 
-struct PasswdInfo {
-    pw_uid: u32,
-    pw_gid: u32,
+pub(super) struct PasswdInfo {
+    pub(super) pw_uid: u32,
+    pub(super) pw_gid: u32,
 }
 
-struct GroupInfo {
-    gr_gid: u32,
+pub(super) struct GroupInfo {
+    pub(super) gr_gid: u32,
 }
 
-fn get_passwd_by_name(username_name: &str) -> Result<PasswdInfo, ()> {
+pub(super) fn get_passwd_by_name(username_name: &str) -> Result<PasswdInfo, ()> {
     let c_username = CString::new(username_name).map_err(|_| ())?;
 
     // SAFETY: getpwnam expects valid C string.
@@ -1122,7 +645,7 @@ fn get_passwd_by_name(username_name: &str) -> Result<PasswdInfo, ()> {
     Ok(PasswdInfo { pw_uid, pw_gid })
 }
 
-fn get_group_by_name(groupname: &str) -> Result<GroupInfo, ()> {
+pub(super) fn get_group_by_name(groupname: &str) -> Result<GroupInfo, ()> {
     let c_groupname = CString::new(groupname).map_err(|_| ())?;
 
     // SAFETY: getgrnam expects valid C string.
