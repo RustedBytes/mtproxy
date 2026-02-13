@@ -680,7 +680,10 @@ fn crypto_aes_create_keys_impl(
     str_len += 16;
 
     let first_len = str_len.min(temp_key.len());
-    for (dst, src) in material[..first_len].iter_mut().zip(temp_key.iter().take(first_len)) {
+    for (dst, src) in material[..first_len]
+        .iter_mut()
+        .zip(temp_key.iter().take(first_len))
+    {
         *dst ^= *src;
     }
     if temp_key.len() > first_len {

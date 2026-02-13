@@ -147,9 +147,8 @@ pub(crate) const MTPROTO_CLIENT_PACKET_KIND_SIMPLE_ACK: i32 = 3;
 pub(crate) const MTPROTO_CLIENT_PACKET_KIND_CLOSE_EXT: i32 = 4;
 pub(crate) const MTPROTO_CLIENT_PACKET_KIND_UNKNOWN: i32 = 5;
 pub(crate) const MTPROTO_CLIENT_PACKET_KIND_MALFORMED: i32 = 6;
-pub(crate) const CRYPTO_TEMP_DH_PARAMS_MAGIC: i32 = i32::from_ne_bytes(0xab45_ccd3_u32.to_ne_bytes());
-
-
+pub(crate) const CRYPTO_TEMP_DH_PARAMS_MAGIC: i32 =
+    i32::from_ne_bytes(0xab45_ccd3_u32.to_ne_bytes());
 
 pub(crate) const DH_KEY_BYTES: usize = 256;
 pub(crate) const DH_PARAMS_SELECT: i32 = 0x0062_0b93;

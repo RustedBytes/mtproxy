@@ -16,16 +16,20 @@ fn mtproto_proxy_collect_argv(argc: i32, argv: *const *const c_char) -> Option<V
     let raw = unsafe { slice_from_ptr(argv, count) }?;
     let mut out = Vec::with_capacity(count.max(1));
     for &arg_ptr in raw {
-        let arg_ref = unsafe { ref_from_ptr(arg_ptr) }?;
-        let arg = unsafe { CStr::from_ptr(arg_ref) }
-            .to_string_lossy()
-            .into_owned();
-        out.push(arg);
+        out.push(cstr_to_owned(arg_ptr)?);
     }
     if out.is_empty() {
         out.push("mtproto-proxy".to_owned());
     }
     Some(out)
+}
+
+fn cstr_to_owned(ptr: *const c_char) -> Option<String> {
+    let ptr_ref = unsafe { ref_from_ptr(ptr) }?;
+    let owned = unsafe { CStr::from_ptr(ptr_ref) }
+        .to_string_lossy()
+        .into_owned();
+    Some(owned)
 }
 
 /// Prints CLI usage/help for the Rust MTProxy entrypoint.
@@ -37,12 +41,10 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_proxy_usage(program_name: *const c_
     let program_name = if program_name.is_null() {
         "mtproto-proxy".to_owned()
     } else {
-        let Some(program_name_ref) = (unsafe { ref_from_ptr(program_name) }) else {
+        let Some(program_name_ref) = cstr_to_owned(program_name) else {
             return -1;
         };
-        unsafe { CStr::from_ptr(program_name_ref) }
-            .to_string_lossy()
-            .into_owned()
+        program_name_ref
     };
 
     let usage = mtproxy_bin::entrypoint::usage_text(&program_name);
@@ -275,7 +277,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_resolve_default_target_from_cfg
         return 0;
     }
 
-    unsafe { mtproto_cfg_syntax_literal(b"cannot resolve hostname\0") };
+    mtproto_cfg_syntax_literal(b"cannot resolve hostname\0");
     -1
 }
 
@@ -360,13 +362,12 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_parse_text_ipv4(
     str: *const c_char,
     out_ip: *mut u32,
 ) -> i32 {
-    let Some(str_ref) = (unsafe { ref_from_ptr(str) }) else {
+    let Some(input) = cstr_to_owned(str) else {
         return -1;
     };
     let Some(out_ref) = (unsafe { mut_ref_from_ptr(out_ip) }) else {
         return -1;
     };
-    let input = unsafe { CStr::from_ptr(str_ref) }.to_string_lossy();
     let parsed = mtproxy_core::runtime::mtproto::proxy::parse_text_ipv4(&input);
     *out_ref = parsed;
     0
@@ -383,7 +384,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_parse_text_ipv6(
     out_ip: *mut u8,
     out_consumed: *mut i32,
 ) -> i32 {
-    let Some(str_ref) = (unsafe { ref_from_ptr(str) }) else {
+    let Some(input) = cstr_to_owned(str) else {
         return -1;
     };
     let Some(out_ip_slice) = (unsafe { mut_slice_from_ptr(out_ip, 16) }) else {
@@ -392,7 +393,6 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_parse_text_ipv6(
     let Some(out_consumed_ref) = (unsafe { mut_ref_from_ptr(out_consumed) }) else {
         return -1;
     };
-    let input = unsafe { CStr::from_ptr(str_ref) }.to_string_lossy();
     let mut parsed_ip = [0u8; 16];
     let consumed = mtproxy_core::runtime::mtproto::proxy::parse_text_ipv6(&mut parsed_ip, &input);
     out_ip_slice.copy_from_slice(&parsed_ip);
@@ -1464,71 +1464,65 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_finalize(
     }
 }
 
-unsafe fn mtproto_cfg_syntax_literal(msg: &[u8]) {
+fn mtproto_cfg_syntax_literal(msg: &[u8]) {
     unsafe { syntax(msg.as_ptr().cast()) };
 }
 
-unsafe fn mtproto_cfg_report_parse_full_pass_error(pass_rc: i32, tot_targets: c_int) {
+fn mtproto_cfg_report_parse_full_pass_error(pass_rc: i32, tot_targets: c_int) {
     match pass_rc {
         MTPROTO_CFG_PARSE_FULL_PASS_ERR_INVALID_TIMEOUT => {
-            unsafe { mtproto_cfg_syntax_literal(b"invalid timeout\0") };
+            mtproto_cfg_syntax_literal(b"invalid timeout\0");
         }
         MTPROTO_CFG_PARSE_FULL_PASS_ERR_INVALID_MAX_CONNECTIONS => {
-            unsafe { mtproto_cfg_syntax_literal(b"invalid max connections\0") };
+            mtproto_cfg_syntax_literal(b"invalid max connections\0");
         }
         MTPROTO_CFG_PARSE_FULL_PASS_ERR_INVALID_MIN_CONNECTIONS => {
-            unsafe { mtproto_cfg_syntax_literal(b"invalid min connections\0") };
+            mtproto_cfg_syntax_literal(b"invalid min connections\0");
         }
         MTPROTO_CFG_PARSE_FULL_PASS_ERR_INVALID_TARGET_ID => {
-            unsafe {
-                mtproto_cfg_syntax_literal(b"invalid target id (integer -32768..32767 expected)\0")
-            };
+            mtproto_cfg_syntax_literal(b"invalid target id (integer -32768..32767 expected)\0");
         }
         MTPROTO_CFG_PARSE_FULL_PASS_ERR_TARGET_ID_SPACE => {
-            unsafe { mtproto_cfg_syntax_literal(b"space expected after target id\0") };
+            mtproto_cfg_syntax_literal(b"space expected after target id\0");
         }
         MTPROTO_CFG_PARSE_FULL_PASS_ERR_TOO_MANY_AUTH_CLUSTERS => {
-            unsafe { mtproto_cfg_syntax_literal(b"too many auth clusters\0") };
+            mtproto_cfg_syntax_literal(b"too many auth clusters\0");
         }
         MTPROTO_CFG_PARSE_FULL_PASS_ERR_PROXIES_INTERMIXED => {
-            unsafe { mtproto_cfg_syntax_literal(b"proxies for dc intermixed\0") };
+            mtproto_cfg_syntax_literal(b"proxies for dc intermixed\0");
         }
         MTPROTO_CFG_PARSE_FULL_PASS_ERR_EXPECTED_SEMICOLON => {
-            unsafe { mtproto_cfg_syntax_literal(b"';' expected\0") };
+            mtproto_cfg_syntax_literal(b"';' expected\0");
         }
         MTPROTO_CFG_PARSE_FULL_PASS_ERR_PROXY_EXPECTED => {
-            unsafe { mtproto_cfg_syntax_literal(b"'proxy <ip>:<port>;' expected\0") };
+            mtproto_cfg_syntax_literal(b"'proxy <ip>:<port>;' expected\0");
         }
         MTPROTO_CFG_PARSE_FULL_PASS_ERR_TOO_MANY_TARGETS => {
             unsafe { syntax(b"too many targets (%d)\0".as_ptr().cast(), tot_targets) };
         }
         MTPROTO_CFG_PARSE_FULL_PASS_ERR_HOSTNAME_EXPECTED => {
-            unsafe { mtproto_cfg_syntax_literal(b"hostname expected\0") };
+            mtproto_cfg_syntax_literal(b"hostname expected\0");
         }
         MTPROTO_CFG_PARSE_FULL_PASS_ERR_PORT_EXPECTED => {
-            unsafe { mtproto_cfg_syntax_literal(b"port number expected\0") };
+            mtproto_cfg_syntax_literal(b"port number expected\0");
         }
         MTPROTO_CFG_PARSE_FULL_PASS_ERR_PORT_RANGE => {
-            unsafe { mtproto_cfg_syntax_literal(b"port number out of range\0") };
+            mtproto_cfg_syntax_literal(b"port number out of range\0");
         }
         MTPROTO_CFG_PARSE_FULL_PASS_ERR_CLUSTER_EXTEND_INVARIANT => {
-            unsafe { mtproto_cfg_syntax_literal(b"IMPOSSIBLE\0") };
+            mtproto_cfg_syntax_literal(b"IMPOSSIBLE\0");
         }
         MTPROTO_CFG_PARSE_FULL_PASS_ERR_MISSING_PROXY_DIRECTIVES => {
-            unsafe {
-                mtproto_cfg_syntax_literal(
-                    b"expected to find a mtproto-proxy configuration with `proxy' directives\0",
-                )
-            };
+            mtproto_cfg_syntax_literal(
+                b"expected to find a mtproto-proxy configuration with `proxy' directives\0",
+            );
         }
         MTPROTO_CFG_PARSE_FULL_PASS_ERR_NO_PROXY_SERVERS_DEFINED => {
-            unsafe {
-                mtproto_cfg_syntax_literal(
-                    b"no MTProto next proxy servers defined to forward queries to\0",
-                )
-            };
+            mtproto_cfg_syntax_literal(
+                b"no MTProto next proxy servers defined to forward queries to\0",
+            );
         }
-        _ => unsafe { mtproto_cfg_syntax_literal(b"internal parser full-pass failure\0") },
+        _ => mtproto_cfg_syntax_literal(b"internal parser full-pass failure\0"),
     }
 }
 
@@ -1558,12 +1552,12 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_parse_config(
     let parse_start = unsafe { cfg_cur };
     let parse_end = unsafe { cfg_end };
     if parse_start.is_null() || parse_end.is_null() {
-        unsafe { mtproto_cfg_syntax_literal(b"internal parser cursor mismatch\0") };
+        mtproto_cfg_syntax_literal(b"internal parser cursor mismatch\0");
         return -1;
     }
     let parse_delta = unsafe { parse_end.offset_from(parse_start) };
     if parse_delta < 0 {
-        unsafe { mtproto_cfg_syntax_literal(b"internal parser cursor mismatch\0") };
+        mtproto_cfg_syntax_literal(b"internal parser cursor mismatch\0");
         return -1;
     }
     let parse_len = parse_delta as usize;
@@ -1576,7 +1570,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_parse_config(
     }
     .cast::<MtproxyMtprotoCfgProxyAction>();
     if actions.is_null() {
-        unsafe { mtproto_cfg_syntax_literal(b"out of memory while parsing configuration\0") };
+        mtproto_cfg_syntax_literal(b"out of memory while parsing configuration\0");
         return -1;
     }
 
@@ -1598,7 +1592,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_parse_config(
             )
         };
         if pass_rc != MTPROTO_CFG_PARSE_FULL_PASS_OK {
-            unsafe { mtproto_cfg_report_parse_full_pass_error(pass_rc, mc_ref.tot_targets) };
+            mtproto_cfg_report_parse_full_pass_error(pass_rc, mc_ref.tot_targets);
             break 'parse;
         }
 
@@ -1613,26 +1607,26 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_parse_config(
         mc_ref.default_cluster = core::ptr::null_mut();
 
         let Ok(actions_len) = usize::try_from(parsed.actions_len) else {
-            unsafe { mtproto_cfg_syntax_literal(b"internal parser action count mismatch\0") };
+            mtproto_cfg_syntax_literal(b"internal parser action count mismatch\0");
             break 'parse;
         };
         if actions_len > MTPROTO_CFG_MAX_TARGETS {
-            unsafe { mtproto_cfg_syntax_literal(b"internal parser action count mismatch\0") };
+            mtproto_cfg_syntax_literal(b"internal parser action count mismatch\0");
             break 'parse;
         }
 
         for i in 0..actions_len {
             let action = unsafe { *actions.add(i) };
             if action.host_offset > parse_len {
-                unsafe { mtproto_cfg_syntax_literal(b"internal parser host offset mismatch\0") };
+                mtproto_cfg_syntax_literal(b"internal parser host offset mismatch\0");
                 break 'parse;
             }
             let Some(host_advance) = action.host_offset.checked_add(action.step.advance) else {
-                unsafe { mtproto_cfg_syntax_literal(b"internal parser target advance mismatch\0") };
+                mtproto_cfg_syntax_literal(b"internal parser target advance mismatch\0");
                 break 'parse;
             };
             if host_advance > parse_len {
-                unsafe { mtproto_cfg_syntax_literal(b"internal parser target advance mismatch\0") };
+                mtproto_cfg_syntax_literal(b"internal parser target advance mismatch\0");
                 break 'parse;
             }
 
@@ -1645,7 +1639,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_parse_config(
             if action.step.target_index >= MTPROTO_CFG_MAX_TARGETS as u32
                 || action.step.target_index >= parsed.tot_targets
             {
-                unsafe { mtproto_cfg_syntax_literal(b"internal parser target index mismatch\0") };
+                mtproto_cfg_syntax_literal(b"internal parser target index mismatch\0");
                 break 'parse;
             }
             unsafe { cfg_cur = host_cur.add(action.step.advance) };
@@ -1665,22 +1659,16 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_parse_config(
             if action.step.cluster_index < 0
                 || action.step.cluster_index >= MTPROTO_CFG_MAX_CLUSTERS as i32
             {
-                unsafe {
-                    mtproto_cfg_syntax_literal(b"internal parser cluster decision mismatch\0")
-                };
+                mtproto_cfg_syntax_literal(b"internal parser cluster decision mismatch\0");
                 break 'parse;
             }
             if action.step.auth_clusters_after > MTPROTO_CFG_MAX_CLUSTERS as u32 {
-                unsafe {
-                    mtproto_cfg_syntax_literal(b"internal parser auth cluster count mismatch\0")
-                };
+                mtproto_cfg_syntax_literal(b"internal parser auth cluster count mismatch\0");
                 break 'parse;
             }
 
             let Ok(cluster_index) = usize::try_from(action.step.cluster_index) else {
-                unsafe {
-                    mtproto_cfg_syntax_literal(b"internal parser cluster decision mismatch\0")
-                };
+                mtproto_cfg_syntax_literal(b"internal parser cluster decision mismatch\0");
                 break 'parse;
             };
             let mfc = &mut mc_ref.auth_cluster[cluster_index];
@@ -1696,32 +1684,24 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_parse_config(
                 }
                 MTPROTO_CFG_CLUSTER_TARGETS_ACTION_SET_TARGET => {
                     if (flags & 1) == 0 {
-                        unsafe {
-                            mtproto_cfg_syntax_literal(
-                                b"internal parser cluster target action mismatch\0",
-                            )
-                        };
+                        mtproto_cfg_syntax_literal(
+                            b"internal parser cluster target action mismatch\0",
+                        );
                         break 'parse;
                     }
                     if action.step.cluster_targets_index >= MTPROTO_CFG_MAX_TARGETS as u32
                         || action.step.cluster_targets_index >= action.step.tot_targets_after
                     {
-                        unsafe {
-                            mtproto_cfg_syntax_literal(
-                                b"internal parser cluster target index mismatch\0",
-                            )
-                        };
+                        mtproto_cfg_syntax_literal(
+                            b"internal parser cluster target index mismatch\0",
+                        );
                         break 'parse;
                     }
                     let target_index = action.step.cluster_targets_index as usize;
                     mfc.cluster_targets = &mut mc_ref.targets[target_index];
                 }
                 _ => {
-                    unsafe {
-                        mtproto_cfg_syntax_literal(
-                            b"internal parser cluster target action mismatch\0",
-                        )
-                    };
+                    mtproto_cfg_syntax_literal(b"internal parser cluster target action mismatch\0");
                     break 'parse;
                 }
             }
@@ -1762,9 +1742,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_parse_config(
             if parsed.default_cluster_index >= parsed.auth_clusters
                 || parsed.default_cluster_index >= MTPROTO_CFG_MAX_CLUSTERS as u32
             {
-                unsafe {
-                    mtproto_cfg_syntax_literal(b"internal parser default cluster index mismatch\0")
-                };
+                mtproto_cfg_syntax_literal(b"internal parser default cluster index mismatch\0");
                 break 'parse;
             }
             let default_index = parsed.default_cluster_index as usize;
