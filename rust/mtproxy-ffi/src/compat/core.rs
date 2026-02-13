@@ -313,6 +313,13 @@ pub(super) fn tcp_rpc_encode_compact_header_impl(payload_len: i32, is_medium: i3
     mtproxy_core::runtime::net::tcp_rpc_common::encode_compact_header(payload_len, is_medium)
 }
 
+pub(super) fn tcp_rpc_decode_compact_header_impl(
+    first_byte: u8,
+    remaining_bytes: Option<[u8; 3]>,
+) -> Option<(i32, i32)> {
+    mtproxy_core::runtime::net::tcp_rpc_common::decode_compact_header(first_byte, remaining_bytes)
+}
+
 pub(super) fn tcp_rpc_client_packet_len_state_impl(packet_len: i32, max_packet_len: i32) -> i32 {
     mtproxy_core::runtime::net::tcp_rpc_client::packet_len_state(packet_len, max_packet_len)
 }

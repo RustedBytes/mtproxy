@@ -677,6 +677,15 @@ int32_t mtproxy_ffi_tcp_rpc_encode_compact_header(
   int32_t *out_prefix_bytes
 );
 
+// net-tcp-rpc-common helper: decodes compact packet header.
+// Returns 0 on success, -1 on error. remaining_bytes can be NULL for compact format.
+int32_t mtproxy_ffi_tcp_rpc_decode_compact_header(
+  uint8_t first_byte,
+  const uint8_t *remaining_bytes,
+  int32_t *out_payload_len,
+  int32_t *out_header_bytes
+);
+
 // net-tcp-rpc-client helper: classifies packet length from non-compact mode parser.
 int32_t mtproxy_ffi_tcp_rpc_client_packet_len_state(int32_t packet_len, int32_t max_packet_len);
 

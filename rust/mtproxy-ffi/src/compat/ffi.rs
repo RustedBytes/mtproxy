@@ -701,6 +701,50 @@ pub unsafe extern "C" fn mtproxy_ffi_tcp_rpc_encode_compact_header(
     0
 }
 
+/// Decodes compact tcp-rpc packet header.
+///
+/// Returns 0 on success with decoded values in output parameters, -1 on error.
+///
+/// # Safety
+/// `out_payload_len` and `out_header_bytes` must be valid writable pointers.
+/// `remaining_bytes` can be null if `first_byte` < 0x7f (compact format).
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_tcp_rpc_decode_compact_header(
+    first_byte: u8,
+    remaining_bytes: *const u8,
+    out_payload_len: *mut i32,
+    out_header_bytes: *mut i32,
+) -> i32 {
+    let Some(out_len) = (unsafe { mut_ref_from_ptr(out_payload_len) }) else {
+        return -1;
+    };
+    let Some(out_bytes) = (unsafe { mut_ref_from_ptr(out_header_bytes) }) else {
+        return -1;
+    };
+
+    let remaining = if first_byte == 0x7f {
+        // Need 3 more bytes for wide format
+        let Some(ptr) = (unsafe { ref_from_ptr(remaining_bytes) }) else {
+            return -1;
+        };
+        let slice = unsafe { core::slice::from_raw_parts(ptr, 3) };
+        let mut arr = [0_u8; 3];
+        arr.copy_from_slice(slice);
+        Some(arr)
+    } else {
+        None
+    };
+
+    match tcp_rpc_decode_compact_header_impl(first_byte, remaining) {
+        Some((payload_len, header_bytes)) => {
+            *out_len = payload_len;
+            *out_bytes = header_bytes;
+            0
+        }
+        None => -1,
+    }
+}
+
 /// Classifies packet length for non-compact tcp-rpc client parser path.
 #[no_mangle]
 pub extern "C" fn mtproxy_ffi_tcp_rpc_client_packet_len_state(
