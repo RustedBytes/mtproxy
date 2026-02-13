@@ -7,6 +7,13 @@ pub const PACKET_LEN_STATE_READY: i32 = 1;
 pub const PACKET_LEN_STATE_INVALID: i32 = -1;
 pub const PACKET_LEN_STATE_SHORT: i32 = -2;
 
+/// Gets current timestamp (placeholder - in real implementation would use system time).
+#[must_use]
+fn get_current_timestamp() -> f64 {
+    // Placeholder - in real implementation this would call system time
+    0.0
+}
+
 /// RPC crypto flags for client connections.
 ///
 /// This struct uses individual boolean fields instead of bitflags to maintain
@@ -94,6 +101,10 @@ pub struct RpcClientData {
     pub nonce_time: f64,
     /// Selected crypto schema.
     pub crypto_schema: i32,
+    /// Last activity timestamp for timeout tracking.
+    pub last_activity: f64,
+    /// Connection start timestamp.
+    pub connect_time: f64,
 }
 
 impl RpcClientData {
@@ -109,15 +120,20 @@ impl RpcClientData {
             nonce: [0_u8; 16],
             nonce_time: 0.0,
             crypto_schema: 0,
+            last_activity: 0.0,
+            connect_time: 0.0,
         }
     }
 
     /// Initializes client for outbound connection.
     pub fn init_outbound(&mut self, crypto_flags: CryptoFlags) {
+        let now = get_current_timestamp();
         self.state = ClientState::Connected;
         self.crypto_flags = crypto_flags;
         self.in_packet_num = -2;
         self.out_packet_num = -2;
+        self.connect_time = now;
+        self.last_activity = now;
     }
 
     /// Transitions to nonce sent state.
@@ -126,6 +142,7 @@ impl RpcClientData {
         self.nonce = nonce;
         self.nonce_time = timestamp;
         self.crypto_flags.encryption_sent = true;
+        self.last_activity = timestamp;
     }
 
     /// Processes received server nonce.
@@ -143,6 +160,29 @@ impl RpcClientData {
     pub fn mark_handshake_sent(&mut self) {
         self.state = ClientState::HandshakeSent;
         self.out_packet_num = -1;
+    }
+
+    /// Updates last activity timestamp.
+    pub fn update_activity(&mut self, timestamp: f64) {
+        self.last_activity = timestamp;
+    }
+
+    /// Checks if connection has timed out.
+    #[must_use]
+    pub fn is_timed_out(&self, current_time: f64, timeout_seconds: f64) -> bool {
+        (current_time - self.last_activity) > timeout_seconds
+    }
+
+    /// Gets connection age in seconds.
+    #[must_use]
+    pub fn connection_age(&self, current_time: f64) -> f64 {
+        current_time - self.connect_time
+    }
+
+    /// Gets time since last activity in seconds.
+    #[must_use]
+    pub fn idle_time(&self, current_time: f64) -> f64 {
+        current_time - self.last_activity
     }
 
     /// Processes received handshake and transitions to ready state.
@@ -301,7 +341,7 @@ impl Default for RpcClientData {
 }
 
 /// Errors that can occur during RPC client operations.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ClientError {
     /// Received nonce in wrong state.
     UnexpectedNonce,
@@ -313,6 +353,30 @@ pub enum ClientError {
     InvalidPacketType(i32),
     /// Crypto negotiation failed.
     CryptoNegotiationFailed,
+    /// Connection timeout.
+    Timeout { idle_seconds: f64 },
+    /// Invalid packet size.
+    InvalidPacketSize { size: usize, expected: usize },
+}
+
+impl core::fmt::Display for ClientError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::UnexpectedNonce => write!(f, "Received nonce packet in wrong state"),
+            Self::UnexpectedHandshake => write!(f, "Received handshake packet in wrong state"),
+            Self::PacketSequenceError { expected, actual } => {
+                write!(f, "Packet sequence mismatch: expected {expected}, got {actual}")
+            }
+            Self::InvalidPacketType(t) => write!(f, "Invalid packet type: {t:#x}"),
+            Self::CryptoNegotiationFailed => write!(f, "Crypto schema negotiation failed"),
+            Self::Timeout { idle_seconds } => {
+                write!(f, "Connection timeout after {idle_seconds:.1}s idle")
+            }
+            Self::InvalidPacketSize { size, expected } => {
+                write!(f, "Invalid packet size: {size} bytes, expected {expected}")
+            }
+        }
+    }
 }
 
 /// Classifies non-compact tcp-rpc client packet length.

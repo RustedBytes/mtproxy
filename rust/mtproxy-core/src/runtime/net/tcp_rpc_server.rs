@@ -282,7 +282,7 @@ impl Default for RpcServerData {
 }
 
 /// Errors that can occur during RPC server operations.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ServerError {
     /// Received nonce in wrong state.
     UnexpectedNonce,
@@ -294,6 +294,30 @@ pub enum ServerError {
     InvalidPacketType(i32),
     /// Packet header is malformed.
     MalformedHeader,
+    /// Connection timeout.
+    Timeout { idle_seconds: f64 },
+    /// Invalid packet size.
+    InvalidPacketSize { size: usize, expected: usize },
+}
+
+impl core::fmt::Display for ServerError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::UnexpectedNonce => write!(f, "Received nonce packet in wrong state"),
+            Self::UnexpectedHandshake => write!(f, "Received handshake packet in wrong state"),
+            Self::PacketSequenceError { expected, actual } => {
+                write!(f, "Packet sequence mismatch: expected {expected}, got {actual}")
+            }
+            Self::InvalidPacketType(t) => write!(f, "Invalid packet type: {t:#x}"),
+            Self::MalformedHeader => write!(f, "Malformed packet header"),
+            Self::Timeout { idle_seconds } => {
+                write!(f, "Connection timeout after {idle_seconds:.1}s idle")
+            }
+            Self::InvalidPacketSize { size, expected } => {
+                write!(f, "Invalid packet size: {size} bytes, expected {expected}")
+            }
+        }
+    }
 }
 
 /// Returns `1` when tcp-rpc server packet header is malformed.

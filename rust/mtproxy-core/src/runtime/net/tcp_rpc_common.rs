@@ -103,6 +103,21 @@ impl CryptoSchema {
 /// Maximum number of extra keys supported.
 pub const RPC_MAX_EXTRA_KEYS: usize = 8;
 
+/// Trait for packet serialization/deserialization.
+pub trait PacketSerialization: Sized {
+    /// Expected packet type for this structure.
+    fn expected_packet_type() -> i32;
+    
+    /// Size of the packet in bytes.
+    fn packet_size() -> usize;
+    
+    /// Serializes the packet to a byte slice.
+    fn to_bytes(&self) -> &[u8];
+    
+    /// Deserializes a packet from a byte slice.
+    fn from_bytes(bytes: &[u8]) -> Option<Self>;
+}
+
 /// Basic RPC nonce packet (crypto schema 0 or 1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(C, packed(4))]
@@ -136,6 +151,59 @@ impl NoncePacket {
     #[must_use]
     pub const fn size() -> usize {
         core::mem::size_of::<Self>()
+    }
+}
+
+impl PacketSerialization for NoncePacket {
+    fn expected_packet_type() -> i32 {
+        RpcPacketType::Nonce as i32
+    }
+    
+    fn packet_size() -> usize {
+        core::mem::size_of::<Self>()
+    }
+    
+    fn to_bytes(&self) -> &[u8] {
+        // SAFETY: NoncePacket uses #[repr(C, packed(4))], making it safe to view as bytes
+        #[allow(unsafe_code)]
+        #[allow(clippy::ptr_as_ptr)]
+        unsafe {
+            core::slice::from_raw_parts(
+                core::ptr::addr_of!(*self).cast::<u8>(),
+                Self::packet_size(),
+            )
+        }
+    }
+    
+    fn from_bytes(bytes: &[u8]) -> Option<Self> {
+        if bytes.len() < Self::packet_size() {
+            return None;
+        }
+        
+        let mut packet = Self {
+            packet_type: 0,
+            key_select: 0,
+            crypto_schema: 0,
+            crypto_ts: 0,
+            crypto_nonce: [0; 16],
+        };
+        
+        // SAFETY: We've verified bytes.len() >= packet_size(), and NoncePacket is repr(C, packed(4))
+        #[allow(unsafe_code)]
+        #[allow(clippy::ptr_as_ptr)]
+        unsafe {
+            core::ptr::copy_nonoverlapping(
+                bytes.as_ptr(),
+                core::ptr::addr_of_mut!(packet).cast::<u8>(),
+                Self::packet_size(),
+            );
+        }
+        
+        if packet.packet_type != Self::expected_packet_type() {
+            return None;
+        }
+        
+        Some(packet)
     }
 }
 
@@ -316,6 +384,56 @@ impl HandshakeErrorPacket {
     pub const fn size() -> usize {
         core::mem::size_of::<Self>()
     }
+
+    /// Serializes the packet to a byte slice.
+    ///
+    /// # Safety
+    /// The packet uses `#[repr(C, packed(4))]` so direct byte access is safe.
+    #[must_use]
+    pub fn to_bytes(&self) -> &[u8] {
+        // SAFETY: HandshakeErrorPacket uses #[repr(C, packed(4))], making it safe to view as bytes
+        #[allow(unsafe_code)]
+        #[allow(clippy::ptr_as_ptr)]
+        unsafe {
+            core::slice::from_raw_parts(
+                core::ptr::addr_of!(*self).cast::<u8>(),
+                Self::size(),
+            )
+        }
+    }
+
+    /// Deserializes a packet from a byte slice.
+    ///
+    /// Returns `None` if the slice is too small or packet type is incorrect.
+    #[must_use]
+    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
+        if bytes.len() < Self::size() {
+            return None;
+        }
+        
+        let mut packet = Self {
+            packet_type: 0,
+            error_code: 0,
+            sender_pid: ProcessId::default(),
+        };
+        
+        // SAFETY: We've verified bytes.len() >= size(), and packet is repr(C, packed(4))
+        #[allow(unsafe_code)]
+        #[allow(clippy::ptr_as_ptr)]
+        unsafe {
+            core::ptr::copy_nonoverlapping(
+                bytes.as_ptr(),
+                core::ptr::addr_of_mut!(packet).cast::<u8>(),
+                Self::size(),
+            );
+        }
+        
+        if packet.packet_type != RpcPacketType::HandshakeError as i32 {
+            return None;
+        }
+        
+        Some(packet)
+    }
 }
 
 /// Encodes compact/medium tcp-rpc packet header prefix.
@@ -359,21 +477,46 @@ pub fn decode_compact_header(first_byte: u8, remaining_bytes: Option<[u8; 3]>) -
 
 /// Computes CRC32 checksum for packet validation.
 ///
-/// This is a placeholder that would call into the actual CRC32 implementation.
-/// The real implementation would use the crypto crate's CRC32 functions.
+/// Uses the standard CRC-32 algorithm (polynomial 0xEDB88320).
 #[must_use]
-pub fn compute_packet_crc32(_data: &[u8]) -> u32 {
-    // Placeholder - in real implementation, this would call:
-    // crate::crypto::crc32::compute(data)
-    0
+pub fn compute_packet_crc32(data: &[u8]) -> u32 {
+    const CRC32_TABLE: [u32; 256] = generate_crc32_table();
+    
+    let mut crc = 0xFFFF_FFFF_u32;
+    for &byte in data {
+        let index = ((crc ^ u32::from(byte)) & 0xFF) as usize;
+        crc = (crc >> 8) ^ CRC32_TABLE[index];
+    }
+    !crc
 }
 
 /// Validates a packet's CRC32 checksum.
 #[must_use]
-pub fn validate_packet_crc32(_data: &[u8], _expected_crc: u32) -> bool {
-    // Placeholder - in real implementation, this would:
-    // compute_packet_crc32(data) == expected_crc
-    true
+pub fn validate_packet_crc32(data: &[u8], expected_crc: u32) -> bool {
+    compute_packet_crc32(data) == expected_crc
+}
+
+/// Generates CRC32 lookup table at compile time.
+#[must_use]
+const fn generate_crc32_table() -> [u32; 256] {
+    let mut table = [0_u32; 256];
+    let mut i = 0_usize;
+    while i < 256 {
+        #[allow(clippy::cast_possible_truncation)]
+        let mut crc = i as u32;
+        let mut j = 0;
+        while j < 8 {
+            if (crc & 1) != 0 {
+                crc = (crc >> 1) ^ 0xEDB8_8320;
+            } else {
+                crc >>= 1;
+            }
+            j += 1;
+        }
+        table[i] = crc;
+        i += 1;
+    }
+    table
 }
 
 #[cfg(test)]
