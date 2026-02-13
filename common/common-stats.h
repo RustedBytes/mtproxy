@@ -27,8 +27,10 @@
 #include <stddef.h>
 #include <sys/types.h>
 
-#define AM_GET_MEMORY_USAGE_SELF 1
-#define AM_GET_MEMORY_USAGE_OVERALL 2
+enum {
+  AM_GET_MEMORY_USAGE_SELF = 1,
+  AM_GET_MEMORY_USAGE_OVERALL = 2,
+};
 
 static inline double safe_div(double x, double y) { return y > 0 ? x / y : 0; }
 

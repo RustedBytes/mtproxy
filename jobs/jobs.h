@@ -32,10 +32,11 @@
 #define __joblocked
 #define __jobref
 
-#define MAX_SUBCLASS_THREADS 16
-
-// verbosity level for jobs
-#define JOBS_DEBUG 3
+enum {
+  MAX_SUBCLASS_THREADS = 16,
+  // verbosity level for jobs
+  JOBS_DEBUG = 3,
+};
 
 #define CONCAT(a, b) a##b
 
@@ -61,79 +62,80 @@ typedef int (*job_function_t)(job_t job, int op, struct job_thread *JT);
 extern __thread struct job_thread *this_job_thread;
 extern __thread job_t this_job;
 
-#define JOB_DESTROYED (-0x7fffffff - 1)
-#define JOB_COMPLETED 0x100
-#define JOB_FINISH 0x80
-#define JOB_ERROR -1
+enum {
+  JOB_DESTROYED = (-0x7fffffff - 1),
+  JOB_COMPLETED = 0x100,
+  JOB_FINISH = 0x80,
+  JOB_ERROR = -1,
+};
 
 /* job signal numbers (0..7) */
-#define JS_FREE                                                                \
-  -1 /* pseudo-signal, invoked to free job structure ("destructor") */
-#define JS_RUN 0
-#define JS_AUX 1
-#define JS_MSG 2
-#define JS_ALARM 4 /* usually sent by timer */
-#define JS_ABORT 5 /* used for error propagation, especially from children */
-#define JS_KILL 6
-#define JS_FINISH 7
-#define JS_SIG0 0
-#define JS_SIG1 1
-#define JS_SIG2 2
-#define JS_SIG3 3
-#define JS_SIG4 4
-#define JS_SIG5 5
-#define JS_SIG6 6
-#define JS_SIG7 7
+enum {
+  JS_FREE = -1, // pseudo-signal, invoked to free job structure ("destructor")
+  JS_RUN = 0,
+  JS_AUX = 1,
+  JS_MSG = 2,
+  JS_ALARM = 4, // usually sent by timer
+  JS_ABORT = 5, // used for error propagation, especially from children
+  JS_KILL = 6,
+  JS_FINISH = 7,
+  JS_SIG0 = 0,
+  JS_SIG1 = 1,
+  JS_SIG2 = 2,
+  JS_SIG3 = 3,
+  JS_SIG4 = 4,
+  JS_SIG5 = 5,
+  JS_SIG6 = 6,
+  JS_SIG7 = 7,
+};
 
 extern int engine_multithread_mode;
 
-#define JC_EPOLL JC_MAIN
-#define JC_METAFILE_READ JC_IO
-#define JC_METAFILE_PREPARE JC_CPU
-#define JC_CONNECTION 4
-#define JC_CONNECTION_IO 5
-#define JC_UDP 6
-#define JC_UDP_IO 7
-#define JC_ENGINE 8
-#define JC_GMS JC_ENGINE
-#define JC_GMS_CPU 10
-#define JC_ENGINE_MULT 11
+enum {
+  JC_NONE = 0, // no signal (unless used with "fast" flag; then it means "any context")
+  JC_IO = 1,   // signal must be processed in I/O thread
+  JC_CPU = 2,  // signal must be processed in CPU thread
+  JC_MAIN = 3, // signal must be processed in main thread (unless specified otherwise)
+  JC_CONNECTION = 4,
+  JC_CONNECTION_IO = 5,
+  JC_UDP = 6,
+  JC_UDP_IO = 7,
+  JC_ENGINE = 8,
+  JC_MP_QUEUE = 9, // fake class: no signals should be allowed
+  JC_GMS_CPU = 10,
+  JC_ENGINE_MULT = 11,
+  JC_MAX = 0xf,
+  JC_MASK = JC_MAX,
+  JC_EPOLL = JC_MAIN,
+  JC_METAFILE_READ = JC_IO,
+  JC_METAFILE_PREPARE = JC_CPU,
+  JC_GMS = JC_ENGINE,
+};
 
-#define DEFAULT_IO_JOB_THREADS 16
-#define DEFAULT_CPU_JOB_THREADS 8
-#define DEFAULT_GMS_CPU_JOB_THREADS 8
+enum {
+  DEFAULT_IO_JOB_THREADS = 16,
+  DEFAULT_CPU_JOB_THREADS = 8,
+  DEFAULT_GMS_CPU_JOB_THREADS = 8,
+};
 
-// fake class
-// no signals should be allowed
-#define JC_MP_QUEUE 9
-
-#define JC_NONE                                                                \
-  0 // no signal (unless used with "fast" flag; then it means "any context")
-#define JC_IO 1  // signal must be processed in I/O thread
-#define JC_CPU 2 // signal must be processed in CPU thread
-#define JC_MAIN                                                                \
-  3 // signal must be processed in main thread (unless specified otherwise)
-#define JC_MAX 0xf
-#define JC_MASK JC_MAX
-
-#define JF_LOCKED                                                              \
-  0x10000 // job is "locked" (usually this means that a signal is being
-          // processed)
-#define JF_SIGINT                                                              \
-  0x20000 // signal interruption: if job is "locked" and we send a new signal to
-          // it, invoke pthread_signal() as well
-#define JF_COMPLETED                                                           \
-  0x40000 // used to signal job "completion" to outside observers
+enum {
+  JF_LOCKED = 0x10000, // job is "locked" (usually this means that a signal is being processed)
+  JF_SIGINT = 0x20000, // signal interruption: if job is "locked" and we send a new signal to it, invoke pthread_signal() as well
+  JF_COMPLETED = 0x40000, // used to signal job "completion" to outside observers
+};
 
 #define JF_QUEUED_CLASS(__c) (1 << (__c))
-#define JF_QUEUED_MAIN                                                         \
-  JF_QUEUED_CLASS(JC_MAIN)                    // job is in MAIN execution queue
-#define JF_QUEUED_IO JF_QUEUED_CLASS(JC_IO)   // job is in IO execution queue
-#define JF_QUEUED_CPU JF_QUEUED_CLASS(JC_CPU) // job is in CPU execution queue
-#define JF_QUEUED 0xffff                      // job is in some execution queue
+enum {
+  JF_QUEUED_MAIN = (1 << JC_MAIN), // job is in MAIN execution queue
+  JF_QUEUED_IO = (1 << JC_IO),     // job is in IO execution queue
+  JF_QUEUED_CPU = (1 << JC_CPU),   // job is in CPU execution queue
+  JF_QUEUED = 0xffff,              // job is in some execution queue
+};
 
-#define JT_HAVE_TIMER 1
-#define JT_HAVE_MSG_QUEUE 2
+enum {
+  JT_HAVE_TIMER = 1,
+  JT_HAVE_MSG_QUEUE = 2,
+};
 
 #define JFS_SET(__s)                                                           \
   (0x1000000U << (__s)) // j_flags: signal __s is awaiting delivery
@@ -156,27 +158,25 @@ extern int engine_multithread_mode;
 #define JSIG_FAST(__s) JSC_FAST(JC_NONE, __s)
 #define JSIG_ENGINE(__s) JSC_ALLOW(JC_ENGINE, __s)
 
-#define JSP_PARENT_ERROR                                                       \
-  1 // j_status: propagate error to j_error field in j_parent, and send ABORT to
-    // parent
-#define JSP_PARENT_RUN 2 // j_status: send RUN to j_parent after job completion
-#define JSP_PARENT_WAKEUP                                                      \
-  4 // j_status: decrease j_parent's j_children; if it becomes 0, maybe send RUN
-#define JSP_PARENT_RESPTR                                                      \
-  8 // j_status: (result) pointer(s) kept in j_custom actually point inside
-    // j_parent; use them only if j_parent is still valid
-#define JSP_PARENT_INCOMPLETE 0x10 // abort job if parent already completed
-#define JSP_PARENT_RWE 7
-#define JSP_PARENT_RWEP 0xf
-#define JSP_PARENT_RWEI 0x17
-#define JSP_PARENT_RWEPI 0x1f
+enum {
+  JSP_PARENT_ERROR = 1, // j_status: propagate error to j_error field in j_parent, and send ABORT to parent
+  JSP_PARENT_RUN = 2,   // j_status: send RUN to j_parent after job completion
+  JSP_PARENT_WAKEUP = 4, // j_status: decrease j_parent's j_children; if it becomes 0, maybe send RUN
+  JSP_PARENT_RESPTR = 8, // j_status: (result) pointer(s) kept in j_custom actually point inside j_parent; use only if j_parent is still valid
+  JSP_PARENT_INCOMPLETE = 0x10, // abort job if parent already completed
+  JSP_PARENT_RWE = 7,
+  JSP_PARENT_RWEP = 0xf,
+  JSP_PARENT_RWEI = 0x17,
+  JSP_PARENT_RWEPI = 0x1f,
+};
 
-#define JMC_UPDATE 1
-#define JMC_FORCE_UPDATE 2
-#define JMC_RPC_QUERY 3
-#define JMC_TYPE_MASK 31
-
-#define JMC_CONTINUATION 8
+enum {
+  JMC_UPDATE = 1,
+  JMC_FORCE_UPDATE = 2,
+  JMC_RPC_QUERY = 3,
+  JMC_TYPE_MASK = 31,
+  JMC_CONTINUATION = 8,
+};
 
 #define JMC_EXTRACT_ANSWER(__type) (((__type) >> 8) & 255)
 #define JMC_ANSWER(__type) ((__type) << 8)
@@ -289,7 +289,9 @@ struct job_timer_info {
   double (*wakeup)(void *);
 };
 
-#define MAX_JOB_THREADS 256
+enum {
+  MAX_JOB_THREADS = 256,
+};
 
 long int lrand48_j(void);
 long int mrand48_j(void);
@@ -409,7 +411,9 @@ static inline void job_message_send_empty(JOB_REF_ARG(job), JOB_REF_ARG(src),
                    NULL, flags, NULL);
 }
 
-#define TL_TRUE 0x3fedd339
+enum {
+  TL_TRUE = 0x3fedd339,
+};
 static inline int job_message_answer_true(struct job_message *M) {
   if (M->src) {
     job_message_send(JOB_REF_PASS(M->src), JOB_REF_NULL, TL_TRUE, &empty_rwm, 1,

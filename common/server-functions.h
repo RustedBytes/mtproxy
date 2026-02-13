@@ -44,7 +44,9 @@ extern "C" {
 #define BITS_STR "32"
 #endif
 
-#define MAX_ENGINE_OPTIONS 1000
+enum {
+  MAX_ENGINE_OPTIONS = 1000,
+};
 extern int engine_options_num;
 extern char *engine_options[MAX_ENGINE_OPTIONS];
 
@@ -66,12 +68,13 @@ extern int daemonize;
 extern const char *username, *progname, *groupname;
 
 /* keep mask defines */
-#define LONGOPT_JOBS_SET 0x00000400
-#define LONGOPT_COMMON_SET 0x00001000
-#define LONGOPT_NET_SET (LONGOPT_TCP_SET)
-#define LONGOPT_TCP_SET 0x00002000
-
-#define LONGOPT_CUSTOM_SET 0x10000000
+enum {
+  LONGOPT_JOBS_SET = 0x00000400,
+  LONGOPT_COMMON_SET = 0x00001000,
+  LONGOPT_TCP_SET = 0x00002000,
+  LONGOPT_NET_SET = LONGOPT_TCP_SET,
+  LONGOPT_CUSTOM_SET = 0x10000000,
+};
 
 struct engine_parse_option {
   int *vals;
@@ -120,8 +123,11 @@ static inline void mfence(void) { asm volatile("mfence" : : : "memory"); }
 // extern struct multicast_host multicast_hosts[];
 // extern int multicast_hosts_num;
 
-#define DEFAULT_BACKLOG 8192
-#define DEFAULT_ENGINE_USER "mtproxy"
+enum {
+  DEFAULT_BACKLOG = 8192,
+};
+
+static const char DEFAULT_ENGINE_USER[] = "mtproxy";
 
 #ifdef __cplusplus
 }

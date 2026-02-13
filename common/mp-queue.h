@@ -45,9 +45,11 @@ void clear_mp_queue(struct mp_queue *MQ); // invoke only if nobody else is
 void free_mp_queue(struct mp_queue *MQ); // same + invoke free()
 
 // flags for mpq_push / mpq_pop functions
-#define MPQF_RECURSIVE 8192
-#define MPQF_STORE_PTR 4096
-#define MPQF_MAX_ITERATIONS (MPQF_STORE_PTR - 1)
+enum {
+  MPQF_RECURSIVE = 8192,
+  MPQF_STORE_PTR = 4096,
+  MPQF_MAX_ITERATIONS = MPQF_STORE_PTR - 1,
+};
 
 long mpq_push(struct mp_queue *MQ, mqn_value_t val, int flags);
 mqn_value_t mpq_pop(struct mp_queue *MQ, int flags);

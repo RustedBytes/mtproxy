@@ -35,23 +35,25 @@
 // #define RPC_REQ_RESULT 0x63aeda4e
 // #define RPC_REQ_ERROR 0x7ae432f5
 
-#define TL_FETCH_FLAG_ALLOW_DATA_AFTER_QUERY 1
-
-#define TL_ENGINE_NOP 0x166bb7c6
-
-#define TLF_CRC32 1
-#define TLF_PERMANENT 2
-#define TLF_ALLOW_PREPEND 4
-#define TLF_DISABLE_PREPEND 8
-#define TLF_NOALIGN 16
-#define TLF_NO_AUTOFLUSH 32
+enum {
+  TL_FETCH_FLAG_ALLOW_DATA_AFTER_QUERY = 1,
+  TL_ENGINE_NOP = 0x166bb7c6,
+  TLF_CRC32 = 1,
+  TLF_PERMANENT = 2,
+  TLF_ALLOW_PREPEND = 4,
+  TLF_DISABLE_PREPEND = 8,
+  TLF_NOALIGN = 16,
+  TLF_NO_AUTOFLUSH = 32,
+};
 
 struct tl_query_header;
 struct tl_query_header *tl_query_header_dup(struct tl_query_header *h);
 struct tl_query_header *tl_query_header_clone(struct tl_query_header *h_old);
 void tl_query_header_delete(struct tl_query_header *h);
 
-#define RPC_REQ_ERROR_WRAPPED (RPC_REQ_ERROR + 1)
+enum {
+  RPC_REQ_ERROR_WRAPPED = RPC_REQ_ERROR + 1,
+};
 
 extern long long rpc_queries_received, rpc_queries_ok, rpc_queries_error;
 
