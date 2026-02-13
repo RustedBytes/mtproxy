@@ -105,8 +105,8 @@ int tcp_rpc_default_execute(connection_job_t C, int op,
 /* for crypto_flags in struct tcp_rpc_data */
 enum {
   RPCF_ENC_SENT = 16,
-  RPCF_SEQNO_HOLES = 256, // packet numbers not sequential
-  RPCF_QUICKACK = 512,    // allow quick ack packets
+  RPCF_SEQNO_HOLES = 256,  // packet numbers not sequential
+  RPCF_QUICKACK = 512,     // allow quick ack packets
   RPCF_COMPACT_OFF = 1024, // compact mode off
   RPCF_USE_CRC32C = 2048,  // use CRC32-C instead of CRC32
 };

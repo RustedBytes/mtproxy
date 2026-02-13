@@ -78,8 +78,8 @@ void vv_ipv4_to_octets(uint32_t addr, uint8_t *out);
 #define VV_IP_PRINT_STR "%d.%d.%d.%d"
 
 #define VV_IP_TO_PRINT(addr)                                                   \
-    ((addr) >> 24) & 0xff, ((addr) >> 16) & 0xff, ((addr) >> 8) & 0xff,       \
-        (addr) & 0xff
+  ((addr) >> 24) & 0xff, ((addr) >> 16) & 0xff, ((addr) >> 8) & 0xff,          \
+      (addr) & 0xff
 
 #ifdef __cplusplus
 }

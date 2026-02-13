@@ -23,8 +23,8 @@
 #define _FILE_OFFSET_BITS 64
 
 #include <assert.h>
-#include <stddef.h>
 #include <pthread.h>
+#include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
 

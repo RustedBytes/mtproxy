@@ -375,7 +375,8 @@ SOCKET_CONN_INFO(socket_connection_job_t conn) {
   return (struct socket_connection_info *)conn->j_custom;
 }
 
-static inline struct conn_target_info *CONN_TARGET_INFO(conn_target_job_t conn) {
+static inline struct conn_target_info *
+CONN_TARGET_INFO(conn_target_job_t conn) {
   return (struct conn_target_info *)conn->j_custom;
 }
 
@@ -443,7 +444,8 @@ int server_noop(connection_job_t C);
 int server_failed(connection_job_t C);
 
 void connection_write_close(connection_job_t C);
-static inline void write_out_chk(connection_job_t c, const void *data, int len) {
+static inline void write_out_chk(connection_job_t c, const void *data,
+                                 int len) {
   assert(rwm_push_data(&CONN_INFO(c)->out, data, len) == len);
 }
 

@@ -69,15 +69,15 @@ static const char CommitStr[] =
 const char FullVersionStr[] =
     "mtproxy-0.02 compiled at " __DATE__ " " __TIME__ " by gcc " __VERSION__ " "
 #ifdef __LP64__
-                "64-bit"
+    "64-bit"
 #else
-                "32-bit"
+    "32-bit"
 #endif
-                " after commit "
+    " after commit "
 #ifdef COMMIT
-                COMMIT;
+    COMMIT;
 #else
-                "unknown";
+    "unknown";
 #endif
 
 // #define DEFAULT_OUTBOUND_CONNECTION_CREATION_RATE	1000000
@@ -459,9 +459,12 @@ static inline void add_stats(struct worker_stats *W) {
   SumStats.conn.active_connections += W->conn.active_connections;
   SumStats.conn.active_dh_connections += W->conn.active_dh_connections;
   SumStats.conn.outbound_connections += W->conn.outbound_connections;
-  SumStats.conn.active_outbound_connections += W->conn.active_outbound_connections;
-  SumStats.conn.ready_outbound_connections += W->conn.ready_outbound_connections;
-  SumStats.conn.active_special_connections += W->conn.active_special_connections;
+  SumStats.conn.active_outbound_connections +=
+      W->conn.active_outbound_connections;
+  SumStats.conn.ready_outbound_connections +=
+      W->conn.ready_outbound_connections;
+  SumStats.conn.active_special_connections +=
+      W->conn.active_special_connections;
   SumStats.conn.max_special_connections += W->conn.max_special_connections;
   SumStats.conn.allocated_connections += W->conn.allocated_connections;
   SumStats.conn.allocated_outbound_connections +=
@@ -481,9 +484,11 @@ static inline void add_stats(struct worker_stats *W) {
   SumStats.conn.tcp_writev_intr += W->conn.tcp_writev_intr;
   SumStats.conn.tcp_writev_bytes += W->conn.tcp_writev_bytes;
   SumStats.conn.accept_calls_failed += W->conn.accept_calls_failed;
-  SumStats.conn.accept_nonblock_set_failed += W->conn.accept_nonblock_set_failed;
+  SumStats.conn.accept_nonblock_set_failed +=
+      W->conn.accept_nonblock_set_failed;
   SumStats.conn.accept_rate_limit_failed += W->conn.accept_rate_limit_failed;
-  SumStats.conn.accept_init_accepted_failed += W->conn.accept_init_accepted_failed;
+  SumStats.conn.accept_init_accepted_failed +=
+      W->conn.accept_init_accepted_failed;
 
   SumStats.allocated_aes_crypto += W->allocated_aes_crypto;
   SumStats.allocated_aes_crypto_temp += W->allocated_aes_crypto_temp;
@@ -492,8 +497,10 @@ static inline void add_stats(struct worker_stats *W) {
   SumStats.bufs.allocated_buffer_bytes += W->bufs.allocated_buffer_bytes;
   SumStats.bufs.total_used_buffers += W->bufs.total_used_buffers;
   SumStats.bufs.allocated_buffer_chunks += W->bufs.allocated_buffer_chunks;
-  SumStats.bufs.max_allocated_buffer_chunks += W->bufs.max_allocated_buffer_chunks;
-  SumStats.bufs.max_allocated_buffer_bytes += W->bufs.max_allocated_buffer_bytes;
+  SumStats.bufs.max_allocated_buffer_chunks +=
+      W->bufs.max_allocated_buffer_chunks;
+  SumStats.bufs.max_allocated_buffer_bytes +=
+      W->bufs.max_allocated_buffer_bytes;
   SumStats.bufs.max_buffer_chunks += W->bufs.max_buffer_chunks;
   SumStats.bufs.buffer_chunk_alloc_ops += W->bufs.buffer_chunk_alloc_ops;
 
@@ -636,8 +643,8 @@ void mtfront_prepare_stats(stats_buffer_t *sb) {
       "http_qps\t%.6f\n"
       "proxy_mode\t%d\n"
       "proxy_tag_set\t%d\n"
-      "version\t%s compiled at " __DATE__ " " __TIME__
-      " by gcc " __VERSION__ " "
+      "version\t%s compiled at " __DATE__ " " __TIME__ " by gcc " __VERSION__
+      " "
 #ifdef __LP64__
       "64-bit"
 #else
@@ -655,22 +662,28 @@ void mtfront_prepare_stats(stats_buffer_t *sb) {
       tot_forwarded_simple_acks + SumStats.tot_forwarded_simple_acks,
       dropped_simple_acks + SumStats.dropped_simple_acks,
       active_rpcs_created + SumStats.active_rpcs_created,
-      active_rpcs + SumStats.active_rpcs, rpc_dropped_answers + SumStats.rpc_dropped_answers,
+      active_rpcs + SumStats.active_rpcs,
+      rpc_dropped_answers + SumStats.rpc_dropped_answers,
       rpc_dropped_running + SumStats.rpc_dropped_running, window_clamp,
       use_worker_totals ? SumStats.conn.ready_targets
                         : conn.ready_targets + SumStats.conn.ready_targets,
-      use_worker_totals ? SumStats.conn.allocated_targets
-                        : conn.allocated_targets + SumStats.conn.allocated_targets,
+      use_worker_totals
+          ? SumStats.conn.allocated_targets
+          : conn.allocated_targets + SumStats.conn.allocated_targets,
       use_worker_totals ? SumStats.conn.active_targets
                         : conn.active_targets + SumStats.conn.active_targets,
-      use_worker_totals ? SumStats.conn.inactive_targets
-                        : conn.inactive_targets + SumStats.conn.inactive_targets,
+      use_worker_totals
+          ? SumStats.conn.inactive_targets
+          : conn.inactive_targets + SumStats.conn.inactive_targets,
       conn.active_connections + SumStats.conn.active_connections,
       allocated_aes_crypto + SumStats.allocated_aes_crypto,
       conn.allocated_connections + SumStats.conn.allocated_connections,
-      conn.allocated_outbound_connections + SumStats.conn.allocated_outbound_connections,
-      conn.allocated_inbound_connections + SumStats.conn.allocated_inbound_connections,
-      conn.allocated_socket_connections + SumStats.conn.allocated_socket_connections,
+      conn.allocated_outbound_connections +
+          SumStats.conn.allocated_outbound_connections,
+      conn.allocated_inbound_connections +
+          SumStats.conn.allocated_inbound_connections,
+      conn.allocated_socket_connections +
+          SumStats.conn.allocated_socket_connections,
       conn.active_dh_connections + SumStats.conn.active_dh_connections,
       tot_dh_rounds[0] + SumStats.tot_dh_rounds[0],
       tot_dh_rounds[1] + SumStats.tot_dh_rounds[1],
@@ -681,22 +694,26 @@ void mtfront_prepare_stats(stats_buffer_t *sb) {
       use_worker_totals ? SumStats.conn.max_special_connections
                         : conn.max_special_connections +
                               SumStats.conn.max_special_connections,
-      conn.accept_init_accepted_failed + SumStats.conn.accept_init_accepted_failed,
+      conn.accept_init_accepted_failed +
+          SumStats.conn.accept_init_accepted_failed,
       conn.accept_calls_failed + SumStats.conn.accept_calls_failed,
-      conn.accept_connection_limit_failed + SumStats.conn.accept_connection_limit_failed,
+      conn.accept_connection_limit_failed +
+          SumStats.conn.accept_connection_limit_failed,
       conn.accept_rate_limit_failed + SumStats.conn.accept_rate_limit_failed,
-      conn.accept_nonblock_set_failed + SumStats.conn.accept_nonblock_set_failed,
+      conn.accept_nonblock_set_failed +
+          SumStats.conn.accept_nonblock_set_failed,
       ext_connections + SumStats.ext_connections,
       ext_connections_created + SumStats.ext_connections_created,
       ev_heap_size + SumStats.ev_heap_size,
       use_worker_totals ? SumStats.bufs.total_used_buffers_size
                         : bufs.total_used_buffers_size +
                               SumStats.bufs.total_used_buffers_size,
-      use_worker_totals ? SumStats.bufs.allocated_buffer_bytes
-                        : bufs.allocated_buffer_bytes +
-                              SumStats.bufs.allocated_buffer_bytes,
-      use_worker_totals ? SumStats.bufs.total_used_buffers
-                        : bufs.total_used_buffers + SumStats.bufs.total_used_buffers,
+      use_worker_totals
+          ? SumStats.bufs.allocated_buffer_bytes
+          : bufs.allocated_buffer_bytes + SumStats.bufs.allocated_buffer_bytes,
+      use_worker_totals
+          ? SumStats.bufs.total_used_buffers
+          : bufs.total_used_buffers + SumStats.bufs.total_used_buffers,
       use_worker_totals ? SumStats.bufs.allocated_buffer_chunks
                         : bufs.allocated_buffer_chunks +
                               SumStats.bufs.allocated_buffer_chunks,
@@ -707,10 +724,10 @@ void mtfront_prepare_stats(stats_buffer_t *sb) {
       connections_failed_lru + SumStats.connections_failed_lru,
       connections_failed_flood + SumStats.connections_failed_flood,
       http_connections + SumStats.http_connections,
-      pending_http_queries + SumStats.pending_http_queries,
-      total_http_queries, http_bad_headers + SumStats.http_bad_headers,
-      safe_div(total_http_queries, uptime), proxy_mode, proxy_tag_set, VersionStr,
-      CommitStr);
+      pending_http_queries + SumStats.pending_http_queries, total_http_queries,
+      http_bad_headers + SumStats.http_bad_headers,
+      safe_div(total_http_queries, uptime), proxy_mode, proxy_tag_set,
+      VersionStr, CommitStr);
 }
 
 /*

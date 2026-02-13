@@ -49,7 +49,8 @@ struct raw_msg_buffer_module_stat {
 
 static struct raw_msg_buffer_module_stat
     *raw_msg_buffer_module_stat_array[MAX_JOB_THREADS];
-static __thread struct raw_msg_buffer_module_stat *raw_msg_buffer_module_stat_tls;
+static __thread struct raw_msg_buffer_module_stat
+    *raw_msg_buffer_module_stat_tls;
 
 static void raw_msg_buffer_module_thread_init(void) {
   int id = get_this_thread_id();
@@ -79,22 +80,21 @@ static inline long long raw_msg_buffer_stat_sum_ll(size_t field_offset) {
 }
 
 int raw_msg_buffer_prepare_stat(stats_buffer_t *sb) {
-  sb_print_i64_key(sb, "total_used_buffers_size",
-                   raw_msg_buffer_stat_sum_ll(
-                       offsetof(struct raw_msg_buffer_module_stat,
-                                total_used_buffers_size)));
+  sb_print_i64_key(
+      sb, "total_used_buffers_size",
+      raw_msg_buffer_stat_sum_ll(offsetof(struct raw_msg_buffer_module_stat,
+                                          total_used_buffers_size)));
   sb_print_i32_key(sb, "total_used_buffers",
-                   raw_msg_buffer_stat_sum_i(
-                       offsetof(struct raw_msg_buffer_module_stat,
-                                total_used_buffers)));
-  sb_print_i64_key(sb, "allocated_buffer_bytes",
-                   raw_msg_buffer_stat_sum_ll(
-                       offsetof(struct raw_msg_buffer_module_stat,
-                                allocated_buffer_bytes)));
-  sb_print_i64_key(sb, "buffer_chunk_alloc_ops",
-                   raw_msg_buffer_stat_sum_ll(
-                       offsetof(struct raw_msg_buffer_module_stat,
-                                buffer_chunk_alloc_ops)));
+                   raw_msg_buffer_stat_sum_i(offsetof(
+                       struct raw_msg_buffer_module_stat, total_used_buffers)));
+  sb_print_i64_key(
+      sb, "allocated_buffer_bytes",
+      raw_msg_buffer_stat_sum_ll(
+          offsetof(struct raw_msg_buffer_module_stat, allocated_buffer_bytes)));
+  sb_print_i64_key(
+      sb, "buffer_chunk_alloc_ops",
+      raw_msg_buffer_stat_sum_ll(
+          offsetof(struct raw_msg_buffer_module_stat, buffer_chunk_alloc_ops)));
   sb_printf(sb,
             "allocated_buffer_chunks\t%d\n"
             "max_allocated_buffer_chunks\t%d\n"
@@ -106,18 +106,14 @@ int raw_msg_buffer_prepare_stat(stats_buffer_t *sb) {
 }
 
 void fetch_buffers_stat(struct buffers_stat *bs) {
-  bs->total_used_buffers_size =
-      raw_msg_buffer_stat_sum_ll(
-          offsetof(struct raw_msg_buffer_module_stat, total_used_buffers_size));
-  bs->allocated_buffer_bytes =
-      raw_msg_buffer_stat_sum_ll(
-          offsetof(struct raw_msg_buffer_module_stat, allocated_buffer_bytes));
-  bs->buffer_chunk_alloc_ops =
-      raw_msg_buffer_stat_sum_ll(
-          offsetof(struct raw_msg_buffer_module_stat, buffer_chunk_alloc_ops));
-  bs->total_used_buffers =
-      raw_msg_buffer_stat_sum_i(
-          offsetof(struct raw_msg_buffer_module_stat, total_used_buffers));
+  bs->total_used_buffers_size = raw_msg_buffer_stat_sum_ll(
+      offsetof(struct raw_msg_buffer_module_stat, total_used_buffers_size));
+  bs->allocated_buffer_bytes = raw_msg_buffer_stat_sum_ll(
+      offsetof(struct raw_msg_buffer_module_stat, allocated_buffer_bytes));
+  bs->buffer_chunk_alloc_ops = raw_msg_buffer_stat_sum_ll(
+      offsetof(struct raw_msg_buffer_module_stat, buffer_chunk_alloc_ops));
+  bs->total_used_buffers = raw_msg_buffer_stat_sum_i(
+      offsetof(struct raw_msg_buffer_module_stat, total_used_buffers));
   bs->allocated_buffer_chunks = allocated_buffer_chunks;
   bs->max_allocated_buffer_chunks = max_allocated_buffer_chunks;
   bs->max_allocated_buffer_bytes = max_allocated_buffer_bytes;
@@ -668,13 +664,13 @@ int free_msg_buffer(struct msg_buffer *X) {
 }
 
 int msg_buffer_reach_limit(double ratio) {
-  return raw_msg_buffer_stat_sum_ll(
-             offsetof(struct raw_msg_buffer_module_stat, total_used_buffers_size)) >=
+  return raw_msg_buffer_stat_sum_ll(offsetof(struct raw_msg_buffer_module_stat,
+                                             total_used_buffers_size)) >=
          ratio * max_allocated_buffer_bytes;
 }
 
 double msg_buffer_usage(void) {
-  return (double)raw_msg_buffer_stat_sum_ll(
-             offsetof(struct raw_msg_buffer_module_stat, total_used_buffers_size)) /
+  return (double)raw_msg_buffer_stat_sum_ll(offsetof(
+             struct raw_msg_buffer_module_stat, total_used_buffers_size)) /
          (double)max_allocated_buffer_bytes;
 }

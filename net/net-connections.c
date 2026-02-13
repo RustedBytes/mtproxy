@@ -46,11 +46,11 @@
 #include <sys/uio.h>
 #include <unistd.h>
 
-#include "jobs/jobs.h"
-#include "net/net-events.h"
 #include "common/mp-queue.h"
+#include "jobs/jobs.h"
 #include "kprintf.h"
 #include "net/net-connections.h"
+#include "net/net-events.h"
 #include "precise-time.h"
 #include "server-functions.h"
 #include "vv/vv-tree.h"
@@ -138,27 +138,24 @@ static inline long long connections_stat_sum_ll(size_t field_offset) {
 }
 
 int connections_prepare_stat(stats_buffer_t *sb) {
-  sb_print_i32_key(
-      sb, "active_connections",
-      connections_stat_sum_i(
-          offsetof(struct connections_module_stat, active_connections)));
-  sb_print_i32_key(
-      sb, "active_dh_connections",
-      connections_stat_sum_i(
-          offsetof(struct connections_module_stat, active_dh_connections)));
+  sb_print_i32_key(sb, "active_connections",
+                   connections_stat_sum_i(offsetof(
+                       struct connections_module_stat, active_connections)));
+  sb_print_i32_key(sb, "active_dh_connections",
+                   connections_stat_sum_i(offsetof(
+                       struct connections_module_stat, active_dh_connections)));
 
-  sb_print_i32_key(
-      sb, "outbound_connections",
-      connections_stat_sum_i(
-          offsetof(struct connections_module_stat, outbound_connections)));
+  sb_print_i32_key(sb, "outbound_connections",
+                   connections_stat_sum_i(offsetof(
+                       struct connections_module_stat, outbound_connections)));
   sb_print_i32_key(
       sb, "ready_outbound_connections",
-      connections_stat_sum_i(
-          offsetof(struct connections_module_stat, ready_outbound_connections)));
+      connections_stat_sum_i(offsetof(struct connections_module_stat,
+                                      ready_outbound_connections)));
   sb_print_i32_key(
       sb, "active_outbound_connections",
-      connections_stat_sum_i(
-          offsetof(struct connections_module_stat, active_outbound_connections)));
+      connections_stat_sum_i(offsetof(struct connections_module_stat,
+                                      active_outbound_connections)));
   sb_print_i64_key(
       sb, "outbound_connections_created",
       connections_stat_sum_ll(offsetof(struct connections_module_stat,
@@ -168,47 +165,40 @@ int connections_prepare_stat(stats_buffer_t *sb) {
       connections_stat_sum_ll(
           offsetof(struct connections_module_stat, total_connect_failures)));
 
-  sb_print_i32_key(
-      sb, "inbound_connections",
-      connections_stat_sum_i(
-          offsetof(struct connections_module_stat, inbound_connections)));
+  sb_print_i32_key(sb, "inbound_connections",
+                   connections_stat_sum_i(offsetof(
+                       struct connections_module_stat, inbound_connections)));
   sb_print_i32_key(
       sb, "active_inbound_connections",
-      connections_stat_sum_i(
-          offsetof(struct connections_module_stat, active_inbound_connections)));
+      connections_stat_sum_i(offsetof(struct connections_module_stat,
+                                      active_inbound_connections)));
   sb_print_i64_key(
       sb, "inbound_connections_accepted",
-      connections_stat_sum_ll(
-          offsetof(struct connections_module_stat, inbound_connections_accepted)));
+      connections_stat_sum_ll(offsetof(struct connections_module_stat,
+                                       inbound_connections_accepted)));
 
-  sb_print_i32_key(
-      sb, "listening_connections",
-      connections_stat_sum_i(
-          offsetof(struct connections_module_stat, listening_connections)));
+  sb_print_i32_key(sb, "listening_connections",
+                   connections_stat_sum_i(offsetof(
+                       struct connections_module_stat, listening_connections)));
   sb_print_i64_key(
       sb, "unused_connections_closed",
       connections_stat_sum_ll(
           offsetof(struct connections_module_stat, unused_connections_closed)));
-  sb_print_i32_key(
-      sb, "ready_targets",
-      connections_stat_sum_i(
-          offsetof(struct connections_module_stat, ready_targets)));
-  sb_print_i32_key(
-      sb, "allocated_targets",
-      connections_stat_sum_i(
-          offsetof(struct connections_module_stat, allocated_targets)));
-  sb_print_i32_key(
-      sb, "active_targets",
-      connections_stat_sum_i(
-          offsetof(struct connections_module_stat, active_targets)));
-  sb_print_i32_key(
-      sb, "inactive_targets",
-      connections_stat_sum_i(
-          offsetof(struct connections_module_stat, inactive_targets)));
-  sb_print_i32_key(
-      sb, "free_targets",
-      connections_stat_sum_i(
-          offsetof(struct connections_module_stat, free_targets)));
+  sb_print_i32_key(sb, "ready_targets",
+                   connections_stat_sum_i(offsetof(
+                       struct connections_module_stat, ready_targets)));
+  sb_print_i32_key(sb, "allocated_targets",
+                   connections_stat_sum_i(offsetof(
+                       struct connections_module_stat, allocated_targets)));
+  sb_print_i32_key(sb, "active_targets",
+                   connections_stat_sum_i(offsetof(
+                       struct connections_module_stat, active_targets)));
+  sb_print_i32_key(sb, "inactive_targets",
+                   connections_stat_sum_i(offsetof(
+                       struct connections_module_stat, inactive_targets)));
+  sb_print_i32_key(sb, "free_targets",
+                   connections_stat_sum_i(
+                       offsetof(struct connections_module_stat, free_targets)));
   sb_printf(sb,
             "max_connections\t%d\n"
             "active_special_connections\t%d\n"
@@ -221,10 +211,9 @@ int connections_prepare_stat(stats_buffer_t *sb) {
   sb_print_i32_key(sb, "max_connection", max_connection);
   sb_print_i32_key(sb, "conn_generation", conn_generation);
 
-  sb_print_i32_key(
-      sb, "allocated_connections",
-      connections_stat_sum_i(
-          offsetof(struct connections_module_stat, allocated_connections)));
+  sb_print_i32_key(sb, "allocated_connections",
+                   connections_stat_sum_i(offsetof(
+                       struct connections_module_stat, allocated_connections)));
   sb_print_i32_key(
       sb, "allocated_outbound_connections",
       connections_stat_sum_i(offsetof(struct connections_module_stat,
@@ -237,43 +226,34 @@ int connections_prepare_stat(stats_buffer_t *sb) {
       sb, "allocated_socket_connections",
       connections_stat_sum_i(offsetof(struct connections_module_stat,
                                       allocated_socket_connections)));
-  sb_print_i64_key(
-      sb, "tcp_readv_calls",
-      connections_stat_sum_ll(
-          offsetof(struct connections_module_stat, tcp_readv_calls)));
-  sb_print_i64_key(
-      sb, "tcp_readv_intr",
-      connections_stat_sum_ll(
-          offsetof(struct connections_module_stat, tcp_readv_intr)));
-  sb_print_i64_key(
-      sb, "tcp_readv_bytes",
-      connections_stat_sum_ll(
-          offsetof(struct connections_module_stat, tcp_readv_bytes)));
-  sb_print_i64_key(
-      sb, "tcp_writev_calls",
-      connections_stat_sum_ll(
-          offsetof(struct connections_module_stat, tcp_writev_calls)));
-  sb_print_i64_key(
-      sb, "tcp_writev_intr",
-      connections_stat_sum_ll(
-          offsetof(struct connections_module_stat, tcp_writev_intr)));
-  sb_print_i64_key(
-      sb, "tcp_writev_bytes",
-      connections_stat_sum_ll(
-          offsetof(struct connections_module_stat, tcp_writev_bytes)));
-  sb_print_i32_key(
-      sb, "free_later_size",
-      connections_stat_sum_i(
-          offsetof(struct connections_module_stat, free_later_size)));
-  sb_print_i64_key(
-      sb, "free_later_total",
-      connections_stat_sum_ll(
-          offsetof(struct connections_module_stat, free_later_total)));
+  sb_print_i64_key(sb, "tcp_readv_calls",
+                   connections_stat_sum_ll(offsetof(
+                       struct connections_module_stat, tcp_readv_calls)));
+  sb_print_i64_key(sb, "tcp_readv_intr",
+                   connections_stat_sum_ll(offsetof(
+                       struct connections_module_stat, tcp_readv_intr)));
+  sb_print_i64_key(sb, "tcp_readv_bytes",
+                   connections_stat_sum_ll(offsetof(
+                       struct connections_module_stat, tcp_readv_bytes)));
+  sb_print_i64_key(sb, "tcp_writev_calls",
+                   connections_stat_sum_ll(offsetof(
+                       struct connections_module_stat, tcp_writev_calls)));
+  sb_print_i64_key(sb, "tcp_writev_intr",
+                   connections_stat_sum_ll(offsetof(
+                       struct connections_module_stat, tcp_writev_intr)));
+  sb_print_i64_key(sb, "tcp_writev_bytes",
+                   connections_stat_sum_ll(offsetof(
+                       struct connections_module_stat, tcp_writev_bytes)));
+  sb_print_i32_key(sb, "free_later_size",
+                   connections_stat_sum_i(offsetof(
+                       struct connections_module_stat, free_later_size)));
+  sb_print_i64_key(sb, "free_later_total",
+                   connections_stat_sum_ll(offsetof(
+                       struct connections_module_stat, free_later_total)));
 
-  sb_print_i64_key(
-      sb, "accept_calls_failed",
-      connections_stat_sum_ll(
-          offsetof(struct connections_module_stat, accept_calls_failed)));
+  sb_print_i64_key(sb, "accept_calls_failed",
+                   connections_stat_sum_ll(offsetof(
+                       struct connections_module_stat, accept_calls_failed)));
   sb_print_i64_key(
       sb, "accept_nonblock_set_failed",
       connections_stat_sum_ll(offsetof(struct connections_module_stat,
@@ -316,8 +296,8 @@ void fetch_connections_stat(struct connections_stat *st) {
       offsetof(struct connections_module_stat, allocated_socket_connections));
   st->allocated_targets = connections_stat_sum_i(
       offsetof(struct connections_module_stat, allocated_targets));
-  st->ready_targets =
-      connections_stat_sum_i(offsetof(struct connections_module_stat, ready_targets));
+  st->ready_targets = connections_stat_sum_i(
+      offsetof(struct connections_module_stat, ready_targets));
   st->active_targets = connections_stat_sum_i(
       offsetof(struct connections_module_stat, active_targets));
   st->inactive_targets = connections_stat_sum_i(
@@ -363,7 +343,8 @@ extern int32_t mtproxy_ffi_net_connections_compute_next_reconnect(
     int32_t active_outbound_connections, double now, double random_unit,
     double *out_next_reconnect, double *out_next_reconnect_timeout);
 extern int32_t mtproxy_ffi_net_connections_target_bucket_ipv4(
-    size_t type_addr, uint32_t addr_s_addr, int32_t port, int32_t prime_targets);
+    size_t type_addr, uint32_t addr_s_addr, int32_t port,
+    int32_t prime_targets);
 extern int32_t mtproxy_ffi_net_connections_target_bucket_ipv6(
     size_t type_addr, const uint8_t *addr_ipv6, int32_t port,
     int32_t prime_targets);
@@ -376,23 +357,22 @@ extern int32_t mtproxy_ffi_net_connections_target_needed_connections(
 extern int32_t mtproxy_ffi_net_connections_target_should_attempt_reconnect(
     double now, double next_reconnect, int32_t active_outbound_connections);
 extern int32_t mtproxy_ffi_net_connections_target_ready_bucket(int32_t ready);
-extern int32_t mtproxy_ffi_net_connections_target_find_bad_should_select(
-    int32_t has_selected, int32_t flags);
 extern int32_t
-mtproxy_ffi_net_connections_target_remove_dead_connection_deltas(
+mtproxy_ffi_net_connections_target_find_bad_should_select(int32_t has_selected,
+                                                          int32_t flags);
+extern int32_t mtproxy_ffi_net_connections_target_remove_dead_connection_deltas(
     int32_t flags, int32_t *out_active_outbound_delta,
     int32_t *out_outbound_delta);
-extern int32_t mtproxy_ffi_net_connections_target_tree_update_action(
-    int32_t tree_changed);
+extern int32_t
+mtproxy_ffi_net_connections_target_tree_update_action(int32_t tree_changed);
 extern int32_t mtproxy_ffi_net_connections_target_connect_socket_action(
     int32_t has_ipv4_target);
-extern int32_t
-mtproxy_ffi_net_connections_target_create_insert_should_insert(
+extern int32_t mtproxy_ffi_net_connections_target_create_insert_should_insert(
     int32_t has_connection);
-extern int32_t mtproxy_ffi_net_connections_target_lookup_match_action(
-    int32_t mode);
-extern int32_t mtproxy_ffi_net_connections_target_lookup_miss_action(
-    int32_t mode);
+extern int32_t
+mtproxy_ffi_net_connections_target_lookup_match_action(int32_t mode);
+extern int32_t
+mtproxy_ffi_net_connections_target_lookup_miss_action(int32_t mode);
 extern int32_t mtproxy_ffi_net_connections_target_free_action(
     int32_t global_refcnt, int32_t has_conn_tree, int32_t has_ipv4_target);
 extern int32_t mtproxy_ffi_net_connections_destroy_target_transition(
@@ -404,8 +384,9 @@ extern int32_t mtproxy_ffi_net_connections_create_target_transition(
     int32_t *out_was_created);
 extern double mtproxy_ffi_net_connections_target_job_boot_delay(void);
 extern double mtproxy_ffi_net_connections_target_job_retry_delay(void);
-extern int32_t mtproxy_ffi_net_connections_target_job_should_run_tick(
-    int32_t is_alarm, int32_t timer_check_ok);
+extern int32_t
+mtproxy_ffi_net_connections_target_job_should_run_tick(int32_t is_alarm,
+                                                       int32_t timer_check_ok);
 extern int32_t
 mtproxy_ffi_net_connections_target_job_update_mode(int32_t global_refcnt);
 extern int32_t mtproxy_ffi_net_connections_target_job_post_tick_action(
@@ -419,12 +400,13 @@ mtproxy_ffi_net_connections_conn_job_ready_pending_should_promote_status(
 extern int32_t
 mtproxy_ffi_net_connections_conn_job_ready_pending_cas_failure_expected(
     int32_t status);
-extern int32_t mtproxy_ffi_net_connections_conn_job_alarm_should_call(
-    int32_t timer_check_ok, int32_t flags);
+extern int32_t
+mtproxy_ffi_net_connections_conn_job_alarm_should_call(int32_t timer_check_ok,
+                                                       int32_t flags);
 extern int32_t
 mtproxy_ffi_net_connections_conn_job_abort_has_error(int32_t flags);
-extern int32_t mtproxy_ffi_net_connections_conn_job_abort_should_close(
-    int32_t previous_flags);
+extern int32_t
+mtproxy_ffi_net_connections_conn_job_abort_should_close(int32_t previous_flags);
 extern int32_t
 mtproxy_ffi_net_connections_socket_job_run_should_call_read_write(
     int32_t flags);
@@ -451,33 +433,37 @@ mtproxy_ffi_net_connections_socket_writer_should_abort_on_stop(int32_t stop,
                                                                int32_t flags);
 extern int32_t
 mtproxy_ffi_net_connections_socket_read_write_connect_action(int32_t flags);
-extern int32_t mtproxy_ffi_net_connections_socket_gateway_clear_flags(
-    int32_t event_state, int32_t event_ready);
-extern int32_t mtproxy_ffi_net_connections_socket_gateway_abort_action(
-    int32_t has_epollerr, int32_t has_disconnect);
-extern int32_t mtproxy_ffi_net_connections_listening_job_action(
-    int32_t op, int32_t js_run, int32_t js_aux);
-extern int32_t mtproxy_ffi_net_connections_listening_init_fd_action(
-    int32_t fd, int32_t max_connection_fd);
 extern int32_t
-mtproxy_ffi_net_connections_listening_init_update_max_connection(
+mtproxy_ffi_net_connections_socket_gateway_clear_flags(int32_t event_state,
+                                                       int32_t event_ready);
+extern int32_t
+mtproxy_ffi_net_connections_socket_gateway_abort_action(int32_t has_epollerr,
+                                                        int32_t has_disconnect);
+extern int32_t mtproxy_ffi_net_connections_listening_job_action(int32_t op,
+                                                                int32_t js_run,
+                                                                int32_t js_aux);
+extern int32_t
+mtproxy_ffi_net_connections_listening_init_fd_action(int32_t fd,
+                                                     int32_t max_connection_fd);
+extern int32_t mtproxy_ffi_net_connections_listening_init_update_max_connection(
     int32_t fd, int32_t max_connection);
 extern int32_t mtproxy_ffi_net_connections_listening_init_mode_policy(
     int32_t mode, int32_t sm_lowprio, int32_t sm_special, int32_t sm_noqack,
     int32_t sm_ipv6, int32_t sm_rawmsg);
-extern int32_t mtproxy_ffi_net_connections_connection_event_should_release(
-    int64_t new_refcnt, int32_t has_data);
+extern int32_t
+mtproxy_ffi_net_connections_connection_event_should_release(int64_t new_refcnt,
+                                                            int32_t has_data);
 extern int32_t mtproxy_ffi_net_connections_connection_get_by_fd_action(
     int32_t is_listening_job, int32_t is_socket_job, int32_t socket_flags);
 extern int32_t mtproxy_ffi_net_connections_connection_generation_matches(
     int32_t found_generation, int32_t expected_generation);
 extern int32_t mtproxy_ffi_net_connections_check_conn_functions_default_mask(
-    int32_t has_title, int32_t has_socket_read_write,
-    int32_t has_socket_reader, int32_t has_socket_writer,
-    int32_t has_socket_close, int32_t has_close, int32_t has_init_outbound,
-    int32_t has_wakeup, int32_t has_alarm, int32_t has_connected,
-    int32_t has_flush, int32_t has_check_ready, int32_t has_read_write,
-    int32_t has_free, int32_t has_socket_connected, int32_t has_socket_free);
+    int32_t has_title, int32_t has_socket_read_write, int32_t has_socket_reader,
+    int32_t has_socket_writer, int32_t has_socket_close, int32_t has_close,
+    int32_t has_init_outbound, int32_t has_wakeup, int32_t has_alarm,
+    int32_t has_connected, int32_t has_flush, int32_t has_check_ready,
+    int32_t has_read_write, int32_t has_free, int32_t has_socket_connected,
+    int32_t has_socket_free);
 extern int32_t mtproxy_ffi_net_connections_check_conn_functions_accept_mask(
     int32_t listening, int32_t has_accept, int32_t has_init_accepted);
 extern int32_t mtproxy_ffi_net_connections_check_conn_functions_raw_policy(
@@ -489,36 +475,39 @@ extern int32_t mtproxy_ffi_net_connections_target_pick_should_skip(
 extern int32_t mtproxy_ffi_net_connections_target_pick_should_select(
     int32_t allow_stopped, int32_t candidate_ready, int32_t has_selected,
     int32_t selected_unreliability, int32_t candidate_unreliability);
-extern int32_t mtproxy_ffi_net_connections_target_pick_should_incref(
-    int32_t has_selected);
-extern int32_t mtproxy_ffi_net_connections_connection_write_close_action(
-    int32_t status, int32_t has_io_conn);
-extern int32_t mtproxy_ffi_net_connections_connection_timeout_action(
-    int32_t flags, double timeout);
-extern int32_t mtproxy_ffi_net_connections_fail_connection_action(
-    int32_t previous_flags, int32_t current_error);
+extern int32_t
+mtproxy_ffi_net_connections_target_pick_should_incref(int32_t has_selected);
+extern int32_t
+mtproxy_ffi_net_connections_connection_write_close_action(int32_t status,
+                                                          int32_t has_io_conn);
+extern int32_t
+mtproxy_ffi_net_connections_connection_timeout_action(int32_t flags,
+                                                      double timeout);
+extern int32_t
+mtproxy_ffi_net_connections_fail_connection_action(int32_t previous_flags,
+                                                   int32_t current_error);
 extern int32_t mtproxy_ffi_net_connections_free_connection_allocated_deltas(
     int32_t basic_type, int32_t *out_allocated_outbound_delta,
     int32_t *out_allocated_inbound_delta);
 extern int32_t mtproxy_ffi_net_connections_close_connection_failure_deltas(
     int32_t error, int32_t flags, int32_t *out_total_failed_delta,
-    int32_t *out_total_connect_failures_delta, int32_t *out_unused_closed_delta);
-extern int32_t mtproxy_ffi_net_connections_close_connection_has_isdh(
-    int32_t flags);
+    int32_t *out_total_connect_failures_delta,
+    int32_t *out_unused_closed_delta);
+extern int32_t
+mtproxy_ffi_net_connections_close_connection_has_isdh(int32_t flags);
 extern int32_t mtproxy_ffi_net_connections_close_connection_basic_deltas(
     int32_t basic_type, int32_t flags, int32_t has_target,
     int32_t *out_outbound_delta, int32_t *out_inbound_delta,
     int32_t *out_active_outbound_delta, int32_t *out_active_inbound_delta,
     int32_t *out_active_connections_delta, int32_t *out_signal_target);
-extern int32_t mtproxy_ffi_net_connections_close_connection_has_special(
-    int32_t flags);
+extern int32_t
+mtproxy_ffi_net_connections_close_connection_has_special(int32_t flags);
 extern int32_t
 mtproxy_ffi_net_connections_close_connection_should_signal_special_aux(
     int32_t orig_special_connections, int32_t max_special_connections);
-extern int32_t
-mtproxy_ffi_net_connections_alloc_connection_basic_type_policy(
-    int32_t basic_type, int32_t *out_initial_flags,
-    int32_t *out_initial_status, int32_t *out_is_outbound_path);
+extern int32_t mtproxy_ffi_net_connections_alloc_connection_basic_type_policy(
+    int32_t basic_type, int32_t *out_initial_flags, int32_t *out_initial_status,
+    int32_t *out_is_outbound_path);
 extern int32_t mtproxy_ffi_net_connections_alloc_connection_success_deltas(
     int32_t basic_type, int32_t has_target, int32_t *out_outbound_delta,
     int32_t *out_allocated_outbound_delta, int32_t *out_outbound_created_delta,
@@ -530,11 +519,13 @@ extern int32_t mtproxy_ffi_net_connections_alloc_connection_listener_flags(
     int32_t listening_flags);
 extern int32_t mtproxy_ffi_net_connections_alloc_connection_special_action(
     int32_t active_special_connections, int32_t max_special_connections);
-extern int32_t mtproxy_ffi_net_connections_alloc_connection_failure_action(
-    int32_t flags);
-extern int32_t mtproxy_ffi_net_connections_socket_job_action(
-    int32_t op, int32_t js_abort, int32_t js_run, int32_t js_aux,
-    int32_t js_finish);
+extern int32_t
+mtproxy_ffi_net_connections_alloc_connection_failure_action(int32_t flags);
+extern int32_t mtproxy_ffi_net_connections_socket_job_action(int32_t op,
+                                                             int32_t js_abort,
+                                                             int32_t js_run,
+                                                             int32_t js_aux,
+                                                             int32_t js_finish);
 extern int32_t mtproxy_ffi_net_connections_socket_job_abort_error(void);
 extern int32_t mtproxy_ffi_net_connections_fail_socket_connection_action(
     int32_t previous_flags);
@@ -604,9 +595,8 @@ void assert_engine_thread(void) {
 socket_connection_job_t alloc_new_socket_connection(connection_job_t C);
 
 static inline int compute_conn_events(socket_connection_job_t c) {
-  int32_t events =
-      mtproxy_ffi_net_compute_conn_events(SOCKET_CONN_INFO(c)->flags,
-                                          CONNECTIONS_USE_EPOLLET);
+  int32_t events = mtproxy_ffi_net_compute_conn_events(
+      SOCKET_CONN_INFO(c)->flags, CONNECTIONS_USE_EPOLLET);
   assert(events == 0 || events == (EVT_READ | EVT_WRITE | EVT_SPEC));
   return events;
 }
@@ -625,11 +615,10 @@ void connection_write_close(connection_job_t C) {
 
   int32_t action = mtproxy_ffi_net_connections_connection_write_close_action(
       c->status, S != NULL);
-  assert((action &
-          ~(CONNECTION_WRITE_CLOSE_ACTION_SET_IO_STOPREAD |
-            CONNECTION_WRITE_CLOSE_ACTION_SET_CONN_STOPREAD |
-            CONNECTION_WRITE_CLOSE_ACTION_SET_STATUS_WRITE_CLOSE |
-            CONNECTION_WRITE_CLOSE_ACTION_SIGNAL_RUN)) == 0);
+  assert((action & ~(CONNECTION_WRITE_CLOSE_ACTION_SET_IO_STOPREAD |
+                     CONNECTION_WRITE_CLOSE_ACTION_SET_CONN_STOPREAD |
+                     CONNECTION_WRITE_CLOSE_ACTION_SET_STATUS_WRITE_CLOSE |
+                     CONNECTION_WRITE_CLOSE_ACTION_SIGNAL_RUN)) == 0);
   if (action == CONNECTION_WRITE_CLOSE_ACTION_NOOP) {
     return;
   }
@@ -665,8 +654,8 @@ int set_connection_timeout(connection_job_t C, double timeout) {
 
   struct connection_info *c = CONN_INFO(C);
 
-  int32_t timeout_action = mtproxy_ffi_net_connections_connection_timeout_action(
-      c->flags, timeout);
+  int32_t timeout_action =
+      mtproxy_ffi_net_connections_connection_timeout_action(c->flags, timeout);
   assert(timeout_action == CONNECTION_TIMEOUT_ACTION_SKIP_ERROR ||
          timeout_action == CONNECTION_TIMEOUT_ACTION_INSERT_TIMER ||
          timeout_action == CONNECTION_TIMEOUT_ACTION_REMOVE_TIMER);
@@ -706,10 +695,9 @@ void fail_connection(connection_job_t C, int err) {
   int32_t previous_flags = __sync_fetch_and_or(&c->flags, C_ERROR);
   int32_t action = mtproxy_ffi_net_connections_fail_connection_action(
       previous_flags, c->error);
-  assert((action &
-          ~(FAIL_CONNECTION_ACTION_SET_STATUS_ERROR |
-            FAIL_CONNECTION_ACTION_SET_ERROR_CODE |
-            FAIL_CONNECTION_ACTION_SIGNAL_ABORT)) == 0);
+  assert((action & ~(FAIL_CONNECTION_ACTION_SET_STATUS_ERROR |
+                     FAIL_CONNECTION_ACTION_SET_ERROR_CODE |
+                     FAIL_CONNECTION_ACTION_SIGNAL_ABORT)) == 0);
 
   if (action & FAIL_CONNECTION_ACTION_SET_STATUS_ERROR) {
     c->status = conn_error;
@@ -784,13 +772,16 @@ int cpu_server_free_connection(connection_job_t C) {
 
   int32_t allocated_outbound_delta = 0;
   int32_t allocated_inbound_delta = 0;
-  int32_t free_stats_rc = mtproxy_ffi_net_connections_free_connection_allocated_deltas(
-      c->basic_type, &allocated_outbound_delta, &allocated_inbound_delta);
+  int32_t free_stats_rc =
+      mtproxy_ffi_net_connections_free_connection_allocated_deltas(
+          c->basic_type, &allocated_outbound_delta, &allocated_inbound_delta);
   assert(free_stats_rc == 0);
 
   connections_module_stat_tls->allocated_connections--;
-  connections_module_stat_tls->allocated_outbound_connections += allocated_outbound_delta;
-  connections_module_stat_tls->allocated_inbound_connections += allocated_inbound_delta;
+  connections_module_stat_tls->allocated_outbound_connections +=
+      allocated_outbound_delta;
+  connections_module_stat_tls->allocated_inbound_connections +=
+      allocated_inbound_delta;
 
   return c->type->free_buffers(C);
 }
@@ -814,11 +805,12 @@ int cpu_server_close_connection(connection_job_t C, int who) {
   int32_t unused_closed_delta = 0;
   int32_t close_failure_rc =
       mtproxy_ffi_net_connections_close_connection_failure_deltas(
-          c->error, c->flags, &total_failed_delta, &total_connect_failures_delta,
-          &unused_closed_delta);
+          c->error, c->flags, &total_failed_delta,
+          &total_connect_failures_delta, &unused_closed_delta);
   assert(close_failure_rc == 0);
   connections_module_stat_tls->total_failed_connections += total_failed_delta;
-  connections_module_stat_tls->total_connect_failures += total_connect_failures_delta;
+  connections_module_stat_tls->total_connect_failures +=
+      total_connect_failures_delta;
   connections_module_stat_tls->unused_connections_closed += unused_closed_delta;
 
   int32_t has_isdh =
@@ -838,17 +830,20 @@ int cpu_server_close_connection(connection_job_t C, int who) {
   int32_t active_inbound_delta = 0;
   int32_t active_connections_delta = 0;
   int32_t signal_target = 0;
-  int32_t close_basic_rc = mtproxy_ffi_net_connections_close_connection_basic_deltas(
-      c->basic_type, c->flags, c->target != NULL, &outbound_delta, &inbound_delta,
-      &active_outbound_delta, &active_inbound_delta, &active_connections_delta,
-      &signal_target);
+  int32_t close_basic_rc =
+      mtproxy_ffi_net_connections_close_connection_basic_deltas(
+          c->basic_type, c->flags, c->target != NULL, &outbound_delta,
+          &inbound_delta, &active_outbound_delta, &active_inbound_delta,
+          &active_connections_delta, &signal_target);
   assert(close_basic_rc == 0);
   assert(signal_target == 0 || signal_target == 1);
 
   connections_module_stat_tls->outbound_connections += outbound_delta;
   connections_module_stat_tls->inbound_connections += inbound_delta;
-  connections_module_stat_tls->active_outbound_connections += active_outbound_delta;
-  connections_module_stat_tls->active_inbound_connections += active_inbound_delta;
+  connections_module_stat_tls->active_outbound_connections +=
+      active_outbound_delta;
+  connections_module_stat_tls->active_inbound_connections +=
+      active_inbound_delta;
   connections_module_stat_tls->active_connections += active_connections_delta;
 
   if (signal_target) {
@@ -897,9 +892,8 @@ int do_connection_job(job_t job, int op, struct job_thread *JT) {
     assert_net_cpu_thread();
     int32_t run_actions =
         mtproxy_ffi_net_connections_conn_job_run_actions(c->flags);
-    assert((run_actions &
-            ~(CONN_JOB_RUN_DO_READ_WRITE | CONN_JOB_RUN_HANDLE_READY_PENDING)) ==
-           0);
+    assert((run_actions & ~(CONN_JOB_RUN_DO_READ_WRITE |
+                            CONN_JOB_RUN_HANDLE_READY_PENDING)) == 0);
 
     if (run_actions != CONN_JOB_RUN_SKIP) {
       if (run_actions & CONN_JOB_RUN_HANDLE_READY_PENDING) {
@@ -1016,8 +1010,9 @@ connection_job_t alloc_new_connection(int cfd, conn_target_job_t CTJ,
     return NULL;
   }
 
-  max_connection = mtproxy_ffi_net_connections_listening_init_update_max_connection(
-      cfd, max_connection);
+  max_connection =
+      mtproxy_ffi_net_connections_listening_init_update_max_connection(
+          cfd, max_connection);
 
   connection_job_t C = create_async_job(
       do_connection_job,
@@ -1135,12 +1130,17 @@ connection_job_t alloc_new_connection(int cfd, conn_target_job_t CTJ,
     assert(should_incref_target == 0 || should_incref_target == 1);
 
     connections_module_stat_tls->outbound_connections += outbound_delta;
-    connections_module_stat_tls->allocated_outbound_connections += allocated_outbound_delta;
-    connections_module_stat_tls->outbound_connections_created += outbound_created_delta;
-    connections_module_stat_tls->inbound_connections_accepted += inbound_accepted_delta;
-    connections_module_stat_tls->allocated_inbound_connections += allocated_inbound_delta;
+    connections_module_stat_tls->allocated_outbound_connections +=
+        allocated_outbound_delta;
+    connections_module_stat_tls->outbound_connections_created +=
+        outbound_created_delta;
+    connections_module_stat_tls->inbound_connections_accepted +=
+        inbound_accepted_delta;
+    connections_module_stat_tls->allocated_inbound_connections +=
+        allocated_inbound_delta;
     connections_module_stat_tls->inbound_connections += inbound_delta;
-    connections_module_stat_tls->active_inbound_connections += active_inbound_delta;
+    connections_module_stat_tls->active_inbound_connections +=
+        active_inbound_delta;
     connections_module_stat_tls->active_connections += active_connections_delta;
 
     if (should_incref_target) {
@@ -1233,7 +1233,8 @@ connection_job_t alloc_new_connection(int cfd, conn_target_job_t CTJ,
               ALLOC_CONNECTION_FAILURE_ACTION_DEC_JOBS_ACTIVE)) == 0);
     assert(failure_action != ALLOC_CONNECTION_FAILURE_ACTION_NONE);
 
-    if (failure_action & ALLOC_CONNECTION_FAILURE_ACTION_INC_ACCEPT_INIT_FAILED) {
+    if (failure_action &
+        ALLOC_CONNECTION_FAILURE_ACTION_INC_ACCEPT_INIT_FAILED) {
       connections_module_stat_tls->accept_init_accepted_failed++;
     }
     if (failure_action & ALLOC_CONNECTION_FAILURE_ACTION_FREE_RAWMSG) {
@@ -1336,7 +1337,8 @@ int net_server_socket_free(socket_connection_job_t C) {
 
   rwm_free(&c->out);
 
-  connections_module_stat_tls->allocated_socket_connections += allocated_socket_delta;
+  connections_module_stat_tls->allocated_socket_connections +=
+      allocated_socket_delta;
   return 0;
 }
 
@@ -1574,8 +1576,8 @@ int net_server_socket_writer(socket_connection_job_t C) {
   }
 
   int32_t should_abort_on_stop =
-      mtproxy_ffi_net_connections_socket_writer_should_abort_on_stop(
-          !!stop, c->flags);
+      mtproxy_ffi_net_connections_socket_writer_should_abort_on_stop(!!stop,
+                                                                     c->flags);
   assert(should_abort_on_stop == 0 || should_abort_on_stop == 1);
   if (should_abort_on_stop) {
     vkprintf(1, "Closing write_close socket\n");
@@ -1688,14 +1690,17 @@ int net_server_socket_read_write_gateway(int fd, void *data, event_t *ev) {
              ev->ready, ev->epoll_ready);
     ev->ready &= ~EVT_FROM_EPOLL;
 
-    int32_t clear_flags = mtproxy_ffi_net_connections_socket_gateway_clear_flags(
-        ev->state, ev->ready);
+    int32_t clear_flags =
+        mtproxy_ffi_net_connections_socket_gateway_clear_flags(ev->state,
+                                                               ev->ready);
     assert((clear_flags & ~(C_NORD | C_NOWR)) == 0);
     __sync_fetch_and_and(&c->flags, ~clear_flags);
 
-    int32_t abort_action = mtproxy_ffi_net_connections_socket_gateway_abort_action(
-        !!(ev->epoll_ready & EPOLLERR),
-        !!(ev->epoll_ready & (EPOLLHUP | EPOLLERR | EPOLLRDHUP | EPOLLPRI)));
+    int32_t abort_action =
+        mtproxy_ffi_net_connections_socket_gateway_abort_action(
+            !!(ev->epoll_ready & EPOLLERR),
+            !!(ev->epoll_ready &
+               (EPOLLHUP | EPOLLERR | EPOLLRDHUP | EPOLLPRI)));
     assert(abort_action == SOCKET_GATEWAY_ABORT_NONE ||
            abort_action == SOCKET_GATEWAY_ABORT_EPOLLERR ||
            abort_action == SOCKET_GATEWAY_ABORT_DISCONNECT);
@@ -1743,8 +1748,7 @@ int do_socket_connection_job(job_t job, int op, struct job_thread *JT) {
       op, JS_ABORT, JS_RUN, JS_AUX, JS_FINISH);
   assert(action == SOCKET_JOB_ACTION_ERROR ||
          action == SOCKET_JOB_ACTION_ABORT || action == SOCKET_JOB_ACTION_RUN ||
-         action == SOCKET_JOB_ACTION_AUX ||
-         action == SOCKET_JOB_ACTION_FINISH);
+         action == SOCKET_JOB_ACTION_AUX || action == SOCKET_JOB_ACTION_FINISH);
 
   if (action == SOCKET_JOB_ACTION_ABORT) { // MAIN THREAD
     int32_t abort_who = mtproxy_ffi_net_connections_socket_job_abort_error();
@@ -1812,8 +1816,10 @@ socket_connection_job_t alloc_new_socket_connection(connection_job_t C) {
   int32_t socket_flags = 0;
   int32_t initial_epoll_status = 0;
   int32_t allocated_socket_delta = 0;
-  int32_t alloc_plan_rc = mtproxy_ffi_net_connections_alloc_socket_connection_plan(
-      c->flags, 1, &socket_flags, &initial_epoll_status, &allocated_socket_delta);
+  int32_t alloc_plan_rc =
+      mtproxy_ffi_net_connections_alloc_socket_connection_plan(
+          c->flags, 1, &socket_flags, &initial_epoll_status,
+          &allocated_socket_delta);
   assert(alloc_plan_rc == 0);
 
   s->fd = c->fd;
@@ -1847,7 +1853,8 @@ socket_connection_job_t alloc_new_socket_connection(connection_job_t C) {
   rwm_init(&s->out, 0);
   unlock_job(JOB_REF_CREATE_PASS(S));
 
-  connections_module_stat_tls->allocated_socket_connections += allocated_socket_delta;
+  connections_module_stat_tls->allocated_socket_connections +=
+      allocated_socket_delta;
   return S;
 }
 
@@ -1934,8 +1941,8 @@ int do_listening_connection_job(job_t job, int op, struct job_thread *JT) {
 
   listening_connection_job_t LCJ = job;
 
-  int32_t action = mtproxy_ffi_net_connections_listening_job_action(
-      op, JS_RUN, JS_AUX);
+  int32_t action =
+      mtproxy_ffi_net_connections_listening_job_action(op, JS_RUN, JS_AUX);
   assert(action == LISTENING_JOB_ACTION_ERROR ||
          action == LISTENING_JOB_ACTION_RUN ||
          action == LISTENING_JOB_ACTION_AUX);
@@ -1976,8 +1983,9 @@ int init_listening_connection_ext(int fd, conn_type_t *type, void *extra,
              max_connection_fd);
     return -1;
   }
-  max_connection = mtproxy_ffi_net_connections_listening_init_update_max_connection(
-      fd, max_connection);
+  max_connection =
+      mtproxy_ffi_net_connections_listening_init_update_max_connection(
+          fd, max_connection);
 
   listening_connection_job_t LCJ = create_async_job(
       do_listening_connection_job,
@@ -2055,8 +2063,9 @@ void connection_event_incref(int fd, long long val) {
   struct event_descr *ev = &Events[fd];
 
   long long new_refcnt = __sync_add_and_fetch(&ev->refcnt, val);
-  int32_t should_release = mtproxy_ffi_net_connections_connection_event_should_release(
-      new_refcnt, ev->data != NULL);
+  int32_t should_release =
+      mtproxy_ffi_net_connections_connection_event_should_release(
+          new_refcnt, ev->data != NULL);
   assert(should_release == 0 || should_release == 1);
   if (should_release) {
     socket_connection_job_t C = ev->data;
@@ -2095,8 +2104,7 @@ connection_job_t connection_get_by_fd(int fd) {
 
   int32_t is_listening_job = (C->j_execute == &do_listening_connection_job);
   int32_t is_socket_job = (C->j_execute == &do_socket_connection_job);
-  int32_t socket_flags =
-      is_socket_job ? SOCKET_CONN_INFO(C)->flags : 0;
+  int32_t socket_flags = is_socket_job ? SOCKET_CONN_INFO(C)->flags : 0;
   int32_t action = mtproxy_ffi_net_connections_connection_get_by_fd_action(
       is_listening_job, is_socket_job, socket_flags);
   assert(action == CONN_GET_BY_FD_ACTION_RETURN_SELF ||
@@ -2202,22 +2210,19 @@ int check_conn_functions(conn_type_t *type, int listening) {
           type->check_ready != NULL, type->read_write != NULL,
           type->free != NULL, type->socket_connected != NULL,
           type->socket_free != NULL);
-  assert((default_mask & ~(CHECK_CONN_DEFAULT_SET_TITLE |
-                           CHECK_CONN_DEFAULT_SET_SOCKET_READ_WRITE |
-                           CHECK_CONN_DEFAULT_SET_SOCKET_READER |
-                           CHECK_CONN_DEFAULT_SET_SOCKET_WRITER |
-                           CHECK_CONN_DEFAULT_SET_SOCKET_CLOSE |
-                           CHECK_CONN_DEFAULT_SET_CLOSE |
-                           CHECK_CONN_DEFAULT_SET_INIT_OUTBOUND |
-                           CHECK_CONN_DEFAULT_SET_WAKEUP |
-                           CHECK_CONN_DEFAULT_SET_ALARM |
-                           CHECK_CONN_DEFAULT_SET_CONNECTED |
-                           CHECK_CONN_DEFAULT_SET_FLUSH |
-                           CHECK_CONN_DEFAULT_SET_CHECK_READY |
-                           CHECK_CONN_DEFAULT_SET_READ_WRITE |
-                           CHECK_CONN_DEFAULT_SET_FREE |
-                           CHECK_CONN_DEFAULT_SET_SOCKET_CONNECTED |
-                           CHECK_CONN_DEFAULT_SET_SOCKET_FREE)) == 0);
+  assert(
+      (default_mask &
+       ~(CHECK_CONN_DEFAULT_SET_TITLE |
+         CHECK_CONN_DEFAULT_SET_SOCKET_READ_WRITE |
+         CHECK_CONN_DEFAULT_SET_SOCKET_READER |
+         CHECK_CONN_DEFAULT_SET_SOCKET_WRITER |
+         CHECK_CONN_DEFAULT_SET_SOCKET_CLOSE | CHECK_CONN_DEFAULT_SET_CLOSE |
+         CHECK_CONN_DEFAULT_SET_INIT_OUTBOUND | CHECK_CONN_DEFAULT_SET_WAKEUP |
+         CHECK_CONN_DEFAULT_SET_ALARM | CHECK_CONN_DEFAULT_SET_CONNECTED |
+         CHECK_CONN_DEFAULT_SET_FLUSH | CHECK_CONN_DEFAULT_SET_CHECK_READY |
+         CHECK_CONN_DEFAULT_SET_READ_WRITE | CHECK_CONN_DEFAULT_SET_FREE |
+         CHECK_CONN_DEFAULT_SET_SOCKET_CONNECTED |
+         CHECK_CONN_DEFAULT_SET_SOCKET_FREE)) == 0);
 
   if (default_mask & CHECK_CONN_DEFAULT_SET_TITLE) {
     type->title = "(unknown)";
@@ -2235,8 +2240,9 @@ int check_conn_functions(conn_type_t *type, int listening) {
     type->socket_close = server_noop;
   }
 
-  int32_t accept_mask = mtproxy_ffi_net_connections_check_conn_functions_accept_mask(
-      !!listening, type->accept != NULL, type->init_accepted != NULL);
+  int32_t accept_mask =
+      mtproxy_ffi_net_connections_check_conn_functions_accept_mask(
+          !!listening, type->accept != NULL, type->init_accepted != NULL);
   assert((accept_mask & ~(CHECK_CONN_ACCEPT_SET_ACCEPT_LISTEN |
                           CHECK_CONN_ACCEPT_SET_ACCEPT_FAILED |
                           CHECK_CONN_ACCEPT_SET_INIT_ACCEPTED_NOOP |
@@ -2296,9 +2302,9 @@ int check_conn_functions(conn_type_t *type, int listening) {
       type->reader != NULL, type->writer != NULL, type->parse_execute != NULL,
       &raw_assign_mask, &nonraw_assert_mask);
   assert(raw_rc == 0 || raw_rc == -1);
-  assert((raw_assign_mask & ~(CHECK_CONN_RAW_SET_FREE_BUFFERS |
-                              CHECK_CONN_RAW_SET_READER |
-                              CHECK_CONN_RAW_SET_WRITER)) == 0);
+  assert((raw_assign_mask &
+          ~(CHECK_CONN_RAW_SET_FREE_BUFFERS | CHECK_CONN_RAW_SET_READER |
+            CHECK_CONN_RAW_SET_WRITER)) == 0);
   assert((nonraw_assert_mask & ~(CHECK_CONN_NONRAW_ASSERT_FREE_BUFFERS |
                                  CHECK_CONN_NONRAW_ASSERT_READER |
                                  CHECK_CONN_NONRAW_ASSERT_WRITER)) == 0);
@@ -2338,8 +2344,8 @@ void compute_next_reconnect(conn_target_job_t CT) {
   double next_reconnect_timeout = S->next_reconnect_timeout;
   int32_t rc = mtproxy_ffi_net_connections_compute_next_reconnect(
       S->reconnect_timeout, S->next_reconnect_timeout,
-      S->active_outbound_connections, precise_now, drand48_j(),
-      &next_reconnect, &next_reconnect_timeout);
+      S->active_outbound_connections, precise_now, drand48_j(), &next_reconnect,
+      &next_reconnect_timeout);
   assert(rc == 0);
   S->next_reconnect = next_reconnect;
   S->next_reconnect_timeout = next_reconnect_timeout;
@@ -2365,8 +2371,9 @@ static void count_connection_num(connection_job_t C, void *good_c,
 
 static void find_bad_connection(connection_job_t C, void *x) {
   connection_job_t *T = x;
-  int32_t should_select = mtproxy_ffi_net_connections_target_find_bad_should_select(
-      *T != NULL, CONN_INFO(C)->flags);
+  int32_t should_select =
+      mtproxy_ffi_net_connections_target_find_bad_should_select(
+          *T != NULL, CONN_INFO(C)->flags);
   assert(should_select == 0 || should_select == 1);
   if (should_select) {
     *T = C;
@@ -2394,7 +2401,8 @@ void destroy_dead_target_connections(conn_target_job_t CTJ) {
         mtproxy_ffi_net_connections_target_remove_dead_connection_deltas(
             CONN_INFO(CJ)->flags, &active_outbound_delta, &outbound_delta);
     assert(rc_deltas == 0);
-    __sync_fetch_and_add(&CT->active_outbound_connections, active_outbound_delta);
+    __sync_fetch_and_add(&CT->active_outbound_connections,
+                         active_outbound_delta);
     __sync_fetch_and_add(&CT->outbound_connections, outbound_delta);
 
     T = tree_delete_connection(T, CJ);
@@ -2413,11 +2421,12 @@ void destroy_dead_target_connections(conn_target_job_t CTJ) {
       was_ready, CT->ready_outbound_connections, &ready_outbound_delta,
       &ready_targets_delta);
   assert(rc == 0);
-  connections_module_stat_tls->ready_outbound_connections += ready_outbound_delta;
+  connections_module_stat_tls->ready_outbound_connections +=
+      ready_outbound_delta;
   connections_module_stat_tls->ready_targets += ready_targets_delta;
 
-  int32_t tree_update_action = mtproxy_ffi_net_connections_target_tree_update_action(
-      T != CT->conn_tree);
+  int32_t tree_update_action =
+      mtproxy_ffi_net_connections_target_tree_update_action(T != CT->conn_tree);
   assert(tree_update_action == 0 || tree_update_action == 1);
   if (tree_update_action == 0) {
     tree_free_connection(T);
@@ -2455,7 +2464,8 @@ int create_new_connections(conn_target_job_t CTJ) {
       was_ready, CT->ready_outbound_connections, &ready_outbound_delta,
       &ready_targets_delta);
   assert(rc == 0);
-  connections_module_stat_tls->ready_outbound_connections += ready_outbound_delta;
+  connections_module_stat_tls->ready_outbound_connections +=
+      ready_outbound_delta;
   connections_module_stat_tls->ready_targets += ready_targets_delta;
 
   need_c = mtproxy_ffi_net_connections_target_needed_connections(
@@ -2497,8 +2507,8 @@ int create_new_connections(conn_target_job_t CTJ) {
           ntohl(CT->target.s_addr), CT->target_ipv6, CT->port);
 
       int32_t should_insert =
-          mtproxy_ffi_net_connections_target_create_insert_should_insert(
-              C != NULL);
+          mtproxy_ffi_net_connections_target_create_insert_should_insert(C !=
+                                                                         NULL);
       assert(should_insert == 0 || should_insert == 1);
       if (should_insert) {
         assert(C);
@@ -2511,8 +2521,9 @@ int create_new_connections(conn_target_job_t CTJ) {
       }
     }
 
-    int32_t tree_update_action = mtproxy_ffi_net_connections_target_tree_update_action(
-        T != CT->conn_tree);
+    int32_t tree_update_action =
+        mtproxy_ffi_net_connections_target_tree_update_action(T !=
+                                                              CT->conn_tree);
     assert(tree_update_action == 0 || tree_update_action == 1);
     if (tree_update_action == 0) {
       tree_free_connection(T);
@@ -2575,8 +2586,8 @@ static conn_target_job_t find_target(struct in_addr ad, int port,
     }
     prev = &S->hnext;
   }
-  int32_t miss_action = mtproxy_ffi_net_connections_target_lookup_miss_action(
-      mode);
+  int32_t miss_action =
+      mtproxy_ffi_net_connections_target_lookup_miss_action(mode);
   assert(miss_action == TARGET_LOOKUP_MISS_INSERT_NEW ||
          miss_action == TARGET_LOOKUP_MISS_RETURN_NULL ||
          miss_action == TARGET_LOOKUP_MISS_ASSERT_INVALID);
@@ -2639,8 +2650,8 @@ static conn_target_job_t find_target_ipv6(unsigned char ad_ipv6[16], int port,
     }
     prev = &S->hnext;
   }
-  int32_t miss_action = mtproxy_ffi_net_connections_target_lookup_miss_action(
-      mode);
+  int32_t miss_action =
+      mtproxy_ffi_net_connections_target_lookup_miss_action(mode);
   assert(miss_action == TARGET_LOOKUP_MISS_INSERT_NEW ||
          miss_action == TARGET_LOOKUP_MISS_RETURN_NULL ||
          miss_action == TARGET_LOOKUP_MISS_ASSERT_INVALID);
@@ -2753,8 +2764,8 @@ int do_conn_target_job(job_t job, int op, struct job_thread *JT) {
   };
 
   if (epoll_fd <= 0) {
-    job_timer_insert(job,
-                     precise_now + mtproxy_ffi_net_connections_target_job_boot_delay());
+    job_timer_insert(
+        job, precise_now + mtproxy_ffi_net_connections_target_job_boot_delay());
     return 0;
   }
   conn_target_job_t CTJ = job;
@@ -2781,8 +2792,10 @@ int do_conn_target_job(job_t job, int op, struct job_thread *JT) {
       create_new_connections(CTJ);
     }
 
-    int32_t post_action = mtproxy_ffi_net_connections_target_job_post_tick_action(
-        !!(CTJ->j_flags & JF_COMPLETED), CT->global_refcnt, !!CT->conn_tree);
+    int32_t post_action =
+        mtproxy_ffi_net_connections_target_job_post_tick_action(
+            !!(CTJ->j_flags & JF_COMPLETED), CT->global_refcnt,
+            !!CT->conn_tree);
     assert(post_action == TARGET_JOB_POST_RETURN_ZERO ||
            post_action == TARGET_JOB_POST_SCHEDULE_RETRY ||
            post_action == TARGET_JOB_POST_ATTEMPT_FREE);
@@ -2932,8 +2945,8 @@ static void target_pick_policy_callback(connection_job_t C, void *x) {
   int32_t selected_unreliability =
       has_selected ? CONN_INFO(*P)->unreliability : 0;
   int32_t should_select = mtproxy_ffi_net_connections_target_pick_should_select(
-      ctx->allow_stopped, candidate_ready, has_selected,
-      selected_unreliability, CONN_INFO(C)->unreliability);
+      ctx->allow_stopped, candidate_ready, has_selected, selected_unreliability,
+      CONN_INFO(C)->unreliability);
   assert(should_select == 0 || should_select == 1);
   if (should_select) {
     *P = C;
@@ -2996,7 +3009,9 @@ void free_connection_tree_ptr(struct tree_connection *T) {
   free_tree_ptr_connection(T);
 }
 
-void incr_active_dh_connections(void) { connections_module_stat_tls->active_dh_connections++; }
+void incr_active_dh_connections(void) {
+  connections_module_stat_tls->active_dh_connections++;
+}
 
 int new_conn_generation(void) {
   return __sync_fetch_and_add(&conn_generation, 1);

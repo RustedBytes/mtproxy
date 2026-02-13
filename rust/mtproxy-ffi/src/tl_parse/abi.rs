@@ -273,6 +273,22 @@ fn in_fetch_lookup_cb(
 }
 
 #[inline]
+fn in_fetch_raw_message_cb(
+    state: *mut TlInState,
+) -> Option<unsafe extern "C" fn(*mut TlInState, *mut RawMessage, c_int)> {
+    let state_ref = in_state_mut(state)?;
+    in_methods_ref(state_ref).and_then(|methods| methods.fetch_raw_message)
+}
+
+#[inline]
+fn in_fetch_lookup_raw_message_cb(
+    state: *mut TlInState,
+) -> Option<unsafe extern "C" fn(*mut TlInState, *mut RawMessage, c_int)> {
+    let state_ref = in_state_mut(state)?;
+    in_methods_ref(state_ref).and_then(|methods| methods.fetch_lookup_raw_message)
+}
+
+#[inline]
 fn in_fetch_mark_cb(state: *mut TlInState) -> Option<unsafe extern "C" fn(*mut TlInState)> {
     let state_ref = in_state_mut(state)?;
     in_methods_ref(state_ref).and_then(|methods| methods.fetch_mark)
@@ -334,6 +350,30 @@ fn out_store_clear_cb(state: *mut TlOutState) -> Option<unsafe extern "C" fn(*mu
 }
 
 #[inline]
+fn out_store_get_ptr_cb(
+    state: *mut TlOutState,
+) -> Option<unsafe extern "C" fn(*mut TlOutState, c_int) -> *mut c_void> {
+    let state_ref = out_state_mut(state)?;
+    out_methods_ref(state_ref).and_then(|methods| methods.store_get_ptr)
+}
+
+#[inline]
+fn out_store_get_prepend_ptr_cb(
+    state: *mut TlOutState,
+) -> Option<unsafe extern "C" fn(*mut TlOutState, c_int) -> *mut c_void> {
+    let state_ref = out_state_mut(state)?;
+    out_methods_ref(state_ref).and_then(|methods| methods.store_get_prepend_ptr)
+}
+
+#[inline]
+fn out_store_raw_msg_cb(
+    state: *mut TlOutState,
+) -> Option<unsafe extern "C" fn(*mut TlOutState, *mut RawMessage)> {
+    let state_ref = out_state_mut(state)?;
+    out_methods_ref(state_ref).and_then(|methods| methods.store_raw_msg)
+}
+
+#[inline]
 fn out_copy_through_cb(
     state: *mut TlOutState,
     in_type: usize,
@@ -371,18 +411,6 @@ fn out_end_ctx(state: *mut TlOutState) -> Option<OutEndCtx> {
         errnum: state_ref.errnum,
         error: state_ref.error,
     })
-}
-
-macro_rules! in_method_cb {
-    ($state:expr, $field:ident) => {
-        in_methods_ref($state).and_then(|methods| methods.$field)
-    };
-}
-
-macro_rules! out_method_cb {
-    ($state:expr, $field:ident) => {
-        out_methods_ref($state).and_then(|methods| methods.$field)
-    };
 }
 
 #[inline]
@@ -2185,7 +2213,7 @@ fn fetch_raw_message_impl(
     let Some(tlio_in_ref) = in_state_mut(tlio_in) else {
         return Err(ABI_ERROR);
     };
-    let Some(fetch_raw_message) = in_method_cb!(tlio_in_ref, fetch_raw_message) else {
+    let Some(fetch_raw_message) = in_fetch_raw_message_cb(tlio_in) else {
         return Err(ABI_ERROR);
     };
     unsafe { fetch_raw_message(tlio_in, raw_ref as *mut RawMessage, bytes) };
@@ -2205,11 +2233,7 @@ fn fetch_lookup_raw_message_impl(
     let Some(raw_ref) = ptr_mut(raw) else {
         return Err(ABI_ERROR);
     };
-    let Some(tlio_in_ref) = in_state_mut(tlio_in) else {
-        return Err(ABI_ERROR);
-    };
-    let Some(fetch_lookup_raw_message) = in_method_cb!(tlio_in_ref, fetch_lookup_raw_message)
-    else {
+    let Some(fetch_lookup_raw_message) = in_fetch_lookup_raw_message_cb(tlio_in) else {
         return Err(ABI_ERROR);
     };
     unsafe { fetch_lookup_raw_message(tlio_in, raw_ref as *mut RawMessage, bytes) };
@@ -2304,7 +2328,7 @@ fn store_get_ptr_impl(tlio_out: *mut TlOutState, size: c_int) -> AbiResult<*mut 
     let Some(tlio_out_ref) = out_state_mut(tlio_out) else {
         return Err(ABI_ERROR);
     };
-    let Some(store_get_ptr) = out_method_cb!(tlio_out_ref, store_get_ptr) else {
+    let Some(store_get_ptr) = out_store_get_ptr_cb(tlio_out) else {
         return Err(ABI_ERROR);
     };
     let p = unsafe { store_get_ptr(tlio_out, size) };
@@ -2323,7 +2347,7 @@ fn store_get_prepend_ptr_impl(tlio_out: *mut TlOutState, size: c_int) -> AbiResu
     let Some(tlio_out_ref) = out_state_mut(tlio_out) else {
         return Err(ABI_ERROR);
     };
-    let Some(store_get_prepend_ptr) = out_method_cb!(tlio_out_ref, store_get_prepend_ptr) else {
+    let Some(store_get_prepend_ptr) = out_store_get_prepend_ptr_cb(tlio_out) else {
         return Err(ABI_ERROR);
     };
     let p = unsafe { store_get_prepend_ptr(tlio_out, size) };
@@ -2383,7 +2407,7 @@ fn store_raw_msg_impl(
     let Some(tlio_out_ref) = out_state_mut(tlio_out) else {
         return Err(ABI_ERROR);
     };
-    let Some(store_raw_msg) = out_method_cb!(tlio_out_ref, store_raw_msg) else {
+    let Some(store_raw_msg) = out_store_raw_msg_cb(tlio_out) else {
         return Err(ABI_ERROR);
     };
     if dup == 0 {

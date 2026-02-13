@@ -106,171 +106,40 @@ static inline long long jobs_stat_sum_ll(size_t field_offset) {
 }
 
 int jobs_prepare_stat(stats_buffer_t *sb) {
-int uptime = time(0) - start_time;
-double tm = get_utime_monotonic();
-double tot_recent_idle[16];
-double tot_recent_q[16];
-double tot_idle[16];
-int tot_threads[16];
-memset(tot_recent_idle, 0, sizeof(tot_recent_idle));
-memset(tot_recent_q, 0, sizeof(tot_recent_q));
-memset(tot_idle, 0, sizeof(tot_idle));
-memset(tot_threads, 0, sizeof(tot_threads));
+  int uptime = time(0) - start_time;
+  double tm = get_utime_monotonic();
+  double tot_recent_idle[16];
+  double tot_recent_q[16];
+  double tot_idle[16];
+  int tot_threads[16];
+  memset(tot_recent_idle, 0, sizeof(tot_recent_idle));
+  memset(tot_recent_q, 0, sizeof(tot_recent_q));
+  memset(tot_idle, 0, sizeof(tot_idle));
+  memset(tot_threads, 0, sizeof(tot_threads));
 
-tot_recent_idle[JC_MAIN] = a_idle_time;
-tot_recent_q[JC_MAIN] = a_idle_quotient;
-tot_idle[JC_MAIN] = tot_idle_time;
+  tot_recent_idle[JC_MAIN] = a_idle_time;
+  tot_recent_q[JC_MAIN] = a_idle_quotient;
+  tot_idle[JC_MAIN] = tot_idle_time;
 
-int i, j;
-for (i = 0; i < max_job_thread_id + 1; i++) {
-  if (jobs_module_stat_array[i]) {
-    assert(JobThreads[i].id == i);
-    int class = JobThreads[i].thread_class & JC_MASK;
-    tot_recent_idle[class] += jobs_module_stat_array[i]->a_idle_time;
-    tot_recent_q[class] += jobs_module_stat_array[i]->a_idle_quotient;
-    tot_idle[class] += jobs_module_stat_array[i]->tot_idle_time;
-    if (jobs_module_stat_array[i]->locked_since) {
-      double lt = jobs_module_stat_array[i]->locked_since;
-      tot_recent_idle[class] += (tm - lt);
-      tot_recent_q[class] += (tm - lt);
-      tot_idle[class] += (tm - lt);
-    }
-    tot_threads[class]++;
-  }
-}
-
-sb_printf(sb, "thread_average_idle_percent\t");
-for (i = 0; i < 16; i++) {
-  if (i != 0) {
-    sb_printf(sb, " ");
-    if (!(i & 3)) {
-      sb_printf(sb, " ");
+  int i, j;
+  for (i = 0; i < max_job_thread_id + 1; i++) {
+    if (jobs_module_stat_array[i]) {
+      assert(JobThreads[i].id == i);
+      int class = JobThreads[i].thread_class & JC_MASK;
+      tot_recent_idle[class] += jobs_module_stat_array[i]->a_idle_time;
+      tot_recent_q[class] += jobs_module_stat_array[i]->a_idle_quotient;
+      tot_idle[class] += jobs_module_stat_array[i]->tot_idle_time;
+      if (jobs_module_stat_array[i]->locked_since) {
+        double lt = jobs_module_stat_array[i]->locked_since;
+        tot_recent_idle[class] += (tm - lt);
+        tot_recent_q[class] += (tm - lt);
+        tot_idle[class] += (tm - lt);
+      }
+      tot_threads[class]++;
     }
   }
-  sb_printf(sb, "%.3f", safe_div(tot_idle[i], uptime * tot_threads[i]) * 100);
-}
-sb_printf(sb, "\n");
 
-sb_printf(sb, "thread_recent_idle_percent\t");
-for (i = 0; i < 16; i++) {
-  if (i != 0) {
-    sb_printf(sb, " ");
-    if (!(i & 3)) {
-      sb_printf(sb, " ");
-    }
-  }
-  sb_printf(sb, "%.3f", safe_div(tot_recent_idle[i], tot_recent_q[i]) * 100);
-}
-sb_printf(sb, "\n");
-
-sb_printf(sb, "tot_threads\t");
-for (i = 0; i < 16; i++) {
-  if (i != 0) {
-    sb_printf(sb, " ");
-    if (!(i & 3)) {
-      sb_printf(sb, " ");
-    }
-  }
-  sb_printf(sb, "%d", tot_threads[i]);
-}
-sb_printf(sb, "\n");
-
-double jb_cpu_load_u[16];
-double jb_cpu_load_s[16];
-double jb_cpu_load_t[16];
-double jb_cpu_load_ru[16];
-double jb_cpu_load_rs[16];
-double jb_cpu_load_rt[16];
-memset(jb_cpu_load_u, 0, sizeof(jb_cpu_load_u));
-memset(jb_cpu_load_s, 0, sizeof(jb_cpu_load_u));
-memset(jb_cpu_load_t, 0, sizeof(jb_cpu_load_u));
-memset(jb_cpu_load_ru, 0, sizeof(jb_cpu_load_u));
-memset(jb_cpu_load_rs, 0, sizeof(jb_cpu_load_u));
-memset(jb_cpu_load_rt, 0, sizeof(jb_cpu_load_u));
-double tot_cpu_load_u = 0;
-double tot_cpu_load_s = 0;
-double tot_cpu_load_t = 0;
-double tot_cpu_load_ru = 0;
-double tot_cpu_load_rs = 0;
-double tot_cpu_load_rt = 0;
-double max_cpu_load_u = 0;
-double max_cpu_load_s = 0;
-double max_cpu_load_t = 0;
-double max_cpu_load_ru = 0;
-double max_cpu_load_rs = 0;
-double max_cpu_load_rt = 0;
-for (i = 0; i < max_job_thread_id + 1; i++) {
-  if (jobs_module_stat_array[i]) {
-    assert(JobThreads[i].id == i);
-    int class = JobThreads[i].thread_class & JC_MASK;
-    jb_cpu_load_u[class] += JobThreadsStats[i].tot_user;
-    jb_cpu_load_s[class] += JobThreadsStats[i].tot_sys;
-    jb_cpu_load_t[class] +=
-        JobThreadsStats[i].tot_user + JobThreadsStats[i].tot_sys;
-
-    jb_cpu_load_ru[class] += JobThreadsStats[i].recent_user;
-    jb_cpu_load_rs[class] += JobThreadsStats[i].recent_sys;
-    jb_cpu_load_rt[class] +=
-        JobThreadsStats[i].recent_user + JobThreadsStats[i].recent_sys;
-  }
-}
-for (i = 0; i < 16; i++) {
-  tot_cpu_load_u += jb_cpu_load_u[i];
-  tot_cpu_load_s += jb_cpu_load_s[i];
-  tot_cpu_load_t += jb_cpu_load_t[i];
-  tot_cpu_load_ru += jb_cpu_load_ru[i];
-  tot_cpu_load_rs += jb_cpu_load_rs[i];
-  tot_cpu_load_rt += jb_cpu_load_rt[i];
-
-  max_cpu_load_u = max_double(max_cpu_load_u, jb_cpu_load_u[i]);
-  max_cpu_load_s = max_double(max_cpu_load_s, jb_cpu_load_s[i]);
-  max_cpu_load_t = max_double(max_cpu_load_t, jb_cpu_load_t[i]);
-  max_cpu_load_ru = max_double(max_cpu_load_ru, jb_cpu_load_ru[i]);
-  max_cpu_load_rs = max_double(max_cpu_load_rs, jb_cpu_load_rs[i]);
-  max_cpu_load_rt = max_double(max_cpu_load_rt, jb_cpu_load_rt[i]);
-}
-
-const double m_clk_to_hs =
-    100.0 / sysconf(_SC_CLK_TCK);             /* hundredth of a second */
-const double m_clk_to_ts = 0.1 * m_clk_to_hs; /* tenth of a second */
-
-for (j = 0; j < 6; j++) {
-  double *b = NULL;
-  double d = 0;
-  switch (j) {
-  case 0:
-    sb_printf(sb, "thread_load_average_user\t");
-    b = jb_cpu_load_u;
-    d = uptime;
-    break;
-  case 1:
-    sb_printf(sb, "thread_load_average_sys\t");
-    b = jb_cpu_load_s;
-    d = uptime;
-    break;
-  case 2:
-    sb_printf(sb, "thread_load_average\t");
-    b = jb_cpu_load_t;
-    d = uptime;
-    break;
-  case 3:
-    sb_printf(sb, "thread_load_recent_user\t");
-    b = jb_cpu_load_ru;
-    d = 10;
-    break;
-  case 4:
-    sb_printf(sb, "thread_load_recent_sys\t");
-    b = jb_cpu_load_rs;
-    d = 10;
-    break;
-  case 5:
-    sb_printf(sb, "thread_load_recent\t");
-    b = jb_cpu_load_rt;
-    d = 10;
-    break;
-  default:
-    assert(0);
-  }
+  sb_printf(sb, "thread_average_idle_percent\t");
   for (i = 0; i < 16; i++) {
     if (i != 0) {
       sb_printf(sb, " ");
@@ -278,78 +147,210 @@ for (j = 0; j < 6; j++) {
         sb_printf(sb, " ");
       }
     }
-    sb_printf(sb, "%.3f", safe_div(m_clk_to_hs * b[i], d * tot_threads[i]));
+    sb_printf(sb, "%.3f", safe_div(tot_idle[i], uptime * tot_threads[i]) * 100);
   }
   sb_printf(sb, "\n");
-}
 
-sb_printf(sb,
-          "load_average_user\t%.3f\n"
-          "load_average_sys\t%.3f\n"
-          "load_average_total\t%.3f\n"
-          "load_recent_user\t%.3f\n"
-          "load_recent_sys\t%.3f\n"
-          "load_recent_total\t%.3f\n"
-          "max_average_user\t%.3f\n"
-          "max_average_sys\t%.3f\n"
-          "max_average_total\t%.3f\n"
-          "max_recent_user\t%.3f\n"
-          "max_recent_sys\t%.3f\n"
-          "max_recent_total\t%.3f\n",
-          safe_div(m_clk_to_hs *tot_cpu_load_u, uptime),
-          safe_div(m_clk_to_hs *tot_cpu_load_s, uptime),
-          safe_div(m_clk_to_hs *tot_cpu_load_t, uptime),
-          m_clk_to_ts *tot_cpu_load_ru, m_clk_to_ts *tot_cpu_load_rs,
-          m_clk_to_ts *tot_cpu_load_rt,
-          safe_div(m_clk_to_hs *max_cpu_load_u, uptime),
-          safe_div(m_clk_to_hs *max_cpu_load_s, uptime),
-          safe_div(m_clk_to_hs *max_cpu_load_t, uptime),
-          m_clk_to_ts *max_cpu_load_ru, m_clk_to_ts *max_cpu_load_rs,
-          m_clk_to_ts *max_cpu_load_rt);
-
-sb_print_i32_key(
-    sb, "job_timers_allocated",
-    jobs_stat_sum_i(offsetof(struct jobs_module_stat, job_timers_allocated)));
-
-int jb_running[16], jb_active = 0;
-long long jb_created = 0;
-memset(jb_running, 0, sizeof(jb_running));
-for (i = 1; i <= max_job_thread_id; i++) {
-  struct job_thread *JT = &JobThreads[i];
-  if (JT->status) {
-    jb_active += JT->jobs_active;
-    jb_created += JT->jobs_created;
-    for (j = 0; j <= JC_MAX; j++) {
-      jb_running[j] += JT->jobs_running[j];
-    }
-  }
-}
-sb_printf(sb,
-          "jobs_created\t%lld\n"
-          "jobs_active\t%d\n",
-          jb_created, jb_active);
-
-sb_printf(sb, "jobs_running\t");
-for (i = 0; i < 16; i++) {
-  if (i != 0) {
-    sb_printf(sb, " ");
-    if (!(i & 3)) {
+  sb_printf(sb, "thread_recent_idle_percent\t");
+  for (i = 0; i < 16; i++) {
+    if (i != 0) {
       sb_printf(sb, " ");
+      if (!(i & 3)) {
+        sb_printf(sb, " ");
+      }
+    }
+    sb_printf(sb, "%.3f", safe_div(tot_recent_idle[i], tot_recent_q[i]) * 100);
+  }
+  sb_printf(sb, "\n");
+
+  sb_printf(sb, "tot_threads\t");
+  for (i = 0; i < 16; i++) {
+    if (i != 0) {
+      sb_printf(sb, " ");
+      if (!(i & 3)) {
+        sb_printf(sb, " ");
+      }
+    }
+    sb_printf(sb, "%d", tot_threads[i]);
+  }
+  sb_printf(sb, "\n");
+
+  double jb_cpu_load_u[16];
+  double jb_cpu_load_s[16];
+  double jb_cpu_load_t[16];
+  double jb_cpu_load_ru[16];
+  double jb_cpu_load_rs[16];
+  double jb_cpu_load_rt[16];
+  memset(jb_cpu_load_u, 0, sizeof(jb_cpu_load_u));
+  memset(jb_cpu_load_s, 0, sizeof(jb_cpu_load_u));
+  memset(jb_cpu_load_t, 0, sizeof(jb_cpu_load_u));
+  memset(jb_cpu_load_ru, 0, sizeof(jb_cpu_load_u));
+  memset(jb_cpu_load_rs, 0, sizeof(jb_cpu_load_u));
+  memset(jb_cpu_load_rt, 0, sizeof(jb_cpu_load_u));
+  double tot_cpu_load_u = 0;
+  double tot_cpu_load_s = 0;
+  double tot_cpu_load_t = 0;
+  double tot_cpu_load_ru = 0;
+  double tot_cpu_load_rs = 0;
+  double tot_cpu_load_rt = 0;
+  double max_cpu_load_u = 0;
+  double max_cpu_load_s = 0;
+  double max_cpu_load_t = 0;
+  double max_cpu_load_ru = 0;
+  double max_cpu_load_rs = 0;
+  double max_cpu_load_rt = 0;
+  for (i = 0; i < max_job_thread_id + 1; i++) {
+    if (jobs_module_stat_array[i]) {
+      assert(JobThreads[i].id == i);
+      int class = JobThreads[i].thread_class & JC_MASK;
+      jb_cpu_load_u[class] += JobThreadsStats[i].tot_user;
+      jb_cpu_load_s[class] += JobThreadsStats[i].tot_sys;
+      jb_cpu_load_t[class] +=
+          JobThreadsStats[i].tot_user + JobThreadsStats[i].tot_sys;
+
+      jb_cpu_load_ru[class] += JobThreadsStats[i].recent_user;
+      jb_cpu_load_rs[class] += JobThreadsStats[i].recent_sys;
+      jb_cpu_load_rt[class] +=
+          JobThreadsStats[i].recent_user + JobThreadsStats[i].recent_sys;
     }
   }
-  sb_printf(sb, "%d", jb_running[i]);
-}
-sb_printf(sb, "\n");
+  for (i = 0; i < 16; i++) {
+    tot_cpu_load_u += jb_cpu_load_u[i];
+    tot_cpu_load_s += jb_cpu_load_s[i];
+    tot_cpu_load_t += jb_cpu_load_t[i];
+    tot_cpu_load_ru += jb_cpu_load_ru[i];
+    tot_cpu_load_rs += jb_cpu_load_rs[i];
+    tot_cpu_load_rt += jb_cpu_load_rt[i];
 
-sb_print_i64_key(
-    sb, "jobs_allocated_memory",
-    jobs_stat_sum_ll(offsetof(struct jobs_module_stat, jobs_allocated_memory)));
-sb_print_i64_key(sb, "timer_ops",
-                 jobs_stat_sum_ll(offsetof(struct jobs_module_stat, timer_ops)));
-sb_print_i64_key(
-    sb, "timer_ops_scheduler",
-    jobs_stat_sum_ll(offsetof(struct jobs_module_stat, timer_ops_scheduler)));
-return sb->pos;
+    max_cpu_load_u = max_double(max_cpu_load_u, jb_cpu_load_u[i]);
+    max_cpu_load_s = max_double(max_cpu_load_s, jb_cpu_load_s[i]);
+    max_cpu_load_t = max_double(max_cpu_load_t, jb_cpu_load_t[i]);
+    max_cpu_load_ru = max_double(max_cpu_load_ru, jb_cpu_load_ru[i]);
+    max_cpu_load_rs = max_double(max_cpu_load_rs, jb_cpu_load_rs[i]);
+    max_cpu_load_rt = max_double(max_cpu_load_rt, jb_cpu_load_rt[i]);
+  }
+
+  const double m_clk_to_hs =
+      100.0 / sysconf(_SC_CLK_TCK);             /* hundredth of a second */
+  const double m_clk_to_ts = 0.1 * m_clk_to_hs; /* tenth of a second */
+
+  for (j = 0; j < 6; j++) {
+    double *b = NULL;
+    double d = 0;
+    switch (j) {
+    case 0:
+      sb_printf(sb, "thread_load_average_user\t");
+      b = jb_cpu_load_u;
+      d = uptime;
+      break;
+    case 1:
+      sb_printf(sb, "thread_load_average_sys\t");
+      b = jb_cpu_load_s;
+      d = uptime;
+      break;
+    case 2:
+      sb_printf(sb, "thread_load_average\t");
+      b = jb_cpu_load_t;
+      d = uptime;
+      break;
+    case 3:
+      sb_printf(sb, "thread_load_recent_user\t");
+      b = jb_cpu_load_ru;
+      d = 10;
+      break;
+    case 4:
+      sb_printf(sb, "thread_load_recent_sys\t");
+      b = jb_cpu_load_rs;
+      d = 10;
+      break;
+    case 5:
+      sb_printf(sb, "thread_load_recent\t");
+      b = jb_cpu_load_rt;
+      d = 10;
+      break;
+    default:
+      assert(0);
+    }
+    for (i = 0; i < 16; i++) {
+      if (i != 0) {
+        sb_printf(sb, " ");
+        if (!(i & 3)) {
+          sb_printf(sb, " ");
+        }
+      }
+      sb_printf(sb, "%.3f", safe_div(m_clk_to_hs * b[i], d * tot_threads[i]));
+    }
+    sb_printf(sb, "\n");
+  }
+
+  sb_printf(sb,
+            "load_average_user\t%.3f\n"
+            "load_average_sys\t%.3f\n"
+            "load_average_total\t%.3f\n"
+            "load_recent_user\t%.3f\n"
+            "load_recent_sys\t%.3f\n"
+            "load_recent_total\t%.3f\n"
+            "max_average_user\t%.3f\n"
+            "max_average_sys\t%.3f\n"
+            "max_average_total\t%.3f\n"
+            "max_recent_user\t%.3f\n"
+            "max_recent_sys\t%.3f\n"
+            "max_recent_total\t%.3f\n",
+            safe_div(m_clk_to_hs * tot_cpu_load_u, uptime),
+            safe_div(m_clk_to_hs * tot_cpu_load_s, uptime),
+            safe_div(m_clk_to_hs * tot_cpu_load_t, uptime),
+            m_clk_to_ts * tot_cpu_load_ru, m_clk_to_ts * tot_cpu_load_rs,
+            m_clk_to_ts * tot_cpu_load_rt,
+            safe_div(m_clk_to_hs * max_cpu_load_u, uptime),
+            safe_div(m_clk_to_hs * max_cpu_load_s, uptime),
+            safe_div(m_clk_to_hs * max_cpu_load_t, uptime),
+            m_clk_to_ts * max_cpu_load_ru, m_clk_to_ts * max_cpu_load_rs,
+            m_clk_to_ts * max_cpu_load_rt);
+
+  sb_print_i32_key(
+      sb, "job_timers_allocated",
+      jobs_stat_sum_i(offsetof(struct jobs_module_stat, job_timers_allocated)));
+
+  int jb_running[16], jb_active = 0;
+  long long jb_created = 0;
+  memset(jb_running, 0, sizeof(jb_running));
+  for (i = 1; i <= max_job_thread_id; i++) {
+    struct job_thread *JT = &JobThreads[i];
+    if (JT->status) {
+      jb_active += JT->jobs_active;
+      jb_created += JT->jobs_created;
+      for (j = 0; j <= JC_MAX; j++) {
+        jb_running[j] += JT->jobs_running[j];
+      }
+    }
+  }
+  sb_printf(sb,
+            "jobs_created\t%lld\n"
+            "jobs_active\t%d\n",
+            jb_created, jb_active);
+
+  sb_printf(sb, "jobs_running\t");
+  for (i = 0; i < 16; i++) {
+    if (i != 0) {
+      sb_printf(sb, " ");
+      if (!(i & 3)) {
+        sb_printf(sb, " ");
+      }
+    }
+    sb_printf(sb, "%d", jb_running[i]);
+  }
+  sb_printf(sb, "\n");
+
+  sb_print_i64_key(sb, "jobs_allocated_memory",
+                   jobs_stat_sum_ll(offsetof(struct jobs_module_stat,
+                                             jobs_allocated_memory)));
+  sb_print_i64_key(
+      sb, "timer_ops",
+      jobs_stat_sum_ll(offsetof(struct jobs_module_stat, timer_ops)));
+  sb_print_i64_key(
+      sb, "timer_ops_scheduler",
+      jobs_stat_sum_ll(offsetof(struct jobs_module_stat, timer_ops_scheduler)));
+  return sb->pos;
 }
 
 long long jobs_get_allocated_memoty(void) {
@@ -412,7 +413,8 @@ size_t jobs_async_job_header_size_c_impl(void) {
 }
 
 struct job_thread *jobs_prepare_async_create_c_impl(int custom_bytes) {
-  jobs_module_stat_tls->jobs_allocated_memory += sizeof(struct async_job) + custom_bytes;
+  jobs_module_stat_tls->jobs_allocated_memory +=
+      sizeof(struct async_job) + custom_bytes;
   struct job_thread *JT = this_job_thread;
   assert(JT);
   JT->jobs_created++;
@@ -761,7 +763,8 @@ int unlock_job(JOB_REF_ARG(job)) {
       }
       JT->jobs_running[req_class]--;
       if (res == JOB_DESTROYED) {
-        jobs_module_stat_tls->jobs_allocated_memory -= sizeof(struct async_job) + custom;
+        jobs_module_stat_tls->jobs_allocated_memory -=
+            sizeof(struct async_job) + custom;
         vkprintf(JOBS_DEBUG, "JOB %p DESTROYED: RES = %d\n", job, res);
         JT->jobs_active--;
         return res;
@@ -1024,12 +1027,14 @@ void *job_thread_ex(void *arg, void (*work_one)(void *, int)) {
       if (now > prev_now && now < prev_now + 60) {
         while (prev_now < now) {
           jobs_module_stat_tls->a_idle_time *= 100.0 / 101;
-          jobs_module_stat_tls->a_idle_quotient = a_idle_quotient * (100.0 / 101) + 1;
+          jobs_module_stat_tls->a_idle_quotient =
+              a_idle_quotient * (100.0 / 101) + 1;
           prev_now++;
         }
       } else {
         if (now >= prev_now + 60) {
-          jobs_module_stat_tls->a_idle_time = jobs_module_stat_tls->a_idle_quotient;
+          jobs_module_stat_tls->a_idle_time =
+              jobs_module_stat_tls->a_idle_quotient;
         }
         prev_now = now;
       }

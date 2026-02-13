@@ -92,10 +92,12 @@ enum {
 extern int engine_multithread_mode;
 
 enum {
-  JC_NONE = 0, // no signal (unless used with "fast" flag; then it means "any context")
+  JC_NONE = 0, // no signal (unless used with "fast" flag; then it means "any
+               // context")
   JC_IO = 1,   // signal must be processed in I/O thread
   JC_CPU = 2,  // signal must be processed in CPU thread
-  JC_MAIN = 3, // signal must be processed in main thread (unless specified otherwise)
+  JC_MAIN =
+      3, // signal must be processed in main thread (unless specified otherwise)
   JC_CONNECTION = 4,
   JC_CONNECTION_IO = 5,
   JC_UDP = 6,
@@ -119,9 +121,12 @@ enum {
 };
 
 enum {
-  JF_LOCKED = 0x10000, // job is "locked" (usually this means that a signal is being processed)
-  JF_SIGINT = 0x20000, // signal interruption: if job is "locked" and we send a new signal to it, invoke pthread_signal() as well
-  JF_COMPLETED = 0x40000, // used to signal job "completion" to outside observers
+  JF_LOCKED = 0x10000, // job is "locked" (usually this means that a signal is
+                       // being processed)
+  JF_SIGINT = 0x20000, // signal interruption: if job is "locked" and we send a
+                       // new signal to it, invoke pthread_signal() as well
+  JF_COMPLETED =
+      0x40000, // used to signal job "completion" to outside observers
 };
 
 #define JF_QUEUED_CLASS(__c) (1 << (__c))
@@ -159,10 +164,14 @@ enum {
 #define JSIG_ENGINE(__s) JSC_ALLOW(JC_ENGINE, __s)
 
 enum {
-  JSP_PARENT_ERROR = 1, // j_status: propagate error to j_error field in j_parent, and send ABORT to parent
-  JSP_PARENT_RUN = 2,   // j_status: send RUN to j_parent after job completion
-  JSP_PARENT_WAKEUP = 4, // j_status: decrease j_parent's j_children; if it becomes 0, maybe send RUN
-  JSP_PARENT_RESPTR = 8, // j_status: (result) pointer(s) kept in j_custom actually point inside j_parent; use only if j_parent is still valid
+  JSP_PARENT_ERROR = 1,  // j_status: propagate error to j_error field in
+                         // j_parent, and send ABORT to parent
+  JSP_PARENT_RUN = 2,    // j_status: send RUN to j_parent after job completion
+  JSP_PARENT_WAKEUP = 4, // j_status: decrease j_parent's j_children; if it
+                         // becomes 0, maybe send RUN
+  JSP_PARENT_RESPTR =
+      8, // j_status: (result) pointer(s) kept in j_custom actually point inside
+         // j_parent; use only if j_parent is still valid
   JSP_PARENT_INCOMPLETE = 0x10, // abort job if parent already completed
   JSP_PARENT_RWE = 7,
   JSP_PARENT_RWEP = 0xf,

@@ -42,7 +42,7 @@ struct mp_queue *alloc_mp_queue_w(void);
 void init_mp_queue_w(struct mp_queue *MQ);
 void clear_mp_queue(struct mp_queue *MQ); // invoke only if nobody else is
                                           // using mp-queue
-void free_mp_queue(struct mp_queue *MQ); // same + invoke free()
+void free_mp_queue(struct mp_queue *MQ);  // same + invoke free()
 
 // flags for mpq_push / mpq_pop functions
 enum {

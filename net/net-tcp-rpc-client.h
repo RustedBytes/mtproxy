@@ -72,6 +72,7 @@ int tcp_rpcc_start_crypto(connection_job_t c, char *nonce, int key_select,
 int tcp_rpcc_default_check_ready(connection_job_t c);
 void tcp_force_enable_dh(void);
 
-static inline struct tcp_rpc_client_functions *TCP_RPCC_FUNC(connection_job_t c) {
+static inline struct tcp_rpc_client_functions *
+TCP_RPCC_FUNC(connection_job_t c) {
   return (struct tcp_rpc_client_functions *)CONN_INFO(c)->extra;
 }

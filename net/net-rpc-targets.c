@@ -76,8 +76,7 @@ static __thread struct rpc_targets_module_stat *rpc_targets_module_stat_tls;
 static void rpc_targets_module_thread_init(void) {
   int id = get_this_thread_id();
   assert(id >= 0 && id < MAX_JOB_THREADS);
-  rpc_targets_module_stat_tls =
-      calloc(1, sizeof(*rpc_targets_module_stat_tls));
+  rpc_targets_module_stat_tls = calloc(1, sizeof(*rpc_targets_module_stat_tls));
   rpc_targets_module_stat_array[id] = rpc_targets_module_stat_tls;
 }
 
@@ -91,19 +90,18 @@ __attribute__((constructor)) static void rpc_targets_module_register(void) {
 }
 
 static inline long long rpc_targets_stat_sum_ll(size_t field_offset) {
-  return sb_sum_ll((void **)rpc_targets_module_stat_array, max_job_thread_id + 1,
-                   field_offset);
+  return sb_sum_ll((void **)rpc_targets_module_stat_array,
+                   max_job_thread_id + 1, field_offset);
 }
 
 int rpc_targets_prepare_stat(stats_buffer_t *sb) {
   sb_print_i64_key(sb, "total_rpc_targets",
-                   rpc_targets_stat_sum_ll(
-                       offsetof(struct rpc_targets_module_stat, total_rpc_targets)));
+                   rpc_targets_stat_sum_ll(offsetof(
+                       struct rpc_targets_module_stat, total_rpc_targets)));
   sb_print_i64_key(
       sb, "total_connections_in_rpc_targets",
-      rpc_targets_stat_sum_ll(
-          offsetof(struct rpc_targets_module_stat,
-                   total_connections_in_rpc_targets)));
+      rpc_targets_stat_sum_ll(offsetof(struct rpc_targets_module_stat,
+                                       total_connections_in_rpc_targets)));
   return sb->pos;
 }
 

@@ -559,8 +559,7 @@ static int update_domain_info(struct domain_info *info) {
   int is_reversed_extension_order_max = 0;
   int have_error = 0;
   while (get_utime_monotonic() < finish_time &&
-         finished_count < tls_probe_tries &&
-         !have_error) {
+         finished_count < tls_probe_tries && !have_error) {
     struct timeval timeout_data;
     timeout_data.tv_sec = (int)(finish_time - precise_now + 1);
     timeout_data.tv_usec = 0;

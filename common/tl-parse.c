@@ -25,8 +25,8 @@
 #include "common/tl-parse.h"
 
 #include <assert.h>
-#include <stddef.h>
 #include <stdarg.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -208,46 +208,37 @@ static inline long long tl_parse_stat_sum_ll(size_t field_offset) {
 
 int tl_parse_prepare_stat(stats_buffer_t *sb) {
   double uptime = time(0) - start_time;
-  sb_print_i64_key(
-      sb, "rpc_queries_received",
-      tl_parse_stat_sum_ll(
-          offsetof(struct tl_parse_module_stat, rpc_queries_received)));
-  sb_print_i64_key(
-      sb, "rpc_answers_error",
-      tl_parse_stat_sum_ll(
-          offsetof(struct tl_parse_module_stat, rpc_answers_error)));
-  sb_print_i64_key(
-      sb, "rpc_answers_received",
-      tl_parse_stat_sum_ll(
-          offsetof(struct tl_parse_module_stat, rpc_answers_received)));
-  sb_print_i64_key(
-      sb, "rpc_sent_errors",
-      tl_parse_stat_sum_ll(
-          offsetof(struct tl_parse_module_stat, rpc_sent_errors)));
-  sb_print_i64_key(
-      sb, "rpc_sent_answers",
-      tl_parse_stat_sum_ll(
-          offsetof(struct tl_parse_module_stat, rpc_sent_answers)));
-  sb_print_i64_key(
-      sb, "rpc_sent_queries",
-      tl_parse_stat_sum_ll(
-          offsetof(struct tl_parse_module_stat, rpc_sent_queries)));
-  sb_print_i32_key(
-      sb, "tl_in_allocated",
-      tl_parse_stat_sum_i(
-          offsetof(struct tl_parse_module_stat, tl_in_allocated)));
-  sb_print_i32_key(
-      sb, "tl_out_allocated",
-      tl_parse_stat_sum_i(
-          offsetof(struct tl_parse_module_stat, tl_out_allocated)));
+  sb_print_i64_key(sb, "rpc_queries_received",
+                   tl_parse_stat_sum_ll(offsetof(struct tl_parse_module_stat,
+                                                 rpc_queries_received)));
+  sb_print_i64_key(sb, "rpc_answers_error",
+                   tl_parse_stat_sum_ll(offsetof(struct tl_parse_module_stat,
+                                                 rpc_answers_error)));
+  sb_print_i64_key(sb, "rpc_answers_received",
+                   tl_parse_stat_sum_ll(offsetof(struct tl_parse_module_stat,
+                                                 rpc_answers_received)));
+  sb_print_i64_key(sb, "rpc_sent_errors",
+                   tl_parse_stat_sum_ll(
+                       offsetof(struct tl_parse_module_stat, rpc_sent_errors)));
+  sb_print_i64_key(sb, "rpc_sent_answers",
+                   tl_parse_stat_sum_ll(offsetof(struct tl_parse_module_stat,
+                                                 rpc_sent_answers)));
+  sb_print_i64_key(sb, "rpc_sent_queries",
+                   tl_parse_stat_sum_ll(offsetof(struct tl_parse_module_stat,
+                                                 rpc_sent_queries)));
+  sb_print_i32_key(sb, "tl_in_allocated",
+                   tl_parse_stat_sum_i(
+                       offsetof(struct tl_parse_module_stat, tl_in_allocated)));
+  sb_print_i32_key(sb, "tl_out_allocated",
+                   tl_parse_stat_sum_i(offsetof(struct tl_parse_module_stat,
+                                                tl_out_allocated)));
 
   sb_printf(sb,
             "rpc_qps\t%lf\n"
             "default_rpc_flags\t%u\n",
-            safe_div(
-                tl_parse_stat_sum_ll(
-                    offsetof(struct tl_parse_module_stat, rpc_queries_received)),
-                uptime),
+            safe_div(tl_parse_stat_sum_ll(offsetof(struct tl_parse_module_stat,
+                                                   rpc_queries_received)),
+                     uptime),
             tcp_get_default_rpc_flags());
   return sb->pos;
 }

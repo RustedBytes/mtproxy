@@ -127,10 +127,7 @@ where
 
     /// Internal delete operation that returns whether the key was found
     /// and the new subtree.
-    fn delete_internal(
-        node: TreapLink<K, P>,
-        key: &K,
-    ) -> (bool, TreapLink<K, P>) {
+    fn delete_internal(node: TreapLink<K, P>, key: &K) -> (bool, TreapLink<K, P>) {
         let Some(mut node) = node else {
             return (false, None);
         };
@@ -158,10 +155,7 @@ where
     /// Returns `(left, right)` where:
     /// - `left` contains all keys < `key`
     /// - `right` contains all keys >= `key`
-    fn split(
-        node: TreapLink<K, P>,
-        key: &K,
-    ) -> (TreapLink<K, P>, TreapLink<K, P>) {
+    fn split(node: TreapLink<K, P>, key: &K) -> (TreapLink<K, P>, TreapLink<K, P>) {
         let Some(mut node) = node else {
             return (None, None);
         };
@@ -180,10 +174,7 @@ where
     /// Merges two treaps.
     ///
     /// Assumes all keys in `left` are less than all keys in `right`.
-    fn merge(
-        left: TreapLink<K, P>,
-        right: TreapLink<K, P>,
-    ) -> TreapLink<K, P> {
+    fn merge(left: TreapLink<K, P>, right: TreapLink<K, P>) -> TreapLink<K, P> {
         match (left, right) {
             (None, right) => right,
             (left, None) => left,
