@@ -396,7 +396,8 @@ impl EngineParseOption {
 
         if let Some(&value) = self.vals.first() {
             if (33..=127).contains(&value) {
-                return format!("-{}", char::from(value as u8));
+                let byte = u8::try_from(value).unwrap_or(b'?');
+                return format!("-{}", char::from(byte));
             }
         }
 
@@ -419,7 +420,9 @@ static DEBUG_MAIN_PTHREAD_ID: LazyLock<Mutex<Option<libc::pthread_t>>> =
     LazyLock::new(|| Mutex::new(None));
 
 fn lock_unpoisoned<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
-    mutex.lock().unwrap_or_else(|poison| poison.into_inner())
+    mutex
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 fn default_parse_option_func(_value: i32, _optarg: Option<&str>) -> i32 {
@@ -512,7 +515,17 @@ fn atoi_like(input: &str) -> i32 {
     }
 
     let signed = value.saturating_mul(sign);
-    signed.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32
+    let clamped = signed.clamp(i64::from(i32::MIN), i64::from(i32::MAX));
+    match i32::try_from(clamped) {
+        Ok(value) => value,
+        Err(_) => {
+            if clamped.is_negative() {
+                i32::MIN
+            } else {
+                i32::MAX
+            }
+        }
+    }
 }
 
 fn find_parse_option_index(registry: &ParseOptionRegistry, value: i32) -> Option<usize> {
@@ -731,7 +744,7 @@ pub fn parse_usage() -> String {
     let max_width = registry
         .options
         .iter()
-        .map(|option| option_display_width(option))
+        .map(option_display_width)
         .max()
         .unwrap_or(0);
 
@@ -760,7 +773,8 @@ pub fn parse_usage() -> String {
                 current_width += 1;
             }
             out.push('-');
-            out.push(char::from(value as u8));
+            let byte = u8::try_from(value).unwrap_or_default();
+            out.push(char::from(byte));
             current_width += 2;
         }
 
@@ -1040,10 +1054,7 @@ pub fn add_builtin_parse_options() -> Result<(), ParseOptionError> {
         208,
         LONGOPT_COMMON_SET,
         Some(builtin_parse_option),
-        format!(
-            "sets maximal buffers size (default {})",
-            MSG_DEFAULT_MAX_ALLOCATED_BYTES
-        ),
+        format!("sets maximal buffers size (default {MSG_DEFAULT_MAX_ALLOCATED_BYTES})"),
     )?;
 
     let (net_hook, engine_hook) = {

@@ -12,6 +12,7 @@ use core::fmt::Write;
 ///
 /// # Returns
 /// A formatted string like "192.168.1.1"
+#[must_use]
 pub fn format_ipv4(addr: u32) -> heapless::String<16> {
     let mut s = heapless::String::new();
     let _ = write!(
@@ -31,7 +32,8 @@ pub fn format_ipv4(addr: u32) -> heapless::String<16> {
 /// * `addr` - IPv6 address as a 16-byte array
 ///
 /// # Returns
-/// A formatted string like "2001:db8::1"
+/// A formatted string like "`2001:db8::1`"
+#[must_use]
 pub fn format_ipv6(addr: &[u8; 16]) -> heapless::String<64> {
     let mut s = heapless::String::new();
 
@@ -59,7 +61,7 @@ fn format_ipv6_segments(s: &mut heapless::String<64>, segments: &[u16; 8]) -> co
         if seg == 0 {
             // Write nothing for zero segments (matches C behavior)
         } else {
-            write!(s, "{:x}", seg)?;
+            write!(s, "{seg:x}")?;
         }
     }
     Ok(())

@@ -58,12 +58,10 @@ pub fn registered_custom_op_count() -> usize {
 #[must_use]
 pub fn is_custom_op_registered(op: u32) -> bool {
     let registered = registered_custom_op_count();
-    for idx in 0..registered {
-        if CUSTOM_OP_CODES[idx].load(Ordering::Acquire) == op {
-            return true;
-        }
-    }
-    false
+    CUSTOM_OP_CODES
+        .iter()
+        .take(registered)
+        .any(|code| code.load(Ordering::Acquire) == op)
 }
 
 /// Extracts query-type id from high 4 bits of query `qid`.

@@ -11,6 +11,7 @@ use alloc::string::{String, ToString};
 use core::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 
 /// Maximum signal number (SIGRTMAX)
+pub const OUR_SIGRTMAX_U32: u32 = 64;
 pub const OUR_SIGRTMAX: usize = 64;
 pub const SIGHUP: u32 = 1;
 pub const SIGINT: u32 = 2;
@@ -49,11 +50,11 @@ pub const SIG_INTERRUPT_MASK: u64 = sig_to_int(SIGTERM) | sig_to_int(SIGINT);
 /// Default allowed signal mask from C runtime bootstrap.
 pub const DEFAULT_ALLOWED_SIGNALS: u64 = sig_to_int(SIGHUP)
     | sig_to_int(SIGUSR1)
-    | sig_to_int(OUR_SIGRTMAX as u32)
-    | sig_to_int((OUR_SIGRTMAX - 1) as u32)
-    | sig_to_int((OUR_SIGRTMAX - 4) as u32)
-    | sig_to_int((OUR_SIGRTMAX - 8) as u32)
-    | sig_to_int((OUR_SIGRTMAX - 9) as u32)
+    | sig_to_int(OUR_SIGRTMAX_U32)
+    | sig_to_int(OUR_SIGRTMAX_U32 - 1)
+    | sig_to_int(OUR_SIGRTMAX_U32 - 4)
+    | sig_to_int(OUR_SIGRTMAX_U32 - 8)
+    | sig_to_int(OUR_SIGRTMAX_U32 - 9)
     | SIG_INTERRUPT_MASK;
 
 /// Check if a signal is pending
@@ -117,6 +118,7 @@ pub fn register_runtime_signal(sig: u32) -> Result<(), String> {
 }
 
 /// Drains pending allowed signals and returns number of processed entries.
+#[must_use]
 pub fn process_pending_signals() -> u32 {
     engine_process_signals_with(|_| {})
 }
@@ -125,7 +127,7 @@ pub fn process_pending_signals() -> u32 {
 const fn next_signal_from_mask(mask: u64) -> u32 {
     let bit = mask.trailing_zeros();
     if bit == 0 {
-        OUR_SIGRTMAX as u32
+        OUR_SIGRTMAX_U32
     } else {
         bit
     }
@@ -188,8 +190,7 @@ pub fn processed_signals_count() -> u32 {
 pub fn signal_dispatch_count(sig: u32) -> u32 {
     DISPATCHED_SIGNALS
         .get(sig as usize)
-        .map(|v| v.load(Ordering::Acquire))
-        .unwrap_or(0)
+        .map_or(0, |v| v.load(Ordering::Acquire))
 }
 
 /// Initialize signal handlers

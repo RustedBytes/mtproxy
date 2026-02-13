@@ -150,21 +150,18 @@ fn parse_port_number(value: &str) -> Result<u16, String> {
 }
 
 fn parse_port_range(value: &str) -> Result<(u16, u16), String> {
-    match value.split_once(':') {
-        Some((start, end)) => {
-            let start = parse_port_number(start.trim())?;
-            let end = parse_port_number(end.trim())?;
-            if start > end {
-                return Err(format!(
-                    "invalid port range '{value}': start must be <= end"
-                ));
-            }
-            Ok((start, end))
+    if let Some((start, end)) = value.split_once(':') {
+        let start = parse_port_number(start.trim())?;
+        let end = parse_port_number(end.trim())?;
+        if start > end {
+            return Err(format!(
+                "invalid port range '{value}': start must be <= end"
+            ));
         }
-        None => {
-            let port = parse_port_number(value.trim())?;
-            Ok((port, port))
-        }
+        Ok((start, end))
+    } else {
+        let port = parse_port_number(value.trim())?;
+        Ok((port, port))
     }
 }
 
@@ -401,7 +398,7 @@ fn spawn_workers(worker_processes: u32) -> Result<(), String> {
     Ok(())
 }
 
-fn run_with_parsed_args(args: Args) -> i32 {
+fn run_with_parsed_args(args: &Args) -> i32 {
     // Display bootstrap information
     let signature = mtproxy_core::bootstrap_signature();
 
@@ -410,13 +407,13 @@ fn run_with_parsed_args(args: Args) -> i32 {
     }
 
     // Validate arguments
-    if let Err(e) = validate_args(&args) {
+    if let Err(e) = validate_args(args) {
         eprintln!("ERROR: {e}");
         return 1;
     }
 
     if args.verbosity > 0 {
-        print_configuration(&args);
+        print_configuration(args);
         eprintln!();
     }
 
@@ -436,7 +433,7 @@ fn run_with_parsed_args(args: Args) -> i32 {
     }
 
     // Initialize runtime
-    match runtime_init(&args) {
+    match runtime_init(args) {
         Ok(()) => {
             if args.verbosity > 1 {
                 eprintln!("Runtime initialization successful\n");
@@ -449,7 +446,7 @@ fn run_with_parsed_args(args: Args) -> i32 {
     }
 
     // Start main runtime loop
-    match runtime_start(&args) {
+    match runtime_start(args) {
         Ok(()) => {
             if args.verbosity > 1 {
                 eprintln!("\nRuntime completed successfully");
@@ -473,14 +470,14 @@ pub fn usage_text(program_name: &str) -> String {
 /// Runs entrypoint using an explicit argv vector.
 #[must_use]
 pub fn run_from_argv(argv: &[String]) -> i32 {
-    let args = match Args::try_parse_from(argv.iter().cloned()) {
-        Ok(args) => args,
+    let parsed_args = match Args::try_parse_from(argv.iter().cloned()) {
+        Ok(parsed) => parsed,
         Err(err) => {
             let _ = err.print();
             return err.exit_code();
         }
     };
-    run_with_parsed_args(args)
+    run_with_parsed_args(&parsed_args)
 }
 
 /// Runs entrypoint using process environment arguments.

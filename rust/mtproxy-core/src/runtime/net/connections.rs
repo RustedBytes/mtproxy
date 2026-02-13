@@ -364,7 +364,7 @@ pub fn alloc_connection_success_deltas(
     has_target: bool,
 ) -> (i32, i32, i32, i32, i32, i32, i32, i32, i32, bool) {
     if basic_type == CT_OUTBOUND {
-        let target_delta = if has_target { 1 } else { 0 };
+        let target_delta = i32::from(has_target);
         (1, 1, 1, 0, 0, 0, 0, 0, target_delta, has_target)
     } else {
         (0, 0, 0, 1, 1, 1, 1, 1, 0, false)
@@ -765,11 +765,7 @@ pub fn listening_job_action(op: i32, js_run: i32, js_aux: i32) -> i32 {
 /// - `1`: reject (`fd >= max_connection_fd`)
 #[must_use]
 pub fn listening_init_fd_action(fd: i32, max_connection_fd: i32) -> i32 {
-    if fd >= max_connection_fd {
-        1
-    } else {
-        0
-    }
+    i32::from(fd >= max_connection_fd)
 }
 
 /// Returns updated `max_connection` for listening init.
@@ -854,9 +850,10 @@ pub fn connection_generation_matches(found_generation: i32, expected_generation:
     found_generation == expected_generation
 }
 
-/// Computes default-assignment mask for common conn_type function pointers.
+/// Computes default-assignment mask for common `conn_type` function pointers.
 #[must_use]
 #[allow(clippy::too_many_arguments)]
+#[allow(clippy::fn_params_excessive_bools)]
 pub fn check_conn_functions_default_mask(
     has_title: bool,
     has_socket_read_write: bool,
@@ -956,6 +953,7 @@ pub fn check_conn_functions_accept_mask(
 ///
 /// Returns tuple `(rc, assign_mask, nonraw_assert_mask)`.
 #[must_use]
+#[allow(clippy::fn_params_excessive_bools)]
 pub fn check_conn_functions_raw_policy(
     is_rawmsg: bool,
     has_free_buffers: bool,
@@ -1174,10 +1172,8 @@ pub fn target_ready_transition(was_ready: i32, now_ready: i32) -> (i32, i32) {
     let ready_outbound_delta = now_ready - was_ready;
     let ready_targets_delta = if was_ready > 0 && now_ready == 0 {
         -1
-    } else if was_ready == 0 && now_ready > 0 {
-        1
     } else {
-        0
+        i32::from(was_ready == 0 && now_ready > 0)
     };
     (ready_outbound_delta, ready_targets_delta)
 }
@@ -1288,12 +1284,10 @@ pub fn target_pick_should_incref(has_selected: bool) -> bool {
 /// - `3`: invalid mode for match path (`mode > 0`)
 #[must_use]
 pub fn target_lookup_match_action(mode: i32) -> i32 {
-    if mode < 0 {
-        TARGET_LOOKUP_MATCH_REMOVE_AND_RETURN
-    } else if mode == 0 {
-        TARGET_LOOKUP_MATCH_RETURN_FOUND
-    } else {
-        TARGET_LOOKUP_MATCH_ASSERT_INVALID
+    match mode.cmp(&0) {
+        core::cmp::Ordering::Less => TARGET_LOOKUP_MATCH_REMOVE_AND_RETURN,
+        core::cmp::Ordering::Equal => TARGET_LOOKUP_MATCH_RETURN_FOUND,
+        core::cmp::Ordering::Greater => TARGET_LOOKUP_MATCH_ASSERT_INVALID,
     }
 }
 
@@ -1305,12 +1299,10 @@ pub fn target_lookup_match_action(mode: i32) -> i32 {
 /// - `3`: invalid miss path (`mode < 0`, delete expected found)
 #[must_use]
 pub fn target_lookup_miss_action(mode: i32) -> i32 {
-    if mode > 0 {
-        TARGET_LOOKUP_MISS_INSERT_NEW
-    } else if mode == 0 {
-        TARGET_LOOKUP_MISS_RETURN_NULL
-    } else {
-        TARGET_LOOKUP_MISS_ASSERT_INVALID
+    match mode.cmp(&0) {
+        core::cmp::Ordering::Greater => TARGET_LOOKUP_MISS_INSERT_NEW,
+        core::cmp::Ordering::Equal => TARGET_LOOKUP_MISS_RETURN_NULL,
+        core::cmp::Ordering::Less => TARGET_LOOKUP_MISS_ASSERT_INVALID,
     }
 }
 

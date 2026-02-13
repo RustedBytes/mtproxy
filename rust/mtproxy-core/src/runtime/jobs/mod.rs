@@ -91,6 +91,7 @@ pub enum JobClass {
 const JOB_CLASS_SLOTS: usize = 16;
 const MAX_CONFIGURED_SUBCLASSES: usize = 4096;
 const MAX_PERSISTENT_RUNTIME_JOBS: usize = 128;
+const MAX_PERSISTENT_RUNTIME_JOBS_U32: u32 = 128;
 
 static ASYNC_JOBS_INITIALIZED: AtomicBool = AtomicBool::new(false);
 static TIMER_MANAGER_ALLOCATED: AtomicBool = AtomicBool::new(false);
@@ -169,7 +170,7 @@ pub mod job_flags {
     /// Signal is set (bitshift by signal number)
     #[must_use]
     pub const fn jfs_set(sig: u32) -> u32 {
-        0x1000000 << sig
+        0x0100_0000 << sig
     }
 }
 
@@ -941,7 +942,7 @@ const fn build_dispatch_context(
 
 #[inline]
 const fn apply_direct_callback_result(job: &mut RuntimeJobState, result: i32) {
-    let generated_signals = (result & JOB_RESULT_SIGNAL_MASK) as u32;
+    let generated_signals = (result & JOB_RESULT_SIGNAL_MASK).cast_unsigned();
     if generated_signals != 0 {
         job.flags |= generated_signals << 24;
     }
@@ -1102,7 +1103,7 @@ const fn slot_for_index(idx: u32) -> usize {
 
 #[inline]
 const fn persistent_queue_capacity_u32() -> u32 {
-    MAX_PERSISTENT_RUNTIME_JOBS as u32
+    MAX_PERSISTENT_RUNTIME_JOBS_U32
 }
 
 #[inline]
@@ -1221,7 +1222,7 @@ pub fn runtime_scheduler_persistent_stats() -> RuntimeSchedulerStats {
 /// Executes built-in callback behavior for one runtime job signal.
 pub fn runtime_execute_callback(job: &mut RuntimeJobState, signal: u32) -> i32 {
     match job.callback_kind {
-        RuntimeJobCallbackKind::Noop => 0,
+        RuntimeJobCallbackKind::Noop | RuntimeJobCallbackKind::EngineSignalDrain => 0,
         RuntimeJobCallbackKind::CompleteOnRun => {
             if signal == JobSignal::Run as u32 {
                 JOB_COMPLETED
@@ -1242,7 +1243,6 @@ pub fn runtime_execute_callback(job: &mut RuntimeJobState, signal: u32) -> i32 {
                 }
             }
         }
-        RuntimeJobCallbackKind::EngineSignalDrain => 0,
         RuntimeJobCallbackKind::TimerTransition => {
             match do_timer_job_transition(
                 signal,
@@ -1391,6 +1391,7 @@ pub fn runtime_scheduler_persistent_process_next() -> RuntimeSchedulerTick {
 }
 
 /// Processes one persistent scheduler tick using registered handler table.
+#[must_use]
 pub fn runtime_scheduler_persistent_process_next_with_handlers(
     handlers: &[RuntimeJobHandler],
 ) -> RuntimeSchedulerTick {

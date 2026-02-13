@@ -9,7 +9,7 @@
 //!
 //! ## Architecture
 //!
-//! The engine is the heart of the MTProxy runtime:
+//! The engine is the heart of the `MTProxy` runtime:
 //! - Main event loop (epoll-based)
 //! - Signal handling infrastructure
 //! - Server lifecycle management (init, start, exit)
@@ -19,7 +19,7 @@
 //! ## Key Components
 //!
 //! - **Engine State**: Global configuration and runtime state
-//! - **Event Loop**: Main epoll_work() loop for async I/O
+//! - **Event Loop**: Main `epoll_work()` loop for async I/O
 //! - **Signal Handlers**: Unix signal handling with custom callbacks
 //! - **Initialization**: Multi-phase startup sequence
 //! - **Shutdown**: Clean termination and resource cleanup
@@ -34,7 +34,7 @@
 //!
 //! This Rust implementation follows patterns from the original C source:
 //! - Configuration flags stored as bitmasks for efficiency
-//! - State management via EngineState structure
+//! - State management via `EngineState` structure
 //! - Multi-phase initialization sequence
 
 pub mod net;
@@ -66,9 +66,9 @@ pub enum EngineModule {
     /// Enable TCP protocol
     Tcp = 0x10,
     /// Enable multi-threading
-    Multithread = 0x1000000,
+    Multithread = 0x0100_0000,
     /// Enable slave mode
-    SlaveMode = 0x2000000,
+    SlaveMode = 0x0200_0000,
 }
 
 /// Default enabled modules
@@ -197,6 +197,7 @@ static LISTENER_TCP_ENABLED: AtomicBool = AtomicBool::new(true);
 
 /// Snapshot of engine lifecycle state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct EngineRuntimeSnapshot {
     pub initialized: bool,
     pub server_ready: bool,
@@ -502,7 +503,7 @@ pub fn server_init() -> Result<(), String> {
 ///
 /// This is the core event loop that:
 /// - Creates async jobs for precise cron and termination
-/// - Runs the epoll_work() loop
+/// - Runs the `epoll_work()` loop
 /// - Handles events and dispatches to handlers
 ///
 /// # Errors

@@ -139,6 +139,7 @@ impl<T> MpQueue<T> {
     }
 
     /// Pops one value if available (`mpq_pop` behavior).
+    #[must_use]
     pub fn pop(&self, _flags: u32) -> Option<T> {
         self.inner.state.lock().items.pop_front()
     }
@@ -226,6 +227,7 @@ pub fn mpq_push<T>(queue: &MpQueue<T>, value: T, flags: u32) -> i64 {
 }
 
 /// C-style helper equivalent to `mpq_pop`.
+#[must_use]
 pub fn mpq_pop<T>(queue: &MpQueue<T>, flags: u32) -> Option<T> {
     queue.pop(flags)
 }

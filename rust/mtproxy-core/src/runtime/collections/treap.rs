@@ -23,6 +23,8 @@ struct TreapNode<K, P> {
     right: Option<Box<TreapNode<K, P>>>,
 }
 
+type TreapLink<K, P> = Option<Box<TreapNode<K, P>>>;
+
 impl<K, P> TreapNode<K, P> {
     /// Creates a new treap node with the given key and priority.
     const fn new(key: K, priority: P) -> Self {
@@ -41,7 +43,7 @@ impl<K, P> TreapNode<K, P> {
 /// - `K`: Key type (must implement `Ord`)
 /// - `P`: Priority type (must implement `Ord`)
 pub struct Treap<K, P> {
-    root: Option<Box<TreapNode<K, P>>>,
+    root: TreapLink<K, P>,
     count: usize,
 }
 
@@ -126,12 +128,11 @@ where
     /// Internal delete operation that returns whether the key was found
     /// and the new subtree.
     fn delete_internal(
-        node: Option<Box<TreapNode<K, P>>>,
+        node: TreapLink<K, P>,
         key: &K,
-    ) -> (bool, Option<Box<TreapNode<K, P>>>) {
-        let mut node = match node {
-            Some(n) => n,
-            None => return (false, None),
+    ) -> (bool, TreapLink<K, P>) {
+        let Some(mut node) = node else {
+            return (false, None);
         };
 
         match key.cmp(&node.key) {
@@ -158,12 +159,11 @@ where
     /// - `left` contains all keys < `key`
     /// - `right` contains all keys >= `key`
     fn split(
-        node: Option<Box<TreapNode<K, P>>>,
+        node: TreapLink<K, P>,
         key: &K,
-    ) -> (Option<Box<TreapNode<K, P>>>, Option<Box<TreapNode<K, P>>>) {
-        let mut node = match node {
-            Some(n) => n,
-            None => return (None, None),
+    ) -> (TreapLink<K, P>, TreapLink<K, P>) {
+        let Some(mut node) = node else {
+            return (None, None);
         };
 
         if key <= &node.key {
@@ -181,9 +181,9 @@ where
     ///
     /// Assumes all keys in `left` are less than all keys in `right`.
     fn merge(
-        left: Option<Box<TreapNode<K, P>>>,
-        right: Option<Box<TreapNode<K, P>>>,
-    ) -> Option<Box<TreapNode<K, P>>> {
+        left: TreapLink<K, P>,
+        right: TreapLink<K, P>,
+    ) -> TreapLink<K, P> {
         match (left, right) {
             (None, right) => right,
             (left, None) => left,
@@ -200,10 +200,11 @@ where
     }
 
     /// Merges three parts: left, middle (single node), and right.
+    #[allow(clippy::unnecessary_box_returns)]
     fn merge_three(
-        left: Option<Box<TreapNode<K, P>>>,
+        left: TreapLink<K, P>,
         mut middle: Box<TreapNode<K, P>>,
-        right: Option<Box<TreapNode<K, P>>>,
+        right: TreapLink<K, P>,
     ) -> Box<TreapNode<K, P>> {
         middle.left = left;
         middle.right = right;
@@ -215,25 +216,27 @@ where
     where
         F: FnMut(&K),
     {
-        Self::traverse_internal(self.root.as_ref(), &mut f);
+        Self::traverse_internal(self.root.as_deref(), &mut f);
     }
 
     /// Internal traversal helper.
-    fn traverse_internal<F>(node: Option<&Box<TreapNode<K, P>>>, f: &mut F)
+    fn traverse_internal<F>(node: Option<&TreapNode<K, P>>, f: &mut F)
     where
         F: FnMut(&K),
     {
         if let Some(node) = node {
-            Self::traverse_internal(node.left.as_ref(), f);
+            Self::traverse_internal(node.left.as_deref(), f);
             f(&node.key);
-            Self::traverse_internal(node.right.as_ref(), f);
+            Self::traverse_internal(node.right.as_deref(), f);
         }
     }
 }
 
 impl<K: Debug, P: Debug> Debug for Treap<K, P> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("Treap").field("count", &self.count).finish()
+        f.debug_struct("Treap")
+            .field("count", &self.count)
+            .finish_non_exhaustive()
     }
 }
 
