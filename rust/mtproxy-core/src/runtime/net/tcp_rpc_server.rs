@@ -134,6 +134,42 @@ impl RpcServerData {
     pub const fn is_ready(&self) -> bool {
         matches!(self.state, ServerState::Ready)
     }
+
+    /// Gets the current crypto schema.
+    #[must_use]
+    pub const fn get_crypto_schema(&self) -> i32 {
+        self.crypto_schema
+    }
+
+    /// Prepares a nonce response packet for sending.
+    #[must_use]
+    pub fn prepare_nonce_response(
+        &self,
+        key_select: i32,
+        schema: super::tcp_rpc_common::CryptoSchema,
+        timestamp: i32,
+        nonce: [u8; 16],
+    ) -> super::tcp_rpc_common::NoncePacket {
+        super::tcp_rpc_common::NoncePacket::new(key_select, schema, timestamp, nonce)
+    }
+
+    /// Prepares a handshake response packet for sending.
+    #[must_use]
+    pub fn prepare_handshake_response(
+        &self,
+        flags: i32,
+    ) -> super::tcp_rpc_common::HandshakePacket {
+        super::tcp_rpc_common::HandshakePacket::new(flags, self.local_pid, self.remote_pid)
+    }
+
+    /// Prepares a handshake error packet for sending.
+    #[must_use]
+    pub fn prepare_handshake_error(
+        &self,
+        error_code: i32,
+    ) -> super::tcp_rpc_common::HandshakeErrorPacket {
+        super::tcp_rpc_common::HandshakeErrorPacket::new(error_code, self.local_pid)
+    }
 }
 
 impl Default for RpcServerData {

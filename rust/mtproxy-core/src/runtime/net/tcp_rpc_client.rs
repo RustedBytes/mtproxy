@@ -174,6 +174,39 @@ impl RpcClientData {
     pub const fn is_ready(&self) -> bool {
         matches!(self.state, ClientState::Ready)
     }
+
+    /// Checks if encryption is active.
+    #[must_use]
+    pub const fn is_encrypted(&self) -> bool {
+        self.crypto_flags.encryption_active
+    }
+
+    /// Gets the current crypto schema.
+    #[must_use]
+    pub const fn get_crypto_schema(&self) -> i32 {
+        self.crypto_schema
+    }
+
+    /// Prepares a nonce packet for sending.
+    #[must_use]
+    pub fn prepare_nonce_packet(
+        &self,
+        key_select: i32,
+        schema: super::tcp_rpc_common::CryptoSchema,
+        timestamp: i32,
+    ) -> super::tcp_rpc_common::NoncePacket {
+        super::tcp_rpc_common::NoncePacket::new(key_select, schema, timestamp, self.nonce)
+    }
+
+    /// Prepares a handshake packet for sending.
+    #[must_use]
+    pub fn prepare_handshake_packet(
+        &self,
+        flags: i32,
+        local_pid: super::tcp_rpc_common::ProcessId,
+    ) -> super::tcp_rpc_common::HandshakePacket {
+        super::tcp_rpc_common::HandshakePacket::new(flags, local_pid, self.remote_pid)
+    }
 }
 
 impl Default for RpcClientData {
