@@ -22,6 +22,7 @@
               2012-2014 Andrey Lopatin
               2014-2018 Telegram Messenger Inc
 */
+#include "net/net-rpc-flags.h"
 #define _FILE_OFFSET_BITS 64
 
 #include <assert.h>

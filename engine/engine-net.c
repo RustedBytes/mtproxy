@@ -41,6 +41,8 @@
 #include "engine/engine.h"
 
 #include "net/net-tcp-rpc-client.h"
+#include "net/net-rpc-flags.h"
+
 #include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 
 void default_close_network_sockets() {

@@ -39,7 +39,6 @@
 
 #include "common/common-stats.h"
 #include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
-#include "server-functions.h"
 
 extern int32_t
 mtproxy_ffi_rpc_target_normalize_pid(mtproxy_ffi_process_id_t *pid,

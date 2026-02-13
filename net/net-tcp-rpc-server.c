@@ -24,6 +24,7 @@
               2015-2016 Vitaly Valtman
 */
 
+#include "net/net-rpc-flags.h"
 #define _FILE_OFFSET_BITS 64
 
 #include <assert.h>

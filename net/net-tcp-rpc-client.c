@@ -46,6 +46,7 @@
 #include "net/net-config.h"
 #include "net/net-crypto-aes.h"
 #include "net/net-crypto-dh.h"
+#include "net/net-rpc-flags.h"
 #include "rpc-const.h"
 
 #include "net/net-thread.h"

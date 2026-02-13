@@ -27,7 +27,6 @@
 #pragma once
 
 #include "net/net-connections.h"
-#include "net/net-rpc-flags.h"
 #include "pid.h"
 
 struct tcp_message {
