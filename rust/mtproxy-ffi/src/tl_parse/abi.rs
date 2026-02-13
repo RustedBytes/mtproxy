@@ -38,6 +38,7 @@ const TL_ERROR_VALUE_NOT_IN_RANGE: c_int =
     mtproxy_core::runtime::config::tl_parse::TL_ERROR_VALUE_NOT_IN_RANGE;
 const TL_ERROR_INTERNAL: c_int = mtproxy_core::runtime::config::tl_parse::TL_ERROR_INTERNAL;
 const TL_PARSE_ERROR_FALLBACK: &[u8] = b"TL parse error\0";
+const ABI_ERROR: c_int = -1;
 
 #[inline]
 fn expected_query_header_message(is_answer: bool) -> &'static str {
@@ -46,6 +47,28 @@ fn expected_query_header_message(is_answer: bool) -> &'static str {
     } else {
         "Expected RPC_INVOKE_REQ or RPC_INVOKE_KPHP_REQ"
     }
+}
+
+type AbiResult<T> = Result<T, c_int>;
+
+#[inline]
+fn abi_i32(result: AbiResult<c_int>) -> c_int {
+    result.unwrap_or(ABI_ERROR)
+}
+
+#[inline]
+fn abi_i64(result: AbiResult<i64>) -> i64 {
+    result.unwrap_or(-1)
+}
+
+#[inline]
+fn abi_f64(result: AbiResult<f64>) -> f64 {
+    result.unwrap_or(-1.0)
+}
+
+#[inline]
+fn abi_ptr(result: AbiResult<*mut c_void>) -> *mut c_void {
+    result.unwrap_or(ptr::null_mut())
 }
 
 #[repr(C)]
@@ -1272,38 +1295,46 @@ pub(crate) unsafe fn mtproxy_ffi_tl_store_end_ext(
     op: c_int,
     out_sent_kind: *mut c_int,
 ) -> c_int {
+    tl_store_end_ext_impl(tlio_out, op, out_sent_kind).unwrap_or(ABI_ERROR)
+}
+
+fn tl_store_end_ext_impl(
+    tlio_out: *mut TlOutState,
+    op: c_int,
+    out_sent_kind: *mut c_int,
+) -> AbiResult<c_int> {
     if let Some(out_sent_kind_ref) = ptr_mut(out_sent_kind) {
         *out_sent_kind_ref = TL_SENT_KIND_NONE;
     }
     let Some(out_cur) = out_cursor(tlio_out) else {
-        return -1;
+        return Err(ABI_ERROR);
     };
     if out_cur.out_type == TL_TYPE_NONE {
-        return 0;
+        return Ok(0);
     }
     if out_cur.out_ptr_is_null {
-        return -1;
+        return Err(ABI_ERROR);
     }
 
     let Some(ctx) = out_end_ctx(tlio_out) else {
-        return -1;
+        return Err(ABI_ERROR);
     };
 
     let sent_kind = if !ctx.error.is_null() {
-        if tl_out_clean(tlio_out) < 0 {
-            return -1;
+        if unsafe { tl_out_clean(tlio_out) } < 0 {
+            return Err(ABI_ERROR);
         }
-        if tl_out_store_int(tlio_out, RPC_REQ_ERROR) < 0 {
-            return -1;
+        if unsafe { tl_out_store_int(tlio_out, RPC_REQ_ERROR) } < 0 {
+            return Err(ABI_ERROR);
         }
-        if tl_out_store_long(tlio_out, ctx.out_qid) < 0 {
-            return -1;
+        if unsafe { tl_out_store_long(tlio_out, ctx.out_qid) } < 0 {
+            return Err(ABI_ERROR);
         }
-        if tl_out_store_int(tlio_out, ctx.errnum) < 0 {
-            return -1;
+        if unsafe { tl_out_store_int(tlio_out, ctx.errnum) } < 0 {
+            return Err(ABI_ERROR);
         }
-        if tl_out_store_string0(tlio_out, ctx.error.cast::<i8>()) < 0 {
-            return -1;
+        if unsafe { tl_out_store_string0(tlio_out, ctx.error.cast::<i8>()) } < 0 {
+            return Err(ABI_ERROR);
         }
         TL_SENT_KIND_ERROR
     } else if op == RPC_REQ_RESULT {
@@ -1313,23 +1344,23 @@ pub(crate) unsafe fn mtproxy_ffi_tl_store_end_ext(
     };
 
     let Some(out_cur_after_payload) = out_cursor(tlio_out) else {
-        return -1;
+        return Err(ABI_ERROR);
     };
     if (ctx.flags & TLF_NOALIGN) == 0 && (out_cur_after_payload.out_pos & 3) != 0 {
-        return -1;
+        return Err(ABI_ERROR);
     }
 
     let mut p: *mut c_int = if (ctx.flags & TLF_ALLOW_PREPEND) != 0 {
         let reserve = ctx.prepend_bytes + if ctx.out_qid != 0 { 12 } else { 0 };
         let Some(store_get_prepend_ptr_fn) = ctx.store_get_prepend_ptr else {
-            return -1;
+            return Err(ABI_ERROR);
         };
         if out_cur_after_payload.out_remaining < reserve {
-            return -1;
+            return Err(ABI_ERROR);
         }
-        let ptr_ = store_get_prepend_ptr_fn(tlio_out, reserve).cast::<c_int>();
+        let ptr_ = unsafe { store_get_prepend_ptr_fn(tlio_out, reserve) }.cast::<c_int>();
         let Some(tlio_out_ref) = out_state_mut(tlio_out) else {
-            return -1;
+            return Err(ABI_ERROR);
         };
         tlio_out_ref.out_pos += reserve;
         tlio_out_ref.out_remaining -= reserve;
@@ -1341,25 +1372,27 @@ pub(crate) unsafe fn mtproxy_ffi_tl_store_end_ext(
 
     if ctx.out_qid != 0 {
         if op == 0 || p.is_null() {
-            return -1;
+            return Err(ABI_ERROR);
         }
         p = p.wrapping_add(usize::try_from(ctx.prepend_bytes / 4).unwrap_or(0));
-        ptr::write_unaligned(p, op);
-        ptr::write_unaligned(p.wrapping_add(1).cast::<i64>(), ctx.out_qid);
+        unsafe {
+            ptr::write_unaligned(p, op);
+            ptr::write_unaligned(p.wrapping_add(1).cast::<i64>(), ctx.out_qid);
+        }
     }
 
     if let Some(store_prefix_fn) = ctx.store_prefix {
-        store_prefix_fn(tlio_out);
+        unsafe { store_prefix_fn(tlio_out) };
     }
     if (ctx.flags & TLF_NO_AUTOFLUSH) == 0 {
         let Some(store_flush_fn) = ctx.store_flush else {
-            return -1;
+            return Err(ABI_ERROR);
         };
-        store_flush_fn(tlio_out);
+        unsafe { store_flush_fn(tlio_out) };
     }
 
     let Some(tlio_out_ref) = out_state_mut(tlio_out) else {
-        return -1;
+        return Err(ABI_ERROR);
     };
     tlio_out_ref.out_ptr = ptr::null_mut();
     tlio_out_ref.out_type = TL_TYPE_NONE;
@@ -1369,7 +1402,7 @@ pub(crate) unsafe fn mtproxy_ffi_tl_store_end_ext(
     if let Some(out_sent_kind_ref) = ptr_mut(out_sent_kind) {
         *out_sent_kind_ref = sent_kind;
     }
-    0
+    Ok(0)
 }
 
 pub(crate) unsafe fn mtproxy_ffi_tl_query_header_delete(h: *mut TlQueryHeader) {
@@ -1650,40 +1683,19 @@ pub(crate) unsafe fn mtproxy_ffi_tl_query_answer_header_parse(
 }
 
 pub(crate) unsafe fn mtproxy_ffi_tl_fetch_check(tlio_in: *mut TlInState, nbytes: c_int) -> c_int {
-    tl_in_check(tlio_in, nbytes)
+    abi_i32(fetch_check_impl(tlio_in, nbytes))
 }
 
 pub(crate) unsafe fn mtproxy_ffi_tl_fetch_lookup_int(tlio_in: *mut TlInState) -> c_int {
-    if tl_in_check(tlio_in, 4) < 0 {
-        return -1;
-    }
-    let mut value: c_int = -1;
-    if tl_in_lookup_data(tlio_in, (&raw mut value).cast::<c_void>(), 4) < 0 {
-        return -1;
-    }
-    value
+    abi_i32(fetch_lookup_int_impl(tlio_in))
 }
 
 pub(crate) unsafe fn mtproxy_ffi_tl_fetch_lookup_second_int(tlio_in: *mut TlInState) -> c_int {
-    if tl_in_check(tlio_in, 8) < 0 {
-        return -1;
-    }
-    let mut values = [0_i32; 2];
-    if tl_in_lookup_data(tlio_in, values.as_mut_ptr().cast::<c_void>(), 8) < 0 {
-        return -1;
-    }
-    values[1]
+    abi_i32(fetch_lookup_second_int_impl(tlio_in))
 }
 
 pub(crate) unsafe fn mtproxy_ffi_tl_fetch_lookup_long(tlio_in: *mut TlInState) -> i64 {
-    if tl_in_check(tlio_in, 8) < 0 {
-        return -1;
-    }
-    let mut value: i64 = -1;
-    if tl_in_lookup_data(tlio_in, (&raw mut value).cast::<c_void>(), 8) < 0 {
-        return -1;
-    }
-    value
+    abi_i64(fetch_lookup_long_impl(tlio_in))
 }
 
 pub(crate) unsafe fn mtproxy_ffi_tl_fetch_lookup_data(
@@ -1691,52 +1703,84 @@ pub(crate) unsafe fn mtproxy_ffi_tl_fetch_lookup_data(
     data: *mut c_void,
     len: c_int,
 ) -> c_int {
+    abi_i32(fetch_lookup_data_impl(tlio_in, data, len))
+}
+
+fn fetch_check_impl(tlio_in: *mut TlInState, nbytes: c_int) -> AbiResult<c_int> {
+    let checked = unsafe { tl_in_check(tlio_in, nbytes) };
+    if checked < 0 {
+        return Err(ABI_ERROR);
+    }
+    Ok(checked)
+}
+
+fn fetch_lookup_int_impl(tlio_in: *mut TlInState) -> AbiResult<c_int> {
+    if unsafe { tl_in_check(tlio_in, 4) } < 0 {
+        return Err(ABI_ERROR);
+    }
+    let mut value: c_int = -1;
+    if unsafe { tl_in_lookup_data(tlio_in, (&raw mut value).cast::<c_void>(), 4) } < 0 {
+        return Err(ABI_ERROR);
+    }
+    Ok(value)
+}
+
+fn fetch_lookup_second_int_impl(tlio_in: *mut TlInState) -> AbiResult<c_int> {
+    if unsafe { tl_in_check(tlio_in, 8) } < 0 {
+        return Err(ABI_ERROR);
+    }
+    let mut values = [0_i32; 2];
+    if unsafe { tl_in_lookup_data(tlio_in, values.as_mut_ptr().cast::<c_void>(), 8) } < 0 {
+        return Err(ABI_ERROR);
+    }
+    Ok(values[1])
+}
+
+fn fetch_lookup_long_impl(tlio_in: *mut TlInState) -> AbiResult<i64> {
+    if unsafe { tl_in_check(tlio_in, 8) } < 0 {
+        return Err(ABI_ERROR);
+    }
+    let mut value: i64 = -1;
+    if unsafe { tl_in_lookup_data(tlio_in, (&raw mut value).cast::<c_void>(), 8) } < 0 {
+        return Err(ABI_ERROR);
+    }
+    Ok(value)
+}
+
+fn fetch_lookup_data_impl(
+    tlio_in: *mut TlInState,
+    data: *mut c_void,
+    len: c_int,
+) -> AbiResult<c_int> {
     if len < 0 {
-        return -1;
+        return Err(ABI_ERROR);
     }
     if len == 0 {
-        return 0;
+        return Ok(0);
     }
     if data.is_null() {
-        return -1;
+        return Err(ABI_ERROR);
     }
-    if tl_in_check(tlio_in, len) < 0 {
-        return -1;
+    if unsafe { tl_in_check(tlio_in, len) } < 0 {
+        return Err(ABI_ERROR);
     }
-    tl_in_lookup_data(tlio_in, data, len)
+    let looked = unsafe { tl_in_lookup_data(tlio_in, data, len) };
+    if looked < 0 {
+        return Err(ABI_ERROR);
+    }
+    Ok(looked)
 }
 
 pub(crate) unsafe fn mtproxy_ffi_tl_fetch_int(tlio_in: *mut TlInState) -> c_int {
-    if tl_in_check(tlio_in, 4) < 0 {
-        return -1;
-    }
-    let mut value: c_int = -1;
-    if tl_in_fetch_raw_any(tlio_in, (&raw mut value).cast::<c_void>(), 4) < 0 {
-        return -1;
-    }
-    value
+    abi_i32(fetch_int_impl(tlio_in))
 }
 
 pub(crate) unsafe fn mtproxy_ffi_tl_fetch_double(tlio_in: *mut TlInState) -> f64 {
-    if tl_in_check(tlio_in, 8) < 0 {
-        return -1.0;
-    }
-    let mut value: f64 = -1.0;
-    if tl_in_fetch_raw_any(tlio_in, (&raw mut value).cast::<c_void>(), 8) < 0 {
-        return -1.0;
-    }
-    value
+    abi_f64(fetch_double_impl(tlio_in))
 }
 
 pub(crate) unsafe fn mtproxy_ffi_tl_fetch_long(tlio_in: *mut TlInState) -> i64 {
-    if tl_in_check(tlio_in, 8) < 0 {
-        return -1;
-    }
-    let mut value: i64 = -1;
-    if tl_in_fetch_raw_any(tlio_in, (&raw mut value).cast::<c_void>(), 8) < 0 {
-        return -1;
-    }
-    value
+    abi_i64(fetch_long_impl(tlio_in))
 }
 
 pub(crate) unsafe fn mtproxy_ffi_tl_fetch_raw_data(
@@ -1744,48 +1788,80 @@ pub(crate) unsafe fn mtproxy_ffi_tl_fetch_raw_data(
     buf: *mut c_void,
     len: c_int,
 ) -> c_int {
+    abi_i32(fetch_raw_data_impl(tlio_in, buf, len))
+}
+
+fn fetch_int_impl(tlio_in: *mut TlInState) -> AbiResult<c_int> {
+    if unsafe { tl_in_check(tlio_in, 4) } < 0 {
+        return Err(ABI_ERROR);
+    }
+    let mut value: c_int = -1;
+    if unsafe { tl_in_fetch_raw_any(tlio_in, (&raw mut value).cast::<c_void>(), 4) } < 0 {
+        return Err(ABI_ERROR);
+    }
+    Ok(value)
+}
+
+fn fetch_double_impl(tlio_in: *mut TlInState) -> AbiResult<f64> {
+    if unsafe { tl_in_check(tlio_in, 8) } < 0 {
+        return Err(ABI_ERROR);
+    }
+    let mut value: f64 = -1.0;
+    if unsafe { tl_in_fetch_raw_any(tlio_in, (&raw mut value).cast::<c_void>(), 8) } < 0 {
+        return Err(ABI_ERROR);
+    }
+    Ok(value)
+}
+
+fn fetch_long_impl(tlio_in: *mut TlInState) -> AbiResult<i64> {
+    if unsafe { tl_in_check(tlio_in, 8) } < 0 {
+        return Err(ABI_ERROR);
+    }
+    let mut value: i64 = -1;
+    if unsafe { tl_in_fetch_raw_any(tlio_in, (&raw mut value).cast::<c_void>(), 8) } < 0 {
+        return Err(ABI_ERROR);
+    }
+    Ok(value)
+}
+
+fn fetch_raw_data_impl(tlio_in: *mut TlInState, buf: *mut c_void, len: c_int) -> AbiResult<c_int> {
     if len < 0 || (len & 3) != 0 {
-        return -1;
+        return Err(ABI_ERROR);
     }
     if len == 0 {
-        return 0;
+        return Ok(0);
     }
-    if buf.is_null() || tl_in_check(tlio_in, len) < 0 {
-        return -1;
+    if buf.is_null() || unsafe { tl_in_check(tlio_in, len) } < 0 {
+        return Err(ABI_ERROR);
     }
-    tl_in_fetch_raw_any(tlio_in, buf, len)
+    let fetched = unsafe { tl_in_fetch_raw_any(tlio_in, buf, len) };
+    if fetched < 0 {
+        return Err(ABI_ERROR);
+    }
+    Ok(fetched)
 }
 
 pub(crate) unsafe fn mtproxy_ffi_tl_fetch_mark(tlio_in: *mut TlInState) {
-    let Some(fetch_mark) = in_fetch_mark_cb(tlio_in) else {
-        return;
-    };
-    fetch_mark(tlio_in);
+    let _ = fetch_mark_impl(tlio_in);
 }
 
 pub(crate) unsafe fn mtproxy_ffi_tl_fetch_mark_restore(tlio_in: *mut TlInState) {
-    let Some(fetch_mark_restore) = in_fetch_mark_restore_cb(tlio_in) else {
-        return;
-    };
-    fetch_mark_restore(tlio_in);
+    let _ = fetch_mark_restore_impl(tlio_in);
 }
 
 pub(crate) unsafe fn mtproxy_ffi_tl_fetch_mark_delete(tlio_in: *mut TlInState) {
-    let Some(fetch_mark_delete) = in_fetch_mark_delete_cb(tlio_in) else {
-        return;
-    };
-    fetch_mark_delete(tlio_in);
+    let _ = fetch_mark_delete_impl(tlio_in);
 }
 
 pub(crate) unsafe fn mtproxy_ffi_tl_fetch_string_len(
     tlio_in: *mut TlInState,
     max_len: c_int,
 ) -> c_int {
-    tl_fetch_string_len_impl(tlio_in, max_len)
+    abi_i32(fetch_string_len_impl(tlio_in, max_len))
 }
 
 pub(crate) unsafe fn mtproxy_ffi_tl_fetch_pad(tlio_in: *mut TlInState) -> c_int {
-    tl_fetch_pad_impl(tlio_in)
+    abi_i32(fetch_pad_impl(tlio_in))
 }
 
 pub(crate) unsafe fn mtproxy_ffi_tl_fetch_string_data(
@@ -1793,35 +1869,73 @@ pub(crate) unsafe fn mtproxy_ffi_tl_fetch_string_data(
     buf: *mut i8,
     len: c_int,
 ) -> c_int {
+    abi_i32(fetch_string_data_impl(tlio_in, buf, len))
+}
+
+fn fetch_mark_impl(tlio_in: *mut TlInState) -> AbiResult<()> {
+    let Some(fetch_mark) = in_fetch_mark_cb(tlio_in) else {
+        return Ok(());
+    };
+    unsafe { fetch_mark(tlio_in) };
+    Ok(())
+}
+
+fn fetch_mark_restore_impl(tlio_in: *mut TlInState) -> AbiResult<()> {
+    let Some(fetch_mark_restore) = in_fetch_mark_restore_cb(tlio_in) else {
+        return Ok(());
+    };
+    unsafe { fetch_mark_restore(tlio_in) };
+    Ok(())
+}
+
+fn fetch_mark_delete_impl(tlio_in: *mut TlInState) -> AbiResult<()> {
+    let Some(fetch_mark_delete) = in_fetch_mark_delete_cb(tlio_in) else {
+        return Ok(());
+    };
+    unsafe { fetch_mark_delete(tlio_in) };
+    Ok(())
+}
+
+fn fetch_string_len_impl(tlio_in: *mut TlInState, max_len: c_int) -> AbiResult<c_int> {
+    let len = unsafe { tl_fetch_string_len_impl(tlio_in, max_len) };
     if len < 0 {
-        return -1;
+        return Err(ABI_ERROR);
+    }
+    Ok(len)
+}
+
+fn fetch_pad_impl(tlio_in: *mut TlInState) -> AbiResult<c_int> {
+    let pad = unsafe { tl_fetch_pad_impl(tlio_in) };
+    if pad < 0 {
+        return Err(ABI_ERROR);
+    }
+    Ok(pad)
+}
+
+fn fetch_string_data_impl(tlio_in: *mut TlInState, buf: *mut i8, len: c_int) -> AbiResult<c_int> {
+    if len < 0 {
+        return Err(ABI_ERROR);
     }
     if len > 0 && buf.is_null() {
-        return -1;
+        return Err(ABI_ERROR);
     }
-    if tl_in_check(tlio_in, len) < 0 {
-        return -1;
+    if unsafe { tl_in_check(tlio_in, len) } < 0 {
+        return Err(ABI_ERROR);
     }
-    if len > 0 && tl_in_fetch_raw_any(tlio_in, buf.cast::<c_void>(), len) < 0 {
-        return -1;
+    if len > 0 && unsafe { tl_in_fetch_raw_any(tlio_in, buf.cast::<c_void>(), len) } < 0 {
+        return Err(ABI_ERROR);
     }
-    if tl_fetch_pad_impl(tlio_in) < 0 {
-        return -1;
+    if unsafe { tl_fetch_pad_impl(tlio_in) } < 0 {
+        return Err(ABI_ERROR);
     }
-    len
+    Ok(len)
 }
 
 pub(crate) unsafe fn mtproxy_ffi_tl_fetch_skip_string_data(
     tlio_in: *mut TlInState,
     len: c_int,
 ) -> c_int {
-    if len < 0 || tl_in_check(tlio_in, len) < 0 || tl_in_skip(tlio_in, len) < 0 {
-        return -1;
-    }
-    if tl_fetch_pad_impl(tlio_in) < 0 {
-        return -1;
-    }
-    len
+    abi_i32(fetch_skip_string_data_impl(tlio_in, len))
 }
 
 pub(crate) unsafe fn mtproxy_ffi_tl_fetch_string(
@@ -1829,22 +1943,14 @@ pub(crate) unsafe fn mtproxy_ffi_tl_fetch_string(
     buf: *mut i8,
     max_len: c_int,
 ) -> c_int {
-    let len = tl_fetch_string_len_impl(tlio_in, max_len);
-    if len < 0 {
-        return -1;
-    }
-    mtproxy_ffi_tl_fetch_string_data(tlio_in, buf, len)
+    abi_i32(fetch_string_impl(tlio_in, buf, max_len))
 }
 
 pub(crate) unsafe fn mtproxy_ffi_tl_fetch_skip_string(
     tlio_in: *mut TlInState,
     max_len: c_int,
 ) -> c_int {
-    let len = tl_fetch_string_len_impl(tlio_in, max_len);
-    if len < 0 {
-        return -1;
-    }
-    mtproxy_ffi_tl_fetch_skip_string_data(tlio_in, len)
+    abi_i32(fetch_skip_string_impl(tlio_in, max_len))
 }
 
 pub(crate) unsafe fn mtproxy_ffi_tl_fetch_string0(
@@ -1852,79 +1958,140 @@ pub(crate) unsafe fn mtproxy_ffi_tl_fetch_string0(
     buf: *mut i8,
     max_len: c_int,
 ) -> c_int {
-    let len = tl_fetch_string_len_impl(tlio_in, max_len);
-    if len < 0 {
-        return -1;
-    }
-    if mtproxy_ffi_tl_fetch_string_data(tlio_in, buf, len) < 0 {
-        return -1;
-    }
-    if buf.is_null() {
-        return -1;
-    }
-    *buf.wrapping_add(usize::try_from(len).unwrap_or(0)) = 0;
-    len
+    abi_i32(fetch_string0_impl(tlio_in, buf, max_len))
 }
 
 pub(crate) unsafe fn mtproxy_ffi_tl_fetch_check_str_end(
     tlio_in: *mut TlInState,
     size: c_int,
 ) -> c_int {
+    abi_i32(fetch_check_str_end_impl(tlio_in, size))
+}
+
+fn fetch_skip_string_data_impl(tlio_in: *mut TlInState, len: c_int) -> AbiResult<c_int> {
+    if len < 0
+        || unsafe { tl_in_check(tlio_in, len) } < 0
+        || unsafe { tl_in_skip(tlio_in, len) } < 0
+    {
+        return Err(ABI_ERROR);
+    }
+    if unsafe { tl_fetch_pad_impl(tlio_in) } < 0 {
+        return Err(ABI_ERROR);
+    }
+    Ok(len)
+}
+
+fn fetch_string_impl(tlio_in: *mut TlInState, buf: *mut i8, max_len: c_int) -> AbiResult<c_int> {
+    let len = unsafe { tl_fetch_string_len_impl(tlio_in, max_len) };
+    if len < 0 {
+        return Err(ABI_ERROR);
+    }
+    fetch_string_data_impl(tlio_in, buf, len)
+}
+
+fn fetch_skip_string_impl(tlio_in: *mut TlInState, max_len: c_int) -> AbiResult<c_int> {
+    let len = unsafe { tl_fetch_string_len_impl(tlio_in, max_len) };
+    if len < 0 {
+        return Err(ABI_ERROR);
+    }
+    fetch_skip_string_data_impl(tlio_in, len)
+}
+
+fn fetch_string0_impl(tlio_in: *mut TlInState, buf: *mut i8, max_len: c_int) -> AbiResult<c_int> {
+    let len = unsafe { tl_fetch_string_len_impl(tlio_in, max_len) };
+    if len < 0 {
+        return Err(ABI_ERROR);
+    }
+    fetch_string_data_impl(tlio_in, buf, len)?;
+    if buf.is_null() {
+        return Err(ABI_ERROR);
+    }
+    unsafe {
+        *buf.wrapping_add(usize::try_from(len).unwrap_or(0)) = 0;
+    }
+    Ok(len)
+}
+
+fn fetch_check_str_end_impl(tlio_in: *mut TlInState, size: c_int) -> AbiResult<c_int> {
     let Some(cursor) = in_cursor(tlio_in) else {
-        return -1;
+        return Err(ABI_ERROR);
     };
     if size < 0 {
-        return -1;
+        return Err(ABI_ERROR);
     }
     let expected = size + ((-size - cursor.in_pos) & 3);
     if cursor.in_remaining != expected {
-        tl_set_error_once(
-            tlio_in,
-            TL_ERROR_EXTRA_DATA,
-            &format!("extra {} bytes after query", cursor.in_remaining - expected),
-        );
-        return -1;
+        unsafe {
+            tl_set_error_once(
+                tlio_in,
+                TL_ERROR_EXTRA_DATA,
+                &format!("extra {} bytes after query", cursor.in_remaining - expected),
+            );
+        }
+        return Err(ABI_ERROR);
     }
-    1
+    Ok(1)
 }
 
 pub(crate) unsafe fn mtproxy_ffi_tl_fetch_unread(tlio_in: *mut TlInState) -> c_int {
-    let Some(cursor) = in_cursor(tlio_in) else {
-        return -1;
-    };
-    cursor.in_remaining
+    abi_i32(fetch_unread_impl(tlio_in))
 }
 
 pub(crate) unsafe fn mtproxy_ffi_tl_fetch_skip(tlio_in: *mut TlInState, len: c_int) -> c_int {
-    if len < 0 || tl_in_check(tlio_in, len) < 0 {
-        return -1;
-    }
-    tl_in_skip(tlio_in, len)
+    abi_i32(fetch_skip_impl(tlio_in, len))
 }
 
 pub(crate) unsafe fn mtproxy_ffi_tl_fetch_end(tlio_in: *mut TlInState) -> c_int {
+    abi_i32(fetch_end_impl(tlio_in))
+}
+
+fn fetch_unread_impl(tlio_in: *mut TlInState) -> AbiResult<c_int> {
     let Some(cursor) = in_cursor(tlio_in) else {
-        return -1;
+        return Err(ABI_ERROR);
+    };
+    Ok(cursor.in_remaining)
+}
+
+fn fetch_skip_impl(tlio_in: *mut TlInState, len: c_int) -> AbiResult<c_int> {
+    if len < 0 || unsafe { tl_in_check(tlio_in, len) } < 0 {
+        return Err(ABI_ERROR);
+    }
+    let skipped = unsafe { tl_in_skip(tlio_in, len) };
+    if skipped < 0 {
+        return Err(ABI_ERROR);
+    }
+    Ok(skipped)
+}
+
+fn fetch_end_impl(tlio_in: *mut TlInState) -> AbiResult<c_int> {
+    let Some(cursor) = in_cursor(tlio_in) else {
+        return Err(ABI_ERROR);
     };
     if cursor.in_remaining != 0 && (cursor.in_flags & TL_FETCH_FLAG_ALLOW_DATA_AFTER_QUERY) == 0 {
-        tl_set_error_once(
-            tlio_in,
-            TL_ERROR_EXTRA_DATA,
-            &format!("extra {} bytes after query", cursor.in_remaining),
-        );
-        return -1;
+        unsafe {
+            tl_set_error_once(
+                tlio_in,
+                TL_ERROR_EXTRA_DATA,
+                &format!("extra {} bytes after query", cursor.in_remaining),
+            );
+        }
+        return Err(ABI_ERROR);
     }
-    1
+    Ok(1)
 }
 
 pub(crate) unsafe fn mtproxy_ffi_tl_fetch_error(tlio_in: *mut TlInState) -> c_int {
+    abi_i32(fetch_error_impl(tlio_in))
+}
+
+fn fetch_error_impl(tlio_in: *mut TlInState) -> AbiResult<c_int> {
     let Some(cursor) = in_cursor(tlio_in) else {
-        return 1;
+        return Ok(1);
     };
     if cursor.has_error {
-        1
+        Ok(1)
     } else {
-        0
+        Ok(0)
     }
 }
 
@@ -1933,7 +2100,7 @@ pub(crate) unsafe fn mtproxy_ffi_tl_fetch_int_range(
     min: c_int,
     max: c_int,
 ) -> c_int {
-    let value = mtproxy_ffi_tl_fetch_int(tlio_in);
+    let value = abi_i32(fetch_int_impl(tlio_in));
     if value < min || value > max {
         tl_set_error_once(
             tlio_in,
@@ -1953,7 +2120,7 @@ pub(crate) unsafe fn mtproxy_ffi_tl_fetch_nonnegative_int(tlio_in: *mut TlInStat
 }
 
 pub(crate) unsafe fn mtproxy_ffi_tl_fetch_int_subset(tlio_in: *mut TlInState, set: c_int) -> c_int {
-    let value = mtproxy_ffi_tl_fetch_int(tlio_in);
+    let value = abi_i32(fetch_int_impl(tlio_in));
     if (value & !set) != 0 {
         tl_set_error_once(
             tlio_in,
@@ -1969,7 +2136,7 @@ pub(crate) unsafe fn mtproxy_ffi_tl_fetch_long_range(
     min: i64,
     max: i64,
 ) -> i64 {
-    let value = mtproxy_ffi_tl_fetch_long(tlio_in);
+    let value = abi_i64(fetch_long_impl(tlio_in));
     if value < min || value > max {
         tl_set_error_once(
             tlio_in,
@@ -1993,22 +2160,7 @@ pub(crate) unsafe fn mtproxy_ffi_tl_fetch_raw_message(
     raw: *mut RawMessage,
     bytes: c_int,
 ) -> c_int {
-    if tl_in_check(tlio_in, bytes) < 0 {
-        return -1;
-    }
-    let Some(raw_ref) = ptr_mut(raw) else {
-        return -1;
-    };
-    let Some(tlio_in_ref) = in_state_mut(tlio_in) else {
-        return -1;
-    };
-    let Some(fetch_raw_message) = in_method_cb!(tlio_in_ref, fetch_raw_message) else {
-        return -1;
-    };
-    fetch_raw_message(tlio_in, raw_ref as *mut RawMessage, bytes);
-    tlio_in_ref.in_pos += bytes;
-    tlio_in_ref.in_remaining -= bytes;
-    0
+    abi_i32(fetch_raw_message_impl(tlio_in, raw, bytes))
 }
 
 pub(crate) unsafe fn mtproxy_ffi_tl_fetch_lookup_raw_message(
@@ -2016,78 +2168,78 @@ pub(crate) unsafe fn mtproxy_ffi_tl_fetch_lookup_raw_message(
     raw: *mut RawMessage,
     bytes: c_int,
 ) -> c_int {
-    if tl_in_check(tlio_in, bytes) < 0 {
-        return -1;
+    abi_i32(fetch_lookup_raw_message_impl(tlio_in, raw, bytes))
+}
+
+fn fetch_raw_message_impl(
+    tlio_in: *mut TlInState,
+    raw: *mut RawMessage,
+    bytes: c_int,
+) -> AbiResult<c_int> {
+    if unsafe { tl_in_check(tlio_in, bytes) } < 0 {
+        return Err(ABI_ERROR);
     }
     let Some(raw_ref) = ptr_mut(raw) else {
-        return -1;
+        return Err(ABI_ERROR);
     };
     let Some(tlio_in_ref) = in_state_mut(tlio_in) else {
-        return -1;
+        return Err(ABI_ERROR);
+    };
+    let Some(fetch_raw_message) = in_method_cb!(tlio_in_ref, fetch_raw_message) else {
+        return Err(ABI_ERROR);
+    };
+    unsafe { fetch_raw_message(tlio_in, raw_ref as *mut RawMessage, bytes) };
+    tlio_in_ref.in_pos += bytes;
+    tlio_in_ref.in_remaining -= bytes;
+    Ok(0)
+}
+
+fn fetch_lookup_raw_message_impl(
+    tlio_in: *mut TlInState,
+    raw: *mut RawMessage,
+    bytes: c_int,
+) -> AbiResult<c_int> {
+    if unsafe { tl_in_check(tlio_in, bytes) } < 0 {
+        return Err(ABI_ERROR);
+    }
+    let Some(raw_ref) = ptr_mut(raw) else {
+        return Err(ABI_ERROR);
+    };
+    let Some(tlio_in_ref) = in_state_mut(tlio_in) else {
+        return Err(ABI_ERROR);
     };
     let Some(fetch_lookup_raw_message) = in_method_cb!(tlio_in_ref, fetch_lookup_raw_message)
     else {
-        return -1;
+        return Err(ABI_ERROR);
     };
-    fetch_lookup_raw_message(tlio_in, raw_ref as *mut RawMessage, bytes);
-    0
+    unsafe { fetch_lookup_raw_message(tlio_in, raw_ref as *mut RawMessage, bytes) };
+    Ok(0)
 }
 
 pub(crate) unsafe fn mtproxy_ffi_tl_store_get_ptr(
     tlio_out: *mut TlOutState,
     size: c_int,
 ) -> *mut c_void {
-    if size <= 0 || tl_out_check(tlio_out, size) < 0 {
-        return ptr::null_mut();
-    }
-    let Some(tlio_out_ref) = out_state_mut(tlio_out) else {
-        return ptr::null_mut();
-    };
-    let Some(store_get_ptr) = out_method_cb!(tlio_out_ref, store_get_ptr) else {
-        return ptr::null_mut();
-    };
-    let p = store_get_ptr(tlio_out, size);
-    if p.is_null() {
-        return ptr::null_mut();
-    }
-    tlio_out_ref.out_pos += size;
-    tlio_out_ref.out_remaining -= size;
-    p
+    abi_ptr(store_get_ptr_impl(tlio_out, size))
 }
 
 pub(crate) unsafe fn mtproxy_ffi_tl_store_get_prepend_ptr(
     tlio_out: *mut TlOutState,
     size: c_int,
 ) -> *mut c_void {
-    if size <= 0 || tl_out_check(tlio_out, size) < 0 {
-        return ptr::null_mut();
-    }
-    let Some(tlio_out_ref) = out_state_mut(tlio_out) else {
-        return ptr::null_mut();
-    };
-    let Some(store_get_prepend_ptr) = out_method_cb!(tlio_out_ref, store_get_prepend_ptr) else {
-        return ptr::null_mut();
-    };
-    let p = store_get_prepend_ptr(tlio_out, size);
-    if p.is_null() {
-        return ptr::null_mut();
-    }
-    tlio_out_ref.out_pos += size;
-    tlio_out_ref.out_remaining -= size;
-    p
+    abi_ptr(store_get_prepend_ptr_impl(tlio_out, size))
 }
 
 pub(crate) unsafe fn mtproxy_ffi_tl_store_int(tlio_out: *mut TlOutState, x: c_int) -> c_int {
-    tl_out_store_int(tlio_out, x)
+    abi_i32(store_int_impl(tlio_out, x))
 }
 
 pub(crate) unsafe fn mtproxy_ffi_tl_store_long(tlio_out: *mut TlOutState, x: i64) -> c_int {
-    tl_out_store_long(tlio_out, x)
+    abi_i32(store_long_impl(tlio_out, x))
 }
 
 pub(crate) unsafe fn mtproxy_ffi_tl_store_double(tlio_out: *mut TlOutState, x: f64) -> c_int {
-    let bytes = x.to_le_bytes();
-    tl_out_store_raw_data(tlio_out, bytes.as_ptr().cast::<c_void>(), 8)
+    abi_i32(store_double_impl(tlio_out, x))
 }
 
 pub(crate) unsafe fn mtproxy_ffi_tl_store_raw_data(
@@ -2095,7 +2247,7 @@ pub(crate) unsafe fn mtproxy_ffi_tl_store_raw_data(
     data: *const c_void,
     len: c_int,
 ) -> c_int {
-    tl_out_store_raw_data(tlio_out, data, len)
+    abi_i32(store_raw_data_impl(tlio_out, data, len))
 }
 
 pub(crate) unsafe fn mtproxy_ffi_tl_store_raw_msg(
@@ -2103,43 +2255,18 @@ pub(crate) unsafe fn mtproxy_ffi_tl_store_raw_msg(
     raw: *mut RawMessage,
     dup: c_int,
 ) -> c_int {
-    let Some(raw_ref) = ptr_mut(raw) else {
-        return -1;
-    };
-    let len = raw_ref.total_bytes;
-    if len < 0 || tl_out_check(tlio_out, len) < 0 {
-        return -1;
-    }
-    let Some(tlio_out_ref) = out_state_mut(tlio_out) else {
-        return -1;
-    };
-    let Some(store_raw_msg) = out_method_cb!(tlio_out_ref, store_raw_msg) else {
-        return -1;
-    };
-    if dup == 0 {
-        store_raw_msg(tlio_out, raw_ref as *mut RawMessage);
-    } else {
-        let mut cloned = RawMessage::default();
-        rwm_clone(&mut cloned, raw_ref as *mut RawMessage);
-        store_raw_msg(tlio_out, &mut cloned);
-    }
-    tlio_out_ref.out_pos += len;
-    tlio_out_ref.out_remaining -= len;
-    0
+    abi_i32(store_raw_msg_impl(tlio_out, raw, dup))
 }
 
 pub(crate) unsafe fn mtproxy_ffi_tl_store_string_len(
     tlio_out: *mut TlOutState,
     len: c_int,
 ) -> c_int {
-    if len < 0 {
-        return -1;
-    }
-    tl_out_store_string_len(tlio_out, usize::try_from(len).unwrap_or(0))
+    abi_i32(store_string_len_impl(tlio_out, len))
 }
 
 pub(crate) unsafe fn mtproxy_ffi_tl_store_pad(tlio_out: *mut TlOutState) -> c_int {
-    tl_out_store_pad(tlio_out)
+    abi_i32(store_pad_impl(tlio_out))
 }
 
 pub(crate) unsafe fn mtproxy_ffi_tl_store_string_data(
@@ -2147,16 +2274,7 @@ pub(crate) unsafe fn mtproxy_ffi_tl_store_string_data(
     s: *const i8,
     len: c_int,
 ) -> c_int {
-    if len < 0 {
-        return -1;
-    }
-    if len > 0 && s.is_null() {
-        return -1;
-    }
-    if len > 0 && tl_out_store_raw_data(tlio_out, s.cast::<c_void>(), len) < 0 {
-        return -1;
-    }
-    tl_out_store_pad(tlio_out)
+    abi_i32(store_string_data_impl(tlio_out, s, len))
 }
 
 pub(crate) unsafe fn mtproxy_ffi_tl_store_string(
@@ -2164,57 +2282,212 @@ pub(crate) unsafe fn mtproxy_ffi_tl_store_string(
     s: *const i8,
     len: c_int,
 ) -> c_int {
-    if len < 0 {
-        return -1;
-    }
-    let len_usize = usize::try_from(len).unwrap_or(0);
-    if len_usize > 0 && s.is_null() {
-        return -1;
-    }
-    if tl_out_store_string_len(tlio_out, len_usize) < 0 {
-        return -1;
-    }
-    if len_usize > 0
-        && tl_out_store_raw_data(
-            tlio_out,
-            s.cast::<c_void>(),
-            c_int::try_from(len_usize).unwrap_or(c_int::MAX),
-        ) < 0
-    {
-        return -1;
-    }
-    tl_out_store_pad(tlio_out)
+    abi_i32(store_string_impl(tlio_out, s, len))
 }
 
 pub(crate) unsafe fn mtproxy_ffi_tl_store_clear(tlio_out: *mut TlOutState) -> c_int {
+    abi_i32(store_clear_impl(tlio_out))
+}
+
+pub(crate) unsafe fn mtproxy_ffi_tl_store_clean(tlio_out: *mut TlOutState) -> c_int {
+    abi_i32(store_clean_impl(tlio_out))
+}
+
+pub(crate) unsafe fn mtproxy_ffi_tl_store_pos(tlio_out: *mut TlOutState) -> c_int {
+    abi_i32(store_pos_impl(tlio_out))
+}
+
+fn store_get_ptr_impl(tlio_out: *mut TlOutState, size: c_int) -> AbiResult<*mut c_void> {
+    if size <= 0 || unsafe { tl_out_check(tlio_out, size) } < 0 {
+        return Err(ABI_ERROR);
+    }
+    let Some(tlio_out_ref) = out_state_mut(tlio_out) else {
+        return Err(ABI_ERROR);
+    };
+    let Some(store_get_ptr) = out_method_cb!(tlio_out_ref, store_get_ptr) else {
+        return Err(ABI_ERROR);
+    };
+    let p = unsafe { store_get_ptr(tlio_out, size) };
+    if p.is_null() {
+        return Err(ABI_ERROR);
+    }
+    tlio_out_ref.out_pos += size;
+    tlio_out_ref.out_remaining -= size;
+    Ok(p)
+}
+
+fn store_get_prepend_ptr_impl(tlio_out: *mut TlOutState, size: c_int) -> AbiResult<*mut c_void> {
+    if size <= 0 || unsafe { tl_out_check(tlio_out, size) } < 0 {
+        return Err(ABI_ERROR);
+    }
+    let Some(tlio_out_ref) = out_state_mut(tlio_out) else {
+        return Err(ABI_ERROR);
+    };
+    let Some(store_get_prepend_ptr) = out_method_cb!(tlio_out_ref, store_get_prepend_ptr) else {
+        return Err(ABI_ERROR);
+    };
+    let p = unsafe { store_get_prepend_ptr(tlio_out, size) };
+    if p.is_null() {
+        return Err(ABI_ERROR);
+    }
+    tlio_out_ref.out_pos += size;
+    tlio_out_ref.out_remaining -= size;
+    Ok(p)
+}
+
+fn store_int_impl(tlio_out: *mut TlOutState, x: c_int) -> AbiResult<c_int> {
+    let rc = unsafe { tl_out_store_int(tlio_out, x) };
+    if rc < 0 {
+        return Err(ABI_ERROR);
+    }
+    Ok(rc)
+}
+
+fn store_long_impl(tlio_out: *mut TlOutState, x: i64) -> AbiResult<c_int> {
+    let rc = unsafe { tl_out_store_long(tlio_out, x) };
+    if rc < 0 {
+        return Err(ABI_ERROR);
+    }
+    Ok(rc)
+}
+
+fn store_double_impl(tlio_out: *mut TlOutState, x: f64) -> AbiResult<c_int> {
+    let bytes = x.to_le_bytes();
+    store_raw_data_impl(tlio_out, bytes.as_ptr().cast::<c_void>(), 8)
+}
+
+fn store_raw_data_impl(
+    tlio_out: *mut TlOutState,
+    data: *const c_void,
+    len: c_int,
+) -> AbiResult<c_int> {
+    let rc = unsafe { tl_out_store_raw_data(tlio_out, data, len) };
+    if rc < 0 {
+        return Err(ABI_ERROR);
+    }
+    Ok(rc)
+}
+
+fn store_raw_msg_impl(
+    tlio_out: *mut TlOutState,
+    raw: *mut RawMessage,
+    dup: c_int,
+) -> AbiResult<c_int> {
+    let Some(raw_ref) = ptr_mut(raw) else {
+        return Err(ABI_ERROR);
+    };
+    let len = raw_ref.total_bytes;
+    if len < 0 || unsafe { tl_out_check(tlio_out, len) } < 0 {
+        return Err(ABI_ERROR);
+    }
+    let Some(tlio_out_ref) = out_state_mut(tlio_out) else {
+        return Err(ABI_ERROR);
+    };
+    let Some(store_raw_msg) = out_method_cb!(tlio_out_ref, store_raw_msg) else {
+        return Err(ABI_ERROR);
+    };
+    if dup == 0 {
+        unsafe { store_raw_msg(tlio_out, raw_ref as *mut RawMessage) };
+    } else {
+        let mut cloned = RawMessage::default();
+        unsafe { rwm_clone(&mut cloned, raw_ref as *mut RawMessage) };
+        unsafe { store_raw_msg(tlio_out, &mut cloned) };
+    }
+    tlio_out_ref.out_pos += len;
+    tlio_out_ref.out_remaining -= len;
+    Ok(0)
+}
+
+fn store_string_len_impl(tlio_out: *mut TlOutState, len: c_int) -> AbiResult<c_int> {
+    if len < 0 {
+        return Err(ABI_ERROR);
+    }
+    let rc = unsafe { tl_out_store_string_len(tlio_out, usize::try_from(len).unwrap_or(0)) };
+    if rc < 0 {
+        return Err(ABI_ERROR);
+    }
+    Ok(rc)
+}
+
+fn store_pad_impl(tlio_out: *mut TlOutState) -> AbiResult<c_int> {
+    let rc = unsafe { tl_out_store_pad(tlio_out) };
+    if rc < 0 {
+        return Err(ABI_ERROR);
+    }
+    Ok(rc)
+}
+
+fn store_string_data_impl(tlio_out: *mut TlOutState, s: *const i8, len: c_int) -> AbiResult<c_int> {
+    if len < 0 {
+        return Err(ABI_ERROR);
+    }
+    if len > 0 && s.is_null() {
+        return Err(ABI_ERROR);
+    }
+    if len > 0 && unsafe { tl_out_store_raw_data(tlio_out, s.cast::<c_void>(), len) } < 0 {
+        return Err(ABI_ERROR);
+    }
+    store_pad_impl(tlio_out)
+}
+
+fn store_string_impl(tlio_out: *mut TlOutState, s: *const i8, len: c_int) -> AbiResult<c_int> {
+    if len < 0 {
+        return Err(ABI_ERROR);
+    }
+    let len_usize = usize::try_from(len).unwrap_or(0);
+    if len_usize > 0 && s.is_null() {
+        return Err(ABI_ERROR);
+    }
+    if unsafe { tl_out_store_string_len(tlio_out, len_usize) } < 0 {
+        return Err(ABI_ERROR);
+    }
+    if len_usize > 0
+        && unsafe {
+            tl_out_store_raw_data(
+                tlio_out,
+                s.cast::<c_void>(),
+                c_int::try_from(len_usize).unwrap_or(c_int::MAX),
+            )
+        } < 0
+    {
+        return Err(ABI_ERROR);
+    }
+    store_pad_impl(tlio_out)
+}
+
+fn store_clear_impl(tlio_out: *mut TlOutState) -> AbiResult<c_int> {
     let Some(cursor) = out_cursor(tlio_out) else {
-        return -1;
+        return Err(ABI_ERROR);
     };
     if cursor.out_ptr_is_null {
-        return -1;
+        return Err(ABI_ERROR);
     }
     let Some(store_clear) = out_store_clear_cb(tlio_out) else {
-        return -1;
+        return Err(ABI_ERROR);
     };
-    store_clear(tlio_out);
+    unsafe { store_clear(tlio_out) };
     let Some(tlio_out_ref) = out_state_mut(tlio_out) else {
-        return -1;
+        return Err(ABI_ERROR);
     };
     tlio_out_ref.out_ptr = ptr::null_mut();
     tlio_out_ref.out_type = TL_TYPE_NONE;
     tlio_out_ref.out_extra = ptr::null_mut();
-    0
+    Ok(0)
 }
 
-pub(crate) unsafe fn mtproxy_ffi_tl_store_clean(tlio_out: *mut TlOutState) -> c_int {
-    tl_out_clean(tlio_out)
+fn store_clean_impl(tlio_out: *mut TlOutState) -> AbiResult<c_int> {
+    let rc = unsafe { tl_out_clean(tlio_out) };
+    if rc < 0 {
+        return Err(ABI_ERROR);
+    }
+    Ok(rc)
 }
 
-pub(crate) unsafe fn mtproxy_ffi_tl_store_pos(tlio_out: *mut TlOutState) -> c_int {
+fn store_pos_impl(tlio_out: *mut TlOutState) -> AbiResult<c_int> {
     let Some(cursor) = out_cursor(tlio_out) else {
-        return -1;
+        return Err(ABI_ERROR);
     };
-    cursor.out_pos
+    Ok(cursor.out_pos)
 }
 
 pub(crate) unsafe fn mtproxy_ffi_tl_copy_through(
