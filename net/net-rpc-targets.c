@@ -392,5 +392,3 @@ int rpc_target_get_state(rpc_target_job_t S, struct process_id *pid) {
     return 0;
   }
 }
-
-void rpc_target_delete(rpc_target_job_t RT) {}

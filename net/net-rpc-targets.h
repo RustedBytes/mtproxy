@@ -57,4 +57,3 @@ void rpc_target_insert_target_ext(conn_target_job_t t, unsigned host);
 void rpc_target_delete_conn(connection_job_t c);
 
 int rpc_target_get_state(rpc_target_job_t S, struct process_id *PID);
-void rpc_target_delete(rpc_target_job_t S);

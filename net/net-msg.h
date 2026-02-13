@@ -125,28 +125,16 @@ int rwm_fetch_data(struct raw_message *raw, void *data, int bytes);
 int rwm_skip_data(struct raw_message *raw, int bytes);
 int rwm_fetch_lookup(struct raw_message *raw, void *buf, int bytes);
 int rwm_fetch_data_back(struct raw_message *raw, void *data, int bytes);
-int rwm_fetch_lookup_back(struct raw_message *raw, void *data, int bytes);
 int rwm_trunc(struct raw_message *raw, int len);
 int rwm_union(struct raw_message *raw, struct raw_message *tail);
-int rwm_split(struct raw_message *raw, struct raw_message *tail, int bytes);
 int rwm_split_head(struct raw_message *head, struct raw_message *raw,
                    int bytes);
 void *rwm_prepend_alloc(struct raw_message *raw, int alloc_bytes);
 void *rwm_postpone_alloc(struct raw_message *raw, int alloc_bytes);
 
-void rwm_clean(struct raw_message *raw);
-void rwm_clear(struct raw_message *raw);
-int rwm_check(struct raw_message *raw);
-int fork_message_chain(struct raw_message *raw);
-
-int rwm_compare(struct raw_message *l, struct raw_message *r);
-
 int rwm_prepare_iovec(const struct raw_message *raw, struct iovec *iov,
                       int iov_len, int bytes);
-int rwm_dump_sizes(struct raw_message *raw);
 int rwm_dump(struct raw_message *raw);
-unsigned rwm_crc32c(struct raw_message *raw, int bytes);
-unsigned rwm_crc32(struct raw_message *raw, int bytes);
 unsigned rwm_custom_crc32(struct raw_message *raw, int bytes,
                           crc32_partial_func_t custom_crc32_partial);
 
@@ -183,7 +171,4 @@ int rwm_encrypt_decrypt_to(struct raw_message *raw, struct raw_message *res,
 void *rwm_get_block_ptr(struct raw_message *raw);
 int rwm_get_block_ptr_bytes(struct raw_message *raw);
 
-void rwm_to_tl_string(struct raw_message *raw);
-
 extern struct raw_message empty_rwm;
-void rwm_from_tl_string(struct raw_message *raw);

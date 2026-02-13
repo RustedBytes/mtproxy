@@ -3,7 +3,7 @@
 //! This module provides stats buffer management and memory statistics collection
 //! that was previously implemented in common/common-stats.c
 
-use super::*;
+use crate::*;
 
 // Re-export parsing functions from time_cfg_observability
 use crate::time_cfg_observability::{mtproxy_ffi_parse_meminfo_summary, mtproxy_ffi_parse_statm};

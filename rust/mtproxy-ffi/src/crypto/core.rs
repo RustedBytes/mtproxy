@@ -1,4 +1,4 @@
-use super::*;
+use crate::*;
 use crate::ffi_util::{mut_ref_from_ptr, mut_slice_from_ptr, ref_from_ptr, slice_from_ptr};
 
 const AES_CREATE_KEYS_MAX_STR_LEN: usize =

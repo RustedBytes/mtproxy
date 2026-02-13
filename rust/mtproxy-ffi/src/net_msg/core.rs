@@ -8,21 +8,21 @@ use core::ptr;
 use core::sync::atomic::{fence, AtomicI32, Ordering};
 use libc::iovec;
 
-const MSG_PART_MAGIC: c_int = 0x0834_1aa7;
-const MSG_PART_LOCKED_MAGIC: c_int = !MSG_PART_MAGIC;
+pub(super) const MSG_PART_MAGIC: c_int = 0x0834_1aa7;
+pub(super) const MSG_PART_LOCKED_MAGIC: c_int = !MSG_PART_MAGIC;
 
-const RM_INIT_MAGIC: c_int = 0x2351_3473;
-const RM_TMP_MAGIC: c_int = 0x52a7_17f3;
-const RM_PREPEND_RESERVE: c_int = 128;
+pub(super) const RM_INIT_MAGIC: c_int = 0x2351_3473;
+pub(super) const RM_TMP_MAGIC: c_int = 0x52a7_17f3;
+pub(super) const RM_PREPEND_RESERVE: c_int = 128;
 
-const MSG_STD_BUFFER: c_int = 2048;
-const MSG_SMALL_BUFFER: c_int = 512;
+pub(super) const MSG_STD_BUFFER: c_int = 2048;
+pub(super) const MSG_SMALL_BUFFER: c_int = 512;
 
-const RMPF_ADVANCE: c_int = 1;
-const RMPF_TRUNCATE: c_int = 2;
+pub(super) const RMPF_ADVANCE: c_int = 1;
+pub(super) const RMPF_TRUNCATE: c_int = 2;
 
-const TL_MARKER_INVALID: c_int = -1;
-const TL_MARKER_LONG: c_int = 1;
+pub(super) const TL_MARKER_INVALID: c_int = -1;
+pub(super) const TL_MARKER_LONG: c_int = 1;
 
 #[repr(C)]
 pub struct MsgBuffer {
@@ -103,9 +103,9 @@ pub struct RawMessage {
     pub last_offset: c_int,
 }
 
-type ProcessBlockFn = Option<unsafe extern "C" fn(*mut c_void, *const c_void, c_int) -> c_int>;
-type TransformBlockFn = Option<unsafe extern "C" fn(*mut c_void, *mut c_void, c_int) -> c_int>;
-type Crc32PartialFunc = Option<unsafe extern "C" fn(*const c_void, c_long, u32) -> u32>;
+pub(super) type ProcessBlockFn = Option<unsafe extern "C" fn(*mut c_void, *const c_void, c_int) -> c_int>;
+pub(super) type TransformBlockFn = Option<unsafe extern "C" fn(*mut c_void, *mut c_void, c_int) -> c_int>;
+pub(super) type Crc32PartialFunc = Option<unsafe extern "C" fn(*const c_void, c_long, u32) -> u32>;
 
 unsafe extern "C" {
     fn alloc_msg_buffer(neighbor: *mut MsgBuffer, size_hint: c_int) -> *mut MsgBuffer;
@@ -113,8 +113,8 @@ unsafe extern "C" {
     fn hexdump(start: *const c_void, end: *const c_void);
 }
 
-static RWM_TOTAL_MSGS: AtomicI32 = AtomicI32::new(0);
-static RWM_TOTAL_MSG_PARTS: AtomicI32 = AtomicI32::new(0);
+pub(super) static RWM_TOTAL_MSGS: AtomicI32 = AtomicI32::new(0);
+pub(super) static RWM_TOTAL_MSG_PARTS: AtomicI32 = AtomicI32::new(0);
 
 #[inline]
 unsafe fn data_ptr(buffer: *mut MsgBuffer) -> *mut u8 {
@@ -140,7 +140,7 @@ unsafe fn check_msg_part_magic(mp: *mut MsgPart) {
 }
 
 #[inline]
-unsafe fn alloc_msg_part() -> *mut MsgPart {
+pub(super) unsafe fn alloc_msg_part() -> *mut MsgPart {
     RWM_TOTAL_MSG_PARTS.fetch_add(1, Ordering::Relaxed);
     let mp = libc::malloc(size_of::<MsgPart>()).cast::<MsgPart>();
     assert!(!mp.is_null());
@@ -156,6 +156,19 @@ unsafe fn free_msg_part(mp: *mut MsgPart) {
 }
 
 #[inline]
+pub(super) unsafe fn new_msg_part_impl(_neighbor: *mut MsgPart, x: *mut MsgBuffer) -> *mut MsgPart {
+    let mp = alloc_msg_part();
+    assert!(!mp.is_null());
+    assert!((*mp).magic == MSG_PART_MAGIC);
+    (*mp).refcnt = 1;
+    (*mp).next = ptr::null_mut();
+    (*mp).part = x;
+    (*mp).offset = 0;
+    (*mp).data_end = 0;
+    mp
+}
+
+#[inline]
 unsafe fn msg_buffer_decref(buffer: *mut MsgBuffer) {
     if (*buffer).refcnt == 1 || atomic_fetch_add(&mut (*buffer).refcnt, -1) == 1 {
         (*buffer).refcnt = 0;
@@ -164,6 +177,7 @@ unsafe fn msg_buffer_decref(buffer: *mut MsgBuffer) {
 }
 
 unsafe fn msg_part_decref(mut mp: *mut MsgPart) -> c_int {
+
     let mut cnt = 0;
     while !mp.is_null() {
         check_msg_part_magic(mp);
@@ -187,7 +201,7 @@ unsafe fn msg_part_decref(mut mp: *mut MsgPart) -> c_int {
     cnt
 }
 
-unsafe fn rwm_lock_last_part_impl(raw: *mut RawMessage) -> *mut MsgPart {
+pub(super) unsafe fn rwm_lock_last_part_impl(raw: *mut RawMessage) -> *mut MsgPart {
     assert!((*raw).magic == RM_INIT_MAGIC);
 
     if (*raw).first.is_null() {
@@ -215,7 +229,7 @@ unsafe fn rwm_lock_last_part_impl(raw: *mut RawMessage) -> *mut MsgPart {
     locked
 }
 
-unsafe fn rwm_lock_first_part_impl(raw: *mut RawMessage) -> *mut MsgPart {
+pub(super) unsafe fn rwm_lock_first_part_impl(raw: *mut RawMessage) -> *mut MsgPart {
     assert!((*raw).magic == RM_INIT_MAGIC);
 
     if (*raw).first.is_null() {
@@ -231,7 +245,7 @@ unsafe fn rwm_lock_first_part_impl(raw: *mut RawMessage) -> *mut MsgPart {
     }
 
     atomic_fetch_add(&mut (*(*(*raw).first).part).refcnt, 1);
-    let mp = mtproxy_ffi_net_msg_new_msg_part((*raw).first, (*(*raw).first).part);
+    let mp = new_msg_part_impl((*raw).first, (*(*raw).first).part);
     (*mp).offset = (*raw).first_offset;
     (*mp).data_end = (*(*raw).first).data_end;
     if (*raw).last == (*raw).first {
@@ -248,7 +262,7 @@ unsafe fn rwm_lock_first_part_impl(raw: *mut RawMessage) -> *mut MsgPart {
     ptr::null_mut()
 }
 
-unsafe fn rwm_free_impl(raw: *mut RawMessage) -> c_int {
+pub(super) unsafe fn rwm_free_impl(raw: *mut RawMessage) -> c_int {
     let mp = (*raw).first;
     let t = (*raw).magic;
     assert!(t == RM_INIT_MAGIC || t == RM_TMP_MAGIC);
@@ -261,7 +275,7 @@ unsafe fn rwm_free_impl(raw: *mut RawMessage) -> c_int {
     }
 }
 
-unsafe fn rwm_compare_impl(mut l: *mut RawMessage, mut r: *mut RawMessage) -> c_int {
+pub(super) unsafe fn rwm_compare_impl(mut l: *mut RawMessage, mut r: *mut RawMessage) -> c_int {
     assert!((*l).magic == RM_INIT_MAGIC || (*l).magic == RM_TMP_MAGIC);
     assert!((*r).magic == RM_INIT_MAGIC || (*r).magic == RM_TMP_MAGIC);
     if !l.is_null() && (*l).total_bytes == 0 {
@@ -352,7 +366,7 @@ unsafe fn rwm_compare_impl(mut l: *mut RawMessage, mut r: *mut RawMessage) -> c_
     }
 }
 
-unsafe fn fork_message_chain_impl(raw: *mut RawMessage) -> c_int {
+pub(super) unsafe fn fork_message_chain_impl(raw: *mut RawMessage) -> c_int {
     assert!((*raw).magic == RM_INIT_MAGIC);
 
     let mut mp = (*raw).first;
@@ -389,7 +403,7 @@ unsafe fn fork_message_chain_impl(raw: *mut RawMessage) -> c_int {
         while !copy_last {
             assert!(!mp.is_null());
             check_msg_part_magic(mp);
-            let mpc = mtproxy_ffi_net_msg_new_msg_part(mpl, (*mp).part);
+            let mpc = new_msg_part_impl(mpl, (*mp).part);
 
             atomic_fetch_add(&mut (*(*mpc).part).refcnt, 1);
             (*mpc).offset = (*mp).offset;
@@ -433,7 +447,7 @@ unsafe fn fork_message_chain_impl(raw: *mut RawMessage) -> c_int {
     res
 }
 
-unsafe fn rwm_clean_impl(raw: *mut RawMessage) {
+pub(super) unsafe fn rwm_clean_impl(raw: *mut RawMessage) {
     assert!((*raw).magic == RM_INIT_MAGIC || (*raw).magic == RM_TMP_MAGIC);
     (*raw).first = ptr::null_mut();
     (*raw).last = ptr::null_mut();
@@ -442,7 +456,7 @@ unsafe fn rwm_clean_impl(raw: *mut RawMessage) {
     (*raw).total_bytes = 0;
 }
 
-unsafe fn rwm_clear_impl(raw: *mut RawMessage) {
+pub(super) unsafe fn rwm_clear_impl(raw: *mut RawMessage) {
     assert!((*raw).magic == RM_INIT_MAGIC || (*raw).magic == RM_TMP_MAGIC);
     if !(*raw).first.is_null() && (*raw).magic == RM_INIT_MAGIC {
         let _ = msg_part_decref((*raw).first);
@@ -450,7 +464,7 @@ unsafe fn rwm_clear_impl(raw: *mut RawMessage) {
     rwm_clean_impl(raw);
 }
 
-unsafe fn rwm_clone_impl(dest_raw: *mut RawMessage, src_raw: *mut RawMessage) {
+pub(super) unsafe fn rwm_clone_impl(dest_raw: *mut RawMessage, src_raw: *mut RawMessage) {
     assert!((*src_raw).magic == RM_INIT_MAGIC || (*src_raw).magic == RM_TMP_MAGIC);
     ptr::copy_nonoverlapping(src_raw, dest_raw, 1);
     if (*src_raw).magic == RM_INIT_MAGIC && !(*src_raw).first.is_null() {
@@ -463,7 +477,7 @@ unsafe fn rwm_clone_impl(dest_raw: *mut RawMessage, src_raw: *mut RawMessage) {
     RWM_TOTAL_MSGS.fetch_add(1, Ordering::Relaxed);
 }
 
-unsafe fn rwm_move_impl(dest_raw: *mut RawMessage, src_raw: *mut RawMessage) {
+pub(super) unsafe fn rwm_move_impl(dest_raw: *mut RawMessage, src_raw: *mut RawMessage) {
     assert!((*src_raw).magic == RM_INIT_MAGIC || (*src_raw).magic == RM_TMP_MAGIC);
     ptr::copy_nonoverlapping(src_raw, dest_raw, 1);
     ptr::write_bytes(src_raw.cast::<u8>(), 0, size_of::<RawMessage>());
@@ -475,7 +489,7 @@ unsafe fn maybe_copy(dst: *mut u8, src: *const u8, len: c_int) {
     }
 }
 
-unsafe fn rwm_push_data_ext_impl(
+pub(super) unsafe fn rwm_push_data_ext_impl(
     raw: *mut RawMessage,
     data: *const c_void,
     mut alloc_bytes: c_int,
@@ -506,7 +520,7 @@ unsafe fn rwm_push_data_ext_impl(
         if x.is_null() {
             return 0;
         }
-        mp = mtproxy_ffi_net_msg_new_msg_part(ptr::null_mut(), x);
+        mp = new_msg_part_impl(ptr::null_mut(), x);
         if alloc_bytes <= std_buffer && prepend > std_buffer - alloc_bytes {
             prepend = std_buffer - alloc_bytes;
         }
@@ -599,7 +613,7 @@ unsafe fn rwm_push_data_ext_impl(
             break;
         }
 
-        mp = mtproxy_ffi_net_msg_new_msg_part(mpl, x);
+        mp = new_msg_part_impl(mpl, x);
         (*mpl).next = mp;
         (*raw).last = mp;
 
@@ -630,7 +644,7 @@ unsafe fn rwm_push_data_ext_impl(
     res
 }
 
-unsafe fn rwm_push_data_front_impl(
+pub(super) unsafe fn rwm_push_data_front_impl(
     raw: *mut RawMessage,
     data: *const c_void,
     mut alloc_bytes: c_int,
@@ -695,7 +709,7 @@ unsafe fn rwm_push_data_front_impl(
         assert!(!x.is_null());
 
         let size = (*(*x).chunk).buffer_size;
-        let mp = mtproxy_ffi_net_msg_new_msg_part((*raw).first, x);
+        let mp = new_msg_part_impl((*raw).first, x);
         (*mp).next = (*raw).first;
         (*raw).first = mp;
 
@@ -737,7 +751,7 @@ unsafe fn rwm_push_data_front_impl(
     r
 }
 
-unsafe fn rwm_create_impl(raw: *mut RawMessage, data: *const c_void, alloc_bytes: c_int) -> c_int {
+pub(super) unsafe fn rwm_create_impl(raw: *mut RawMessage, data: *const c_void, alloc_bytes: c_int) -> c_int {
     RWM_TOTAL_MSGS.fetch_add(1, Ordering::Relaxed);
     ptr::write_bytes(raw.cast::<u8>(), 0, size_of::<RawMessage>());
     (*raw).magic = RM_INIT_MAGIC;
@@ -751,7 +765,7 @@ unsafe fn rwm_create_impl(raw: *mut RawMessage, data: *const c_void, alloc_bytes
     )
 }
 
-unsafe fn rwm_prepend_alloc_impl(raw: *mut RawMessage, alloc_bytes: c_int) -> *mut c_void {
+pub(super) unsafe fn rwm_prepend_alloc_impl(raw: *mut RawMessage, alloc_bytes: c_int) -> *mut c_void {
     assert!((*raw).magic == RM_INIT_MAGIC);
     assert!(alloc_bytes >= 0);
     if alloc_bytes == 0 || alloc_bytes > MSG_STD_BUFFER {
@@ -804,7 +818,7 @@ unsafe fn rwm_prepend_alloc_impl(raw: *mut RawMessage, alloc_bytes: c_int) -> *m
     let size = (*(*x).chunk).buffer_size;
     assert!(size >= alloc_bytes);
 
-    let mp = mtproxy_ffi_net_msg_new_msg_part((*raw).first, x);
+    let mp = new_msg_part_impl((*raw).first, x);
     (*mp).next = (*raw).first;
     (*raw).first = mp;
     (*mp).data_end = size;
@@ -821,7 +835,7 @@ unsafe fn rwm_prepend_alloc_impl(raw: *mut RawMessage, alloc_bytes: c_int) -> *m
         .cast::<c_void>()
 }
 
-unsafe fn rwm_postpone_alloc_impl(raw: *mut RawMessage, alloc_bytes: c_int) -> *mut c_void {
+pub(super) unsafe fn rwm_postpone_alloc_impl(raw: *mut RawMessage, alloc_bytes: c_int) -> *mut c_void {
     assert!((*raw).magic == RM_INIT_MAGIC);
     assert!(alloc_bytes >= 0);
     if alloc_bytes == 0 || alloc_bytes > MSG_STD_BUFFER {
@@ -865,7 +879,7 @@ unsafe fn rwm_postpone_alloc_impl(raw: *mut RawMessage, alloc_bytes: c_int) -> *
     size = (*(*x).chunk).buffer_size;
     assert!(size >= alloc_bytes);
 
-    mp = mtproxy_ffi_net_msg_new_msg_part((*raw).first, x);
+    mp = new_msg_part_impl((*raw).first, x);
     (*(*raw).last).next = mp;
     (*raw).last = mp;
 
@@ -881,7 +895,7 @@ unsafe fn rwm_postpone_alloc_impl(raw: *mut RawMessage, alloc_bytes: c_int) -> *
     data_ptr((*mp).part).cast::<c_void>()
 }
 
-unsafe fn rwm_prepare_iovec_impl(
+pub(super) unsafe fn rwm_prepare_iovec_impl(
     raw: *const RawMessage,
     iov: *mut iovec,
     iov_len: c_int,
@@ -961,7 +975,7 @@ unsafe extern "C" fn rwm_process_nop_cb(
     0
 }
 
-unsafe fn rwm_fetch_data_back_impl(
+pub(super) unsafe fn rwm_fetch_data_back_impl(
     raw: *mut RawMessage,
     data: *mut c_void,
     mut bytes: c_int,
@@ -992,7 +1006,7 @@ unsafe fn rwm_fetch_data_back_impl(
     )
 }
 
-unsafe fn rwm_fetch_lookup_back_impl(
+pub(super) unsafe fn rwm_fetch_lookup_back_impl(
     raw: *mut RawMessage,
     data: *mut c_void,
     mut bytes: c_int,
@@ -1023,7 +1037,7 @@ unsafe fn rwm_fetch_lookup_back_impl(
     )
 }
 
-unsafe fn rwm_trunc_impl(raw: *mut RawMessage, len: c_int) -> c_int {
+pub(super) unsafe fn rwm_trunc_impl(raw: *mut RawMessage, len: c_int) -> c_int {
     assert!((*raw).magic == RM_INIT_MAGIC || (*raw).magic == RM_TMP_MAGIC);
     if len >= (*raw).total_bytes {
         return (*raw).total_bytes;
@@ -1032,7 +1046,7 @@ unsafe fn rwm_trunc_impl(raw: *mut RawMessage, len: c_int) -> c_int {
     len
 }
 
-unsafe fn rwm_split_impl(raw: *mut RawMessage, tail: *mut RawMessage, mut bytes: c_int) -> c_int {
+pub(super) unsafe fn rwm_split_impl(raw: *mut RawMessage, tail: *mut RawMessage, mut bytes: c_int) -> c_int {
     assert!((*raw).magic == RM_INIT_MAGIC || (*raw).magic == RM_TMP_MAGIC);
     assert!(bytes >= 0);
 
@@ -1114,13 +1128,13 @@ unsafe fn rwm_split_impl(raw: *mut RawMessage, tail: *mut RawMessage, mut bytes:
     0
 }
 
-unsafe fn rwm_split_head_impl(head: *mut RawMessage, raw: *mut RawMessage, bytes: c_int) -> c_int {
+pub(super) unsafe fn rwm_split_head_impl(head: *mut RawMessage, raw: *mut RawMessage, bytes: c_int) -> c_int {
     assert!((*raw).magic == RM_INIT_MAGIC || (*raw).magic == RM_TMP_MAGIC);
     ptr::copy_nonoverlapping(raw, head, 1);
     rwm_split_impl(head, raw, bytes)
 }
 
-unsafe fn rwm_union_impl(raw: *mut RawMessage, tail: *mut RawMessage) -> c_int {
+pub(super) unsafe fn rwm_union_impl(raw: *mut RawMessage, tail: *mut RawMessage) -> c_int {
     assert!((*raw).magic == RM_INIT_MAGIC);
     let mut locked: *mut MsgPart = ptr::null_mut();
 
@@ -1159,7 +1173,7 @@ unsafe fn rwm_union_impl(raw: *mut RawMessage, tail: *mut RawMessage) -> c_int {
     0
 }
 
-unsafe fn rwm_dump_sizes_impl(raw: *mut RawMessage) -> c_int {
+pub(super) unsafe fn rwm_dump_sizes_impl(raw: *mut RawMessage) -> c_int {
     assert!((*raw).magic == RM_INIT_MAGIC || (*raw).magic == RM_TMP_MAGIC);
 
     if (*raw).first.is_null() {
@@ -1201,7 +1215,7 @@ unsafe fn rwm_dump_sizes_impl(raw: *mut RawMessage) -> c_int {
     0
 }
 
-unsafe fn rwm_check_impl(raw: *mut RawMessage) -> c_int {
+pub(super) unsafe fn rwm_check_impl(raw: *mut RawMessage) -> c_int {
     assert!((*raw).magic == RM_INIT_MAGIC || (*raw).magic == RM_TMP_MAGIC);
 
     if (*raw).first.is_null() {
@@ -1248,7 +1262,7 @@ unsafe fn rwm_check_impl(raw: *mut RawMessage) -> c_int {
     0
 }
 
-unsafe fn rwm_dump_impl(raw: *mut RawMessage) -> c_int {
+pub(super) unsafe fn rwm_dump_impl(raw: *mut RawMessage) -> c_int {
     assert!((*raw).magic == RM_INIT_MAGIC || (*raw).magic == RM_TMP_MAGIC);
 
     let mut t = RawMessage {
@@ -1282,7 +1296,7 @@ unsafe fn rwm_dump_impl(raw: *mut RawMessage) -> c_int {
     0
 }
 
-unsafe fn rwm_process_ex_impl(
+pub(super) unsafe fn rwm_process_ex_impl(
     raw: *mut RawMessage,
     mut bytes: c_int,
     mut offset: c_int,
@@ -1475,7 +1489,7 @@ unsafe fn rwm_process_ex_impl(
     0
 }
 
-unsafe fn rwm_sha1_impl(raw: *mut RawMessage, bytes: c_int, output: *mut u8) -> c_int {
+pub(super) unsafe fn rwm_sha1_impl(raw: *mut RawMessage, bytes: c_int, output: *mut u8) -> c_int {
     assert!(bytes >= 0 && (*raw).total_bytes >= bytes);
     let tmp = if bytes > 0 {
         libc::malloc(usize::try_from(bytes).unwrap_or(0)).cast::<u8>()
@@ -1557,7 +1571,7 @@ unsafe extern "C" fn crc32_process_cb(
     0
 }
 
-unsafe fn rwm_crc32c_impl(raw: *mut RawMessage, bytes: c_int) -> u32 {
+pub(super) unsafe fn rwm_crc32c_impl(raw: *mut RawMessage, bytes: c_int) -> u32 {
     let mut crc = !0u32;
     assert!(
         rwm_process_ex_impl(
@@ -1572,7 +1586,7 @@ unsafe fn rwm_crc32c_impl(raw: *mut RawMessage, bytes: c_int) -> u32 {
     !crc
 }
 
-unsafe fn rwm_crc32_impl(raw: *mut RawMessage, bytes: c_int) -> u32 {
+pub(super) unsafe fn rwm_crc32_impl(raw: *mut RawMessage, bytes: c_int) -> u32 {
     let mut crc = !0u32;
     assert!(
         rwm_process_ex_impl(
@@ -1609,7 +1623,7 @@ unsafe extern "C" fn custom_crc32_process_cb(
     0
 }
 
-unsafe fn rwm_custom_crc32_impl(
+pub(super) unsafe fn rwm_custom_crc32_impl(
     raw: *mut RawMessage,
     bytes: c_int,
     partial: Crc32PartialFunc,
@@ -1635,7 +1649,7 @@ unsafe fn rwm_custom_crc32_impl(
     !d.crc32
 }
 
-unsafe fn rwm_fetch_data_impl(raw: *mut RawMessage, buf: *mut c_void, bytes: c_int) -> c_int {
+pub(super) unsafe fn rwm_fetch_data_impl(raw: *mut RawMessage, buf: *mut c_void, bytes: c_int) -> c_int {
     if !buf.is_null() {
         let mut out = buf.cast::<u8>();
         rwm_process_ex_impl(
@@ -1658,7 +1672,7 @@ unsafe fn rwm_fetch_data_impl(raw: *mut RawMessage, buf: *mut c_void, bytes: c_i
     }
 }
 
-unsafe fn rwm_skip_data_impl(raw: *mut RawMessage, bytes: c_int) -> c_int {
+pub(super) unsafe fn rwm_skip_data_impl(raw: *mut RawMessage, bytes: c_int) -> c_int {
     rwm_process_ex_impl(
         raw,
         bytes,
@@ -1669,7 +1683,7 @@ unsafe fn rwm_skip_data_impl(raw: *mut RawMessage, bytes: c_int) -> c_int {
     )
 }
 
-unsafe fn rwm_fetch_lookup_impl(raw: *mut RawMessage, buf: *mut c_void, bytes: c_int) -> c_int {
+pub(super) unsafe fn rwm_fetch_lookup_impl(raw: *mut RawMessage, buf: *mut c_void, bytes: c_int) -> c_int {
     if !buf.is_null() {
         let mut out = buf.cast::<u8>();
         rwm_process_ex_impl(
@@ -1685,7 +1699,7 @@ unsafe fn rwm_fetch_lookup_impl(raw: *mut RawMessage, buf: *mut c_void, bytes: c
     }
 }
 
-unsafe fn rwm_get_block_ptr_bytes_impl(raw: *mut RawMessage) -> c_int {
+pub(super) unsafe fn rwm_get_block_ptr_bytes_impl(raw: *mut RawMessage) -> c_int {
     if (*raw).total_bytes == 0 {
         return 0;
     }
@@ -1718,7 +1732,7 @@ unsafe fn rwm_get_block_ptr_bytes_impl(raw: *mut RawMessage) -> c_int {
     }
 }
 
-unsafe fn rwm_get_block_ptr_impl(raw: *mut RawMessage) -> *mut c_void {
+pub(super) unsafe fn rwm_get_block_ptr_impl(raw: *mut RawMessage) -> *mut c_void {
     if (*raw).first.is_null() {
         return ptr::null_mut();
     }
@@ -1727,7 +1741,7 @@ unsafe fn rwm_get_block_ptr_impl(raw: *mut RawMessage) -> *mut c_void {
         .cast::<c_void>()
 }
 
-unsafe fn rwm_to_tl_string_impl(raw: *mut RawMessage) {
+pub(super) unsafe fn rwm_to_tl_string_impl(raw: *mut RawMessage) {
     assert!((*raw).magic == RM_INIT_MAGIC);
 
     if (*raw).total_bytes < 0xfe {
@@ -1766,7 +1780,7 @@ unsafe fn rwm_to_tl_string_impl(raw: *mut RawMessage) {
     }
 }
 
-unsafe fn rwm_from_tl_string_impl(raw: *mut RawMessage) {
+pub(super) unsafe fn rwm_from_tl_string_impl(raw: *mut RawMessage) {
     assert!((*raw).magic == RM_INIT_MAGIC);
 
     let mut x = 0i32;
@@ -1815,7 +1829,7 @@ unsafe extern "C" fn rwm_process_encrypt_decrypt_cb(
             },
         );
         assert!(!b.is_null());
-        let mp = mtproxy_ffi_net_msg_new_msg_part((*res).last, b);
+        let mp = new_msg_part_impl((*res).last, b);
         (*(*res).last).next = mp;
         (*res).last = mp;
         (*res).last_offset = 0;
@@ -1881,7 +1895,7 @@ unsafe extern "C" fn rwm_process_encrypt_decrypt_cb(
                     },
                 );
                 assert!(!b.is_null());
-                let mp = mtproxy_ffi_net_msg_new_msg_part((*res).last, b);
+                let mp = new_msg_part_impl((*res).last, b);
                 (*(*res).last).next = mp;
                 (*res).last = mp;
                 (*res).last_offset = 0;
@@ -1937,7 +1951,7 @@ unsafe extern "C" fn rwm_process_encrypt_decrypt_cb(
                 },
             );
             assert!(!b.is_null());
-            let mp = mtproxy_ffi_net_msg_new_msg_part((*res).last, b);
+            let mp = new_msg_part_impl((*res).last, b);
             (*(*res).last).next = mp;
             (*res).last = mp;
             (*res).last_offset = 0;
@@ -1982,7 +1996,7 @@ unsafe extern "C" fn rwm_process_encrypt_decrypt_cb(
     }
 }
 
-unsafe fn rwm_encrypt_decrypt_to_impl(
+pub(super) unsafe fn rwm_encrypt_decrypt_to_impl(
     raw: *mut RawMessage,
     res: *mut RawMessage,
     mut bytes: c_int,
@@ -2024,7 +2038,7 @@ unsafe fn rwm_encrypt_decrypt_to_impl(
         );
         assert!(!x.is_null());
 
-        let mp = mtproxy_ffi_net_msg_new_msg_part((*res).last, x);
+        let mp = new_msg_part_impl((*res).last, x);
         if !(*res).last.is_null() {
             (*(*res).last).next = mp;
             (*res).last = mp;
@@ -2068,373 +2082,3 @@ unsafe fn rwm_encrypt_decrypt_to_impl(
     r
 }
 
-#[no_mangle]
-pub static mut empty_rwm: RawMessage = RawMessage {
-    first: ptr::null_mut(),
-    last: ptr::null_mut(),
-    total_bytes: 0,
-    magic: RM_INIT_MAGIC,
-    first_offset: 0,
-    last_offset: 0,
-};
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_msg_fetch_stats(
-    out_total_msgs: *mut c_int,
-    out_total_msg_parts: *mut c_int,
-) -> c_int {
-    if out_total_msgs.is_null() || out_total_msg_parts.is_null() {
-        return -1;
-    }
-    *out_total_msgs = RWM_TOTAL_MSGS.load(Ordering::Relaxed);
-    *out_total_msg_parts = RWM_TOTAL_MSG_PARTS.load(Ordering::Relaxed);
-    0
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_msg_new_msg_part(
-    _neighbor: *mut MsgPart,
-    x: *mut MsgBuffer,
-) -> *mut MsgPart {
-    let mp = alloc_msg_part();
-    assert!(!mp.is_null());
-    assert!((*mp).magic == MSG_PART_MAGIC);
-    (*mp).refcnt = 1;
-    (*mp).next = ptr::null_mut();
-    (*mp).part = x;
-    (*mp).offset = 0;
-    (*mp).data_end = 0;
-    mp
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_free(raw: *mut RawMessage) -> c_int {
-    rwm_free_impl(raw)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_init(
-    raw: *mut RawMessage,
-    alloc_bytes: c_int,
-) -> c_int {
-    rwm_create_impl(raw, ptr::null(), alloc_bytes)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_create(
-    raw: *mut RawMessage,
-    data: *const c_void,
-    alloc_bytes: c_int,
-) -> c_int {
-    rwm_create_impl(raw, data, alloc_bytes)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_clone(
-    dest_raw: *mut RawMessage,
-    src_raw: *mut RawMessage,
-) {
-    rwm_clone_impl(dest_raw, src_raw)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_move(
-    dest_raw: *mut RawMessage,
-    src_raw: *mut RawMessage,
-) {
-    rwm_move_impl(dest_raw, src_raw)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_push_data(
-    raw: *mut RawMessage,
-    data: *const c_void,
-    alloc_bytes: c_int,
-) -> c_int {
-    rwm_push_data_ext_impl(
-        raw,
-        data,
-        alloc_bytes,
-        RM_PREPEND_RESERVE,
-        MSG_SMALL_BUFFER,
-        MSG_STD_BUFFER,
-    )
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_push_data_ext(
-    raw: *mut RawMessage,
-    data: *const c_void,
-    alloc_bytes: c_int,
-    prepend: c_int,
-    small_buffer: c_int,
-    std_buffer: c_int,
-) -> c_int {
-    rwm_push_data_ext_impl(raw, data, alloc_bytes, prepend, small_buffer, std_buffer)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_push_data_front(
-    raw: *mut RawMessage,
-    data: *const c_void,
-    alloc_bytes: c_int,
-) -> c_int {
-    rwm_push_data_front_impl(raw, data, alloc_bytes)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_fetch_data(
-    raw: *mut RawMessage,
-    data: *mut c_void,
-    bytes: c_int,
-) -> c_int {
-    rwm_fetch_data_impl(raw, data, bytes)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_skip_data(
-    raw: *mut RawMessage,
-    bytes: c_int,
-) -> c_int {
-    rwm_skip_data_impl(raw, bytes)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_fetch_lookup(
-    raw: *mut RawMessage,
-    buf: *mut c_void,
-    bytes: c_int,
-) -> c_int {
-    rwm_fetch_lookup_impl(raw, buf, bytes)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_fetch_data_back(
-    raw: *mut RawMessage,
-    data: *mut c_void,
-    bytes: c_int,
-) -> c_int {
-    rwm_fetch_data_back_impl(raw, data, bytes)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_fetch_lookup_back(
-    raw: *mut RawMessage,
-    data: *mut c_void,
-    bytes: c_int,
-) -> c_int {
-    rwm_fetch_lookup_back_impl(raw, data, bytes)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_trunc(raw: *mut RawMessage, len: c_int) -> c_int {
-    rwm_trunc_impl(raw, len)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_union(
-    raw: *mut RawMessage,
-    tail: *mut RawMessage,
-) -> c_int {
-    rwm_union_impl(raw, tail)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_split(
-    raw: *mut RawMessage,
-    tail: *mut RawMessage,
-    bytes: c_int,
-) -> c_int {
-    rwm_split_impl(raw, tail, bytes)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_split_head(
-    head: *mut RawMessage,
-    raw: *mut RawMessage,
-    bytes: c_int,
-) -> c_int {
-    rwm_split_head_impl(head, raw, bytes)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_prepend_alloc(
-    raw: *mut RawMessage,
-    alloc_bytes: c_int,
-) -> *mut c_void {
-    rwm_prepend_alloc_impl(raw, alloc_bytes)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_postpone_alloc(
-    raw: *mut RawMessage,
-    alloc_bytes: c_int,
-) -> *mut c_void {
-    rwm_postpone_alloc_impl(raw, alloc_bytes)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_clean(raw: *mut RawMessage) {
-    rwm_clean_impl(raw)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_clear(raw: *mut RawMessage) {
-    rwm_clear_impl(raw)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_check(raw: *mut RawMessage) -> c_int {
-    rwm_check_impl(raw)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_msg_fork_message_chain(raw: *mut RawMessage) -> c_int {
-    fork_message_chain_impl(raw)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_compare(
-    l: *mut RawMessage,
-    r: *mut RawMessage,
-) -> c_int {
-    rwm_compare_impl(l, r)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_prepare_iovec(
-    raw: *const RawMessage,
-    iov: *mut iovec,
-    iov_len: c_int,
-    bytes: c_int,
-) -> c_int {
-    rwm_prepare_iovec_impl(raw, iov, iov_len, bytes)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_dump_sizes(raw: *mut RawMessage) -> c_int {
-    rwm_dump_sizes_impl(raw)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_dump(raw: *mut RawMessage) -> c_int {
-    rwm_dump_impl(raw)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_crc32c(raw: *mut RawMessage, bytes: c_int) -> u32 {
-    rwm_crc32c_impl(raw, bytes)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_crc32(raw: *mut RawMessage, bytes: c_int) -> u32 {
-    rwm_crc32_impl(raw, bytes)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_custom_crc32(
-    raw: *mut RawMessage,
-    bytes: c_int,
-    custom_crc32_partial: Crc32PartialFunc,
-) -> u32 {
-    rwm_custom_crc32_impl(raw, bytes, custom_crc32_partial)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_process(
-    raw: *mut RawMessage,
-    bytes: c_int,
-    process_block: ProcessBlockFn,
-    extra: *mut c_void,
-) -> c_int {
-    rwm_process_ex_impl(raw, bytes, 0, 0, process_block, extra)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_process_ex(
-    raw: *mut RawMessage,
-    bytes: c_int,
-    offset: c_int,
-    flags: c_int,
-    process_block: ProcessBlockFn,
-    extra: *mut c_void,
-) -> c_int {
-    rwm_process_ex_impl(raw, bytes, offset, flags, process_block, extra)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_process_from_offset(
-    raw: *mut RawMessage,
-    bytes: c_int,
-    offset: c_int,
-    process_block: ProcessBlockFn,
-    extra: *mut c_void,
-) -> c_int {
-    rwm_process_ex_impl(raw, bytes, offset, 0, process_block, extra)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_transform_from_offset(
-    raw: *mut RawMessage,
-    bytes: c_int,
-    offset: c_int,
-    transform_block: TransformBlockFn,
-    extra: *mut c_void,
-) -> c_int {
-    let process_block: ProcessBlockFn = core::mem::transmute(transform_block);
-    rwm_process_ex_impl(raw, bytes, offset, 0, process_block, extra)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_process_and_advance(
-    raw: *mut RawMessage,
-    bytes: c_int,
-    process_block: ProcessBlockFn,
-    extra: *mut c_void,
-) -> c_int {
-    rwm_process_ex_impl(raw, bytes, 0, RMPF_ADVANCE, process_block, extra)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_sha1(
-    raw: *mut RawMessage,
-    bytes: c_int,
-    output: *mut u8,
-) -> c_int {
-    rwm_sha1_impl(raw, bytes, output)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_encrypt_decrypt_to(
-    raw: *mut RawMessage,
-    res: *mut RawMessage,
-    bytes: c_int,
-    ctx: *mut c_void,
-    block_size: c_int,
-) -> c_int {
-    rwm_encrypt_decrypt_to_impl(raw, res, bytes, ctx, block_size)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_get_block_ptr(
-    raw: *mut RawMessage,
-) -> *mut c_void {
-    rwm_get_block_ptr_impl(raw)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_get_block_ptr_bytes(
-    raw: *mut RawMessage,
-) -> c_int {
-    rwm_get_block_ptr_bytes_impl(raw)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_to_tl_string(raw: *mut RawMessage) {
-    rwm_to_tl_string_impl(raw)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_from_tl_string(raw: *mut RawMessage) {
-    rwm_from_tl_string_impl(raw)
-}

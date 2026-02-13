@@ -4,7 +4,7 @@
 //! The main kprintf() function with varargs remains in C for ABI compatibility,
 //! but all other utilities are fully ported to Rust.
 
-use super::*;
+use crate::*;
 
 unsafe extern "C" {
     fn write(fd: c_int, buf: *const c_void, count: usize) -> isize;

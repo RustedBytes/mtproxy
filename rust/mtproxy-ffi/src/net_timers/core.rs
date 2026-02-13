@@ -1,6 +1,6 @@
 //! Rust runtime implementation of `net/net-timers.c`.
 
-use super::*;
+use crate::*;
 use core::ffi::{c_char, c_double, c_int, c_void};
 use core::ptr;
 use core::sync::atomic::{AtomicI32, AtomicI64, Ordering};

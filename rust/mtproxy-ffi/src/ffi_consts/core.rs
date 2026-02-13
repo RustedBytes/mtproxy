@@ -1,4 +1,4 @@
-use super::*;
+use crate::*;
 
 pub(crate) const PID_LOCALHOST_IP: u32 = 0x7f00_0001;
 pub(crate) const CPUID_MAGIC: i32 = 0x2801_47b8;

@@ -1,72 +1,72 @@
 //! Rust runtime implementation for `net/net-events.c`.
 
-use super::*;
+use crate::*;
 use core::ffi::{c_char, c_double, c_int, c_longlong, c_uint, c_void};
 use core::ptr;
 use std::net::Ipv6Addr;
 
-const MAX_EVENTS: usize = 1 << 19;
+pub(super) const MAX_EVENTS: usize = 1 << 19;
 
-const EVT_READ: c_int = 4;
-const EVT_WRITE: c_int = 2;
-const EVT_SPEC: c_int = 1;
-const EVT_RWX: c_int = EVT_READ | EVT_WRITE | EVT_SPEC;
-const EVT_LEVEL: c_int = 8;
-const EVT_CLOSED: c_int = 0x40;
-const EVT_IN_EPOLL: c_int = 0x20;
-const EVT_NEW: c_int = 0x100;
-const EVT_NOHUP: c_int = 0x200;
-const EVT_FROM_EPOLL: c_int = 0x400;
+pub(super) const EVT_READ: c_int = 4;
+pub(super) const EVT_WRITE: c_int = 2;
+pub(super) const EVT_SPEC: c_int = 1;
+pub(super) const EVT_RWX: c_int = EVT_READ | EVT_WRITE | EVT_SPEC;
+pub(super) const EVT_LEVEL: c_int = 8;
+pub(super) const EVT_CLOSED: c_int = 0x40;
+pub(super) const EVT_IN_EPOLL: c_int = 0x20;
+pub(super) const EVT_NEW: c_int = 0x100;
+pub(super) const EVT_NOHUP: c_int = 0x200;
+pub(super) const EVT_FROM_EPOLL: c_int = 0x400;
 
-const EVA_CONTINUE: c_int = 0;
-const EVA_RERUN: c_int = -2;
-const EVA_REMOVE: c_int = -3;
-const EVA_DESTROY: c_int = -5;
-const EVA_ERROR: c_int = -8;
-const EVA_FATAL: c_int = -666;
+pub(super) const EVA_CONTINUE: c_int = 0;
+pub(super) const EVA_RERUN: c_int = -2;
+pub(super) const EVA_REMOVE: c_int = -3;
+pub(super) const EVA_DESTROY: c_int = -5;
+pub(super) const EVA_ERROR: c_int = -8;
+pub(super) const EVA_FATAL: c_int = -666;
 
-const MAX_UDP_SENDBUF_SIZE: c_int = 1 << 24;
-const MAX_UDP_RCVBUF_SIZE: c_int = 1 << 24;
+pub(super) const MAX_UDP_SENDBUF_SIZE: c_int = 1 << 24;
+pub(super) const MAX_UDP_RCVBUF_SIZE: c_int = 1 << 24;
 
-const SM_UDP: c_int = 1;
-const SM_IPV6: c_int = 2;
-const SM_IPV6_ONLY: c_int = 4;
-const SM_REUSE: c_int = 16;
+pub(super) const SM_UDP: c_int = 1;
+pub(super) const SM_IPV6: c_int = 2;
+pub(super) const SM_IPV6_ONLY: c_int = 4;
+pub(super) const SM_REUSE: c_int = 16;
 
-const EPOLLIN: u32 = 0x001;
-const EPOLLPRI: u32 = 0x002;
-const EPOLLOUT: u32 = 0x004;
-const EPOLLERR: u32 = 0x008;
-const EPOLLRDHUP: u32 = 0x2000;
-const EPOLLET: u32 = 0x8000_0000;
+pub(super) const EPOLLIN: u32 = 0x001;
+pub(super) const EPOLLPRI: u32 = 0x002;
+pub(super) const EPOLLOUT: u32 = 0x004;
+pub(super) const EPOLLERR: u32 = 0x008;
+pub(super) const EPOLLRDHUP: u32 = 0x2000;
+pub(super) const EPOLLET: u32 = 0x8000_0000;
 
-const IPV6_ADDR_LEN: usize = 16;
-const CONV_ADDR_BUF_LEN: usize = 64;
-const SHOW_BUF_LEN: usize = 256;
-const SHOW_RESET_THRESHOLD: usize = 200;
+pub(super) const IPV6_ADDR_LEN: usize = 16;
+pub(super) const CONV_ADDR_BUF_LEN: usize = 64;
+pub(super) const SHOW_BUF_LEN: usize = 256;
+pub(super) const SHOW_RESET_THRESHOLD: usize = 200;
 
-const IPPROTO_TCP_CONST: c_int = 6;
-const IPV6_V6ONLY_CONST: c_int = 26;
-const TCP_NODELAY_CONST: c_int = 1;
-const TCP_KEEPIDLE_CONST: c_int = 4;
-const TCP_KEEPINTVL_CONST: c_int = 5;
-const TCP_KEEPCNT_CONST: c_int = 6;
-const SOL_IP_CONST: c_int = 0;
-const IP_RECVERR_CONST: c_int = 11;
+pub(super) const IPPROTO_TCP_CONST: c_int = 6;
+pub(super) const IPV6_V6ONLY_CONST: c_int = 26;
+pub(super) const TCP_NODELAY_CONST: c_int = 1;
+pub(super) const TCP_KEEPIDLE_CONST: c_int = 4;
+pub(super) const TCP_KEEPINTVL_CONST: c_int = 5;
+pub(super) const TCP_KEEPCNT_CONST: c_int = 6;
+pub(super) const SOL_IP_CONST: c_int = 0;
+pub(super) const IP_RECVERR_CONST: c_int = 11;
 
-const CSTR_EPOLL_CREATE: &[u8] = b"epoll_create()\0";
-const CSTR_EPOLL_WAIT: &[u8] = b"epoll_wait()\0";
-const CSTR_EPOLL_DEL: &[u8] = b"epoll_ctl(DEL)\0";
-const CSTR_SOCKET: &[u8] = b"socket()\0";
-const CSTR_IPV6_V6ONLY: &[u8] = b"setting IPV6_V6ONLY\0";
-const CSTR_NONBLOCK: &[u8] = b"setting O_NONBLOCK\0";
-const CSTR_BIND: &[u8] = b"bind()\0";
-const CSTR_CONNECT: &[u8] = b"connect()\0";
-const CSTR_GETIFADDRS: &[u8] = b"getifaddrs()\0";
-const CSTR_SO_SNDBUF: &[u8] = b"getsockopt (SO_SNDBUF)\0";
-const CSTR_SO_RCVBUF: &[u8] = b"getsockopt (SO_RCVBUF)\0";
-const CSTR_FATAL: &[u8] = b"fatal\0";
-const CSTR_NONE: &[u8] = b"(none)\0";
+pub(super) const CSTR_EPOLL_CREATE: &[u8] = b"epoll_create()\0";
+pub(super) const CSTR_EPOLL_WAIT: &[u8] = b"epoll_wait()\0";
+pub(super) const CSTR_EPOLL_DEL: &[u8] = b"epoll_ctl(DEL)\0";
+pub(super) const CSTR_SOCKET: &[u8] = b"socket()\0";
+pub(super) const CSTR_IPV6_V6ONLY: &[u8] = b"setting IPV6_V6ONLY\0";
+pub(super) const CSTR_NONBLOCK: &[u8] = b"setting O_NONBLOCK\0";
+pub(super) const CSTR_BIND: &[u8] = b"bind()\0";
+pub(super) const CSTR_CONNECT: &[u8] = b"connect()\0";
+pub(super) const CSTR_GETIFADDRS: &[u8] = b"getifaddrs()\0";
+pub(super) const CSTR_SO_SNDBUF: &[u8] = b"getsockopt (SO_SNDBUF)\0";
+pub(super) const CSTR_SO_RCVBUF: &[u8] = b"getsockopt (SO_RCVBUF)\0";
+pub(super) const CSTR_FATAL: &[u8] = b"fatal\0";
+pub(super) const CSTR_NONE: &[u8] = b"(none)\0";
 
 #[repr(C)]
 pub struct EventDescr {
@@ -85,79 +85,79 @@ pub struct EventDescr {
 }
 
 unsafe extern "C" {
-    static mut Events: [EventDescr; MAX_EVENTS];
-    static mut epoll_fd: c_int;
-    static mut ev_heap_size: c_int;
+    pub(super) static mut Events: [EventDescr; MAX_EVENTS];
+    pub(super) static mut epoll_fd: c_int;
+    pub(super) static mut ev_heap_size: c_int;
 
-    static mut tot_idle_time: c_double;
-    static mut a_idle_time: c_double;
-    static mut a_idle_quotient: c_double;
+    pub(super) static mut tot_idle_time: c_double;
+    pub(super) static mut a_idle_time: c_double;
+    pub(super) static mut a_idle_quotient: c_double;
 
-    static mut main_thread_interrupt_status: c_int;
-    static mut epoll_calls: c_longlong;
-    static mut epoll_intr: c_longlong;
+    pub(super) static mut main_thread_interrupt_status: c_int;
+    pub(super) static mut epoll_calls: c_longlong;
+    pub(super) static mut epoll_intr: c_longlong;
 
-    static mut last_epoll_wait_at: c_double;
-    static mut epoll_sleep_ns: c_int;
+    pub(super) static mut last_epoll_wait_at: c_double;
+    pub(super) static mut epoll_sleep_ns: c_int;
 
-    static mut tcp_maximize_buffers: c_int;
+    pub(super) static mut tcp_maximize_buffers: c_int;
 
-    fn signal_check_pending(sig: c_int) -> c_int;
-    fn thread_run_timers() -> c_int;
-    fn jobs_check_all_timers();
-    fn get_utime_monotonic() -> c_double;
+    pub(super) fn signal_check_pending(sig: c_int) -> c_int;
+    pub(super) fn thread_run_timers() -> c_int;
+    pub(super) fn jobs_check_all_timers();
+    pub(super) fn get_utime_monotonic() -> c_double;
 
-    fn mtproxy_ffi_net_events_now_set(value: c_int);
-    fn mtproxy_ffi_net_events_engine_settings_addr() -> u32;
+    pub(super) fn mtproxy_ffi_net_events_now_set(value: c_int);
+    pub(super) fn mtproxy_ffi_net_events_engine_settings_addr() -> u32;
 }
 
-static mut EV_TIMESTAMP: c_longlong = 0;
-static mut EV_HEAP: [*mut EventDescr; MAX_EVENTS + 1] = [ptr::null_mut(); MAX_EVENTS + 1];
-static mut NEW_EV_LIST: [libc::epoll_event; MAX_EVENTS] =
+pub(super) static mut EV_TIMESTAMP: c_longlong = 0;
+pub(super) static mut EV_HEAP: [*mut EventDescr; MAX_EVENTS + 1] = [ptr::null_mut(); MAX_EVENTS + 1];
+pub(super) static mut NEW_EV_LIST: [libc::epoll_event; MAX_EVENTS] =
     [libc::epoll_event { events: 0, u64: 0 }; MAX_EVENTS];
 
-static mut CONV_ADDR_BUFFER: [c_char; CONV_ADDR_BUF_LEN] = [0; CONV_ADDR_BUF_LEN];
-static mut CONV_ADDR6_BUFFER: [c_char; CONV_ADDR_BUF_LEN] = [0; CONV_ADDR_BUF_LEN];
-static mut SHOW_IP_BUFFER: [c_char; SHOW_BUF_LEN] = [0; SHOW_BUF_LEN];
-static mut SHOW_IPV6_BUFFER: [c_char; SHOW_BUF_LEN] = [0; SHOW_BUF_LEN];
-static mut SHOW_IP_OFFSET: usize = 0;
-static mut SHOW_IPV6_OFFSET: usize = 0;
-static mut PREV_NOW: c_int = 0;
+pub(super) static mut CONV_ADDR_BUFFER: [c_char; CONV_ADDR_BUF_LEN] = [0; CONV_ADDR_BUF_LEN];
+pub(super) static mut CONV_ADDR6_BUFFER: [c_char; CONV_ADDR_BUF_LEN] = [0; CONV_ADDR_BUF_LEN];
+pub(super) static mut SHOW_IP_BUFFER: [c_char; SHOW_BUF_LEN] = [0; SHOW_BUF_LEN];
+pub(super) static mut SHOW_IPV6_BUFFER: [c_char; SHOW_BUF_LEN] = [0; SHOW_BUF_LEN];
+pub(super) static mut SHOW_IP_OFFSET: usize = 0;
+pub(super) static mut SHOW_IPV6_OFFSET: usize = 0;
+pub(super) static mut PREV_NOW: c_int = 0;
 
 #[inline]
-fn i32_to_u32_bits(value: c_int) -> u32 {
+pub(super) fn i32_to_u32_bits(value: c_int) -> u32 {
     u32::from_ne_bytes(value.to_ne_bytes())
 }
 
 #[inline]
-fn u32_to_i32_bits(value: u32) -> c_int {
+pub(super) fn u32_to_i32_bits(value: u32) -> c_int {
     i32::from_ne_bytes(value.to_ne_bytes())
 }
 
 #[inline]
-unsafe fn event_ptr(fd: c_int) -> *mut EventDescr {
+pub(super) unsafe fn event_ptr(fd: c_int) -> *mut EventDescr {
     ptr::addr_of_mut!(Events)
         .cast::<EventDescr>()
         .add(usize::try_from(fd).unwrap_or(0))
 }
 
 #[inline]
-unsafe fn c_errno() -> c_int {
+pub(super) unsafe fn c_errno() -> c_int {
     *libc::__errno_location()
 }
 
 #[inline]
-unsafe fn perror(msg: &[u8]) {
+pub(super) unsafe fn perror(msg: &[u8]) {
     libc::perror(msg.as_ptr().cast());
 }
 
 #[inline]
-unsafe fn term_signal_received() -> bool {
+pub(super) unsafe fn term_signal_received() -> bool {
     signal_check_pending(libc::SIGINT) != 0 || signal_check_pending(libc::SIGTERM) != 0
 }
 
 #[inline]
-fn epoll_conv_flags_local(flags: c_int) -> c_int {
+pub(super) fn epoll_conv_flags_local(flags: c_int) -> c_int {
     if flags == 0 {
         return 0;
     }
@@ -182,7 +182,7 @@ fn epoll_conv_flags_local(flags: c_int) -> c_int {
 }
 
 #[inline]
-fn epoll_unconv_flags_local(epoll_flags: c_int) -> c_int {
+pub(super) fn epoll_unconv_flags_local(epoll_flags: c_int) -> c_int {
     let flags_u = i32_to_u32_bits(epoll_flags);
     let mut out = i32_to_u32_bits(EVT_FROM_EPOLL);
 
@@ -199,7 +199,7 @@ fn epoll_unconv_flags_local(epoll_flags: c_int) -> c_int {
     u32_to_i32_bits(out)
 }
 
-unsafe fn greater_ev(ev1: *mut EventDescr, ev2: *mut EventDescr) -> c_int {
+pub(super) unsafe fn greater_ev(ev1: *mut EventDescr, ev2: *mut EventDescr) -> c_int {
     let x = (*ev1).priority - (*ev2).priority;
     if x != 0 {
         x
@@ -210,7 +210,7 @@ unsafe fn greater_ev(ev1: *mut EventDescr, ev2: *mut EventDescr) -> c_int {
     }
 }
 
-unsafe fn pop_heap_head() -> *mut EventDescr {
+pub(super) unsafe fn pop_heap_head() -> *mut EventDescr {
     let mut n = ev_heap_size;
     if n == 0 {
         return ptr::null_mut();
@@ -257,7 +257,7 @@ unsafe fn pop_heap_head() -> *mut EventDescr {
     ev
 }
 
-unsafe fn remove_event_from_heap_impl(ev: *mut EventDescr, allow_hole: bool) -> c_int {
+pub(super) unsafe fn remove_event_from_heap_impl(ev: *mut EventDescr, allow_hole: bool) -> c_int {
     let v = (*ev).fd;
     let n = ev_heap_size;
     assert!(v >= 0 && usize::try_from(v).unwrap_or(MAX_EVENTS) < MAX_EVENTS);
@@ -315,7 +315,7 @@ unsafe fn remove_event_from_heap_impl(ev: *mut EventDescr, allow_hole: bool) -> 
     n
 }
 
-unsafe fn put_event_into_heap_impl(ev: *mut EventDescr) -> c_int {
+pub(super) unsafe fn put_event_into_heap_impl(ev: *mut EventDescr) -> c_int {
     let v = (*ev).fd;
     assert!(v >= 0 && usize::try_from(v).unwrap_or(MAX_EVENTS) < MAX_EVENTS);
     assert_eq!(event_ptr(v), ev);
@@ -345,7 +345,7 @@ unsafe fn put_event_into_heap_impl(ev: *mut EventDescr) -> c_int {
     i
 }
 
-unsafe fn reset_event_if_needed(fd: c_int) -> *mut EventDescr {
+pub(super) unsafe fn reset_event_if_needed(fd: c_int) -> *mut EventDescr {
     let ev = event_ptr(fd);
     if (*ev).fd != fd {
         ptr::write_bytes(ev.cast::<u8>(), 0, core::mem::size_of::<EventDescr>());
@@ -354,7 +354,7 @@ unsafe fn reset_event_if_needed(fd: c_int) -> *mut EventDescr {
     ev
 }
 
-unsafe fn epoll_remove_impl(fd: c_int) -> c_int {
+pub(super) unsafe fn epoll_remove_impl(fd: c_int) -> c_int {
     assert!(fd >= 0 && usize::try_from(fd).unwrap_or(MAX_EVENTS) < MAX_EVENTS);
 
     let ev = event_ptr(fd);
@@ -383,7 +383,7 @@ unsafe fn epoll_remove_impl(fd: c_int) -> c_int {
     0
 }
 
-unsafe fn epoll_insert_impl(fd: c_int, flags: c_int) -> c_int {
+pub(super) unsafe fn epoll_insert_impl(fd: c_int, flags: c_int) -> c_int {
     if flags == 0 {
         return epoll_remove_impl(fd);
     }
@@ -445,7 +445,7 @@ unsafe fn epoll_insert_impl(fd: c_int, flags: c_int) -> c_int {
     0
 }
 
-unsafe fn epoll_runqueue_impl() -> c_int {
+pub(super) unsafe fn epoll_runqueue_impl() -> c_int {
     if ev_heap_size == 0 {
         return 0;
     }
@@ -507,7 +507,7 @@ unsafe fn epoll_runqueue_impl() -> c_int {
     cnt
 }
 
-unsafe fn epoll_fetch_events_impl(timeout: c_int) -> c_int {
+pub(super) unsafe fn epoll_fetch_events_impl(timeout: c_int) -> c_int {
     epoll_calls += 1;
 
     main_thread_interrupt_status = 1;
@@ -561,13 +561,13 @@ unsafe fn epoll_fetch_events_impl(timeout: c_int) -> c_int {
     res
 }
 
-unsafe fn set_now_from_time() -> c_int {
+pub(super) unsafe fn set_now_from_time() -> c_int {
     let current = libc::time(ptr::null_mut()) as c_int;
     mtproxy_ffi_net_events_now_set(current);
     current
 }
 
-unsafe fn new_socket_impl(mode: c_int, nonblock: c_int) -> c_int {
+pub(super) unsafe fn new_socket_impl(mode: c_int, nonblock: c_int) -> c_int {
     let domain = if (mode & SM_IPV6) != 0 {
         libc::AF_INET6
     } else {
@@ -615,7 +615,7 @@ unsafe fn new_socket_impl(mode: c_int, nonblock: c_int) -> c_int {
     socket_fd
 }
 
-unsafe fn maximize_buf_impl(
+pub(super) unsafe fn maximize_buf_impl(
     socket_fd: c_int,
     mut max: c_int,
     optname: c_int,
@@ -673,7 +673,7 @@ unsafe fn maximize_buf_impl(
     }
 }
 
-unsafe fn maximize_sndbuf_impl(socket_fd: c_int, max: c_int) {
+pub(super) unsafe fn maximize_sndbuf_impl(socket_fd: c_int, max: c_int) {
     maximize_buf_impl(
         socket_fd,
         max,
@@ -684,7 +684,7 @@ unsafe fn maximize_sndbuf_impl(socket_fd: c_int, max: c_int) {
     );
 }
 
-unsafe fn maximize_rcvbuf_impl(socket_fd: c_int, max: c_int) {
+pub(super) unsafe fn maximize_rcvbuf_impl(socket_fd: c_int, max: c_int) {
     maximize_buf_impl(
         socket_fd,
         max,
@@ -695,7 +695,7 @@ unsafe fn maximize_rcvbuf_impl(socket_fd: c_int, max: c_int) {
     );
 }
 
-unsafe fn server_socket_impl(
+pub(super) unsafe fn server_socket_impl(
     port: c_int,
     in_addr: libc::in_addr,
     backlog: c_int,
@@ -833,7 +833,7 @@ unsafe fn server_socket_impl(
     socket_fd
 }
 
-unsafe fn client_socket_impl(in_addr: libc::in_addr_t, port: c_int, mode: c_int) -> c_int {
+pub(super) unsafe fn client_socket_impl(in_addr: libc::in_addr_t, port: c_int, mode: c_int) -> c_int {
     if (mode & SM_IPV6) != 0 {
         return -1;
     }
@@ -953,7 +953,7 @@ unsafe fn client_socket_impl(in_addr: libc::in_addr_t, port: c_int, mode: c_int)
     socket_fd
 }
 
-unsafe fn client_socket_ipv6_impl(in6_addr_ptr: *const u8, port: c_int, mode: c_int) -> c_int {
+pub(super) unsafe fn client_socket_ipv6_impl(in6_addr_ptr: *const u8, port: c_int, mode: c_int) -> c_int {
     if (mode & SM_IPV6) == 0 {
         return -1;
     }
@@ -1030,7 +1030,7 @@ unsafe fn client_socket_ipv6_impl(in6_addr_ptr: *const u8, port: c_int, mode: c_
     socket_fd
 }
 
-unsafe fn iface_starts_with_lo(name: *const c_char) -> bool {
+pub(super) unsafe fn iface_starts_with_lo(name: *const c_char) -> bool {
     if name.is_null() {
         return false;
     }
@@ -1039,7 +1039,7 @@ unsafe fn iface_starts_with_lo(name: *const c_char) -> bool {
     b0 == b'l' && b1 == b'o'
 }
 
-unsafe fn get_my_ipv4_impl() -> c_uint {
+pub(super) unsafe fn get_my_ipv4_impl() -> c_uint {
     let mut ifa_first: *mut libc::ifaddrs = ptr::null_mut();
     if libc::getifaddrs(ptr::addr_of_mut!(ifa_first)) < 0 {
         perror(CSTR_GETIFADDRS);
@@ -1107,7 +1107,7 @@ unsafe fn get_my_ipv4_impl() -> c_uint {
     my_ip
 }
 
-unsafe fn get_my_ipv6_impl(ipv6_out: *mut u8) -> c_int {
+pub(super) unsafe fn get_my_ipv6_impl(ipv6_out: *mut u8) -> c_int {
     if ipv6_out.is_null() {
         return 0;
     }
@@ -1222,7 +1222,7 @@ unsafe fn get_my_ipv6_impl(ipv6_out: *mut u8) -> c_int {
     1
 }
 
-unsafe fn copy_str_to_buffer(dst: *mut c_char, dst_len: usize, text: &str) -> usize {
+pub(super) unsafe fn copy_str_to_buffer(dst: *mut c_char, dst_len: usize, text: &str) -> usize {
     if dst.is_null() || dst_len == 0 {
         return 0;
     }
@@ -1234,7 +1234,7 @@ unsafe fn copy_str_to_buffer(dst: *mut c_char, dst_len: usize, text: &str) -> us
     copy_len
 }
 
-unsafe fn format_ipv6(addr: *const u8) -> String {
+pub(super) unsafe fn format_ipv6(addr: *const u8) -> String {
     if addr.is_null() {
         return String::new();
     }
@@ -1243,7 +1243,7 @@ unsafe fn format_ipv6(addr: *const u8) -> String {
     Ipv6Addr::from(bytes).to_string()
 }
 
-unsafe fn conv_addr_impl(a: c_uint, mut buf: *mut c_char) -> *const c_char {
+pub(super) unsafe fn conv_addr_impl(a: c_uint, mut buf: *mut c_char) -> *const c_char {
     if buf.is_null() {
         buf = ptr::addr_of_mut!(CONV_ADDR_BUFFER).cast();
     }
@@ -1259,7 +1259,7 @@ unsafe fn conv_addr_impl(a: c_uint, mut buf: *mut c_char) -> *const c_char {
     buf.cast()
 }
 
-unsafe fn conv_addr6_impl(a: *const u8, mut buf: *mut c_char) -> *const c_char {
+pub(super) unsafe fn conv_addr6_impl(a: *const u8, mut buf: *mut c_char) -> *const c_char {
     if buf.is_null() {
         buf = ptr::addr_of_mut!(CONV_ADDR6_BUFFER).cast();
     }
@@ -1269,7 +1269,7 @@ unsafe fn conv_addr6_impl(a: *const u8, mut buf: *mut c_char) -> *const c_char {
     buf.cast()
 }
 
-unsafe fn show_ip_impl(ip: c_uint) -> *const c_char {
+pub(super) unsafe fn show_ip_impl(ip: c_uint) -> *const c_char {
     if SHOW_IP_OFFSET > SHOW_RESET_THRESHOLD {
         SHOW_IP_OFFSET = 0;
     }
@@ -1291,7 +1291,7 @@ unsafe fn show_ip_impl(ip: c_uint) -> *const c_char {
     res.cast()
 }
 
-unsafe fn show_ipv6_impl(ipv6: *const u8) -> *const c_char {
+pub(super) unsafe fn show_ipv6_impl(ipv6: *const u8) -> *const c_char {
     if SHOW_IPV6_OFFSET > SHOW_RESET_THRESHOLD {
         SHOW_IPV6_OFFSET = 0;
     }
@@ -1307,220 +1307,3 @@ unsafe fn show_ipv6_impl(ipv6: *const u8) -> *const c_char {
     res.cast()
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_events_init_epoll() -> c_int {
-    if epoll_fd != 0 {
-        return 0;
-    }
-
-    (*event_ptr(0)).fd = -1;
-
-    let fd = libc::epoll_create(c_int::try_from(MAX_EVENTS).unwrap_or(c_int::MAX));
-    if fd < 0 {
-        perror(CSTR_EPOLL_CREATE);
-        return -1;
-    }
-
-    epoll_fd = fd;
-    fd
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_events_remove_event_from_heap(
-    ev: *mut EventDescr,
-    allow_hole: c_int,
-) -> c_int {
-    if ev.is_null() {
-        return 0;
-    }
-    remove_event_from_heap_impl(ev, allow_hole != 0)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_events_put_event_into_heap(ev: *mut EventDescr) -> c_int {
-    if ev.is_null() {
-        return 0;
-    }
-    put_event_into_heap_impl(ev)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_events_put_event_into_heap_tail(
-    ev: *mut EventDescr,
-    ts_delta: c_int,
-) -> c_int {
-    if ev.is_null() {
-        return 0;
-    }
-
-    (*ev).timestamp = EV_TIMESTAMP + c_longlong::from(ts_delta);
-    put_event_into_heap_impl(ev)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_events_epoll_sethandler(
-    fd: c_int,
-    prio: c_int,
-    handler: Option<unsafe extern "C" fn(c_int, *mut c_void, *mut EventDescr) -> c_int>,
-    data: *mut c_void,
-) -> c_int {
-    assert!(fd >= 0 && usize::try_from(fd).unwrap_or(MAX_EVENTS) < MAX_EVENTS);
-
-    let ev = reset_event_if_needed(fd);
-    assert_eq!((*ev).refcnt, 0);
-    (*ev).refcnt = (*ev).refcnt.saturating_add(1);
-    (*ev).priority = prio;
-    (*ev).data = data;
-    (*ev).work = handler;
-    0
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_events_epoll_insert(fd: c_int, flags: c_int) -> c_int {
-    epoll_insert_impl(fd, flags)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_events_epoll_remove(fd: c_int) -> c_int {
-    epoll_remove_impl(fd)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_events_epoll_close(fd: c_int) -> c_int {
-    assert!(fd >= 0 && usize::try_from(fd).unwrap_or(MAX_EVENTS) < MAX_EVENTS);
-
-    let ev = event_ptr(fd);
-    if (*ev).fd != fd {
-        return -1;
-    }
-
-    let _ = epoll_remove_impl(fd);
-    if (*ev).in_queue != 0 {
-        let _ = remove_event_from_heap_impl(ev, false);
-    }
-    ptr::write_bytes(ev.cast::<u8>(), 0, core::mem::size_of::<EventDescr>());
-    (*ev).fd = -1;
-    0
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_events_epoll_fetch_events(timeout: c_int) -> c_int {
-    epoll_fetch_events_impl(timeout)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_events_epoll_work(_timeout: c_int) -> c_int {
-    let _ = set_now_from_time();
-    let _ = get_utime_monotonic();
-
-    loop {
-        let _ = epoll_runqueue_impl();
-        let timeout2 = thread_run_timers();
-
-        if !((timeout2 <= 0 || ev_heap_size != 0) && !term_signal_received()) {
-            break;
-        }
-    }
-
-    if term_signal_received() {
-        return 0;
-    }
-
-    let epoll_wait_start = get_utime_monotonic();
-    let _ = epoll_fetch_events_impl(1);
-
-    last_epoll_wait_at = get_utime_monotonic();
-    let epoll_wait_time = last_epoll_wait_at - epoll_wait_start;
-    tot_idle_time += epoll_wait_time;
-    a_idle_time += epoll_wait_time;
-
-    let current_now = set_now_from_time();
-    if current_now > PREV_NOW && current_now < PREV_NOW + 60 {
-        while PREV_NOW < current_now {
-            a_idle_time *= 100.0 / 101.0;
-            a_idle_quotient = a_idle_quotient * (100.0 / 101.0) + 1.0;
-            PREV_NOW += 1;
-        }
-    } else {
-        PREV_NOW = current_now;
-    }
-
-    let _ = thread_run_timers();
-    jobs_check_all_timers();
-
-    epoll_runqueue_impl()
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_events_maximize_sndbuf(socket_fd: c_int, max: c_int) {
-    maximize_sndbuf_impl(socket_fd, max);
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_events_maximize_rcvbuf(socket_fd: c_int, max: c_int) {
-    maximize_rcvbuf_impl(socket_fd, max);
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_events_server_socket(
-    port: c_int,
-    in_addr: libc::in_addr,
-    backlog: c_int,
-    mode: c_int,
-) -> c_int {
-    server_socket_impl(port, in_addr, backlog, mode)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_events_client_socket(
-    in_addr: libc::in_addr_t,
-    port: c_int,
-    mode: c_int,
-) -> c_int {
-    client_socket_impl(in_addr, port, mode)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_events_client_socket_ipv6(
-    in6_addr_ptr: *const u8,
-    port: c_int,
-    mode: c_int,
-) -> c_int {
-    client_socket_ipv6_impl(in6_addr_ptr, port, mode)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_events_get_my_ipv4() -> c_uint {
-    get_my_ipv4_impl()
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_events_get_my_ipv6(ipv6: *mut u8) -> c_int {
-    get_my_ipv6_impl(ipv6)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_events_conv_addr(
-    a: c_uint,
-    buf: *mut c_char,
-) -> *const c_char {
-    conv_addr_impl(a, buf)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_events_conv_addr6(
-    a: *const u8,
-    buf: *mut c_char,
-) -> *const c_char {
-    conv_addr6_impl(a, buf)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_events_show_ip(ip: c_uint) -> *const c_char {
-    show_ip_impl(ip)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_events_show_ipv6(ipv6: *const u8) -> *const c_char {
-    show_ipv6_impl(ipv6)
-}

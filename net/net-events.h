@@ -91,14 +91,11 @@ int init_epoll(void);
 
 int remove_event_from_heap(event_t *ev, int allow_hole);
 int put_event_into_heap(event_t *ev);
-int put_event_into_heap_tail(event_t *ev, int ts_delta);
 
 int epoll_sethandler(int fd, int prio, event_handler_t handler, void *data);
-int epoll_fetch_events(int timeout);
 int epoll_work(int timeout);
 int epoll_insert(int fd, int flags);
 int epoll_remove(int fd);
-int epoll_close(int fd);
 
 extern int epoll_fd;
 
@@ -151,9 +148,7 @@ static inline void set_4in6(unsigned char ipv6[16], unsigned ip) {
   ((unsigned *)ipv6)[3] = ip;
 }
 
-const char *conv_addr(in_addr_t a, char *buf);
 const char *show_ip(unsigned ip);
-const char *conv_addr6(const unsigned char a[16], char *buf);
 const char *show_ipv6(const unsigned char ipv6[16]);
 
 extern int epoll_sleep_ns;

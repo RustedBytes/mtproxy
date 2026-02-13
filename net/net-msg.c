@@ -70,16 +70,10 @@ extern int32_t mtproxy_ffi_net_msg_rwm_fetch_lookup(struct raw_message *raw,
 extern int32_t mtproxy_ffi_net_msg_rwm_fetch_data_back(struct raw_message *raw,
                                                        void *data,
                                                        int32_t bytes);
-extern int32_t
-mtproxy_ffi_net_msg_rwm_fetch_lookup_back(struct raw_message *raw, void *data,
-                                          int32_t bytes);
 extern int32_t mtproxy_ffi_net_msg_rwm_trunc(struct raw_message *raw,
                                              int32_t len);
 extern int32_t mtproxy_ffi_net_msg_rwm_union(struct raw_message *raw,
                                              struct raw_message *tail);
-extern int32_t mtproxy_ffi_net_msg_rwm_split(struct raw_message *raw,
-                                             struct raw_message *tail,
-                                             int32_t bytes);
 extern int32_t mtproxy_ffi_net_msg_rwm_split_head(struct raw_message *head,
                                                   struct raw_message *raw,
                                                   int32_t bytes);
@@ -87,22 +81,11 @@ extern void *mtproxy_ffi_net_msg_rwm_prepend_alloc(struct raw_message *raw,
                                                    int32_t alloc_bytes);
 extern void *mtproxy_ffi_net_msg_rwm_postpone_alloc(struct raw_message *raw,
                                                     int32_t alloc_bytes);
-extern void mtproxy_ffi_net_msg_rwm_clean(struct raw_message *raw);
-extern void mtproxy_ffi_net_msg_rwm_clear(struct raw_message *raw);
-extern int32_t mtproxy_ffi_net_msg_rwm_check(struct raw_message *raw);
-extern int32_t mtproxy_ffi_net_msg_fork_message_chain(struct raw_message *raw);
-extern int32_t mtproxy_ffi_net_msg_rwm_compare(struct raw_message *l,
-                                               struct raw_message *r);
 extern int32_t
 mtproxy_ffi_net_msg_rwm_prepare_iovec(const struct raw_message *raw,
                                       struct iovec *iov, int32_t iov_len,
                                       int32_t bytes);
-extern int32_t mtproxy_ffi_net_msg_rwm_dump_sizes(struct raw_message *raw);
 extern int32_t mtproxy_ffi_net_msg_rwm_dump(struct raw_message *raw);
-extern uint32_t mtproxy_ffi_net_msg_rwm_crc32c(struct raw_message *raw,
-                                               int32_t bytes);
-extern uint32_t mtproxy_ffi_net_msg_rwm_crc32(struct raw_message *raw,
-                                              int32_t bytes);
 extern uint32_t mtproxy_ffi_net_msg_rwm_custom_crc32(
     struct raw_message *raw, int32_t bytes,
     unsigned (*custom_crc32_partial)(const void *data, long len, unsigned crc));
@@ -135,8 +118,6 @@ extern int32_t mtproxy_ffi_net_msg_rwm_encrypt_decrypt_to(
 extern void *mtproxy_ffi_net_msg_rwm_get_block_ptr(struct raw_message *raw);
 extern int32_t
 mtproxy_ffi_net_msg_rwm_get_block_ptr_bytes(struct raw_message *raw);
-extern void mtproxy_ffi_net_msg_rwm_to_tl_string(struct raw_message *raw);
-extern void mtproxy_ffi_net_msg_rwm_from_tl_string(struct raw_message *raw);
 
 int raw_msg_prepare_stat(stats_buffer_t *sb) {
   int32_t total_msgs = 0;
@@ -207,20 +188,12 @@ int rwm_fetch_data_back(struct raw_message *raw, void *data, int bytes) {
   return mtproxy_ffi_net_msg_rwm_fetch_data_back(raw, data, bytes);
 }
 
-int rwm_fetch_lookup_back(struct raw_message *raw, void *data, int bytes) {
-  return mtproxy_ffi_net_msg_rwm_fetch_lookup_back(raw, data, bytes);
-}
-
 int rwm_trunc(struct raw_message *raw, int len) {
   return mtproxy_ffi_net_msg_rwm_trunc(raw, len);
 }
 
 int rwm_union(struct raw_message *raw, struct raw_message *tail) {
   return mtproxy_ffi_net_msg_rwm_union(raw, tail);
-}
-
-int rwm_split(struct raw_message *raw, struct raw_message *tail, int bytes) {
-  return mtproxy_ffi_net_msg_rwm_split(raw, tail, bytes);
 }
 
 int rwm_split_head(struct raw_message *head, struct raw_message *raw,
@@ -236,41 +209,13 @@ void *rwm_postpone_alloc(struct raw_message *raw, int alloc_bytes) {
   return mtproxy_ffi_net_msg_rwm_postpone_alloc(raw, alloc_bytes);
 }
 
-void rwm_clean(struct raw_message *raw) { mtproxy_ffi_net_msg_rwm_clean(raw); }
-
-void rwm_clear(struct raw_message *raw) { mtproxy_ffi_net_msg_rwm_clear(raw); }
-
-int rwm_check(struct raw_message *raw) {
-  return mtproxy_ffi_net_msg_rwm_check(raw);
-}
-
-int fork_message_chain(struct raw_message *raw) {
-  return mtproxy_ffi_net_msg_fork_message_chain(raw);
-}
-
-int rwm_compare(struct raw_message *l, struct raw_message *r) {
-  return mtproxy_ffi_net_msg_rwm_compare(l, r);
-}
-
 int rwm_prepare_iovec(const struct raw_message *raw, struct iovec *iov,
                       int iov_len, int bytes) {
   return mtproxy_ffi_net_msg_rwm_prepare_iovec(raw, iov, iov_len, bytes);
 }
 
-int rwm_dump_sizes(struct raw_message *raw) {
-  return mtproxy_ffi_net_msg_rwm_dump_sizes(raw);
-}
-
 int rwm_dump(struct raw_message *raw) {
   return mtproxy_ffi_net_msg_rwm_dump(raw);
-}
-
-unsigned rwm_crc32c(struct raw_message *raw, int bytes) {
-  return mtproxy_ffi_net_msg_rwm_crc32c(raw, bytes);
-}
-
-unsigned rwm_crc32(struct raw_message *raw, int bytes) {
-  return mtproxy_ffi_net_msg_rwm_crc32(raw, bytes);
 }
 
 unsigned rwm_custom_crc32(struct raw_message *raw, int bytes,
@@ -332,12 +277,4 @@ void *rwm_get_block_ptr(struct raw_message *raw) {
 
 int rwm_get_block_ptr_bytes(struct raw_message *raw) {
   return mtproxy_ffi_net_msg_rwm_get_block_ptr_bytes(raw);
-}
-
-void rwm_to_tl_string(struct raw_message *raw) {
-  mtproxy_ffi_net_msg_rwm_to_tl_string(raw);
-}
-
-void rwm_from_tl_string(struct raw_message *raw) {
-  mtproxy_ffi_net_msg_rwm_from_tl_string(raw);
 }

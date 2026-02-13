@@ -425,12 +425,9 @@ static inline void connection_decref(connection_job_t C) {
 connection_job_t connection_get_by_fd(int fd);
 connection_job_t connection_get_by_fd_generation(int fd, int generation);
 
-int cpu_server_reader(connection_job_t C);
-int cpu_server_writer(connection_job_t C);
 int cpu_server_read_write(connection_job_t C);
 // int cpu_free_tmp_buffers (connection_job_t C);
 int cpu_server_free_connection(connection_job_t C);
-int cpu_free_connection_buffers(connection_job_t C);
 int cpu_server_close_connection(connection_job_t C, int who);
 
 int net_server_socket_reader(connection_job_t C);
@@ -468,11 +465,7 @@ void assert_engine_thread(void);
 connection_job_t conn_target_get_connection(conn_target_job_t CT,
                                             int allow_stopped);
 
-void insert_connection_into_target(conn_target_job_t SS, connection_job_t C);
-struct tree_connection *get_connection_tree(conn_target_job_t SS);
 // void wakeup_main_thread (void);
-
-void delete_connection_tree_ptr(struct tree_connection *T);
 
 int init_listening_connection_ext(int fd, conn_type_t *type, void *extra,
                                   int mode, int prio);

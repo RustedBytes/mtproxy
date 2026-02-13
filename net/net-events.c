@@ -40,15 +40,11 @@ extern int32_t mtproxy_ffi_net_events_init_epoll(void);
 extern int32_t
 mtproxy_ffi_net_events_remove_event_from_heap(event_t *ev, int32_t allow_hole);
 extern int32_t mtproxy_ffi_net_events_put_event_into_heap(event_t *ev);
-extern int32_t
-mtproxy_ffi_net_events_put_event_into_heap_tail(event_t *ev, int32_t ts_delta);
 extern int32_t mtproxy_ffi_net_events_epoll_sethandler(int32_t fd, int32_t prio,
                                                        event_handler_t handler,
                                                        void *data);
 extern int32_t mtproxy_ffi_net_events_epoll_insert(int32_t fd, int32_t flags);
 extern int32_t mtproxy_ffi_net_events_epoll_remove(int32_t fd);
-extern int32_t mtproxy_ffi_net_events_epoll_close(int32_t fd);
-extern int32_t mtproxy_ffi_net_events_epoll_fetch_events(int32_t timeout);
 extern int32_t mtproxy_ffi_net_events_epoll_work(int32_t timeout);
 
 extern void mtproxy_ffi_net_events_maximize_sndbuf(int32_t socket_fd,
@@ -66,9 +62,6 @@ mtproxy_ffi_net_events_client_socket_ipv6(const unsigned char in6_addr_ptr[16],
                                           int32_t port, int32_t mode);
 extern uint32_t mtproxy_ffi_net_events_get_my_ipv4(void);
 extern int32_t mtproxy_ffi_net_events_get_my_ipv6(unsigned char ipv6[16]);
-extern const char *mtproxy_ffi_net_events_conv_addr(uint32_t a, char *buf);
-extern const char *mtproxy_ffi_net_events_conv_addr6(const unsigned char a[16],
-                                                     char *buf);
 extern const char *mtproxy_ffi_net_events_show_ip(uint32_t ip);
 extern const char *
 mtproxy_ffi_net_events_show_ipv6(const unsigned char ipv6[16]);
@@ -107,10 +100,6 @@ int put_event_into_heap(event_t *ev) {
   return mtproxy_ffi_net_events_put_event_into_heap(ev);
 }
 
-int put_event_into_heap_tail(event_t *ev, int ts_delta) {
-  return mtproxy_ffi_net_events_put_event_into_heap_tail(ev, ts_delta);
-}
-
 int epoll_sethandler(int fd, int prio, event_handler_t handler, void *data) {
   return mtproxy_ffi_net_events_epoll_sethandler(fd, prio, handler, data);
 }
@@ -128,12 +117,6 @@ int epoll_insert(int fd, int flags) {
 }
 
 int epoll_remove(int fd) { return mtproxy_ffi_net_events_epoll_remove(fd); }
-
-int epoll_close(int fd) { return mtproxy_ffi_net_events_epoll_close(fd); }
-
-int epoll_fetch_events(int timeout) {
-  return mtproxy_ffi_net_events_epoll_fetch_events(timeout);
-}
 
 int epoll_work(int timeout) {
   return mtproxy_ffi_net_events_epoll_work(timeout);
@@ -164,14 +147,6 @@ unsigned get_my_ipv4(void) { return mtproxy_ffi_net_events_get_my_ipv4(); }
 
 int get_my_ipv6(unsigned char ipv6[16]) {
   return mtproxy_ffi_net_events_get_my_ipv6(ipv6);
-}
-
-const char *conv_addr(in_addr_t a, char *buf) {
-  return mtproxy_ffi_net_events_conv_addr(a, buf);
-}
-
-const char *conv_addr6(const unsigned char a[16], char *buf) {
-  return mtproxy_ffi_net_events_conv_addr6(a, buf);
 }
 
 const char *show_ip(unsigned ip) { return mtproxy_ffi_net_events_show_ip(ip); }
