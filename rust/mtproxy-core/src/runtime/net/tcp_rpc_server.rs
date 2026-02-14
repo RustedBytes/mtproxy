@@ -4,8 +4,8 @@ use super::tcp_rpc_client::{
     PACKET_LEN_STATE_INVALID, PACKET_LEN_STATE_READY, PACKET_LEN_STATE_SKIP,
 };
 use super::tcp_rpc_common::{
-    parse_handshake_packet, parse_nonce_packet, ParsedHandshakePacket, ParsedNoncePacket, ProcessId,
-    PacketSerialization, RpcPacketType,
+    parse_handshake_packet, parse_nonce_packet, PacketSerialization, ParsedHandshakePacket,
+    ParsedNoncePacket, ProcessId, RpcPacketType,
 };
 
 const PACKET_HEADER_INVALID_MASK: i32 = i32::from_ne_bytes(0xc000_0003_u32.to_ne_bytes());
@@ -199,10 +199,11 @@ impl RpcServerData {
         allow_unencrypted: bool,
         allow_encrypted: bool,
     ) -> Result<i32, ServerError> {
-        let packet = parse_nonce_packet(packet_bytes).ok_or_else(|| ServerError::InvalidPacketSize {
-            size: packet_bytes.len(),
-            expected: super::tcp_rpc_common::NoncePacket::size(),
-        })?;
+        let packet =
+            parse_nonce_packet(packet_bytes).ok_or_else(|| ServerError::InvalidPacketSize {
+                size: packet_bytes.len(),
+                expected: super::tcp_rpc_common::NoncePacket::size(),
+            })?;
         self.process_parsed_client_nonce_packet(&packet, allow_unencrypted, allow_encrypted)
     }
 
@@ -251,12 +252,11 @@ impl RpcServerData {
         packet_bytes: &[u8],
         expected_peer_pid: Option<super::tcp_rpc_common::ProcessId>,
     ) -> Result<(), ServerError> {
-        let packet = parse_handshake_packet(packet_bytes).ok_or_else(|| {
-            ServerError::InvalidPacketSize {
+        let packet =
+            parse_handshake_packet(packet_bytes).ok_or_else(|| ServerError::InvalidPacketSize {
                 size: packet_bytes.len(),
                 expected: super::tcp_rpc_common::HandshakePacket::size(),
-            }
-        })?;
+            })?;
         self.process_parsed_client_handshake_packet(&packet, expected_peer_pid)
     }
 
@@ -318,10 +318,7 @@ impl RpcServerData {
 
     /// Prepares a handshake response packet for sending.
     #[must_use]
-    pub fn prepare_handshake_response(
-        &self,
-        flags: i32,
-    ) -> super::tcp_rpc_common::HandshakePacket {
+    pub fn prepare_handshake_response(&self, flags: i32) -> super::tcp_rpc_common::HandshakePacket {
         super::tcp_rpc_common::HandshakePacket::new(flags, self.local_pid, self.remote_pid)
     }
 
@@ -366,7 +363,10 @@ impl core::fmt::Display for ServerError {
             Self::UnexpectedNonce => write!(f, "Received nonce packet in wrong state"),
             Self::UnexpectedHandshake => write!(f, "Received handshake packet in wrong state"),
             Self::PacketSequenceError { expected, actual } => {
-                write!(f, "Packet sequence mismatch: expected {expected}, got {actual}")
+                write!(
+                    f,
+                    "Packet sequence mismatch: expected {expected}, got {actual}"
+                )
             }
             Self::InvalidPacketType(t) => write!(f, "Invalid packet type: {t:#x}"),
             Self::MalformedHeader => write!(f, "Malformed packet header"),
@@ -401,8 +401,107 @@ pub fn packet_len_state(packet_len: i32, max_packet_len: i32) -> i32 {
     PACKET_LEN_STATE_READY
 }
 
+/// C-compat nonce packet policy for `net-tcp-rpc-server.c`.
+///
+/// Return codes:
+/// - `0` success
+/// - `-1` parse failure
+/// - `-3` key-selection mismatch
+/// - `-5` schema disallowed by policy
+/// - `-6` timestamp skew too large
+pub fn process_nonce_packet_for_compat(
+    packet: &[u8],
+    allow_unencrypted: bool,
+    allow_encrypted: bool,
+    now_ts: i32,
+    main_secret_len: i32,
+    main_key_signature: i32,
+    out_schema: &mut i32,
+    out_key_select: &mut i32,
+    out_has_dh_params: &mut i32,
+) -> i32 {
+    let Some(parsed) = parse_nonce_packet(packet) else {
+        return -1;
+    };
+
+    let selected_key = super::tcp_rpc_common::select_nonce_key_signature(
+        &parsed,
+        main_secret_len,
+        main_key_signature,
+    );
+
+    *out_schema = parsed.crypto_schema.to_i32();
+    *out_key_select = 0;
+    *out_has_dh_params = 0;
+
+    match parsed.crypto_schema {
+        super::tcp_rpc_common::CryptoSchema::None => {
+            if parsed.key_select != 0 {
+                return -3;
+            }
+            if !allow_unencrypted {
+                return -5;
+            }
+        }
+        super::tcp_rpc_common::CryptoSchema::Aes => {
+            if selected_key == 0 {
+                if allow_unencrypted {
+                    *out_schema = super::tcp_rpc_common::CryptoSchema::None.to_i32();
+                    return 0;
+                }
+                return -3;
+            }
+            if !allow_encrypted {
+                if allow_unencrypted {
+                    *out_schema = super::tcp_rpc_common::CryptoSchema::None.to_i32();
+                    return 0;
+                }
+                return -5;
+            }
+            if (f64::from(parsed.crypto_ts) - f64::from(now_ts)).abs() > 30.0 {
+                return -6;
+            }
+            *out_key_select = selected_key;
+            *out_schema = super::tcp_rpc_common::CryptoSchema::Aes.to_i32();
+        }
+        super::tcp_rpc_common::CryptoSchema::AesExt
+        | super::tcp_rpc_common::CryptoSchema::AesDh => {
+            if selected_key == 0 {
+                if allow_unencrypted {
+                    *out_schema = super::tcp_rpc_common::CryptoSchema::None.to_i32();
+                    return 0;
+                }
+                return -3;
+            }
+            if !allow_encrypted {
+                if allow_unencrypted {
+                    *out_schema = super::tcp_rpc_common::CryptoSchema::None.to_i32();
+                    return 0;
+                }
+                return -5;
+            }
+            if (f64::from(parsed.crypto_ts) - f64::from(now_ts)).abs() > 30.0 {
+                return -6;
+            }
+            if parsed.crypto_schema == super::tcp_rpc_common::CryptoSchema::AesDh
+                && parsed.has_dh_params
+                && parsed.dh_params_select != 0
+            {
+                *out_has_dh_params = 1;
+            }
+            *out_key_select = selected_key;
+            *out_schema = parsed.crypto_schema.to_i32();
+        }
+    }
+
+    0
+}
+
 /// Validates packet type for server connection.
-pub fn validate_packet_type(packet_type: i32, state: ServerState) -> Result<RpcPacketType, ServerError> {
+pub fn validate_packet_type(
+    packet_type: i32,
+    state: ServerState,
+) -> Result<RpcPacketType, ServerError> {
     match RpcPacketType::from_i32(packet_type) {
         Some(RpcPacketType::Nonce) if state == ServerState::Accepted => Ok(RpcPacketType::Nonce),
         Some(RpcPacketType::Handshake) if state == ServerState::NonceReceived => {
@@ -417,10 +516,14 @@ pub fn validate_packet_type(packet_type: i32, state: ServerState) -> Result<RpcP
 
 #[cfg(test)]
 mod tests {
-    use super::{packet_header_malformed, packet_len_state, ProcessId, RpcServerData, ServerError, ServerState};
+    use super::{
+        packet_header_malformed, packet_len_state, process_nonce_packet_for_compat, ProcessId,
+        RpcServerData, ServerError, ServerState,
+    };
     use crate::runtime::net::tcp_rpc_client::{
         PACKET_LEN_STATE_INVALID, PACKET_LEN_STATE_READY, PACKET_LEN_STATE_SKIP,
     };
+    use crate::runtime::net::tcp_rpc_common::PacketSerialization;
 
     #[test]
     fn detects_bad_headers() {
@@ -453,7 +556,7 @@ mod tests {
         let mut server = RpcServerData::new();
         let pid = ProcessId::new(0x7f00_0001, 8080, 12345, 1000);
         server.init_accepted(pid);
-        
+
         assert_eq!(server.state, ServerState::Accepted);
         assert_eq!(server.local_pid, pid);
         assert_eq!(server.in_packet_num, -2);
@@ -464,7 +567,7 @@ mod tests {
         let mut server = RpcServerData::new();
         let pid = ProcessId::new(0x7f00_0001, 8080, 12345, 1000);
         server.init_accepted_no_handshake(pid);
-        
+
         assert_eq!(server.state, ServerState::Ready);
         assert!(server.is_ready());
         assert_eq!(server.in_packet_num, 0);
@@ -476,7 +579,7 @@ mod tests {
         let mut server = RpcServerData::new();
         let pid = ProcessId::new(0x7f00_0001, 8080, 12345, 1000);
         server.init_accepted(pid);
-        
+
         assert!(server.process_nonce_received(1).is_ok());
         assert_eq!(server.state, ServerState::NonceReceived);
         assert_eq!(server.crypto_schema, 1);
@@ -497,14 +600,14 @@ mod tests {
         let mut server = RpcServerData::new();
         let local_pid = ProcessId::new(0x7f00_0001, 8080, 12345, 1000);
         let remote_pid = ProcessId::new(0x7f00_0002, 9090, 54321, 2000);
-        
+
         server.init_accepted(local_pid);
         server.process_nonce_received(1).unwrap();
-        
+
         assert!(server.process_handshake_received(remote_pid).is_ok());
         assert_eq!(server.state, ServerState::HandshakeReceived);
         assert_eq!(server.remote_pid, remote_pid);
-        
+
         server.mark_ready();
         assert_eq!(server.state, ServerState::Ready);
         assert!(server.is_ready());
@@ -517,7 +620,7 @@ mod tests {
         let mut server = RpcServerData::new();
         let pid = ProcessId::new(0x7f00_0001, 8080, 12345, 1000);
         server.init_accepted(pid);
-        
+
         assert_eq!(
             server.process_handshake_received(ProcessId::default()),
             Err(ServerError::UnexpectedHandshake)
@@ -529,10 +632,10 @@ mod tests {
         let mut server = RpcServerData::new();
         server.in_packet_num = 5;
         server.allow_seqno_holes = false;
-        
+
         assert!(server.advance_in_packet_num(5).is_ok());
         assert_eq!(server.in_packet_num, 6);
-        
+
         assert_eq!(
             server.advance_in_packet_num(5),
             Err(ServerError::PacketSequenceError {
@@ -547,11 +650,11 @@ mod tests {
         let mut server = RpcServerData::new();
         server.in_packet_num = 5;
         server.allow_seqno_holes = true;
-        
+
         // Can skip ahead
         assert!(server.advance_in_packet_num(10).is_ok());
         assert_eq!(server.in_packet_num, 11);
-        
+
         // Cannot go backwards
         assert_eq!(
             server.advance_in_packet_num(5),
@@ -572,7 +675,7 @@ mod tests {
 
         let nonce_packet = NoncePacket::new(12345, CryptoSchema::Aes, 100, [1_u8; 16]);
         let result = server.process_client_nonce_packet(&nonce_packet, true, true);
-        
+
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), CryptoSchema::Aes.to_i32());
         assert_eq!(server.state, ServerState::NonceReceived);
@@ -590,7 +693,7 @@ mod tests {
         // Client requests no encryption but server doesn't allow it
         let nonce_packet = NoncePacket::new(0, CryptoSchema::None, 100, [1_u8; 16]);
         let result = server.process_client_nonce_packet(&nonce_packet, false, true);
-        
+
         assert!(result.is_ok());
         // Server upgrades to AES
         assert_eq!(result.unwrap(), CryptoSchema::Aes.to_i32());
@@ -605,12 +708,16 @@ mod tests {
         server.init_accepted(local_pid);
 
         let nonce_packet = NoncePacket::new(0, CryptoSchema::Aes, 100, [1_u8; 16]);
-        server.process_client_nonce_packet(&nonce_packet, true, true).unwrap();
+        server
+            .process_client_nonce_packet(&nonce_packet, true, true)
+            .unwrap();
 
         let client_pid = ProcessId::new(0x7f00_0002, 9090, 54321, 2000);
         let handshake = HandshakePacket::new(0, client_pid, local_pid);
-        
-        assert!(server.process_client_handshake_packet(&handshake, None).is_ok());
+
+        assert!(server
+            .process_client_handshake_packet(&handshake, None)
+            .is_ok());
         assert_eq!(server.state, ServerState::HandshakeReceived);
         assert_eq!(server.remote_pid, client_pid);
     }
@@ -620,16 +727,16 @@ mod tests {
         let mut server = RpcServerData::new();
         let local_pid = ProcessId::new(0x7f00_0001, 8080, 12345, 1000);
         server.init_accepted(local_pid);
-        
+
         // In Accepted state, expect packet -2
         assert!(server.validate_packet_number(-2).is_ok());
         assert!(server.validate_packet_number(-1).is_err());
-        
+
         // In NonceReceived state, expect packet -1
         server.state = ServerState::NonceReceived;
         assert!(server.validate_packet_number(-1).is_ok());
         assert!(server.validate_packet_number(-2).is_err());
-        
+
         // In Ready state, validate sequence (strict mode)
         server.state = ServerState::Ready;
         server.in_packet_num = 5;
@@ -637,10 +744,37 @@ mod tests {
         assert!(server.validate_packet_number(5).is_ok());
         assert!(server.validate_packet_number(4).is_err());
         assert!(server.validate_packet_number(6).is_err());
-        
+
         // With seqno holes allowed
         server.allow_seqno_holes = true;
         assert!(server.validate_packet_number(10).is_ok());
         assert!(server.validate_packet_number(4).is_err()); // Can't go backwards
+    }
+
+    #[test]
+    fn compat_nonce_policy_falls_back_to_unencrypted() {
+        use crate::runtime::net::tcp_rpc_common::{CryptoSchema, NoncePacket};
+
+        let packet = NoncePacket::new(0, CryptoSchema::Aes, 100, [0_u8; 16]);
+        let mut out_schema = 0;
+        let mut out_key_select = 0;
+        let mut out_has_dh_params = 0;
+
+        let rc = process_nonce_packet_for_compat(
+            packet.to_bytes(),
+            true,
+            false,
+            100,
+            32,
+            12345,
+            &mut out_schema,
+            &mut out_key_select,
+            &mut out_has_dh_params,
+        );
+
+        assert_eq!(rc, 0);
+        assert_eq!(out_schema, CryptoSchema::None.to_i32());
+        assert_eq!(out_key_select, 0);
+        assert_eq!(out_has_dh_params, 0);
     }
 }

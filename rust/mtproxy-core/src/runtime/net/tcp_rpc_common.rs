@@ -56,7 +56,12 @@ impl ProcessId {
     /// Creates a new `ProcessId`.
     #[must_use]
     pub const fn new(ip: u32, port: i16, pid: u16, utime: i32) -> Self {
-        Self { ip, port, pid, utime }
+        Self {
+            ip,
+            port,
+            pid,
+            utime,
+        }
     }
 
     /// Checks if `ProcessId` is valid (non-zero).
@@ -107,13 +112,13 @@ pub const RPC_MAX_EXTRA_KEYS: usize = 8;
 pub trait PacketSerialization: Sized {
     /// Expected packet type for this structure.
     fn expected_packet_type() -> i32;
-    
+
     /// Size of the packet in bytes.
     fn packet_size() -> usize;
-    
+
     /// Serializes the packet to a byte slice.
     fn to_bytes(&self) -> &[u8];
-    
+
     /// Deserializes a packet from a byte slice.
     fn from_bytes(bytes: &[u8]) -> Option<Self>;
 }
@@ -146,8 +151,10 @@ fn parse_process_id(bytes: &[u8], offset: usize) -> ProcessId {
 
 const TCP_RPC_NONCE_MIN_LEN: usize = 16;
 const TCP_RPC_NONCE_BASE_LEN: usize = 32;
-const TCP_RPC_NONCE_EXT_BASE_LEN: usize = core::mem::size_of::<NonceExtPacket>() - RPC_MAX_EXTRA_KEYS * 4;
-const TCP_RPC_NONCE_DH_BASE_LEN: usize = core::mem::size_of::<NonceDhPacket>() - RPC_MAX_EXTRA_KEYS * 4;
+const TCP_RPC_NONCE_EXT_BASE_LEN: usize =
+    core::mem::size_of::<NonceExtPacket>() - RPC_MAX_EXTRA_KEYS * 4;
+const TCP_RPC_NONCE_DH_BASE_LEN: usize =
+    core::mem::size_of::<NonceDhPacket>() - RPC_MAX_EXTRA_KEYS * 4;
 
 /// Parsed RPC nonce packet with variable nonce payload layout (Aes+extra and Aes+DH).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -180,7 +187,8 @@ impl ParsedNoncePacket {
     pub fn from_nonce_packet(packet: &NoncePacket) -> Self {
         Self {
             packet_type: packet.packet_type,
-            crypto_schema: CryptoSchema::from_i32(packet.crypto_schema).unwrap_or(CryptoSchema::None),
+            crypto_schema: CryptoSchema::from_i32(packet.crypto_schema)
+                .unwrap_or(CryptoSchema::None),
             key_select: packet.key_select,
             crypto_ts: packet.crypto_ts,
             crypto_nonce: packet.crypto_nonce,
@@ -283,6 +291,38 @@ pub fn parse_nonce_packet(packet_bytes: &[u8]) -> Option<ParsedNoncePacket> {
     Some(out)
 }
 
+/// Selects the effective key signature for a parsed nonce packet.
+///
+/// Mirrors the C nonce-processing selection rules:
+/// - schema `None` never selects a key (`0`)
+/// - schema `Aes` checks only the main key
+/// - schema `AesExt`/`AesDh` checks main + extra keys
+#[must_use]
+pub fn select_nonce_key_signature(
+    parsed: &ParsedNoncePacket,
+    main_secret_len: i32,
+    main_key_signature: i32,
+) -> i32 {
+    match parsed.crypto_schema {
+        CryptoSchema::None => 0,
+        CryptoSchema::Aes => super::config::select_best_key_signature(
+            main_secret_len,
+            main_key_signature,
+            parsed.key_select,
+            &[],
+        ),
+        CryptoSchema::AesExt | CryptoSchema::AesDh => {
+            let extra_count = usize::try_from(parsed.extra_keys_count).unwrap_or_default();
+            super::config::select_best_key_signature(
+                main_secret_len,
+                main_key_signature,
+                parsed.key_select,
+                &parsed.extra_key_select[..extra_count],
+            )
+        }
+    }
+}
+
 /// Parsed RPC handshake packet with strongly typed fields.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ParsedHandshakePacket {
@@ -335,7 +375,12 @@ pub struct NoncePacket {
 impl NoncePacket {
     /// Creates a new nonce packet.
     #[must_use]
-    pub const fn new(key_select: i32, schema: CryptoSchema, timestamp: i32, nonce: [u8; 16]) -> Self {
+    pub const fn new(
+        key_select: i32,
+        schema: CryptoSchema,
+        timestamp: i32,
+        nonce: [u8; 16],
+    ) -> Self {
         Self {
             packet_type: RpcPacketType::Nonce as i32,
             key_select,
@@ -356,11 +401,11 @@ impl PacketSerialization for NoncePacket {
     fn expected_packet_type() -> i32 {
         RpcPacketType::Nonce as i32
     }
-    
+
     fn packet_size() -> usize {
         core::mem::size_of::<Self>()
     }
-    
+
     fn to_bytes(&self) -> &[u8] {
         // SAFETY: NoncePacket uses #[repr(C, packed(4))], making it safe to view as bytes
         #[allow(unsafe_code)]
@@ -372,12 +417,12 @@ impl PacketSerialization for NoncePacket {
             )
         }
     }
-    
+
     fn from_bytes(bytes: &[u8]) -> Option<Self> {
         if bytes.len() < Self::packet_size() {
             return None;
         }
-        
+
         let mut packet = Self {
             packet_type: 0,
             key_select: 0,
@@ -385,7 +430,7 @@ impl PacketSerialization for NoncePacket {
             crypto_ts: 0,
             crypto_nonce: [0; 16],
         };
-        
+
         // SAFETY: We've verified bytes.len() >= packet_size(), and NoncePacket is repr(C, packed(4))
         #[allow(unsafe_code)]
         #[allow(clippy::ptr_as_ptr)]
@@ -396,11 +441,11 @@ impl PacketSerialization for NoncePacket {
                 Self::packet_size(),
             );
         }
-        
+
         if packet.packet_type != Self::expected_packet_type() {
             return None;
         }
-        
+
         Some(packet)
     }
 }
@@ -538,10 +583,10 @@ impl NonceExtPacket {
         if extra_keys.len() > RPC_MAX_EXTRA_KEYS {
             return None;
         }
-        
+
         let mut extra_key_select = [0_i32; RPC_MAX_EXTRA_KEYS];
         extra_key_select[..extra_keys.len()].copy_from_slice(extra_keys);
-        
+
         Some(Self {
             packet_type: RpcPacketType::Nonce as i32,
             key_select,
@@ -598,10 +643,10 @@ impl NonceDhPacket {
         if extra_keys.len() > RPC_MAX_EXTRA_KEYS {
             return None;
         }
-        
+
         let mut extra_key_select = [0_i32; RPC_MAX_EXTRA_KEYS];
         extra_key_select[..extra_keys.len()].copy_from_slice(extra_keys);
-        
+
         Some(Self {
             packet_type: RpcPacketType::Nonce as i32,
             key_select,
@@ -694,10 +739,7 @@ impl HandshakeErrorPacket {
         #[allow(unsafe_code)]
         #[allow(clippy::ptr_as_ptr)]
         unsafe {
-            core::slice::from_raw_parts(
-                core::ptr::addr_of!(*self).cast::<u8>(),
-                Self::size(),
-            )
+            core::slice::from_raw_parts(core::ptr::addr_of!(*self).cast::<u8>(), Self::size())
         }
     }
 
@@ -709,13 +751,13 @@ impl HandshakeErrorPacket {
         if bytes.len() < Self::size() {
             return None;
         }
-        
+
         let mut packet = Self {
             packet_type: 0,
             error_code: 0,
             sender_pid: ProcessId::default(),
         };
-        
+
         // SAFETY: We've verified bytes.len() >= size(), and packet is repr(C, packed(4))
         #[allow(unsafe_code)]
         #[allow(clippy::ptr_as_ptr)]
@@ -726,11 +768,11 @@ impl HandshakeErrorPacket {
                 Self::size(),
             );
         }
-        
+
         if packet.packet_type != RpcPacketType::HandshakeError as i32 {
             return None;
         }
-        
+
         Some(packet)
     }
 }
@@ -753,7 +795,10 @@ pub fn encode_compact_header(payload_len: i32, is_medium: i32) -> (i32, i32) {
 ///
 /// Returns `(payload_len, header_bytes)` if valid, or `None` if invalid.
 #[must_use]
-pub fn decode_compact_header(first_byte: u8, remaining_bytes: Option<[u8; 3]>) -> Option<(i32, i32)> {
+pub fn decode_compact_header(
+    first_byte: u8,
+    remaining_bytes: Option<[u8; 3]>,
+) -> Option<(i32, i32)> {
     match first_byte {
         0x7f => {
             // Wide format - need 4 bytes total
@@ -780,7 +825,7 @@ pub fn decode_compact_header(first_byte: u8, remaining_bytes: Option<[u8; 3]>) -
 #[must_use]
 pub fn compute_packet_crc32(data: &[u8]) -> u32 {
     const CRC32_TABLE: [u32; 256] = generate_crc32_table();
-    
+
     let mut crc = 0xFFFF_FFFF_u32;
     for &byte in data {
         let index = ((crc ^ u32::from(byte)) & 0xFF) as usize;
@@ -822,7 +867,7 @@ const fn generate_crc32_table() -> [u32; 256] {
 mod tests {
     use super::{
         decode_compact_header, encode_compact_header, CryptoSchema, HandshakeErrorPacket,
-        HandshakePacket, NoncePacket, NonceExtPacket, NonceDhPacket, ProcessId, RpcPacketType,
+        HandshakePacket, NonceDhPacket, NonceExtPacket, NoncePacket, ProcessId, RpcPacketType,
         RPC_MAX_EXTRA_KEYS,
     };
 
@@ -846,11 +891,26 @@ mod tests {
 
     #[test]
     fn rpc_packet_type_conversion() {
-        assert_eq!(RpcPacketType::from_i32(0x7acb_87aa), Some(RpcPacketType::Nonce));
-        assert_eq!(RpcPacketType::from_i32(0x7682_eef5), Some(RpcPacketType::Handshake));
-        assert_eq!(RpcPacketType::from_i32(0x6a27_beda), Some(RpcPacketType::HandshakeError));
-        assert_eq!(RpcPacketType::from_i32(0x7bde_f2a4), Some(RpcPacketType::Ping));
-        assert_eq!(RpcPacketType::from_i32(-1_948_322_907), Some(RpcPacketType::Pong)); // 0x8bde_f3a5
+        assert_eq!(
+            RpcPacketType::from_i32(0x7acb_87aa),
+            Some(RpcPacketType::Nonce)
+        );
+        assert_eq!(
+            RpcPacketType::from_i32(0x7682_eef5),
+            Some(RpcPacketType::Handshake)
+        );
+        assert_eq!(
+            RpcPacketType::from_i32(0x6a27_beda),
+            Some(RpcPacketType::HandshakeError)
+        );
+        assert_eq!(
+            RpcPacketType::from_i32(0x7bde_f2a4),
+            Some(RpcPacketType::Ping)
+        );
+        assert_eq!(
+            RpcPacketType::from_i32(-1_948_322_907),
+            Some(RpcPacketType::Pong)
+        ); // 0x8bde_f3a5
         assert_eq!(RpcPacketType::from_i32(0), None);
     }
 
@@ -882,7 +942,7 @@ mod tests {
         assert_eq!(CryptoSchema::from_i32(2), Some(CryptoSchema::AesExt));
         assert_eq!(CryptoSchema::from_i32(3), Some(CryptoSchema::AesDh));
         assert_eq!(CryptoSchema::from_i32(4), None);
-        
+
         assert_eq!(CryptoSchema::None.to_i32(), 0);
         assert_eq!(CryptoSchema::Aes.to_i32(), 1);
     }
@@ -891,7 +951,7 @@ mod tests {
     fn nonce_packet_creation() {
         let nonce = [1_u8; 16];
         let packet = NoncePacket::new(12345, CryptoSchema::Aes, 1000, nonce);
-        
+
         assert_eq!(packet.packet_type, RpcPacketType::Nonce as i32);
         assert_eq!(packet.key_select, 12345);
         assert_eq!(packet.crypto_schema, CryptoSchema::Aes as i32);
@@ -905,7 +965,7 @@ mod tests {
         let nonce = [2_u8; 16];
         let extra_keys = [100, 200, 300];
         let packet = NonceExtPacket::new(12345, 1000, nonce, &extra_keys).unwrap();
-        
+
         assert_eq!(packet.packet_type, RpcPacketType::Nonce as i32);
         assert_eq!(packet.crypto_schema, CryptoSchema::AesExt as i32);
         assert_eq!(packet.extra_keys_count, 3);
@@ -927,7 +987,7 @@ mod tests {
         let extra_keys = [100, 200];
         let g_a = [4_u8; 256];
         let packet = NonceDhPacket::new(12345, 1000, nonce, &extra_keys, 999, g_a).unwrap();
-        
+
         assert_eq!(packet.packet_type, RpcPacketType::Nonce as i32);
         assert_eq!(packet.crypto_schema, CryptoSchema::AesDh as i32);
         assert_eq!(packet.extra_keys_count, 2);
@@ -940,7 +1000,7 @@ mod tests {
         let sender = ProcessId::new(0x7f00_0001, 8080, 12345, 1000);
         let peer = ProcessId::new(0x7f00_0002, 9090, 54321, 2000);
         let packet = HandshakePacket::new(0, sender, peer);
-        
+
         assert_eq!(packet.packet_type, RpcPacketType::Handshake as i32);
         assert_eq!(packet.flags, 0);
         assert_eq!(packet.sender_pid, sender);
@@ -951,7 +1011,7 @@ mod tests {
     fn handshake_error_packet_creation() {
         let sender = ProcessId::new(0x7f00_0001, 8080, 12345, 1000);
         let packet = HandshakeErrorPacket::new(-1, sender);
-        
+
         assert_eq!(packet.packet_type, RpcPacketType::HandshakeError as i32);
         assert_eq!(packet.error_code, -1);
         assert_eq!(packet.sender_pid, sender);
@@ -982,7 +1042,7 @@ mod tests {
         // Test that encode/decode are compatible
         let original_len = 512;
         let (encoded, bytes) = encode_compact_header(original_len, 0);
-        
+
         if bytes == 1 {
             let first_byte = encoded.to_le_bytes()[0];
             let (decoded_len, decoded_bytes) = decode_compact_header(first_byte, None).unwrap();

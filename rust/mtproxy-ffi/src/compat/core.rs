@@ -343,7 +343,8 @@ pub(super) fn tcp_rpc_parse_nonce_packet_impl(
     out_dh_params_select: &mut i32,
     out_has_dh_params: &mut i32,
 ) -> i32 {
-    let Some(parsed) = mtproxy_core::runtime::net::tcp_rpc_common::parse_nonce_packet(packet) else {
+    let Some(parsed) = mtproxy_core::runtime::net::tcp_rpc_common::parse_nonce_packet(packet)
+    else {
         return -1;
     };
 
@@ -363,12 +364,10 @@ pub(super) fn tcp_rpc_parse_nonce_packet_impl(
     *out_extra_keys_count = extra_keys_count;
     *out_dh_params_select = parsed.dh_params_select;
     *out_has_dh_params = if parsed.has_dh_params { 1 } else { 0 };
-    for (dst, value) in out_extra_key_signatures.iter_mut().zip(
-        parsed
-            .extra_key_select
-            .iter()
-            .take(expected_extra),
-    ) {
+    for (dst, value) in out_extra_key_signatures
+        .iter_mut()
+        .zip(parsed.extra_key_select.iter().take(expected_extra))
+    {
         *dst = *value;
     }
     0
@@ -387,90 +386,19 @@ pub(super) fn tcp_rpc_client_process_nonce_packet_impl(
     out_key_select: &mut i32,
     out_has_dh_params: &mut i32,
 ) -> i32 {
-    let Some(parsed) = mtproxy_core::runtime::net::tcp_rpc_common::parse_nonce_packet(packet) else {
-        return -1;
-    };
-
-    let extra_count = usize::try_from(parsed.extra_keys_count).unwrap_or_default();
-    let selected_key = match parsed.crypto_schema {
-        mtproxy_core::runtime::net::tcp_rpc_common::CryptoSchema::Aes => {
-            mtproxy_core::runtime::net::config::select_best_key_signature(
-                main_secret_len,
-                main_key_signature,
-                parsed.key_select,
-                &[],
-            )
-        }
-        mtproxy_core::runtime::net::tcp_rpc_common::CryptoSchema::AesExt
-        | mtproxy_core::runtime::net::tcp_rpc_common::CryptoSchema::AesDh => {
-            mtproxy_core::runtime::net::config::select_best_key_signature(
-                main_secret_len,
-                main_key_signature,
-                parsed.key_select,
-                &parsed.extra_key_select[..extra_count],
-            )
-        }
-        mtproxy_core::runtime::net::tcp_rpc_common::CryptoSchema::None => 0,
-    };
-
-    *out_schema = parsed.crypto_schema.to_i32();
-    *out_key_select = selected_key;
-    *out_has_dh_params = 0;
-
-    match parsed.crypto_schema {
-        mtproxy_core::runtime::net::tcp_rpc_common::CryptoSchema::None => {
-            if selected_key != 0 {
-                return -3;
-            }
-            if allow_unencrypted == 0 {
-                return -5;
-            }
-        }
-        mtproxy_core::runtime::net::tcp_rpc_common::CryptoSchema::Aes => {
-            if selected_key == 0 {
-                return -3;
-            }
-            if allow_encrypted == 0 {
-                return -5;
-            }
-            if (f64::from(parsed.crypto_ts) - f64::from(nonce_time)).abs() > 30.0 {
-                return -6;
-            }
-        }
-        mtproxy_core::runtime::net::tcp_rpc_common::CryptoSchema::AesExt
-        | mtproxy_core::runtime::net::tcp_rpc_common::CryptoSchema::AesDh => {
-            if selected_key == 0 {
-                return -3;
-            }
-            if parsed.crypto_schema == mtproxy_core::runtime::net::tcp_rpc_common::CryptoSchema::AesDh
-                && (require_dh == 0 || has_crypto_temp == 0)
-            {
-                return -7;
-            }
-            if parsed.crypto_schema == mtproxy_core::runtime::net::tcp_rpc_common::CryptoSchema::AesDh
-                && (!parsed.has_dh_params || parsed.dh_params_select == 0)
-            {
-                return -7;
-            }
-            if allow_encrypted == 0 {
-                return -5;
-            }
-            if (f64::from(parsed.crypto_ts) - f64::from(nonce_time)).abs() > 30.0 {
-                return -6;
-            }
-            *out_has_dh_params = if parsed.crypto_schema
-                == mtproxy_core::runtime::net::tcp_rpc_common::CryptoSchema::AesDh
-                && parsed.has_dh_params
-                && parsed.dh_params_select != 0
-            {
-                1
-            } else {
-                0
-            };
-        }
-    }
-
-    0
+    mtproxy_core::runtime::net::tcp_rpc_client::process_nonce_packet_for_compat(
+        packet,
+        allow_unencrypted != 0,
+        allow_encrypted != 0,
+        require_dh != 0,
+        has_crypto_temp != 0,
+        nonce_time,
+        main_secret_len,
+        main_key_signature,
+        out_schema,
+        out_key_select,
+        out_has_dh_params,
+    )
 }
 
 pub(super) fn tcp_rpc_server_process_nonce_packet_impl(
@@ -484,98 +412,17 @@ pub(super) fn tcp_rpc_server_process_nonce_packet_impl(
     out_key_select: &mut i32,
     out_has_dh_params: &mut i32,
 ) -> i32 {
-    let Some(parsed) = mtproxy_core::runtime::net::tcp_rpc_common::parse_nonce_packet(packet) else {
-        return -1;
-    };
-
-    let extra_count = usize::try_from(parsed.extra_keys_count).unwrap_or_default();
-    let selected_key = match parsed.crypto_schema {
-        mtproxy_core::runtime::net::tcp_rpc_common::CryptoSchema::Aes => {
-            mtproxy_core::runtime::net::config::select_best_key_signature(
-                main_secret_len,
-                main_key_signature,
-                parsed.key_select,
-                &[],
-            )
-        }
-        mtproxy_core::runtime::net::tcp_rpc_common::CryptoSchema::AesExt
-        | mtproxy_core::runtime::net::tcp_rpc_common::CryptoSchema::AesDh => {
-            mtproxy_core::runtime::net::config::select_best_key_signature(
-                main_secret_len,
-                main_key_signature,
-                parsed.key_select,
-                &parsed.extra_key_select[..extra_count],
-            )
-        }
-        mtproxy_core::runtime::net::tcp_rpc_common::CryptoSchema::None => 0,
-    };
-
-    *out_schema = parsed.crypto_schema.to_i32();
-    *out_key_select = 0;
-    *out_has_dh_params = 0;
-
-    match parsed.crypto_schema {
-        mtproxy_core::runtime::net::tcp_rpc_common::CryptoSchema::None => {
-            if parsed.key_select != 0 {
-                return -3;
-            }
-            if allow_unencrypted == 0 {
-                return -5;
-            }
-        }
-        mtproxy_core::runtime::net::tcp_rpc_common::CryptoSchema::Aes => {
-            if selected_key == 0 {
-                if allow_unencrypted != 0 {
-                    *out_schema = mtproxy_core::runtime::net::tcp_rpc_common::CryptoSchema::None.to_i32();
-                    return 0;
-                }
-                return -3;
-            }
-            if allow_encrypted == 0 {
-                if allow_unencrypted != 0 {
-                    *out_schema = mtproxy_core::runtime::net::tcp_rpc_common::CryptoSchema::None.to_i32();
-                    return 0;
-                }
-                return -5;
-            }
-            if (f64::from(parsed.crypto_ts) - f64::from(now_ts)).abs() > 30.0 {
-                return -6;
-            }
-            *out_key_select = selected_key;
-            *out_schema = mtproxy_core::runtime::net::tcp_rpc_common::CryptoSchema::Aes.to_i32();
-        }
-        mtproxy_core::runtime::net::tcp_rpc_common::CryptoSchema::AesExt
-        | mtproxy_core::runtime::net::tcp_rpc_common::CryptoSchema::AesDh => {
-            if selected_key == 0 {
-                if allow_unencrypted != 0 {
-                    *out_schema = mtproxy_core::runtime::net::tcp_rpc_common::CryptoSchema::None.to_i32();
-                    return 0;
-                }
-                return -3;
-            }
-            if allow_encrypted == 0 {
-                if allow_unencrypted != 0 {
-                    *out_schema = mtproxy_core::runtime::net::tcp_rpc_common::CryptoSchema::None.to_i32();
-                    return 0;
-                }
-                return -5;
-            }
-            if (f64::from(parsed.crypto_ts) - f64::from(now_ts)).abs() > 30.0 {
-                return -6;
-            }
-            if parsed.crypto_schema == mtproxy_core::runtime::net::tcp_rpc_common::CryptoSchema::AesDh
-                && parsed.has_dh_params
-                && parsed.dh_params_select != 0
-            {
-                *out_has_dh_params = 1;
-            }
-
-            *out_key_select = selected_key;
-            *out_schema = parsed.crypto_schema.to_i32();
-        }
-    }
-
-    0
+    mtproxy_core::runtime::net::tcp_rpc_server::process_nonce_packet_for_compat(
+        packet,
+        allow_unencrypted != 0,
+        allow_encrypted != 0,
+        now_ts,
+        main_secret_len,
+        main_key_signature,
+        out_schema,
+        out_key_select,
+        out_has_dh_params,
+    )
 }
 
 pub(super) fn tcp_rpc_parse_handshake_packet_impl(
@@ -584,7 +431,8 @@ pub(super) fn tcp_rpc_parse_handshake_packet_impl(
     out_sender_pid: &mut MtproxyProcessId,
     out_peer_pid: &mut MtproxyProcessId,
 ) -> i32 {
-    let Some(parsed) = mtproxy_core::runtime::net::tcp_rpc_common::parse_handshake_packet(packet) else {
+    let Some(parsed) = mtproxy_core::runtime::net::tcp_rpc_common::parse_handshake_packet(packet)
+    else {
         return -1;
     };
 
@@ -602,6 +450,191 @@ pub(super) fn tcp_rpc_parse_handshake_packet_impl(
         utime: parsed.peer_pid.utime,
     };
     0
+}
+
+pub(super) unsafe fn tcp_rpc_parse_nonce_packet_ffi(
+    packet: *const u8,
+    packet_len: i32,
+    out_schema: *mut i32,
+    out_key_select: *mut i32,
+    out_crypto_ts: *mut i32,
+    out_nonce: *mut u8,
+    out_nonce_len: i32,
+    out_extra_keys_count: *mut i32,
+    out_extra_key_signatures: *mut i32,
+    out_extra_key_signatures_len: i32,
+    out_dh_params_select: *mut i32,
+    out_has_dh_params: *mut i32,
+) -> i32 {
+    if out_extra_key_signatures_len < 0 {
+        return -1;
+    }
+    let Ok(packet_count) = usize::try_from(packet_len) else {
+        return -1;
+    };
+    let Some(packet_bytes) = (unsafe { slice_from_ptr(packet, packet_count) }) else {
+        return -1;
+    };
+    if out_nonce_len != 16 {
+        return -2;
+    }
+    let Some(out_nonce_out) = (unsafe { mut_ref_from_ptr(out_nonce.cast::<[u8; 16]>()) }) else {
+        return -1;
+    };
+    let Some(schema_ref) = (unsafe { mut_ref_from_ptr(out_schema) }) else {
+        return -1;
+    };
+    let Some(key_select_ref) = (unsafe { mut_ref_from_ptr(out_key_select) }) else {
+        return -1;
+    };
+    let Some(crypto_ts_ref) = (unsafe { mut_ref_from_ptr(out_crypto_ts) }) else {
+        return -1;
+    };
+    let Some(extra_keys_count_ref) = (unsafe { mut_ref_from_ptr(out_extra_keys_count) }) else {
+        return -1;
+    };
+    let Some(dh_params_select_ref) = (unsafe { mut_ref_from_ptr(out_dh_params_select) }) else {
+        return -1;
+    };
+    let Some(has_dh_params_ref) = (unsafe { mut_ref_from_ptr(out_has_dh_params) }) else {
+        return -1;
+    };
+
+    let Ok(extra_count) = usize::try_from(out_extra_key_signatures_len) else {
+        return -1;
+    };
+    let out_extra_key_signatures = if extra_count == 0 {
+        &mut []
+    } else {
+        match unsafe { mut_slice_from_ptr(out_extra_key_signatures, extra_count) } {
+            Some(extra) => extra,
+            None => return -1,
+        }
+    };
+
+    tcp_rpc_parse_nonce_packet_impl(
+        packet_bytes,
+        schema_ref,
+        key_select_ref,
+        crypto_ts_ref,
+        out_nonce_out,
+        extra_keys_count_ref,
+        out_extra_key_signatures,
+        dh_params_select_ref,
+        has_dh_params_ref,
+    )
+}
+
+pub(super) unsafe fn tcp_rpc_client_process_nonce_packet_ffi(
+    packet: *const u8,
+    packet_len: i32,
+    allow_unencrypted: i32,
+    allow_encrypted: i32,
+    require_dh: i32,
+    has_crypto_temp: i32,
+    nonce_time: i32,
+    main_secret_len: i32,
+    main_key_signature: i32,
+    out_schema: *mut i32,
+    out_key_select: *mut i32,
+    out_has_dh_params: *mut i32,
+) -> i32 {
+    let Ok(packet_count) = usize::try_from(packet_len) else {
+        return -1;
+    };
+    let Some(packet_bytes) = (unsafe { slice_from_ptr(packet, packet_count) }) else {
+        return -1;
+    };
+    let Some(schema_ref) = (unsafe { mut_ref_from_ptr(out_schema) }) else {
+        return -1;
+    };
+    let Some(key_select_ref) = (unsafe { mut_ref_from_ptr(out_key_select) }) else {
+        return -1;
+    };
+    let Some(has_dh_params_ref) = (unsafe { mut_ref_from_ptr(out_has_dh_params) }) else {
+        return -1;
+    };
+
+    tcp_rpc_client_process_nonce_packet_impl(
+        packet_bytes,
+        allow_unencrypted,
+        allow_encrypted,
+        require_dh,
+        has_crypto_temp,
+        nonce_time,
+        main_secret_len,
+        main_key_signature,
+        schema_ref,
+        key_select_ref,
+        has_dh_params_ref,
+    )
+}
+
+pub(super) unsafe fn tcp_rpc_server_process_nonce_packet_ffi(
+    packet: *const u8,
+    packet_len: i32,
+    allow_unencrypted: i32,
+    allow_encrypted: i32,
+    now_ts: i32,
+    main_secret_len: i32,
+    main_key_signature: i32,
+    out_schema: *mut i32,
+    out_key_select: *mut i32,
+    out_has_dh_params: *mut i32,
+) -> i32 {
+    let Ok(packet_count) = usize::try_from(packet_len) else {
+        return -1;
+    };
+    let Some(packet_bytes) = (unsafe { slice_from_ptr(packet, packet_count) }) else {
+        return -1;
+    };
+    let Some(schema_ref) = (unsafe { mut_ref_from_ptr(out_schema) }) else {
+        return -1;
+    };
+    let Some(key_select_ref) = (unsafe { mut_ref_from_ptr(out_key_select) }) else {
+        return -1;
+    };
+    let Some(has_dh_params_ref) = (unsafe { mut_ref_from_ptr(out_has_dh_params) }) else {
+        return -1;
+    };
+
+    tcp_rpc_server_process_nonce_packet_impl(
+        packet_bytes,
+        allow_unencrypted,
+        allow_encrypted,
+        now_ts,
+        main_secret_len,
+        main_key_signature,
+        schema_ref,
+        key_select_ref,
+        has_dh_params_ref,
+    )
+}
+
+pub(super) unsafe fn tcp_rpc_parse_handshake_packet_ffi(
+    packet: *const u8,
+    packet_len: i32,
+    out_flags: *mut i32,
+    out_sender_pid: *mut MtproxyProcessId,
+    out_peer_pid: *mut MtproxyProcessId,
+) -> i32 {
+    let Ok(packet_count) = usize::try_from(packet_len) else {
+        return -1;
+    };
+    let Some(packet_bytes) = (unsafe { slice_from_ptr(packet, packet_count) }) else {
+        return -1;
+    };
+    let Some(flags_ref) = (unsafe { mut_ref_from_ptr(out_flags) }) else {
+        return -1;
+    };
+    let Some(sender_pid_ref) = (unsafe { mut_ref_from_ptr(out_sender_pid) }) else {
+        return -1;
+    };
+    let Some(peer_pid_ref) = (unsafe { mut_ref_from_ptr(out_peer_pid) }) else {
+        return -1;
+    };
+
+    tcp_rpc_parse_handshake_packet_impl(packet_bytes, flags_ref, sender_pid_ref, peer_pid_ref)
 }
 
 pub(super) fn rpc_target_normalize_pid_impl(pid: &mut MtproxyProcessId, default_ip: u32) {
