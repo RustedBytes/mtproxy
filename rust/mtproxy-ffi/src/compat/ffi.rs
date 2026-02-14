@@ -655,6 +655,207 @@ pub extern "C" fn mtproxy_ffi_tcp_rpc_server_packet_len_state(
     tcp_rpc_server_packet_len_state_impl(packet_len, max_packet_len)
 }
 
+/// Returns whether `tcp_rpcs_default_execute` should handle packet as ping->pong.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_tcp_rpc_server_default_execute_should_pong(
+    op: i32,
+    raw_total_bytes: i32,
+) -> i32 {
+    tcp_rpc_server_default_execute_should_pong_impl(op, raw_total_bytes)
+}
+
+/// Overwrites packet word[0] with `RPC_PONG` for ping response payload.
+///
+/// # Safety
+/// `packet_words` must point to exactly 3 writable `i32` values.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_tcp_rpc_server_default_execute_set_pong(
+    packet_words: *mut i32,
+    packet_words_len: i32,
+) -> i32 {
+    unsafe { tcp_rpc_server_default_execute_set_pong_ffi(packet_words, packet_words_len) }
+}
+
+/// Serializes one tcp-rpc handshake packet into caller-provided buffer.
+///
+/// # Safety
+/// - `sender_pid` and `peer_pid` must be valid readable pointers.
+/// - `out_packet` must be writable for `out_packet_len` bytes.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_tcp_rpc_server_build_handshake_packet(
+    crypto_flags: i32,
+    sender_pid: *const MtproxyProcessId,
+    peer_pid: *const MtproxyProcessId,
+    out_packet: *mut u8,
+    out_packet_len: i32,
+) -> i32 {
+    unsafe {
+        tcp_rpc_server_build_handshake_packet_ffi(
+            crypto_flags,
+            sender_pid,
+            peer_pid,
+            out_packet,
+            out_packet_len,
+        )
+    }
+}
+
+/// Serializes one tcp-rpc handshake-error packet into caller-provided buffer.
+///
+/// # Safety
+/// - `sender_pid` must be a valid readable pointer.
+/// - `out_packet` must be writable for `out_packet_len` bytes.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_tcp_rpc_server_build_handshake_error_packet(
+    error_code: i32,
+    sender_pid: *const MtproxyProcessId,
+    out_packet: *mut u8,
+    out_packet_len: i32,
+) -> i32 {
+    unsafe {
+        tcp_rpc_server_build_handshake_error_packet_ffi(
+            error_code,
+            sender_pid,
+            out_packet,
+            out_packet_len,
+        )
+    }
+}
+
+/// Validates server-side handshake header triplet (seqno/type/size).
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_tcp_rpc_server_validate_handshake_header(
+    packet_num: i32,
+    packet_type: i32,
+    packet_len: i32,
+    handshake_packet_len: i32,
+) -> i32 {
+    tcp_rpc_server_validate_handshake_header_impl(
+        packet_num,
+        packet_type,
+        packet_len,
+        handshake_packet_len,
+    )
+}
+
+/// Validates server-side nonce header triplet (seqno/type/size-range).
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_tcp_rpc_server_validate_nonce_header(
+    packet_num: i32,
+    packet_type: i32,
+    packet_len: i32,
+    nonce_packet_min_len: i32,
+    nonce_packet_max_len: i32,
+) -> i32 {
+    tcp_rpc_server_validate_nonce_header_impl(
+        packet_num,
+        packet_type,
+        packet_len,
+        nonce_packet_min_len,
+        nonce_packet_max_len,
+    )
+}
+
+/// Validates parsed handshake payload and computes crc32c activation flag.
+///
+/// # Safety
+/// `out_enable_crc32c` must be a valid writable pointer.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_tcp_rpc_server_validate_handshake(
+    packet_flags: i32,
+    peer_pid_matches: i32,
+    ignore_pid: i32,
+    default_rpc_flags: i32,
+    out_enable_crc32c: *mut i32,
+) -> i32 {
+    unsafe {
+        tcp_rpc_server_validate_handshake_ffi(
+            packet_flags,
+            peer_pid_matches,
+            ignore_pid,
+            default_rpc_flags,
+            out_enable_crc32c,
+        )
+    }
+}
+
+/// Returns `1` when `C_WANTWR` should be set after wakeup/alarm callback.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_tcp_rpc_server_should_set_wantwr(out_total_bytes: i32) -> i32 {
+    tcp_rpc_server_should_set_wantwr_impl(out_total_bytes)
+}
+
+/// Returns whether close notification should be queued.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_tcp_rpc_server_should_notify_close(has_rpc_close: i32) -> i32 {
+    tcp_rpc_server_should_notify_close_impl(has_rpc_close)
+}
+
+/// Returns `tcp_rpcs_do_wakeup()` result.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_tcp_rpc_server_do_wakeup() -> i32 {
+    tcp_rpc_server_do_wakeup_impl()
+}
+
+/// Returns post-notification `pending_queries` value.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_tcp_rpc_server_notification_pending_queries() -> i32 {
+    tcp_rpc_server_notification_pending_queries_impl()
+}
+
+/// Computes tcp-rpc server initial state values for accepted connection.
+///
+/// # Safety
+/// All output pointers must be valid writable pointers.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_tcp_rpc_server_init_accepted_state(
+    has_perm_callback: i32,
+    perm_flags: i32,
+    out_crypto_flags: *mut i32,
+    out_in_packet_num: *mut i32,
+    out_out_packet_num: *mut i32,
+) -> i32 {
+    unsafe {
+        tcp_rpc_server_init_accepted_state_ffi(
+            has_perm_callback,
+            perm_flags,
+            out_crypto_flags,
+            out_in_packet_num,
+            out_out_packet_num,
+        )
+    }
+}
+
+/// Computes tcp-rpc server initial state values for accepted-nohs mode.
+///
+/// # Safety
+/// `out_crypto_flags` and `out_in_packet_num` must be writable pointers.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_tcp_rpc_server_init_accepted_nohs_state(
+    out_crypto_flags: *mut i32,
+    out_in_packet_num: *mut i32,
+) -> i32 {
+    unsafe { tcp_rpc_server_init_accepted_nohs_state_ffi(out_crypto_flags, out_in_packet_num) }
+}
+
+/// Computes fake-crypto state transition.
+///
+/// # Safety
+/// `out_crypto_flags` must be a writable pointer.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_tcp_rpc_server_init_fake_crypto_state(
+    crypto_flags: i32,
+    out_crypto_flags: *mut i32,
+) -> i32 {
+    unsafe { tcp_rpc_server_init_fake_crypto_state_ffi(crypto_flags, out_crypto_flags) }
+}
+
+/// Returns default permission mask for tcp-rpc server.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_tcp_rpc_server_default_check_perm(default_rpc_flags: i32) -> i32 {
+    tcp_rpc_server_default_check_perm_impl(default_rpc_flags)
+}
+
 /// Normalizes rpc-target PID (`ip=0` -> `default_ip`) to match C behavior.
 ///
 /// # Safety

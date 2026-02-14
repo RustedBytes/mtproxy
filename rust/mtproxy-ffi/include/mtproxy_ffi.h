@@ -750,6 +750,67 @@ int32_t mtproxy_ffi_tcp_rpc_server_process_nonce_packet(
   int32_t *out_key_select,
   int32_t *out_has_dh_params
 );
+int32_t mtproxy_ffi_tcp_rpc_server_default_execute_should_pong(
+  int32_t op,
+  int32_t raw_total_bytes
+);
+int32_t mtproxy_ffi_tcp_rpc_server_default_execute_set_pong(
+  int32_t *packet_words,
+  int32_t packet_words_len
+);
+int32_t mtproxy_ffi_tcp_rpc_server_build_handshake_packet(
+  int32_t crypto_flags,
+  const mtproxy_ffi_process_id_t *sender_pid,
+  const mtproxy_ffi_process_id_t *peer_pid,
+  uint8_t *out_packet,
+  int32_t out_packet_len
+);
+int32_t mtproxy_ffi_tcp_rpc_server_build_handshake_error_packet(
+  int32_t error_code,
+  const mtproxy_ffi_process_id_t *sender_pid,
+  uint8_t *out_packet,
+  int32_t out_packet_len
+);
+int32_t mtproxy_ffi_tcp_rpc_server_validate_handshake_header(
+  int32_t packet_num,
+  int32_t packet_type,
+  int32_t packet_len,
+  int32_t handshake_packet_len
+);
+int32_t mtproxy_ffi_tcp_rpc_server_validate_nonce_header(
+  int32_t packet_num,
+  int32_t packet_type,
+  int32_t packet_len,
+  int32_t nonce_packet_min_len,
+  int32_t nonce_packet_max_len
+);
+int32_t mtproxy_ffi_tcp_rpc_server_validate_handshake(
+  int32_t packet_flags,
+  int32_t peer_pid_matches,
+  int32_t ignore_pid,
+  int32_t default_rpc_flags,
+  int32_t *out_enable_crc32c
+);
+int32_t mtproxy_ffi_tcp_rpc_server_should_set_wantwr(int32_t out_total_bytes);
+int32_t mtproxy_ffi_tcp_rpc_server_should_notify_close(int32_t has_rpc_close);
+int32_t mtproxy_ffi_tcp_rpc_server_do_wakeup(void);
+int32_t mtproxy_ffi_tcp_rpc_server_notification_pending_queries(void);
+int32_t mtproxy_ffi_tcp_rpc_server_init_accepted_state(
+  int32_t has_perm_callback,
+  int32_t perm_flags,
+  int32_t *out_crypto_flags,
+  int32_t *out_in_packet_num,
+  int32_t *out_out_packet_num
+);
+int32_t mtproxy_ffi_tcp_rpc_server_init_accepted_nohs_state(
+  int32_t *out_crypto_flags,
+  int32_t *out_in_packet_num
+);
+int32_t mtproxy_ffi_tcp_rpc_server_init_fake_crypto_state(
+  int32_t crypto_flags,
+  int32_t *out_crypto_flags
+);
+int32_t mtproxy_ffi_tcp_rpc_server_default_check_perm(int32_t default_rpc_flags);
 
 // net-rpc-targets helper: normalizes zero-ip PID to default local IP.
 int32_t mtproxy_ffi_rpc_target_normalize_pid(mtproxy_ffi_process_id_t *pid, uint32_t default_ip);

@@ -78,6 +78,62 @@ mtproxy_ffi_tcp_rpc_parse_handshake_packet(const uint8_t *packet, int32_t packet
                                           int32_t *out_flags,
                                           struct process_id *out_sender_pid,
                                           struct process_id *out_peer_pid);
+extern int32_t
+mtproxy_ffi_tcp_rpc_server_default_execute_should_pong(int32_t op,
+                                                       int32_t raw_total_bytes);
+extern int32_t
+mtproxy_ffi_tcp_rpc_server_default_execute_set_pong(int32_t *packet_words,
+                                                    int32_t packet_words_len);
+extern int32_t
+mtproxy_ffi_tcp_rpc_server_build_handshake_packet(int32_t crypto_flags,
+                                                  const struct process_id *sender_pid,
+                                                  const struct process_id *peer_pid,
+                                                  uint8_t *out_packet,
+                                                  int32_t out_packet_len);
+extern int32_t
+mtproxy_ffi_tcp_rpc_server_build_handshake_error_packet(int32_t error_code,
+                                                        const struct process_id *sender_pid,
+                                                        uint8_t *out_packet,
+                                                        int32_t out_packet_len);
+extern int32_t
+mtproxy_ffi_tcp_rpc_server_validate_handshake_header(int32_t packet_num,
+                                                     int32_t packet_type,
+                                                     int32_t packet_len,
+                                                     int32_t handshake_packet_len);
+extern int32_t
+mtproxy_ffi_tcp_rpc_server_validate_nonce_header(int32_t packet_num,
+                                                 int32_t packet_type,
+                                                 int32_t packet_len,
+                                                 int32_t nonce_packet_min_len,
+                                                 int32_t nonce_packet_max_len);
+extern int32_t
+mtproxy_ffi_tcp_rpc_server_validate_handshake(int32_t packet_flags,
+                                              int32_t peer_pid_matches,
+                                              int32_t ignore_pid,
+                                              int32_t default_rpc_flags,
+                                              int32_t *out_enable_crc32c);
+extern int32_t
+mtproxy_ffi_tcp_rpc_server_should_set_wantwr(int32_t out_total_bytes);
+extern int32_t
+mtproxy_ffi_tcp_rpc_server_should_notify_close(int32_t has_rpc_close);
+extern int32_t
+mtproxy_ffi_tcp_rpc_server_do_wakeup(void);
+extern int32_t
+mtproxy_ffi_tcp_rpc_server_notification_pending_queries(void);
+extern int32_t
+mtproxy_ffi_tcp_rpc_server_init_accepted_state(int32_t has_perm_callback,
+                                               int32_t perm_flags,
+                                               int32_t *out_crypto_flags,
+                                               int32_t *out_in_packet_num,
+                                               int32_t *out_out_packet_num);
+extern int32_t
+mtproxy_ffi_tcp_rpc_server_init_accepted_nohs_state(int32_t *out_crypto_flags,
+                                                    int32_t *out_in_packet_num);
+extern int32_t
+mtproxy_ffi_tcp_rpc_server_init_fake_crypto_state(int32_t crypto_flags,
+                                                  int32_t *out_crypto_flags);
+extern int32_t
+mtproxy_ffi_tcp_rpc_server_default_check_perm(int32_t default_rpc_flags);
 
 static inline int tcp_rpc_server_packet_header_malformed(int packet_len) {
   int32_t malformed =
@@ -145,14 +201,17 @@ struct tcp_rpc_server_functions default_tcp_rpc_server = {
 int tcp_rpcs_default_execute(connection_job_t C, int op,
                              struct raw_message *raw) {
   struct connection_info *c = CONN_INFO(C);
+  int32_t should_pong =
+      mtproxy_ffi_tcp_rpc_server_default_execute_should_pong(op, raw->total_bytes);
+  assert(should_pong == 0 || should_pong == 1);
 
   vkprintf(3, "%s: fd=%d, op=%d, len=%d\n", __func__, c->fd, op,
            raw->total_bytes);
-  if (op == RPC_PING && raw->total_bytes == 12) {
+  if (should_pong) {
     c->last_response_time = precise_now;
     int P[3];
     assert(rwm_fetch_data(raw, P, 12) == 12);
-    P[0] = RPC_PONG;
+    assert(mtproxy_ffi_tcp_rpc_server_default_execute_set_pong(P, 3) == 0);
     vkprintf(3, "received ping from " IP_PRINT_STR ":%d (val = %lld)\n",
              IP_TO_PRINT(c->remote_ip), (int)c->remote_port,
              *(long long *)(P + 1));
@@ -184,13 +243,12 @@ static int tcp_rpcs_process_nonce_packet(connection_job_t C,
   assert(rwm_fetch_lookup(msg, &packet_type, 4) == 4);
   int packet_len = msg->total_bytes;
 
-  if (packet_num != -2 || packet_type != RPC_NONCE) {
-    return -2;
-  }
-
-  if (packet_len < sizeof(struct tcp_rpc_nonce_packet) ||
-      packet_len > sizeof(struct tcp_rpc_nonce_dh_packet)) {
-    return -3;
+  int32_t nonce_header_state = mtproxy_ffi_tcp_rpc_server_validate_nonce_header(
+      packet_num, packet_type, packet_len,
+      (int32_t)sizeof(struct tcp_rpc_nonce_packet),
+      (int32_t)sizeof(struct tcp_rpc_nonce_dh_packet));
+  if (nonce_header_state < 0) {
+    return nonce_header_state;
   }
 
   assert(rwm_fetch_data(msg, &P, packet_len) == packet_len);
@@ -274,28 +332,29 @@ static int tcp_rpcs_process_nonce_packet(connection_job_t C,
 
 static int tcp_rpcs_send_handshake_packet(connection_job_t c) {
   struct tcp_rpc_data *D = TCP_RPC_DATA(c);
-  struct tcp_rpc_handshake_packet P;
+  uint8_t packet[sizeof(struct tcp_rpc_handshake_packet)];
   assert(PID.ip);
-  memset(&P, 0, sizeof(P));
-  P.type = RPC_HANDSHAKE;
-  P.flags = D->crypto_flags & RPCF_USE_CRC32C;
-  memcpy(&P.sender_pid, &PID, sizeof(struct process_id));
-  memcpy(&P.peer_pid, &D->remote_pid, sizeof(struct process_id));
+  int32_t packet_len = mtproxy_ffi_tcp_rpc_server_build_handshake_packet(
+      D->crypto_flags, &PID, &D->remote_pid, packet, (int32_t)sizeof(packet));
+  if (packet_len < 0) {
+    return -1;
+  }
 
-  tcp_rpc_conn_send_data_im(JOB_REF_CREATE_PASS(c), sizeof(P), &P);
+  tcp_rpc_conn_send_data_im(JOB_REF_CREATE_PASS(c), packet_len, packet);
   return 0;
 }
 
 static int tcp_rpcs_send_handshake_error_packet(connection_job_t c,
                                                 int error_code) {
-  struct tcp_rpc_handshake_error_packet P;
+  uint8_t packet[sizeof(struct tcp_rpc_handshake_error_packet)];
   assert(PID.pid);
-  memset(&P, 0, sizeof(P));
-  P.type = RPC_HANDSHAKE_ERROR;
-  P.error_code = error_code;
-  memcpy(&P.sender_pid, &PID, sizeof(PID));
+  int32_t packet_len = mtproxy_ffi_tcp_rpc_server_build_handshake_error_packet(
+      error_code, &PID, packet, (int32_t)sizeof(packet));
+  if (packet_len < 0) {
+    return -1;
+  }
 
-  tcp_rpc_conn_send_data(JOB_REF_CREATE_PASS(c), sizeof(P), &P);
+  tcp_rpc_conn_send_data(JOB_REF_CREATE_PASS(c), packet_len, packet);
   return 0;
 }
 
@@ -318,13 +377,17 @@ static int tcp_rpcs_process_handshake_packet(connection_job_t C,
   assert(rwm_fetch_lookup(msg, &packet_type, 4) == 4);
   int packet_len = msg->total_bytes;
 
-  if (packet_num != -1 || packet_type != RPC_HANDSHAKE) {
+  int32_t handshake_header_state = mtproxy_ffi_tcp_rpc_server_validate_handshake_header(
+      packet_num, packet_type, packet_len,
+      (int32_t)sizeof(struct tcp_rpc_handshake_packet));
+  if (handshake_header_state == -2) {
     return -2;
   }
-  if (packet_len != sizeof(struct tcp_rpc_handshake_packet)) {
+  if (handshake_header_state == -3) {
     tcp_rpcs_send_handshake_error_packet(C, -3);
     return -3;
   }
+  assert(handshake_header_state == 0);
   assert(rwm_fetch_data(msg, &P, packet_len) == packet_len);
   if (mtproxy_ffi_tcp_rpc_parse_handshake_packet(
           (const uint8_t *)&P, packet_len, &P.flags, &P.sender_pid,
@@ -333,21 +396,23 @@ static int tcp_rpcs_process_handshake_packet(connection_job_t C,
     return -3;
   }
   memcpy(&D->remote_pid, &P.sender_pid, sizeof(struct process_id));
-  if (!matches_pid(&PID, &P.peer_pid) &&
-      !(funcs->mode_flags & TCP_RPC_IGNORE_PID)) {
+  int32_t enable_crc32c = 0;
+  int32_t handshake_state = mtproxy_ffi_tcp_rpc_server_validate_handshake(
+      P.flags, matches_pid(&PID, &P.peer_pid),
+      funcs->mode_flags & TCP_RPC_IGNORE_PID, tcp_get_default_rpc_flags(),
+      &enable_crc32c);
+  if (handshake_state == -4) {
     vkprintf(1,
              "PID mismatch during handshake: local %08x:%d:%d:%d, remote "
              "%08x:%d:%d:%d\n",
              PID.ip, PID.port, PID.pid, PID.utime, P.peer_pid.ip,
              P.peer_pid.port, P.peer_pid.pid, P.peer_pid.utime);
-    tcp_rpcs_send_handshake_error_packet(C, -4);
-    return -4;
   }
-  if (P.flags & 0xff) {
-    tcp_rpcs_send_handshake_error_packet(C, -7);
-    return -7;
+  if (handshake_state < 0) {
+    tcp_rpcs_send_handshake_error_packet(C, handshake_state);
+    return handshake_state;
   }
-  if (P.flags & tcp_get_default_rpc_flags() & RPCF_USE_CRC32C) {
+  if (enable_crc32c) {
     D->crypto_flags |= RPCF_USE_CRC32C;
   }
   return 0;
@@ -514,11 +579,14 @@ int tcp_rpcs_wakeup(connection_job_t C) {
 
   notification_event_insert_tcp_conn_wakeup(C);
 
-  if (c->out_p.total_bytes > 0) {
+  int32_t should_set_wantwr =
+      mtproxy_ffi_tcp_rpc_server_should_set_wantwr(c->out_p.total_bytes);
+  assert(should_set_wantwr == 0 || should_set_wantwr == 1);
+  if (should_set_wantwr) {
     __sync_fetch_and_or(&c->flags, C_WANTWR);
   }
 
-  c->pending_queries = 0;
+  c->pending_queries = mtproxy_ffi_tcp_rpc_server_notification_pending_queries();
   return 0;
 }
 
@@ -527,54 +595,58 @@ int tcp_rpcs_alarm(connection_job_t C) {
 
   notification_event_insert_tcp_conn_alarm(C);
 
-  if (c->out_p.total_bytes > 0) {
+  int32_t should_set_wantwr =
+      mtproxy_ffi_tcp_rpc_server_should_set_wantwr(c->out_p.total_bytes);
+  assert(should_set_wantwr == 0 || should_set_wantwr == 1);
+  if (should_set_wantwr) {
     __sync_fetch_and_or(&c->flags, C_WANTWR);
   }
 
-  c->pending_queries = 0;
+  c->pending_queries = mtproxy_ffi_tcp_rpc_server_notification_pending_queries();
   return 0;
 }
 
 int tcp_rpcs_close_connection(connection_job_t C, int who) {
   struct tcp_rpc_server_functions *funcs = TCP_RPCS_FUNC(C);
-  if (funcs->rpc_close) {
+  if (mtproxy_ffi_tcp_rpc_server_should_notify_close(funcs->rpc_close ? 1 : 0)) {
     notification_event_insert_tcp_conn_close(C);
   }
 
   return cpu_server_close_connection(C, who);
 }
 
-int tcp_rpcs_do_wakeup(connection_job_t c) { return 0; }
+int tcp_rpcs_do_wakeup(connection_job_t c) {
+  (void)c;
+  return mtproxy_ffi_tcp_rpc_server_do_wakeup();
+}
 
 int tcp_rpcs_init_accepted(connection_job_t C) {
   struct connection_info *c = CONN_INFO(C);
   struct tcp_rpc_server_functions *funcs = TCP_RPCS_FUNC(C);
   struct tcp_rpc_data *D = TCP_RPC_DATA(C);
+  int32_t has_perm_callback = funcs->rpc_check_perm ? 1 : 0;
+  int32_t perm_flags = 0;
 
   c->last_query_sent_time = precise_now;
   D->custom_crc_partial = crc32_partial;
 
   if (funcs->rpc_check_perm) {
-    int res = funcs->rpc_check_perm(C);
+    perm_flags = funcs->rpc_check_perm(C);
     vkprintf(4,
              "tcp_rpcs_check_perm for connection %d: [%s]:%d -> [%s]:%d = %d\n",
              c->fd, show_remote_ip(C), c->remote_port, show_our_ip(C),
-             c->our_port, res);
-    if (res < 0) {
-      return res;
+             c->our_port, perm_flags);
+    if (perm_flags < 0) {
+      return perm_flags;
     }
-    res &= RPCF_ALLOW_UNENC | RPCF_ALLOW_ENC | RPCF_REQ_DH | RPCF_ALLOW_SKIP_DH;
-    if (!(res & (RPCF_ALLOW_UNENC | RPCF_ALLOW_ENC))) {
-      return -1;
-    }
-
-    D->crypto_flags = res;
-  } else {
-    D->crypto_flags = RPCF_ALLOW_UNENC;
   }
 
-  D->in_packet_num = -2;
-  D->out_packet_num = -2;
+  int32_t init_state = mtproxy_ffi_tcp_rpc_server_init_accepted_state(
+      has_perm_callback, perm_flags, &D->crypto_flags, &D->in_packet_num,
+      &D->out_packet_num);
+  if (init_state < 0) {
+    return init_state;
+  }
 
   return 0;
 }
@@ -582,8 +654,11 @@ int tcp_rpcs_init_accepted(connection_job_t C) {
 int tcp_rpcs_init_accepted_nohs(connection_job_t c) {
   struct tcp_rpc_server_functions *funcs = TCP_RPCS_FUNC(c);
   struct tcp_rpc_data *D = TCP_RPC_DATA(c);
-  D->crypto_flags = RPCF_QUICKACK | RPCF_ALLOW_UNENC;
-  D->in_packet_num = -3;
+  int32_t init_state = mtproxy_ffi_tcp_rpc_server_init_accepted_nohs_state(
+      &D->crypto_flags, &D->in_packet_num);
+  if (init_state < 0) {
+    return init_state;
+  }
   D->custom_crc_partial = crc32_partial;
   if (funcs->rpc_ready) {
     notification_event_insert_tcp_conn_ready(c);
@@ -593,8 +668,11 @@ int tcp_rpcs_init_accepted_nohs(connection_job_t c) {
 
 int tcp_rpcs_init_fake_crypto(connection_job_t c) {
   struct tcp_rpc_data *D = TCP_RPC_DATA(c);
-  if (!(D->crypto_flags & RPCF_ALLOW_UNENC)) {
-    return -1;
+  int32_t updated_crypto_flags = 0;
+  int32_t init_state = mtproxy_ffi_tcp_rpc_server_init_fake_crypto_state(
+      D->crypto_flags, &updated_crypto_flags);
+  if (init_state < 0) {
+    return init_state;
   }
 
   struct tcp_rpc_nonce_packet buf;
@@ -602,16 +680,16 @@ int tcp_rpcs_init_fake_crypto(connection_job_t c) {
   buf.type = RPC_NONCE;
   buf.crypto_schema = RPC_CRYPTO_NONE;
 
-  assert((D->crypto_flags & (RPCF_ALLOW_ENC | RPCF_ENC_SENT)) == 0);
-  D->crypto_flags |= RPCF_ENC_SENT;
+  D->crypto_flags = updated_crypto_flags;
 
   tcp_rpc_conn_send_data_init(c, sizeof(buf), &buf);
 
-  return 1;
+  return init_state;
 }
 
 int tcp_rpcs_default_check_perm(connection_job_t C) {
-  return RPCF_ALLOW_ENC | RPCF_REQ_DH | tcp_get_default_rpc_flags();
+  return mtproxy_ffi_tcp_rpc_server_default_check_perm(
+      (int32_t)tcp_get_default_rpc_flags());
 }
 
 int tcp_rpcs_init_crypto(connection_job_t C, struct tcp_rpc_nonce_packet *P) {

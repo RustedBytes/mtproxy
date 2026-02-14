@@ -44,8 +44,23 @@ use super::{
     mtproxy_ffi_sha1_two_chunks, mtproxy_ffi_sha256, mtproxy_ffi_sha256_hmac,
     mtproxy_ffi_sha256_two_chunks, mtproxy_ffi_startup_handshake,
     mtproxy_ffi_tcp_rpc_client_packet_len_state, mtproxy_ffi_tcp_rpc_encode_compact_header,
+    mtproxy_ffi_tcp_rpc_parse_handshake_packet,
+    mtproxy_ffi_tcp_rpc_server_build_handshake_error_packet,
+    mtproxy_ffi_tcp_rpc_server_build_handshake_packet,
+    mtproxy_ffi_tcp_rpc_server_default_check_perm,
+    mtproxy_ffi_tcp_rpc_server_default_execute_set_pong,
+    mtproxy_ffi_tcp_rpc_server_default_execute_should_pong,
+    mtproxy_ffi_tcp_rpc_server_do_wakeup,
+    mtproxy_ffi_tcp_rpc_server_init_accepted_nohs_state,
+    mtproxy_ffi_tcp_rpc_server_init_accepted_state,
+    mtproxy_ffi_tcp_rpc_server_init_fake_crypto_state,
+    mtproxy_ffi_tcp_rpc_server_notification_pending_queries,
     mtproxy_ffi_tcp_rpc_server_packet_header_malformed,
-    mtproxy_ffi_tcp_rpc_server_packet_len_state, mtproxy_ffi_tl_parse_answer_header,
+    mtproxy_ffi_tcp_rpc_server_packet_len_state, mtproxy_ffi_tcp_rpc_server_should_set_wantwr,
+    mtproxy_ffi_tcp_rpc_server_should_notify_close,
+    mtproxy_ffi_tcp_rpc_server_validate_handshake,
+    mtproxy_ffi_tcp_rpc_server_validate_handshake_header,
+    mtproxy_ffi_tcp_rpc_server_validate_nonce_header, mtproxy_ffi_tl_parse_answer_header,
     mtproxy_ffi_tl_parse_query_header, MtproxyAesKeyData, MtproxyApplicationBoundary,
     MtproxyCfgIntResult, MtproxyCfgScanResult, MtproxyConcurrencyBoundary, MtproxyCpuid,
     MtproxyCryptoBoundary, MtproxyMeminfoSummary, MtproxyMtprotoCfgClusterApplyDecisionResult,
@@ -1984,6 +1999,204 @@ fn tcp_rpc_packet_len_state_helpers_match_current_rules() {
         mtproxy_ffi_tcp_rpc_server_packet_len_state(2048, 1024),
         TCP_RPC_PACKET_LEN_STATE_INVALID
     );
+}
+
+#[test]
+fn tcp_rpc_server_default_execute_helpers_match_ping_contract() {
+    const RPC_PING: i32 = i32::from_ne_bytes(0x5730_a2df_u32.to_ne_bytes());
+    const RPC_PONG: i32 = i32::from_ne_bytes(0x8430_eaa7_u32.to_ne_bytes());
+
+    assert_eq!(
+        mtproxy_ffi_tcp_rpc_server_default_execute_should_pong(RPC_PING, 12),
+        1
+    );
+    assert_eq!(
+        mtproxy_ffi_tcp_rpc_server_default_execute_should_pong(RPC_PING, 8),
+        0
+    );
+    assert_eq!(
+        mtproxy_ffi_tcp_rpc_server_default_execute_should_pong(0, 12),
+        0
+    );
+
+    let mut words = [RPC_PING, 0x1122_3344, 0x5566_7788];
+    assert_eq!(
+        unsafe { mtproxy_ffi_tcp_rpc_server_default_execute_set_pong(words.as_mut_ptr(), 3) },
+        0
+    );
+    assert_eq!(words[0], RPC_PONG);
+}
+
+#[test]
+fn tcp_rpc_server_handshake_and_state_helpers_match_c_defaults() {
+    const RPCF_ALLOW_UNENC: i32 = 1;
+    const RPCF_ALLOW_ENC: i32 = 2;
+    const RPCF_REQ_DH: i32 = 4;
+    const RPCF_ALLOW_SKIP_DH: i32 = 8;
+    const RPCF_ENC_SENT: i32 = 16;
+    const RPCF_QUICKACK: i32 = 512;
+    const RPCF_USE_CRC32C: i32 = 2048;
+    const RPC_NONCE: i32 = i32::from_ne_bytes(0x7acb_87aa_u32.to_ne_bytes());
+
+    assert_eq!(
+        mtproxy_ffi_tcp_rpc_server_validate_nonce_header(-2, RPC_NONCE, 32, 32, 328),
+        0
+    );
+    assert_eq!(
+        mtproxy_ffi_tcp_rpc_server_validate_nonce_header(-1, RPC_NONCE, 32, 32, 328),
+        -2
+    );
+
+    let sender = MtproxyProcessId {
+        ip: 0x7f00_0001,
+        port: 80,
+        pid: 100,
+        utime: 1000,
+    };
+    let peer = MtproxyProcessId {
+        ip: 0x7f00_0002,
+        port: 81,
+        pid: 101,
+        utime: 1001,
+    };
+
+    let mut packet = [0u8; 64];
+    let built = unsafe {
+        mtproxy_ffi_tcp_rpc_server_build_handshake_packet(
+            RPCF_USE_CRC32C,
+            &raw const sender,
+            &raw const peer,
+            packet.as_mut_ptr(),
+            i32::try_from(packet.len()).unwrap_or(i32::MAX),
+        )
+    };
+    assert_eq!(built, 32);
+
+    let mut parsed_flags = 0;
+    let mut parsed_sender = MtproxyProcessId::default();
+    let mut parsed_peer = MtproxyProcessId::default();
+    assert_eq!(
+        unsafe {
+            mtproxy_ffi_tcp_rpc_parse_handshake_packet(
+                packet.as_ptr(),
+                built,
+                &raw mut parsed_flags,
+                &raw mut parsed_sender,
+                &raw mut parsed_peer,
+            )
+        },
+        0
+    );
+    assert_eq!(parsed_flags, RPCF_USE_CRC32C);
+    assert_eq!(parsed_sender, sender);
+    assert_eq!(parsed_peer, peer);
+
+    let packet_type = i32::from_ne_bytes([packet[0], packet[1], packet[2], packet[3]]);
+    assert_eq!(
+        mtproxy_ffi_tcp_rpc_server_validate_handshake_header(-1, packet_type, built, 32),
+        0
+    );
+    assert_eq!(
+        mtproxy_ffi_tcp_rpc_server_validate_handshake_header(-2, packet_type, built, 32),
+        -2
+    );
+
+    let mut enable_crc32c = 0;
+    assert_eq!(
+        unsafe {
+            mtproxy_ffi_tcp_rpc_server_validate_handshake(
+                parsed_flags,
+                1,
+                0,
+                RPCF_USE_CRC32C,
+                &raw mut enable_crc32c,
+            )
+        },
+        0
+    );
+    assert_eq!(enable_crc32c, 1);
+    assert_eq!(
+        unsafe {
+            mtproxy_ffi_tcp_rpc_server_validate_handshake(
+                parsed_flags,
+                0,
+                0,
+                RPCF_USE_CRC32C,
+                &raw mut enable_crc32c,
+            )
+        },
+        -4
+    );
+
+    let mut crypto_flags = 0;
+    let mut in_packet_num = 0;
+    let mut out_packet_num = 0;
+    assert_eq!(
+        unsafe {
+            mtproxy_ffi_tcp_rpc_server_init_accepted_state(
+                1,
+                RPCF_ALLOW_ENC | RPCF_REQ_DH | RPCF_ALLOW_SKIP_DH,
+                &raw mut crypto_flags,
+                &raw mut in_packet_num,
+                &raw mut out_packet_num,
+            )
+        },
+        0
+    );
+    assert_eq!(
+        crypto_flags,
+        RPCF_ALLOW_ENC | RPCF_REQ_DH | RPCF_ALLOW_SKIP_DH
+    );
+    assert_eq!(in_packet_num, -2);
+    assert_eq!(out_packet_num, -2);
+    assert_eq!(
+        mtproxy_ffi_tcp_rpc_server_default_check_perm(0),
+        RPCF_ALLOW_ENC | RPCF_REQ_DH
+    );
+
+    let mut nohs_crypto_flags = 0;
+    let mut nohs_in_packet_num = 0;
+    assert_eq!(
+        unsafe {
+            mtproxy_ffi_tcp_rpc_server_init_accepted_nohs_state(
+                &raw mut nohs_crypto_flags,
+                &raw mut nohs_in_packet_num,
+            )
+        },
+        0
+    );
+    assert_eq!(nohs_crypto_flags, RPCF_QUICKACK | RPCF_ALLOW_UNENC);
+    assert_eq!(nohs_in_packet_num, -3);
+
+    let mut fake_crypto_flags = 0;
+    assert_eq!(
+        unsafe {
+            mtproxy_ffi_tcp_rpc_server_init_fake_crypto_state(
+                RPCF_ALLOW_UNENC,
+                &raw mut fake_crypto_flags,
+            )
+        },
+        1
+    );
+    assert_eq!(fake_crypto_flags, RPCF_ALLOW_UNENC | RPCF_ENC_SENT);
+
+    let mut error_packet = [0u8; 64];
+    let error_len = unsafe {
+        mtproxy_ffi_tcp_rpc_server_build_handshake_error_packet(
+            -7,
+            &raw const sender,
+            error_packet.as_mut_ptr(),
+            i32::try_from(error_packet.len()).unwrap_or(i32::MAX),
+        )
+    };
+    assert_eq!(error_len, 20);
+
+    assert_eq!(mtproxy_ffi_tcp_rpc_server_should_set_wantwr(0), 0);
+    assert_eq!(mtproxy_ffi_tcp_rpc_server_should_set_wantwr(1), 1);
+    assert_eq!(mtproxy_ffi_tcp_rpc_server_should_notify_close(0), 0);
+    assert_eq!(mtproxy_ffi_tcp_rpc_server_should_notify_close(1), 1);
+    assert_eq!(mtproxy_ffi_tcp_rpc_server_do_wakeup(), 0);
+    assert_eq!(mtproxy_ffi_tcp_rpc_server_notification_pending_queries(), 0);
 }
 
 #[test]
