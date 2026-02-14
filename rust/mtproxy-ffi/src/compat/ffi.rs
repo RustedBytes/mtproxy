@@ -805,7 +805,7 @@ pub unsafe extern "C" fn mtproxy_ffi_tcp_rpc_parse_nonce_packet(
     let out_extra_key_signatures = if extra_count == 0 {
         &mut []
     } else {
-        match (unsafe { mut_slice_from_ptr(out_extra_key_signatures, extra_count) }) {
+        match unsafe { mut_slice_from_ptr(out_extra_key_signatures, extra_count) } {
             Some(extra) => extra,
             None => return -1,
         }

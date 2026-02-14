@@ -2,5 +2,5 @@ mod abi;
 mod core;
 mod ffi;
 
-pub use core::*;
-pub use ffi::*;
+pub(super) use core::*;
+pub(super) use ffi::*;
