@@ -9,18 +9,7 @@ use crate::*;
 /// `program_name` may be null; otherwise it must point to a valid NUL-terminated C string.
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_mtproto_proxy_usage(program_name: *const c_char) -> i32 {
-    let program_name = if program_name.is_null() {
-        "mtproto-proxy".to_owned()
-    } else {
-        let Some(program_name_ref) = cstr_to_owned(program_name) else {
-            return -1;
-        };
-        program_name_ref
-    };
-
-    let usage = mtproxy_bin::entrypoint::usage_text(&program_name);
-    eprint!("{usage}");
-    0
+    unsafe { mtproto_proxy_usage_ffi(program_name) }
 }
 
 /// Runs the Rust MTProxy entrypoint using C `argc`/`argv`.
@@ -32,11 +21,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_proxy_main(
     argc: i32,
     argv: *const *const c_char,
 ) -> i32 {
-    let Some(args) = mtproto_proxy_collect_argv(argc, argv) else {
-        eprintln!("ERROR: invalid argv passed to mtproxy_ffi_mtproto_proxy_main");
-        return 1;
-    };
-    mtproxy_bin::entrypoint::run_from_argv(&args)
+    unsafe { mtproto_proxy_main_ffi(argc, argv) }
 }
 
 /// Clears runtime config snapshot and optionally destroys target objects.
@@ -46,36 +31,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_proxy_main(
 #[no_mangle]
 #[allow(private_interfaces)]
 pub unsafe extern "C" fn clear_config(mc: *mut MtproxyMfConfig, do_destroy_targets: c_int) {
-    let Some(mc_ref) = (unsafe { mut_ref_from_ptr(mc) }) else {
-        return;
-    };
-    let tot_targets = usize::try_from(mc_ref.tot_targets)
-        .unwrap_or(0)
-        .min(MTPROTO_CFG_MAX_TARGETS);
-    if do_destroy_targets != 0 {
-        for idx in 0..tot_targets {
-            let target = mc_ref.targets[idx];
-            if unsafe { verbosity } >= 1 {
-                unsafe { kprintf(b"destroying target %p\n\0".as_ptr().cast(), target) };
-            }
-            unsafe {
-                destroy_target(1, target);
-            }
-        }
-        for idx in 0..tot_targets {
-            mc_ref.targets[idx] = core::ptr::null_mut();
-        }
-    }
-
-    let auth_clusters = usize::try_from(mc_ref.auth_clusters)
-        .unwrap_or(0)
-        .min(MTPROTO_CFG_MAX_CLUSTERS);
-    for idx in 0..auth_clusters {
-        mtproto_cfg_clear_cluster(&mut mc_ref.auth_stats, &mut mc_ref.auth_cluster[idx]);
-    }
-    mc_ref.tot_targets = 0;
-    mc_ref.auth_clusters = 0;
-    mc_ref.auth_stats = MtproxyMfGroupStats { tot_clusters: 0 };
+    unsafe { clear_config_ffi(mc, do_destroy_targets) };
 }
 
 /// Resolves and returns auth cluster by `cluster_id`.
@@ -89,51 +45,7 @@ pub unsafe extern "C" fn mf_cluster_lookup(
     cluster_id: c_int,
     force: c_int,
 ) -> *mut MtproxyMfCluster {
-    let Some(mc_ref) = (unsafe { mut_ref_from_ptr(mc) }) else {
-        return core::ptr::null_mut();
-    };
-    let mut cluster_ids = [0i32; MTPROTO_CFG_MAX_CLUSTERS];
-    let auth_clusters = mtproto_cfg_collect_auth_cluster_ids(mc_ref, &mut cluster_ids);
-    let default_cluster_index = mtproto_cfg_default_cluster_index(mc_ref, auth_clusters);
-    let mut out_cluster_index = -1;
-
-    let lookup_rc = unsafe {
-        mtproxy_ffi_mtproto_cfg_lookup_cluster_index(
-            cluster_ids.as_ptr(),
-            auth_clusters as u32,
-            cluster_id,
-            if force != 0 { 1 } else { 0 },
-            default_cluster_index
-                .and_then(|idx| i32::try_from(idx).ok())
-                .unwrap_or(0),
-            i32::from(default_cluster_index.is_some()),
-            &raw mut out_cluster_index,
-        )
-    };
-    if lookup_rc == MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_OK {
-        if let Ok(idx) = usize::try_from(out_cluster_index) {
-            if idx < auth_clusters {
-                return &mut mc_ref.auth_cluster[idx];
-            }
-        }
-        return if force != 0 {
-            mc_ref.default_cluster
-        } else {
-            core::ptr::null_mut()
-        };
-    }
-    if lookup_rc == MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_NOT_FOUND {
-        return if force != 0 {
-            mc_ref.default_cluster
-        } else {
-            core::ptr::null_mut()
-        };
-    }
-    if force != 0 {
-        mc_ref.default_cluster
-    } else {
-        core::ptr::null_mut()
-    }
+    unsafe { mf_cluster_lookup_ffi(mc, cluster_id, force) }
 }
 
 /// Resolves target hostname from parser cursor and stores it into `default_cfg_ct`.
@@ -142,41 +54,7 @@ pub unsafe extern "C" fn mf_cluster_lookup(
 /// Uses global parser cursors from C runtime and mutates `default_cfg_ct`.
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_resolve_default_target_from_cfg_cur() -> c_int {
-    let host = unsafe { cfg_gethost() };
-    if host.is_null() {
-        return -1;
-    }
-    let host_ref = unsafe { &*host };
-    if host_ref.h_addr_list.is_null() {
-        return -1;
-    }
-    let addr = unsafe { *host_ref.h_addr_list };
-    if addr.is_null() {
-        return -1;
-    }
-
-    if host_ref.h_addrtype == AF_INET {
-        let in_addr = unsafe { *(addr.cast::<MtproxyInAddr>()) };
-        unsafe {
-            default_cfg_ct.target = in_addr;
-            default_cfg_ct.target_ipv6 = [0; 16];
-        }
-        return 0;
-    }
-    if host_ref.h_addrtype == AF_INET6 {
-        unsafe {
-            default_cfg_ct.target.s_addr = 0;
-            core::ptr::copy_nonoverlapping(
-                addr.cast::<u8>(),
-                core::ptr::addr_of_mut!(default_cfg_ct.target_ipv6).cast::<u8>(),
-                16,
-            );
-        }
-        return 0;
-    }
-
-    mtproto_cfg_syntax_literal(b"cannot resolve hostname\0");
-    -1
+    unsafe { mtproto_cfg_resolve_default_target_from_cfg_cur_ffi() }
 }
 
 #[no_mangle]
@@ -187,11 +65,13 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_set_default_target_endpoint(
     reconnect_timeout: c_double,
 ) {
     unsafe {
-        default_cfg_ct.port = c_int::from(port);
-        default_cfg_ct.min_connections = min_connections as c_int;
-        default_cfg_ct.max_connections = max_connections as c_int;
-        default_cfg_ct.reconnect_timeout = reconnect_timeout;
-    }
+        mtproto_cfg_set_default_target_endpoint_ffi(
+            port,
+            min_connections,
+            max_connections,
+            reconnect_timeout,
+        )
+    };
 }
 
 /// Creates one target from `default_cfg_ct` and stores it into config slots.
@@ -204,41 +84,12 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_create_target(
     mc: *mut MtproxyMfConfig,
     target_index: u32,
 ) {
-    let Some(mc_ref) = (unsafe { mut_ref_from_ptr(mc) }) else {
-        return;
-    };
-    let Ok(target_index_usize) = usize::try_from(target_index) else {
-        return;
-    };
-    if target_index_usize >= MTPROTO_CFG_MAX_TARGETS {
-        return;
-    }
-    let mut was_created = -1;
-    let target = unsafe { create_target(&raw mut default_cfg_ct, &raw mut was_created) };
-    mc_ref.targets[target_index_usize] = target;
-
-    if unsafe { verbosity } >= 3 {
-        let ipv4 = unsafe { default_cfg_ct.target.s_addr.to_ne_bytes() };
-        unsafe {
-            kprintf(
-                b"new target %p created (%d): ip %d.%d.%d.%d, port %d\n\0"
-                    .as_ptr()
-                    .cast(),
-                target,
-                was_created,
-                c_int::from(ipv4[0]),
-                c_int::from(ipv4[1]),
-                c_int::from(ipv4[2]),
-                c_int::from(ipv4[3]),
-                default_cfg_ct.port,
-            );
-        }
-    }
+    unsafe { mtproto_cfg_create_target_ffi(mc, target_index) };
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_now_or_time() -> c_int {
-    unsafe { time(core::ptr::null_mut()) as c_int }
+    unsafe { mtproto_cfg_now_or_time_ffi() }
 }
 
 /// Parses dotted IPv4 text into host-order integer (`a<<24|b<<16|c<<8|d`).
@@ -250,15 +101,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_parse_text_ipv4(
     str: *const c_char,
     out_ip: *mut u32,
 ) -> i32 {
-    let Some(input) = cstr_to_owned(str) else {
-        return -1;
-    };
-    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out_ip) }) else {
-        return -1;
-    };
-    let parsed = mtproxy_core::runtime::mtproto::proxy::parse_text_ipv4(&input);
-    *out_ref = parsed;
-    0
+    unsafe { mtproto_parse_text_ipv4_ffi(str, out_ip) }
 }
 
 /// Parses textual IPv6 and writes 16-byte network-order output.
@@ -272,20 +115,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_parse_text_ipv6(
     out_ip: *mut u8,
     out_consumed: *mut i32,
 ) -> i32 {
-    let Some(input) = cstr_to_owned(str) else {
-        return -1;
-    };
-    let Some(out_ip_slice) = (unsafe { mut_slice_from_ptr(out_ip, 16) }) else {
-        return -1;
-    };
-    let Some(out_consumed_ref) = (unsafe { mut_ref_from_ptr(out_consumed) }) else {
-        return -1;
-    };
-    let mut parsed_ip = [0u8; 16];
-    let consumed = mtproxy_core::runtime::mtproto::proxy::parse_text_ipv6(&mut parsed_ip, &input);
-    out_ip_slice.copy_from_slice(&parsed_ip);
-    *out_consumed_ref = consumed;
-    0
+    unsafe { mtproto_parse_text_ipv6_ffi(str, out_ip, out_consumed) }
 }
 
 /// Classifies MTProto packet shape from fixed unencrypted header bytes.
@@ -300,34 +130,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_inspect_packet_header(
     packet_len: i32,
     out: *mut MtproxyMtprotoPacketInspectResult,
 ) -> i32 {
-    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out) }) else {
-        return -1;
-    };
-    let Some(bytes) = slice_from_ptr(header, header_len) else {
-        return -1;
-    };
-    *out_ref = MtproxyMtprotoPacketInspectResult::default();
-
-    match mtproxy_core::runtime::mtproto::proxy::inspect_mtproto_packet_header(bytes, packet_len) {
-        Some(mtproxy_core::runtime::mtproto::proxy::MtprotoPacketKind::Encrypted {
-            auth_key_id,
-        }) => {
-            out_ref.kind = MTPROTO_PACKET_KIND_ENCRYPTED;
-            out_ref.auth_key_id = auth_key_id;
-        }
-        Some(mtproxy_core::runtime::mtproto::proxy::MtprotoPacketKind::UnencryptedDh {
-            inner_len,
-            function,
-        }) => {
-            out_ref.kind = MTPROTO_PACKET_KIND_UNENCRYPTED_DH;
-            out_ref.inner_len = inner_len;
-            out_ref.function_id = function;
-        }
-        None => {
-            out_ref.kind = MTPROTO_PACKET_KIND_INVALID;
-        }
-    }
-    0
+    unsafe { mtproto_inspect_packet_header_ffi(header, header_len, packet_len, out) }
 }
 
 /// Parses RPC client packet TL envelope for `mtproto-proxy` dispatch.
@@ -340,18 +143,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_parse_client_packet(
     len: usize,
     out: *mut MtproxyMtprotoClientPacketParseResult,
 ) -> i32 {
-    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out) }) else {
-        return -1;
-    };
-    let Some(bytes) = slice_from_ptr(data, len) else {
-        return -1;
-    };
-    *out_ref = MtproxyMtprotoClientPacketParseResult {
-        kind: MTPROTO_CLIENT_PACKET_KIND_INVALID,
-        ..MtproxyMtprotoClientPacketParseResult::default()
-    };
-    mtproto_parse_client_packet_impl(bytes, out_ref);
-    0
+    unsafe { mtproto_parse_client_packet_ffi(data, len, out) }
 }
 
 /// Parses mtfront function envelope from unread TL bytes.
@@ -365,15 +157,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_parse_function(
     actor_id: i64,
     out: *mut MtproxyMtprotoParseFunctionResult,
 ) -> i32 {
-    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out) }) else {
-        return -1;
-    };
-    let Some(bytes) = slice_from_ptr(data, len) else {
-        return -1;
-    };
-    *out_ref = MtproxyMtprotoParseFunctionResult::default();
-    mtproto_parse_function_impl(bytes, actor_id, out_ref);
-    0
+    unsafe { mtproto_parse_function_ffi(data, len, actor_id, out) }
 }
 
 /// Returns scalar config state initialized by `preinit_config()`.
@@ -386,30 +170,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_preinit(
     default_max_connections: i64,
     out: *mut MtproxyMtprotoCfgPreinitResult,
 ) -> i32 {
-    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out) }) else {
-        return MTPROTO_CFG_PREINIT_ERR_INVALID_ARGS;
-    };
-    let snapshot = mtproxy_core::runtime::mtproto::config::preinit_config_snapshot(
-        mtproxy_core::runtime::mtproto::config::MtprotoConfigDefaults {
-            min_connections: default_min_connections,
-            max_connections: default_max_connections,
-        },
-    );
-    let Ok(tot_targets) = i32::try_from(snapshot.tot_targets) else {
-        return MTPROTO_CFG_PREINIT_ERR_INTERNAL;
-    };
-    let Ok(auth_clusters) = i32::try_from(snapshot.auth_clusters) else {
-        return MTPROTO_CFG_PREINIT_ERR_INTERNAL;
-    };
-    *out_ref = MtproxyMtprotoCfgPreinitResult {
-        tot_targets,
-        auth_clusters,
-        min_connections: snapshot.min_connections,
-        max_connections: snapshot.max_connections,
-        timeout_seconds: snapshot.timeout_seconds,
-        default_cluster_id: snapshot.default_cluster_id,
-    };
-    MTPROTO_CFG_PREINIT_OK
+    unsafe { mtproto_cfg_preinit_ffi(default_min_connections, default_max_connections, out) }
 }
 
 /// Decides cluster-apply action for `proxy` / `proxy_for` directives.
@@ -425,35 +186,14 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_decide_cluster_apply(
     max_clusters: u32,
     out: *mut MtproxyMtprotoCfgClusterApplyDecisionResult,
 ) -> i32 {
-    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out) }) else {
-        return MTPROTO_CFG_CLUSTER_APPLY_DECISION_ERR_INVALID_ARGS;
-    };
-    let Ok(clusters_len_usize) = usize::try_from(clusters_len) else {
-        return MTPROTO_CFG_CLUSTER_APPLY_DECISION_ERR_INVALID_ARGS;
-    };
-    let Ok(max_clusters_usize) = usize::try_from(max_clusters) else {
-        return MTPROTO_CFG_CLUSTER_APPLY_DECISION_ERR_INVALID_ARGS;
-    };
-    let Some(cluster_ids_slice) = (unsafe { slice_from_ptr(cluster_ids, clusters_len_usize) })
-    else {
-        return MTPROTO_CFG_CLUSTER_APPLY_DECISION_ERR_INVALID_ARGS;
-    };
-    match mtproxy_core::runtime::mtproto::config::decide_proxy_cluster_apply(
-        cluster_ids_slice,
-        cluster_id,
-        max_clusters_usize,
-    ) {
-        Ok(decision) => {
-            let Ok(cluster_index) = i32::try_from(decision.cluster_index) else {
-                return MTPROTO_CFG_CLUSTER_APPLY_DECISION_ERR_INTERNAL;
-            };
-            *out_ref = MtproxyMtprotoCfgClusterApplyDecisionResult {
-                kind: mtproto_cfg_cluster_apply_decision_kind_to_ffi(decision.kind),
-                cluster_index,
-            };
-            MTPROTO_CFG_CLUSTER_APPLY_DECISION_OK
-        }
-        Err(err) => mtproto_cfg_cluster_apply_decision_err_to_code(err),
+    unsafe {
+        mtproto_cfg_decide_cluster_apply_ffi(
+            cluster_ids,
+            clusters_len,
+            cluster_id,
+            max_clusters,
+            out,
+        )
     }
 }
 
@@ -467,19 +207,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_getlex_ext(
     len: usize,
     out: *mut MtproxyMtprotoCfgGetlexExtResult,
 ) -> i32 {
-    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out) }) else {
-        return MTPROTO_CFG_GETLEX_EXT_ERR_INVALID_ARGS;
-    };
-    let Some(bytes) = cfg_bytes_from_cstr(cur, len) else {
-        return MTPROTO_CFG_GETLEX_EXT_ERR_INVALID_ARGS;
-    };
-    let mut cursor = 0usize;
-    let lex = mtproxy_core::runtime::mtproto::config::cfg_getlex_ext(bytes, &mut cursor);
-    *out_ref = MtproxyMtprotoCfgGetlexExtResult {
-        advance: cursor,
-        lex,
-    };
-    MTPROTO_CFG_GETLEX_EXT_OK
+    unsafe { mtproto_cfg_getlex_ext_ffi(cur, len, out) }
 }
 
 /// Parses one directive token and scalar argument from `mtproto-config`.
@@ -494,27 +222,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_scan_directive_token(
     max_connections: i64,
     out: *mut MtproxyMtprotoCfgDirectiveTokenResult,
 ) -> i32 {
-    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out) }) else {
-        return MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_INVALID_ARGS;
-    };
-    let Some(bytes) = cfg_bytes_from_cstr(cur, len) else {
-        return MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_INVALID_ARGS;
-    };
-    match mtproxy_core::runtime::mtproto::config::cfg_scan_directive_token(
-        bytes,
-        min_connections,
-        max_connections,
-    ) {
-        Ok(preview) => {
-            *out_ref = MtproxyMtprotoCfgDirectiveTokenResult {
-                kind: mtproto_directive_token_kind_to_ffi(preview.kind),
-                advance: preview.advance,
-                value: preview.value,
-            };
-            MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_OK
-        }
-        Err(err) => mtproto_cfg_scan_directive_token_err_to_code(err),
-    }
+    unsafe { mtproto_cfg_scan_directive_token_ffi(cur, len, min_connections, max_connections, out) }
 }
 
 /// Parses one directive step from `mtproto-config` control flow.
@@ -534,53 +242,17 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_parse_directive_step(
     max_clusters: u32,
     out: *mut MtproxyMtprotoCfgDirectiveStepResult,
 ) -> i32 {
-    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out) }) else {
-        return MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_INVALID_ARGS;
-    };
-    let Some(bytes) = cfg_bytes_from_cstr(cur, len) else {
-        return MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_INVALID_ARGS;
-    };
-    let Ok(clusters_len_usize) = usize::try_from(clusters_len) else {
-        return MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_INVALID_ARGS;
-    };
-    let Ok(max_clusters_usize) = usize::try_from(max_clusters) else {
-        return MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_INVALID_ARGS;
-    };
-    let Some(cluster_ids_slice) = (unsafe { slice_from_ptr(cluster_ids, clusters_len_usize) })
-    else {
-        return MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_INVALID_ARGS;
-    };
-
-    match mtproxy_core::runtime::mtproto::config::cfg_parse_directive_step(
-        bytes,
-        min_connections,
-        max_connections,
-        cluster_ids_slice,
-        max_clusters_usize,
-    ) {
-        Ok(step) => {
-            let (cluster_decision_kind, cluster_index) =
-                if let Some(decision) = step.cluster_apply_decision {
-                    let Ok(cluster_index) = i32::try_from(decision.cluster_index) else {
-                        return MTPROTO_CFG_PARSE_DIRECTIVE_STEP_ERR_INTERNAL;
-                    };
-                    (
-                        mtproto_cfg_cluster_apply_decision_kind_to_ffi(decision.kind),
-                        cluster_index,
-                    )
-                } else {
-                    (0, -1)
-                };
-            *out_ref = MtproxyMtprotoCfgDirectiveStepResult {
-                kind: mtproto_directive_token_kind_to_ffi(step.kind),
-                advance: step.advance,
-                value: step.value,
-                cluster_decision_kind,
-                cluster_index,
-            };
-            MTPROTO_CFG_PARSE_DIRECTIVE_STEP_OK
-        }
-        Err(err) => mtproto_cfg_parse_directive_step_err_to_code(err),
+    unsafe {
+        mtproto_cfg_parse_directive_step_ffi(
+            cur,
+            len,
+            min_connections,
+            max_connections,
+            cluster_ids,
+            clusters_len,
+            max_clusters,
+            out,
+        )
     }
 }
 
@@ -609,114 +281,24 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_parse_proxy_target_step(
     has_last_cluster_state: i32,
     out: *mut MtproxyMtprotoCfgParseProxyTargetStepResult,
 ) -> i32 {
-    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out) }) else {
-        return MTPROTO_CFG_PARSE_PROXY_TARGET_STEP_ERR_INVALID_ARGS;
-    };
-    let Some(bytes) = cfg_bytes_from_cstr(cur, len) else {
-        return MTPROTO_CFG_PARSE_PROXY_TARGET_STEP_ERR_INVALID_ARGS;
-    };
-    let Ok(current_targets_usize) = usize::try_from(current_targets) else {
-        return MTPROTO_CFG_PARSE_PROXY_TARGET_STEP_ERR_INVALID_ARGS;
-    };
-    let Ok(max_targets_usize) = usize::try_from(max_targets) else {
-        return MTPROTO_CFG_PARSE_PROXY_TARGET_STEP_ERR_INVALID_ARGS;
-    };
-    let Ok(clusters_len_usize) = usize::try_from(clusters_len) else {
-        return MTPROTO_CFG_PARSE_PROXY_TARGET_STEP_ERR_INVALID_ARGS;
-    };
-    let Ok(max_clusters_usize) = usize::try_from(max_clusters) else {
-        return MTPROTO_CFG_PARSE_PROXY_TARGET_STEP_ERR_INVALID_ARGS;
-    };
-    let Ok(current_auth_tot_clusters_usize) = usize::try_from(current_auth_tot_clusters) else {
-        return MTPROTO_CFG_PARSE_PROXY_TARGET_STEP_ERR_INVALID_ARGS;
-    };
-    let Some(cluster_ids_slice) = (unsafe { slice_from_ptr(cluster_ids, clusters_len_usize) })
-    else {
-        return MTPROTO_CFG_PARSE_PROXY_TARGET_STEP_ERR_INVALID_ARGS;
-    };
-
-    let last_cluster_state = if has_last_cluster_state != 0 {
-        let Some(state_ref) = (unsafe { ref_from_ptr(last_cluster_state) }) else {
-            return MTPROTO_CFG_PARSE_PROXY_TARGET_STEP_ERR_INVALID_ARGS;
-        };
-        let Some(state) = mtproto_old_cluster_from_ffi(state_ref) else {
-            return MTPROTO_CFG_PARSE_PROXY_TARGET_STEP_ERR_INVALID_ARGS;
-        };
-        Some(state)
-    } else {
-        None
-    };
-
-    match mtproxy_core::runtime::mtproto::config::cfg_parse_proxy_target_step(
-        bytes,
-        current_targets_usize,
-        max_targets_usize,
-        min_connections,
-        max_connections,
-        cluster_ids_slice,
-        target_dc,
-        max_clusters_usize,
-        create_targets != 0,
-        current_auth_tot_clusters_usize,
-        last_cluster_state,
-    ) {
-        Ok(step) => {
-            let Ok(target_index) = u32::try_from(step.target_index) else {
-                return MTPROTO_CFG_PARSE_PROXY_TARGET_STEP_ERR_INTERNAL;
-            };
-            let Ok(tot_targets_after) = u32::try_from(step.tot_targets_after) else {
-                return MTPROTO_CFG_PARSE_PROXY_TARGET_STEP_ERR_INTERNAL;
-            };
-            let Ok(cluster_index) = i32::try_from(step.cluster_apply_decision.cluster_index) else {
-                return MTPROTO_CFG_PARSE_PROXY_TARGET_STEP_ERR_INTERNAL;
-            };
-            let Ok(auth_clusters_after) = u32::try_from(step.auth_clusters_after) else {
-                return MTPROTO_CFG_PARSE_PROXY_TARGET_STEP_ERR_INTERNAL;
-            };
-            let Ok(auth_tot_clusters_after) = u32::try_from(step.auth_tot_clusters_after) else {
-                return MTPROTO_CFG_PARSE_PROXY_TARGET_STEP_ERR_INTERNAL;
-            };
-            let Some(cluster_state_after) = mtproto_old_cluster_to_ffi(&step.cluster_state_after)
-            else {
-                return MTPROTO_CFG_PARSE_PROXY_TARGET_STEP_ERR_INTERNAL;
-            };
-            let cluster_targets_action =
-                mtproto_cfg_cluster_targets_action_to_ffi(step.cluster_targets_action);
-            let cluster_targets_index = if step.cluster_targets_action
-                == mtproxy_core::runtime::mtproto::config::MtprotoClusterTargetsAction::SetToTargetIndex
-            {
-                let Some(first) = step.cluster_state_after.first_target_index else {
-                    return MTPROTO_CFG_PARSE_PROXY_TARGET_STEP_ERR_INTERNAL;
-                };
-                let Ok(idx) = u32::try_from(first) else {
-                    return MTPROTO_CFG_PARSE_PROXY_TARGET_STEP_ERR_INTERNAL;
-                };
-                idx
-            } else {
-                0
-            };
-
-            *out_ref = MtproxyMtprotoCfgParseProxyTargetStepResult {
-                advance: step.advance,
-                target_index,
-                host_len: step.target.host_len,
-                port: step.target.port,
-                min_connections: step.target.min_connections,
-                max_connections: step.target.max_connections,
-                tot_targets_after,
-                cluster_decision_kind: mtproto_cfg_cluster_apply_decision_kind_to_ffi(
-                    step.cluster_apply_decision.kind,
-                ),
-                cluster_index,
-                auth_clusters_after,
-                auth_tot_clusters_after,
-                cluster_state_after,
-                cluster_targets_action,
-                cluster_targets_index,
-            };
-            MTPROTO_CFG_PARSE_PROXY_TARGET_STEP_OK
-        }
-        Err(err) => mtproto_cfg_parse_proxy_target_step_err_to_code(err),
+    unsafe {
+        mtproto_cfg_parse_proxy_target_step_ffi(
+            cur,
+            len,
+            current_targets,
+            max_targets,
+            min_connections,
+            max_connections,
+            cluster_ids,
+            clusters_len,
+            target_dc,
+            max_clusters,
+            create_targets,
+            current_auth_tot_clusters,
+            last_cluster_state,
+            has_last_cluster_state,
+            out,
+        )
     }
 }
 
@@ -739,158 +321,19 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_parse_full_pass(
     actions_capacity: u32,
     out: *mut MtproxyMtprotoCfgParseFullResult,
 ) -> i32 {
-    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out) }) else {
-        return MTPROTO_CFG_PARSE_FULL_PASS_ERR_INVALID_ARGS;
-    };
-    let Some(bytes) = cfg_bytes_from_cstr(cur, len) else {
-        return MTPROTO_CFG_PARSE_FULL_PASS_ERR_INVALID_ARGS;
-    };
-    let Ok(max_clusters_usize) = usize::try_from(max_clusters) else {
-        return MTPROTO_CFG_PARSE_FULL_PASS_ERR_INVALID_ARGS;
-    };
-    let Ok(max_targets_usize) = usize::try_from(max_targets) else {
-        return MTPROTO_CFG_PARSE_FULL_PASS_ERR_INVALID_ARGS;
-    };
-    let Ok(actions_capacity_usize) = usize::try_from(actions_capacity) else {
-        return MTPROTO_CFG_PARSE_FULL_PASS_ERR_INVALID_ARGS;
-    };
-    if max_clusters_usize == 0 || max_clusters_usize > MTPROTO_CFG_FULL_PASS_MAX_CLUSTERS {
-        return MTPROTO_CFG_PARSE_FULL_PASS_ERR_INVALID_ARGS;
-    }
-    if actions_capacity_usize > 0 && actions.is_null() {
-        return MTPROTO_CFG_PARSE_FULL_PASS_ERR_INVALID_ARGS;
-    }
-
-    let mut planned_actions = vec![
-        mtproxy_core::runtime::mtproto::config::MtprotoProxyTargetPassAction::default();
-        actions_capacity_usize
-    ];
-    let defaults = mtproxy_core::runtime::mtproto::config::MtprotoConfigDefaults {
-        min_connections: default_min_connections,
-        max_connections: default_max_connections,
-    };
-    match mtproxy_core::runtime::mtproto::config::cfg_parse_config_full_pass::<
-        MTPROTO_CFG_FULL_PASS_MAX_CLUSTERS,
-    >(
-        bytes,
-        defaults,
-        create_targets != 0,
-        max_clusters_usize,
-        max_targets_usize,
-        &mut planned_actions,
-    ) {
-        Ok(result) => {
-            if result.actions_len > actions_capacity_usize {
-                return MTPROTO_CFG_PARSE_FULL_PASS_ERR_INTERNAL;
-            }
-            if result.actions_len > 0 {
-                let Some(out_actions) =
-                    (unsafe { mut_slice_from_ptr(actions, actions_capacity_usize) })
-                else {
-                    return MTPROTO_CFG_PARSE_FULL_PASS_ERR_INVALID_ARGS;
-                };
-                for idx in 0..result.actions_len {
-                    let action = planned_actions[idx];
-                    let step = action.step;
-                    let Ok(target_index) = u32::try_from(step.target_index) else {
-                        return MTPROTO_CFG_PARSE_FULL_PASS_ERR_INTERNAL;
-                    };
-                    let Ok(tot_targets_after) = u32::try_from(step.tot_targets_after) else {
-                        return MTPROTO_CFG_PARSE_FULL_PASS_ERR_INTERNAL;
-                    };
-                    let Ok(cluster_index) =
-                        i32::try_from(step.cluster_apply_decision.cluster_index)
-                    else {
-                        return MTPROTO_CFG_PARSE_FULL_PASS_ERR_INTERNAL;
-                    };
-                    let Ok(auth_clusters_after) = u32::try_from(step.auth_clusters_after) else {
-                        return MTPROTO_CFG_PARSE_FULL_PASS_ERR_INTERNAL;
-                    };
-                    let Ok(auth_tot_clusters_after) = u32::try_from(step.auth_tot_clusters_after)
-                    else {
-                        return MTPROTO_CFG_PARSE_FULL_PASS_ERR_INTERNAL;
-                    };
-                    let Some(cluster_state_after) =
-                        mtproto_old_cluster_to_ffi(&step.cluster_state_after)
-                    else {
-                        return MTPROTO_CFG_PARSE_FULL_PASS_ERR_INTERNAL;
-                    };
-                    let cluster_targets_action =
-                        mtproto_cfg_cluster_targets_action_to_ffi(step.cluster_targets_action);
-                    let cluster_targets_index = if step.cluster_targets_action
-                        == mtproxy_core::runtime::mtproto::config::MtprotoClusterTargetsAction::SetToTargetIndex
-                    {
-                        let Some(first) = step.cluster_state_after.first_target_index else {
-                            return MTPROTO_CFG_PARSE_FULL_PASS_ERR_INTERNAL;
-                        };
-                        let Ok(idx) = u32::try_from(first) else {
-                            return MTPROTO_CFG_PARSE_FULL_PASS_ERR_INTERNAL;
-                        };
-                        idx
-                    } else {
-                        0
-                    };
-                    out_actions[idx] = MtproxyMtprotoCfgProxyAction {
-                        host_offset: action.host_offset,
-                        step: MtproxyMtprotoCfgParseProxyTargetStepResult {
-                            advance: step.advance,
-                            target_index,
-                            host_len: step.target.host_len,
-                            port: step.target.port,
-                            min_connections: step.target.min_connections,
-                            max_connections: step.target.max_connections,
-                            tot_targets_after,
-                            cluster_decision_kind: mtproto_cfg_cluster_apply_decision_kind_to_ffi(
-                                step.cluster_apply_decision.kind,
-                            ),
-                            cluster_index,
-                            auth_clusters_after,
-                            auth_tot_clusters_after,
-                            cluster_state_after,
-                            cluster_targets_action,
-                            cluster_targets_index,
-                        },
-                    };
-                }
-            }
-
-            let Ok(tot_targets) = u32::try_from(result.tot_targets) else {
-                return MTPROTO_CFG_PARSE_FULL_PASS_ERR_INTERNAL;
-            };
-            let Ok(auth_clusters) = u32::try_from(result.auth_clusters) else {
-                return MTPROTO_CFG_PARSE_FULL_PASS_ERR_INTERNAL;
-            };
-            let Ok(auth_tot_clusters) = u32::try_from(result.auth_tot_clusters) else {
-                return MTPROTO_CFG_PARSE_FULL_PASS_ERR_INTERNAL;
-            };
-            let Ok(actions_len) = u32::try_from(result.actions_len) else {
-                return MTPROTO_CFG_PARSE_FULL_PASS_ERR_INTERNAL;
-            };
-            let (has_default_cluster_index, default_cluster_index) =
-                if let Some(idx) = result.default_cluster_index {
-                    let Ok(idx_u32) = u32::try_from(idx) else {
-                        return MTPROTO_CFG_PARSE_FULL_PASS_ERR_INTERNAL;
-                    };
-                    (1, idx_u32)
-                } else {
-                    (0, 0)
-                };
-            *out_ref = MtproxyMtprotoCfgParseFullResult {
-                tot_targets,
-                auth_clusters,
-                auth_tot_clusters,
-                min_connections: result.min_connections,
-                max_connections: result.max_connections,
-                timeout_seconds: result.timeout_seconds,
-                default_cluster_id: result.default_cluster_id,
-                have_proxy: i32::from(result.have_proxy),
-                default_cluster_index,
-                has_default_cluster_index,
-                actions_len,
-            };
-            MTPROTO_CFG_PARSE_FULL_PASS_OK
-        }
-        Err(err) => mtproto_cfg_parse_full_pass_err_to_code(err),
+    unsafe {
+        mtproto_cfg_parse_full_pass_ffi(
+            cur,
+            len,
+            default_min_connections,
+            default_max_connections,
+            create_targets,
+            max_clusters,
+            max_targets,
+            actions,
+            actions_capacity,
+            out,
+        )
     }
 }
 
@@ -904,25 +347,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_expect_semicolon(
     len: usize,
     out_advance: *mut usize,
 ) -> i32 {
-    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out_advance) }) else {
-        return MTPROTO_CFG_EXPECT_SEMICOLON_ERR_INVALID_ARGS;
-    };
-    let Some(bytes) = cfg_bytes_from_cstr(cur, len) else {
-        return MTPROTO_CFG_EXPECT_SEMICOLON_ERR_INVALID_ARGS;
-    };
-    let mut cursor = 0usize;
-    match mtproxy_core::runtime::mtproto::config::cfg_expect_semicolon(bytes, &mut cursor) {
-        Ok(()) => {
-            *out_ref = cursor;
-            MTPROTO_CFG_EXPECT_SEMICOLON_OK
-        }
-        Err(
-            mtproxy_core::runtime::mtproto::config::MtprotoDirectiveParseError::ExpectedSemicolon(
-                _,
-            ),
-        ) => MTPROTO_CFG_EXPECT_SEMICOLON_ERR_EXPECTED,
-        Err(_) => MTPROTO_CFG_EXPECT_SEMICOLON_ERR_INVALID_ARGS,
-    }
+    unsafe { mtproto_cfg_expect_semicolon_ffi(cur, len, out_advance) }
 }
 
 /// Looks up a cluster index by `cluster_id` mirroring `mf_cluster_lookup()`.
@@ -940,41 +365,17 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_lookup_cluster_index(
     has_default_cluster_index: i32,
     out_cluster_index: *mut i32,
 ) -> i32 {
-    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out_cluster_index) }) else {
-        return MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_ERR_INVALID_ARGS;
-    };
-    let Ok(clusters_len_usize) = usize::try_from(clusters_len) else {
-        return MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_ERR_INVALID_ARGS;
-    };
-    let default_idx = if has_default_cluster_index != 0 {
-        let Ok(idx) = usize::try_from(default_cluster_index) else {
-            return MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_ERR_INVALID_ARGS;
-        };
-        if idx >= clusters_len_usize {
-            return MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_ERR_INVALID_ARGS;
-        }
-        Some(idx)
-    } else {
-        None
-    };
-    let Some(cluster_ids_slice) = (unsafe { slice_from_ptr(cluster_ids, clusters_len_usize) })
-    else {
-        return MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_ERR_INVALID_ARGS;
-    };
-    let lookup = mtproxy_core::runtime::mtproto::config::mf_cluster_lookup_index(
-        cluster_ids_slice,
-        cluster_id,
-        if force != 0 { default_idx } else { None },
-    );
-    let Some(idx) = lookup else {
-        *out_ref = -1;
-        return MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_NOT_FOUND;
-    };
-    let Ok(idx_i32) = i32::try_from(idx) else {
-        return MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_ERR_INVALID_ARGS;
-    };
-    *out_ref = idx_i32;
-    MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_OK
+    unsafe {
+        mtproto_cfg_lookup_cluster_index_ffi(
+            cluster_ids,
+            clusters_len,
+            cluster_id,
+            force,
+            default_cluster_index,
+            has_default_cluster_index,
+            out_cluster_index,
+        )
+    }
 }
 
 /// Finalizes parse-loop invariants and resolves optional default-cluster index.
@@ -990,38 +391,14 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_finalize(
     default_cluster_id: i32,
     out: *mut MtproxyMtprotoCfgFinalizeResult,
 ) -> i32 {
-    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out) }) else {
-        return MTPROTO_CFG_FINALIZE_ERR_INVALID_ARGS;
-    };
-    let Ok(clusters_len_usize) = usize::try_from(clusters_len) else {
-        return MTPROTO_CFG_FINALIZE_ERR_INVALID_ARGS;
-    };
-    let Some(cluster_ids_slice) = (unsafe { slice_from_ptr(cluster_ids, clusters_len_usize) })
-    else {
-        return MTPROTO_CFG_FINALIZE_ERR_INVALID_ARGS;
-    };
-    match mtproxy_core::runtime::mtproto::config::finalize_parse_config_state(
-        have_proxy != 0,
-        cluster_ids_slice,
-        default_cluster_id,
-    ) {
-        Ok(default_cluster_index) => {
-            let (has_default_cluster_index, default_cluster_index) =
-                if let Some(idx) = default_cluster_index {
-                    let Ok(idx_u32) = u32::try_from(idx) else {
-                        return MTPROTO_CFG_FINALIZE_ERR_INTERNAL;
-                    };
-                    (1, idx_u32)
-                } else {
-                    (0, 0)
-                };
-            *out_ref = MtproxyMtprotoCfgFinalizeResult {
-                default_cluster_index,
-                has_default_cluster_index,
-            };
-            MTPROTO_CFG_FINALIZE_OK
-        }
-        Err(err) => mtproto_cfg_finalize_err_to_code(err),
+    unsafe {
+        mtproto_cfg_finalize_ffi(
+            have_proxy,
+            cluster_ids,
+            clusters_len,
+            default_cluster_id,
+            out,
+        )
     }
 }
 
@@ -1035,227 +412,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_parse_config(
     flags: i32,
     config_fd: i32,
 ) -> i32 {
-    if (flags & 4) == 0 {
-        return -1;
-    }
-    let Some(mc_ref) = (unsafe { mut_ref_from_ptr(mc.cast::<MtproxyMfConfig>()) }) else {
-        return -1;
-    };
-    let mc_ptr = mc_ref as *mut MtproxyMfConfig;
-
-    if (flags & 17) == 0 && unsafe { load_config(config_filename.cast_const(), config_fd) } < 0 {
-        return -2;
-    }
-
-    unsafe { reset_config() };
-    let parse_start = unsafe { cfg_cur };
-    let parse_end = unsafe { cfg_end };
-    if parse_start.is_null() || parse_end.is_null() {
-        mtproto_cfg_syntax_literal(b"internal parser cursor mismatch\0");
-        return -1;
-    }
-    let parse_delta = unsafe { parse_end.offset_from(parse_start) };
-    if parse_delta < 0 {
-        mtproto_cfg_syntax_literal(b"internal parser cursor mismatch\0");
-        return -1;
-    }
-    let parse_len = parse_delta as usize;
-
-    let actions = unsafe {
-        calloc(
-            MTPROTO_CFG_MAX_TARGETS,
-            core::mem::size_of::<MtproxyMtprotoCfgProxyAction>(),
-        )
-    }
-    .cast::<MtproxyMtprotoCfgProxyAction>();
-    if actions.is_null() {
-        mtproto_cfg_syntax_literal(b"out of memory while parsing configuration\0");
-        return -1;
-    }
-
-    let mut res = -1;
-    let mut parsed = MtproxyMtprotoCfgParseFullResult::default();
-    'parse: loop {
-        let pass_rc = unsafe {
-            mtproxy_ffi_mtproto_cfg_parse_full_pass(
-                parse_start.cast_const(),
-                parse_len,
-                i64::from(default_cfg_min_connections),
-                i64::from(default_cfg_max_connections),
-                if (flags & 1) != 0 { 1 } else { 0 },
-                MTPROTO_CFG_MAX_CLUSTERS as u32,
-                MTPROTO_CFG_MAX_TARGETS as u32,
-                actions,
-                MTPROTO_CFG_MAX_TARGETS as u32,
-                &raw mut parsed,
-            )
-        };
-        if pass_rc != MTPROTO_CFG_PARSE_FULL_PASS_OK {
-            mtproto_cfg_report_parse_full_pass_error(pass_rc, mc_ref.tot_targets);
-            break 'parse;
-        }
-
-        mc_ref.tot_targets = parsed.tot_targets as c_int;
-        mc_ref.auth_clusters = parsed.auth_clusters as c_int;
-        mc_ref.auth_stats.tot_clusters = parsed.auth_tot_clusters as c_int;
-        mc_ref.min_connections = parsed.min_connections as c_int;
-        mc_ref.max_connections = parsed.max_connections as c_int;
-        mc_ref.timeout = parsed.timeout_seconds;
-        mc_ref.default_cluster_id = parsed.default_cluster_id;
-        mc_ref.have_proxy = if parsed.have_proxy != 0 { 1 } else { 0 };
-        mc_ref.default_cluster = core::ptr::null_mut();
-
-        let Ok(actions_len) = usize::try_from(parsed.actions_len) else {
-            mtproto_cfg_syntax_literal(b"internal parser action count mismatch\0");
-            break 'parse;
-        };
-        if actions_len > MTPROTO_CFG_MAX_TARGETS {
-            mtproto_cfg_syntax_literal(b"internal parser action count mismatch\0");
-            break 'parse;
-        }
-
-        for i in 0..actions_len {
-            let action = unsafe { *actions.add(i) };
-            if action.host_offset > parse_len {
-                mtproto_cfg_syntax_literal(b"internal parser host offset mismatch\0");
-                break 'parse;
-            }
-            let Some(host_advance) = action.host_offset.checked_add(action.step.advance) else {
-                mtproto_cfg_syntax_literal(b"internal parser target advance mismatch\0");
-                break 'parse;
-            };
-            if host_advance > parse_len {
-                mtproto_cfg_syntax_literal(b"internal parser target advance mismatch\0");
-                break 'parse;
-            }
-
-            let host_cur = unsafe { parse_start.add(action.host_offset) };
-            unsafe { cfg_cur = host_cur };
-            if unsafe { mtproxy_ffi_mtproto_cfg_resolve_default_target_from_cfg_cur() } < 0 {
-                break 'parse;
-            }
-
-            if action.step.target_index >= MTPROTO_CFG_MAX_TARGETS as u32
-                || action.step.target_index >= parsed.tot_targets
-            {
-                mtproto_cfg_syntax_literal(b"internal parser target index mismatch\0");
-                break 'parse;
-            }
-            unsafe { cfg_cur = host_cur.add(action.step.advance) };
-            unsafe {
-                mtproxy_ffi_mtproto_cfg_set_default_target_endpoint(
-                    action.step.port,
-                    action.step.min_connections,
-                    action.step.max_connections,
-                    1.0 + 0.1 * drand48(),
-                );
-            }
-
-            if (flags & 1) != 0 {
-                unsafe { mtproxy_ffi_mtproto_cfg_create_target(mc_ptr, action.step.target_index) };
-            }
-
-            if action.step.cluster_index < 0
-                || action.step.cluster_index >= MTPROTO_CFG_MAX_CLUSTERS as i32
-            {
-                mtproto_cfg_syntax_literal(b"internal parser cluster decision mismatch\0");
-                break 'parse;
-            }
-            if action.step.auth_clusters_after > MTPROTO_CFG_MAX_CLUSTERS as u32 {
-                mtproto_cfg_syntax_literal(b"internal parser auth cluster count mismatch\0");
-                break 'parse;
-            }
-
-            let Ok(cluster_index) = usize::try_from(action.step.cluster_index) else {
-                mtproto_cfg_syntax_literal(b"internal parser cluster decision mismatch\0");
-                break 'parse;
-            };
-            let mfc = &mut mc_ref.auth_cluster[cluster_index];
-            mfc.flags = action.step.cluster_state_after.flags as c_int;
-            mfc.targets_num = action.step.cluster_state_after.targets_num as c_int;
-            mfc.write_targets_num = action.step.cluster_state_after.write_targets_num as c_int;
-            mfc.targets_allocated = 0;
-            mfc.cluster_id = action.step.cluster_state_after.cluster_id;
-            match action.step.cluster_targets_action {
-                MTPROTO_CFG_CLUSTER_TARGETS_ACTION_KEEP_EXISTING => {}
-                MTPROTO_CFG_CLUSTER_TARGETS_ACTION_CLEAR => {
-                    mfc.cluster_targets = core::ptr::null_mut();
-                }
-                MTPROTO_CFG_CLUSTER_TARGETS_ACTION_SET_TARGET => {
-                    if (flags & 1) == 0 {
-                        mtproto_cfg_syntax_literal(
-                            b"internal parser cluster target action mismatch\0",
-                        );
-                        break 'parse;
-                    }
-                    if action.step.cluster_targets_index >= MTPROTO_CFG_MAX_TARGETS as u32
-                        || action.step.cluster_targets_index >= action.step.tot_targets_after
-                    {
-                        mtproto_cfg_syntax_literal(
-                            b"internal parser cluster target index mismatch\0",
-                        );
-                        break 'parse;
-                    }
-                    let target_index = action.step.cluster_targets_index as usize;
-                    mfc.cluster_targets = &mut mc_ref.targets[target_index];
-                }
-                _ => {
-                    mtproto_cfg_syntax_literal(b"internal parser cluster target action mismatch\0");
-                    break 'parse;
-                }
-            }
-
-            if action.step.cluster_decision_kind
-                == MTPROTO_CFG_CLUSTER_APPLY_DECISION_KIND_CREATE_NEW
-            {
-                if unsafe { verbosity } >= 3 {
-                    unsafe {
-                        kprintf(
-                            b"-> added target to new auth_cluster #%d\n\0"
-                                .as_ptr()
-                                .cast(),
-                            action.step.cluster_index,
-                        );
-                    }
-                }
-            } else if action.step.cluster_decision_kind
-                == MTPROTO_CFG_CLUSTER_APPLY_DECISION_KIND_APPEND_LAST
-                && unsafe { verbosity } >= 3
-            {
-                unsafe {
-                    kprintf(
-                        b"-> added target to old auth_cluster #%d\n\0"
-                            .as_ptr()
-                            .cast(),
-                        action.step.cluster_index,
-                    );
-                }
-            }
-        }
-
-        mc_ref.tot_targets = parsed.tot_targets as c_int;
-        mc_ref.auth_clusters = parsed.auth_clusters as c_int;
-        mc_ref.auth_stats.tot_clusters = parsed.auth_tot_clusters as c_int;
-        mc_ref.have_proxy = if parsed.have_proxy != 0 { 1 } else { 0 };
-        if parsed.has_default_cluster_index != 0 {
-            if parsed.default_cluster_index >= parsed.auth_clusters
-                || parsed.default_cluster_index >= MTPROTO_CFG_MAX_CLUSTERS as u32
-            {
-                mtproto_cfg_syntax_literal(b"internal parser default cluster index mismatch\0");
-                break 'parse;
-            }
-            let default_index = parsed.default_cluster_index as usize;
-            mc_ref.default_cluster = &mut mc_ref.auth_cluster[default_index];
-        } else {
-            mc_ref.default_cluster = core::ptr::null_mut();
-        }
-
-        res = 0;
-        break 'parse;
-    }
-
-    unsafe { free(actions.cast()) };
-    res
+    unsafe { mtproto_cfg_parse_config_ffi(mc, flags, config_fd) }
 }
 
 /// Full `do_reload_config()` runtime path extracted from C implementation.
@@ -1264,100 +421,5 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_parse_config(
 /// Uses and mutates process-global C runtime state (`CurConf`, `NextConf`, parser globals).
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_do_reload_config(flags: i32) -> i32 {
-    if (flags & 4) == 0 {
-        return -1;
-    }
-
-    let mut fd = -1;
-    if (flags & 16) == 0 {
-        fd = unsafe { open(config_filename.cast_const(), O_RDONLY_FLAG) };
-        if fd < 0 {
-            unsafe {
-                kprintf(
-                    b"cannot re-read config file %s: %m\n\0".as_ptr().cast(),
-                    config_filename,
-                );
-            }
-            return -1;
-        }
-
-        let reload_hosts = unsafe { kdb_load_hosts() };
-        if reload_hosts > 0 && unsafe { verbosity } >= 1 {
-            unsafe { kprintf(b"/etc/hosts changed, reloaded\n\0".as_ptr().cast()) };
-        }
-    }
-
-    let mut res = unsafe { mtproxy_ffi_mtproto_cfg_parse_config(NextConf.cast(), flags & !1, fd) };
-
-    if fd >= 0 {
-        unsafe { close(fd) };
-    }
-
-    if res < 0 {
-        unsafe {
-            kprintf(
-                b"error while re-reading config file %s, new configuration NOT applied\n\0"
-                    .as_ptr()
-                    .cast(),
-                config_filename,
-            );
-        }
-        return res;
-    }
-
-    if (flags & 32) != 0 {
-        return 0;
-    }
-
-    res = unsafe { mtproxy_ffi_mtproto_cfg_parse_config(NextConf.cast(), flags | 1, -1) };
-    if res < 0 {
-        unsafe { clear_config(NextConf, 0) };
-        unsafe {
-            kprintf(
-                b"fatal error while re-reading config file %s\n\0"
-                    .as_ptr()
-                    .cast(),
-                config_filename,
-            )
-        };
-        unsafe { exit(-res) };
-    }
-
-    let old_cur_conf = unsafe { CurConf };
-    unsafe {
-        CurConf = NextConf;
-        NextConf = old_cur_conf;
-    }
-
-    unsafe { clear_config(NextConf, 1) };
-    if (flags & 1) != 0 {
-        unsafe { create_all_outbound_connections() };
-    }
-
-    let cur_conf = unsafe { CurConf };
-    if !cur_conf.is_null() {
-        let cur_conf_ref = unsafe { &mut *cur_conf };
-        let cur_now = unsafe { mtproxy_ffi_mtproto_cfg_now_or_time() };
-        cur_conf_ref.config_loaded_at = cur_now;
-        cur_conf_ref.config_bytes = unsafe { config_bytes };
-        cur_conf_ref.config_md5_hex = unsafe { malloc(33).cast() };
-        if !cur_conf_ref.config_md5_hex.is_null() {
-            unsafe {
-                md5_hex_config(cur_conf_ref.config_md5_hex);
-                *cur_conf_ref.config_md5_hex.add(32) = 0;
-            }
-        }
-    }
-
-    unsafe {
-        kprintf(
-            b"configuration file %s re-read successfully (%d bytes parsed), new configuration active\n\0"
-                .as_ptr()
-                .cast(),
-            config_filename,
-            config_bytes,
-        );
-    }
-
-    0
+    unsafe { mtproto_cfg_do_reload_config_ffi(flags) }
 }
