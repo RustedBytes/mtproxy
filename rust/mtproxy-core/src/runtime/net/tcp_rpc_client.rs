@@ -1,18 +1,14 @@
 //! RPC Client implementation ported from `net/net-tcp-rpc-client.c`.
 
-use super::tcp_rpc_common::{ProcessId, RpcPacketType};
+use super::tcp_rpc_common::{
+    parse_handshake_packet, parse_nonce_packet, ParsedHandshakePacket, ParsedNoncePacket,
+    PacketSerialization, ProcessId, RpcPacketType,
+};
 
 pub const PACKET_LEN_STATE_SKIP: i32 = 0;
 pub const PACKET_LEN_STATE_READY: i32 = 1;
 pub const PACKET_LEN_STATE_INVALID: i32 = -1;
 pub const PACKET_LEN_STATE_SHORT: i32 = -2;
-
-/// Gets current timestamp (placeholder - in real implementation would use system time).
-#[must_use]
-fn get_current_timestamp() -> f64 {
-    // Placeholder - in real implementation this would call system time
-    0.0
-}
 
 /// RPC crypto flags for client connections.
 ///
@@ -126,8 +122,7 @@ impl RpcClientData {
     }
 
     /// Initializes client for outbound connection.
-    pub fn init_outbound(&mut self, crypto_flags: CryptoFlags) {
-        let now = get_current_timestamp();
+    pub fn init_outbound(&mut self, crypto_flags: CryptoFlags, now: f64) {
         self.state = ClientState::Connected;
         self.crypto_flags = crypto_flags;
         self.in_packet_num = -2;
@@ -227,44 +222,44 @@ impl RpcClientData {
         self.crypto_schema
     }
 
-    /// Processes a received nonce packet and validates crypto schema.
-    ///
-    /// This validates the server's nonce packet and updates the client state
-    /// based on the negotiated crypto schema.
-    pub fn process_nonce_packet(
-        &mut self,
-        packet: &super::tcp_rpc_common::NoncePacket,
-    ) -> Result<(), ClientError> {
+    /// Processes a parsed nonce packet payload and validates crypto settings.
+    fn process_parsed_nonce_packet(&mut self, packet: &ParsedNoncePacket) -> Result<(), ClientError> {
         if self.state != ClientState::NonceSent {
             return Err(ClientError::UnexpectedNonce);
         }
 
-        // Validate crypto schema against our capabilities
-        let schema = super::tcp_rpc_common::CryptoSchema::from_i32(packet.crypto_schema)
-            .ok_or(ClientError::CryptoNegotiationFailed)?;
+        if packet.packet_type != RpcPacketType::Nonce as i32 {
+            return Err(ClientError::InvalidPacketType(packet.packet_type));
+        }
 
-        match schema {
+        let sent_nonce_time = self.nonce_time.trunc();
+        if (f64::from(packet.crypto_ts) - sent_nonce_time).abs() > 30.0 {
+            return Err(ClientError::CryptoNegotiationFailed);
+        }
+
+        match packet.crypto_schema {
             super::tcp_rpc_common::CryptoSchema::None => {
+                if packet.key_select != 0 {
+                    return Err(ClientError::CryptoNegotiationFailed);
+                }
                 if !self.crypto_flags.allow_unencrypted {
                     return Err(ClientError::CryptoNegotiationFailed);
                 }
-                // Disable encryption flags
                 self.crypto_flags.allow_encrypted = false;
+                self.crypto_flags.encryption_active = false;
             }
-            super::tcp_rpc_common::CryptoSchema::Aes => {
-                if !self.crypto_flags.allow_encrypted {
-                    return Err(ClientError::CryptoNegotiationFailed);
-                }
-                self.crypto_flags.encryption_active = true;
-            }
-            super::tcp_rpc_common::CryptoSchema::AesExt
+            super::tcp_rpc_common::CryptoSchema::Aes
+            | super::tcp_rpc_common::CryptoSchema::AesExt
             | super::tcp_rpc_common::CryptoSchema::AesDh => {
+                if packet.key_select == 0 {
+                    return Err(ClientError::CryptoNegotiationFailed);
+                }
                 if !self.crypto_flags.allow_encrypted {
                     return Err(ClientError::CryptoNegotiationFailed);
                 }
-                if schema == super::tcp_rpc_common::CryptoSchema::AesDh
-                    && !self.crypto_flags.skip_dh_allowed
-                    && !self.crypto_flags.require_dh
+                if packet.crypto_schema == super::tcp_rpc_common::CryptoSchema::AesDh
+                    && self.crypto_flags.require_dh
+                    && !packet.has_dh_params
                 {
                     return Err(ClientError::CryptoNegotiationFailed);
                 }
@@ -273,17 +268,37 @@ impl RpcClientData {
         }
 
         self.state = ClientState::NonceReceived;
-        self.crypto_schema = packet.crypto_schema;
+        self.crypto_schema = packet.crypto_schema.to_i32();
         self.in_packet_num = -1;
         Ok(())
     }
 
-    /// Processes a received handshake packet and validates the remote PID.
-    ///
-    /// This validates the server's handshake and transitions to Ready state.
-    pub fn process_handshake_packet(
+    /// Processes a raw nonce packet payload.
+    pub fn process_nonce_packet_bytes(
         &mut self,
-        packet: &super::tcp_rpc_common::HandshakePacket,
+        packet_bytes: &[u8],
+    ) -> Result<(), ClientError> {
+        let packet = parse_nonce_packet(packet_bytes).ok_or_else(|| ClientError::InvalidPacketSize {
+            size: packet_bytes.len(),
+            expected: super::tcp_rpc_common::NoncePacket::size(),
+        })?;
+        self.process_parsed_nonce_packet(&packet)
+    }
+
+    /// Processes a received nonce packet and validates crypto schema.
+    ///
+    /// This validates the server's nonce packet and updates the client state
+    /// based on the negotiated crypto schema.
+    pub fn process_nonce_packet(
+        &mut self,
+        packet: &super::tcp_rpc_common::NoncePacket,
+    ) -> Result<(), ClientError> {
+        self.process_nonce_packet_bytes(packet.to_bytes())
+    }
+
+    fn process_parsed_handshake_packet(
+        &mut self,
+        packet: &ParsedHandshakePacket,
     ) -> Result<(), ClientError> {
         if self.state != ClientState::HandshakeSent {
             return Err(ClientError::UnexpectedHandshake);
@@ -297,6 +312,26 @@ impl RpcClientData {
         self.in_packet_num = 0;
         self.out_packet_num = 0;
         Ok(())
+    }
+
+    /// Processes raw handshake packet bytes.
+    pub fn process_handshake_packet_bytes(&mut self, packet_bytes: &[u8]) -> Result<(), ClientError> {
+        let packet =
+            parse_handshake_packet(packet_bytes).ok_or_else(|| ClientError::InvalidPacketSize {
+                size: packet_bytes.len(),
+                expected: super::tcp_rpc_common::HandshakePacket::size(),
+            })?;
+        self.process_parsed_handshake_packet(&packet)
+    }
+
+    /// Processes a received handshake packet and validates the remote PID.
+    ///
+    /// This validates the server's handshake and transitions to Ready state.
+    pub fn process_handshake_packet(
+        &mut self,
+        packet: &super::tcp_rpc_common::HandshakePacket,
+    ) -> Result<(), ClientError> {
+        self.process_handshake_packet_bytes(packet.to_bytes())
     }
 
     /// Validates a packet number for the current connection state.
@@ -460,7 +495,7 @@ mod tests {
     fn client_init_outbound_sets_connected_state() {
         let mut client = RpcClientData::new();
         let flags = CryptoFlags::require_encryption();
-        client.init_outbound(flags);
+        client.init_outbound(flags, 0.0);
         
         assert_eq!(client.state, ClientState::Connected);
         assert_eq!(client.crypto_flags, flags);
@@ -470,7 +505,7 @@ mod tests {
     #[test]
     fn client_nonce_flow() {
         let mut client = RpcClientData::new();
-        client.init_outbound(CryptoFlags::new());
+        client.init_outbound(CryptoFlags::new(), 0.0);
         
         let nonce = [1_u8; 16];
         client.mark_nonce_sent(nonce, 123.0);
@@ -489,7 +524,7 @@ mod tests {
     #[test]
     fn client_rejects_nonce_in_wrong_state() {
         let mut client = RpcClientData::new();
-        client.init_outbound(CryptoFlags::new());
+        client.init_outbound(CryptoFlags::new(), 0.0);
         
         assert_eq!(
             client.process_nonce_received(1),
@@ -500,7 +535,7 @@ mod tests {
     #[test]
     fn client_handshake_flow() {
         let mut client = RpcClientData::new();
-        client.init_outbound(CryptoFlags::new());
+        client.init_outbound(CryptoFlags::new(), 0.0);
         client.mark_nonce_sent([0_u8; 16], 0.0);
         client.process_nonce_received(1).unwrap();
         
@@ -519,7 +554,7 @@ mod tests {
     #[test]
     fn client_rejects_handshake_in_wrong_state() {
         let mut client = RpcClientData::new();
-        client.init_outbound(CryptoFlags::new());
+        client.init_outbound(CryptoFlags::new(), 0.0);
         
         assert_eq!(
             client.process_handshake_received(ProcessId::default()),
@@ -547,7 +582,7 @@ mod tests {
     #[test]
     fn client_processes_nonce_packet_with_no_encryption() {
         let mut client = RpcClientData::new();
-        client.init_outbound(CryptoFlags::new());
+        client.init_outbound(CryptoFlags::new(), 0.0);
         client.mark_nonce_sent([1_u8; 16], 100.0);
 
         let nonce_packet = NoncePacket::new(0, CryptoSchema::None, 100, [2_u8; 16]);
@@ -560,7 +595,7 @@ mod tests {
     #[test]
     fn client_processes_nonce_packet_with_aes() {
         let mut client = RpcClientData::new();
-        client.init_outbound(CryptoFlags::new());
+        client.init_outbound(CryptoFlags::new(), 0.0);
         client.mark_nonce_sent([1_u8; 16], 100.0);
 
         let nonce_packet = NoncePacket::new(12345, CryptoSchema::Aes, 100, [2_u8; 16]);
@@ -573,7 +608,7 @@ mod tests {
     #[test]
     fn client_rejects_nonce_packet_when_encryption_required() {
         let mut client = RpcClientData::new();
-        client.init_outbound(CryptoFlags::require_encryption());
+        client.init_outbound(CryptoFlags::require_encryption(), 0.0);
         client.mark_nonce_sent([1_u8; 16], 100.0);
 
         let nonce_packet = NoncePacket::new(0, CryptoSchema::None, 100, [2_u8; 16]);
@@ -586,7 +621,7 @@ mod tests {
     #[test]
     fn client_processes_handshake_packet() {
         let mut client = RpcClientData::new();
-        client.init_outbound(CryptoFlags::new());
+        client.init_outbound(CryptoFlags::new(), 0.0);
         client.mark_nonce_sent([0_u8; 16], 0.0);
         let nonce_packet = NoncePacket::new(0, CryptoSchema::Aes, 100, [0_u8; 16]);
         client.process_nonce_packet(&nonce_packet).unwrap();
@@ -604,7 +639,7 @@ mod tests {
     #[test]
     fn client_validates_packet_numbers() {
         let mut client = RpcClientData::new();
-        client.init_outbound(CryptoFlags::new());
+        client.init_outbound(CryptoFlags::new(), 0.0);
         
         // In NonceSent state, expect packet -2
         client.state = ClientState::NonceSent;

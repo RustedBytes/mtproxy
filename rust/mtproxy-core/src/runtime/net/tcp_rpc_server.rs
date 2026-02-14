@@ -3,7 +3,10 @@
 use super::tcp_rpc_client::{
     PACKET_LEN_STATE_INVALID, PACKET_LEN_STATE_READY, PACKET_LEN_STATE_SKIP,
 };
-use super::tcp_rpc_common::{ProcessId, RpcPacketType};
+use super::tcp_rpc_common::{
+    parse_handshake_packet, parse_nonce_packet, ParsedHandshakePacket, ParsedNoncePacket, ProcessId,
+    PacketSerialization, RpcPacketType,
+};
 
 const PACKET_HEADER_INVALID_MASK: i32 = i32::from_ne_bytes(0xc000_0003_u32.to_ne_bytes());
 
@@ -141,13 +144,10 @@ impl RpcServerData {
         self.crypto_schema
     }
 
-    /// Processes a received client nonce packet and determines response.
-    ///
-    /// This validates the client's nonce packet and determines what crypto
-    /// schema to use for the connection.
-    pub fn process_client_nonce_packet(
+    /// Processes a parsed client nonce packet and determines response.
+    fn process_parsed_client_nonce_packet(
         &mut self,
-        packet: &super::tcp_rpc_common::NoncePacket,
+        packet: &ParsedNoncePacket,
         allow_unencrypted: bool,
         allow_encrypted: bool,
     ) -> Result<i32, ServerError> {
@@ -155,24 +155,31 @@ impl RpcServerData {
             return Err(ServerError::UnexpectedNonce);
         }
 
-        // Validate and select crypto schema based on client request and server policy
-        let schema = super::tcp_rpc_common::CryptoSchema::from_i32(packet.crypto_schema)
-            .ok_or(ServerError::UnexpectedNonce)?;
+        if packet.packet_type != RpcPacketType::Nonce as i32 {
+            return Err(ServerError::InvalidPacketType(packet.packet_type));
+        }
 
-        let selected_schema = match schema {
+        let selected_schema = match packet.crypto_schema {
             super::tcp_rpc_common::CryptoSchema::None => {
+                if packet.key_select != 0 {
+                    return Err(ServerError::UnexpectedNonce);
+                }
                 if allow_unencrypted {
                     super::tcp_rpc_common::CryptoSchema::None
                 } else {
-                    // Upgrade to encryption if server requires it
-                    super::tcp_rpc_common::CryptoSchema::Aes
+                    return Err(ServerError::UnexpectedNonce);
                 }
             }
             super::tcp_rpc_common::CryptoSchema::Aes
             | super::tcp_rpc_common::CryptoSchema::AesExt
             | super::tcp_rpc_common::CryptoSchema::AesDh => {
+                if packet.key_select == 0 {
+                    return Err(ServerError::UnexpectedNonce);
+                }
                 if allow_encrypted {
-                    schema
+                    packet.crypto_schema
+                } else if allow_unencrypted {
+                    super::tcp_rpc_common::CryptoSchema::None
                 } else {
                     return Err(ServerError::UnexpectedNonce);
                 }
@@ -185,22 +192,49 @@ impl RpcServerData {
         Ok(selected_schema.to_i32())
     }
 
-    /// Processes a received client handshake packet.
-    ///
-    /// This validates the client's handshake and extracts the remote PID.
-    pub fn process_client_handshake_packet(
+    /// Processes raw client nonce payload and determines response.
+    pub fn process_client_nonce_packet_bytes(
         &mut self,
-        packet: &super::tcp_rpc_common::HandshakePacket,
+        packet_bytes: &[u8],
+        allow_unencrypted: bool,
+        allow_encrypted: bool,
+    ) -> Result<i32, ServerError> {
+        let packet = parse_nonce_packet(packet_bytes).ok_or_else(|| ServerError::InvalidPacketSize {
+            size: packet_bytes.len(),
+            expected: super::tcp_rpc_common::NoncePacket::size(),
+        })?;
+        self.process_parsed_client_nonce_packet(&packet, allow_unencrypted, allow_encrypted)
+    }
+
+    /// Processes a received client nonce packet and determines response.
+    ///
+    /// This validates the client's nonce packet and determines what crypto
+    /// schema to use for the connection.
+    pub fn process_client_nonce_packet(
+        &mut self,
+        packet: &super::tcp_rpc_common::NoncePacket,
+        allow_unencrypted: bool,
+        allow_encrypted: bool,
+    ) -> Result<i32, ServerError> {
+        self.process_client_nonce_packet_bytes(
+            packet.to_bytes(),
+            allow_unencrypted,
+            allow_encrypted,
+        )
+    }
+
+    fn process_parsed_client_handshake_packet(
+        &mut self,
+        packet: &ParsedHandshakePacket,
         expected_peer_pid: Option<super::tcp_rpc_common::ProcessId>,
     ) -> Result<(), ServerError> {
         if self.state != ServerState::NonceReceived {
             return Err(ServerError::UnexpectedHandshake);
         }
 
-        // Extract remote PID from sender_pid field
         self.remote_pid = packet.sender_pid;
 
-        // Optionally validate against expected peer PID
+        // Optionally validate against expected peer PID.
         if let Some(expected) = expected_peer_pid {
             if self.remote_pid != expected {
                 return Err(ServerError::UnexpectedHandshake);
@@ -209,6 +243,32 @@ impl RpcServerData {
 
         self.state = ServerState::HandshakeReceived;
         Ok(())
+    }
+
+    /// Processes raw client handshake packet bytes.
+    pub fn process_client_handshake_packet_bytes(
+        &mut self,
+        packet_bytes: &[u8],
+        expected_peer_pid: Option<super::tcp_rpc_common::ProcessId>,
+    ) -> Result<(), ServerError> {
+        let packet = parse_handshake_packet(packet_bytes).ok_or_else(|| {
+            ServerError::InvalidPacketSize {
+                size: packet_bytes.len(),
+                expected: super::tcp_rpc_common::HandshakePacket::size(),
+            }
+        })?;
+        self.process_parsed_client_handshake_packet(&packet, expected_peer_pid)
+    }
+
+    /// Processes a received client handshake packet.
+    ///
+    /// This validates the client's handshake and extracts the remote PID.
+    pub fn process_client_handshake_packet(
+        &mut self,
+        packet: &super::tcp_rpc_common::HandshakePacket,
+        expected_peer_pid: Option<super::tcp_rpc_common::ProcessId>,
+    ) -> Result<(), ServerError> {
+        self.process_client_handshake_packet_bytes(packet.to_bytes(), expected_peer_pid)
     }
 
     /// Validates a packet number for the current connection state.

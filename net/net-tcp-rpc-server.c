@@ -58,6 +58,28 @@ mtproxy_ffi_tcp_rpc_server_packet_header_malformed(int32_t packet_len);
 extern int32_t
 mtproxy_ffi_tcp_rpc_server_packet_len_state(int32_t packet_len,
                                             int32_t max_packet_len);
+extern int32_t
+mtproxy_ffi_tcp_rpc_parse_nonce_packet(const uint8_t *packet, int32_t packet_len,
+                                      int32_t *out_schema, int32_t *out_key_select,
+                                      int32_t *out_crypto_ts, uint8_t *out_nonce,
+                                      int32_t out_nonce_len,
+                                      int32_t *out_extra_keys_count,
+                                      int32_t *out_extra_key_signatures,
+                                      int32_t out_extra_key_signatures_len,
+                                      int32_t *out_dh_params_select,
+                                      int32_t *out_has_dh_params);
+extern int32_t
+mtproxy_ffi_tcp_rpc_server_process_nonce_packet(const uint8_t *packet, int32_t packet_len,
+                                               int32_t allow_unencrypted, int32_t allow_encrypted,
+                                               int32_t now_ts, int32_t main_secret_len,
+                                               int32_t main_key_signature,
+                                               int32_t *out_schema, int32_t *out_key_select,
+                                               int32_t *out_has_dh_params);
+extern int32_t
+mtproxy_ffi_tcp_rpc_parse_handshake_packet(const uint8_t *packet, int32_t packet_len,
+                                          int32_t *out_flags,
+                                          struct process_id *out_sender_pid,
+                                          struct process_id *out_peer_pid);
 
 static inline int tcp_rpc_server_packet_header_malformed(int packet_len) {
   int32_t malformed =
@@ -153,6 +175,11 @@ static int tcp_rpcs_process_nonce_packet(connection_job_t C,
   } P;
   struct tcp_rpc_nonce_dh_packet *dh = 0;
   int res;
+  int32_t dh_params_select = 0;
+  int32_t has_dh_params = 0;
+  int32_t processed_schema = 0;
+  int32_t processed_key_select = 0;
+  int32_t processed_has_dh_params = 0;
 
   int packet_num = D->in_packet_num;
   int packet_type;
@@ -162,49 +189,35 @@ static int tcp_rpcs_process_nonce_packet(connection_job_t C,
   if (packet_num != -2 || packet_type != RPC_NONCE) {
     return -2;
   }
+
   if (packet_len < sizeof(struct tcp_rpc_nonce_packet) ||
       packet_len > sizeof(struct tcp_rpc_nonce_dh_packet)) {
     return -3;
   }
 
   assert(rwm_fetch_data(msg, &P, packet_len) == packet_len);
-
-  switch (P.s.crypto_schema) {
-  case RPC_CRYPTO_NONE:
-    if (packet_len != sizeof(struct tcp_rpc_nonce_packet)) {
-      return -3;
-    }
-    break;
-  case RPC_CRYPTO_AES:
-    if (packet_len != sizeof(struct tcp_rpc_nonce_packet)) {
-      return -3;
-    }
-    break;
-  case RPC_CRYPTO_AES_EXT:
-    if (packet_len <
-        sizeof(struct tcp_rpc_nonce_ext_packet) - 4 * RPC_MAX_EXTRA_KEYS) {
-      return -3;
-    }
-    if (P.x.extra_keys_count < 0 || P.x.extra_keys_count > RPC_MAX_EXTRA_KEYS ||
-        packet_len != sizeof(struct tcp_rpc_nonce_ext_packet) +
-                          4 * (P.x.extra_keys_count - RPC_MAX_EXTRA_KEYS)) {
-      return -3;
-    }
-    break;
-  case RPC_CRYPTO_AES_DH:
-    if (packet_len <
-        sizeof(struct tcp_rpc_nonce_dh_packet) - 4 * RPC_MAX_EXTRA_KEYS) {
-      return -3;
-    }
-    if (P.x.extra_keys_count < 0 || P.x.extra_keys_count > RPC_MAX_EXTRA_KEYS ||
-        packet_len != sizeof(struct tcp_rpc_nonce_dh_packet) +
-                          4 * (P.x.extra_keys_count - RPC_MAX_EXTRA_KEYS)) {
-      return -3;
-    }
-    break;
-  default:
+  if (mtproxy_ffi_tcp_rpc_parse_nonce_packet(
+          (const uint8_t *)&P, packet_len, &P.s.crypto_schema, &P.s.key_select,
+          &P.s.crypto_ts, (uint8_t *)P.s.crypto_nonce,
+          (int32_t)sizeof(P.s.crypto_nonce), &P.x.extra_keys_count,
+          P.x.extra_key_select, RPC_MAX_EXTRA_KEYS, &dh_params_select,
+          &has_dh_params) < 0) {
     return -3;
   }
+
+  processed_schema = P.s.crypto_schema;
+  processed_key_select = P.s.key_select;
+  if (mtproxy_ffi_tcp_rpc_server_process_nonce_packet(
+          (const uint8_t *)&P, packet_len, D->crypto_flags & RPCF_ALLOW_UNENC,
+          D->crypto_flags & RPCF_ALLOW_ENC, now ? now : time(0), main_secret.secret_len,
+          main_secret.key_signature, &processed_schema, &processed_key_select,
+          &processed_has_dh_params) < 0) {
+    return -3;
+  }
+
+  P.s.crypto_schema = processed_schema;
+  P.s.key_select = processed_key_select;
+  has_dh_params = processed_has_dh_params;
 
   switch (P.s.crypto_schema) {
   case RPC_CRYPTO_NONE:
@@ -221,7 +234,7 @@ static int tcp_rpcs_process_nonce_packet(connection_job_t C,
     dh = (struct tcp_rpc_nonce_dh_packet *)((char *)&P +
                                             4 * (P.x.extra_keys_count -
                                                  RPC_MAX_EXTRA_KEYS));
-    if (!dh_params_select) {
+    if (!has_dh_params || !dh_params_select) {
       init_dh_params();
     }
     if (!dh->dh_params_select || dh->dh_params_select != dh_params_select) {
@@ -229,27 +242,7 @@ static int tcp_rpcs_process_nonce_packet(connection_job_t C,
     }
   }
   case RPC_CRYPTO_AES_EXT:
-    P.s.key_select = select_best_key_signature(
-        P.s.key_select, P.x.extra_keys_count, P.x.extra_key_select);
   case RPC_CRYPTO_AES:
-    if (!P.s.key_select || !select_best_key_signature(P.s.key_select, 0, 0)) {
-      if (D->crypto_flags & RPCF_ALLOW_UNENC) {
-        D->crypto_flags = RPCF_ALLOW_UNENC;
-        break;
-      }
-      return -3;
-    }
-    if (!(D->crypto_flags & RPCF_ALLOW_ENC)) {
-      if (D->crypto_flags & RPCF_ALLOW_UNENC) {
-        D->crypto_flags = RPCF_ALLOW_UNENC;
-        break;
-      }
-      return -5;
-    }
-    D->nonce_time = (now ? now : time(0));
-    if (abs(P.s.crypto_ts - D->nonce_time) > 30) {
-      return -6; // less'om
-    }
     D->crypto_flags &= ~RPCF_ALLOW_UNENC;
     break;
   default:
@@ -258,6 +251,10 @@ static int tcp_rpcs_process_nonce_packet(connection_job_t C,
       break;
     }
     return -4;
+  }
+
+  if (P.s.crypto_schema != RPC_CRYPTO_NONE) {
+    D->nonce_time = now ? now : time(0);
   }
 
   if ((D->crypto_flags & (RPCF_REQ_DH | RPCF_ALLOW_ENC)) ==
@@ -331,6 +328,12 @@ static int tcp_rpcs_process_handshake_packet(connection_job_t C,
     return -3;
   }
   assert(rwm_fetch_data(msg, &P, packet_len) == packet_len);
+  if (mtproxy_ffi_tcp_rpc_parse_handshake_packet(
+          (const uint8_t *)&P, packet_len, &P.flags, &P.sender_pid,
+          &P.peer_pid) < 0) {
+    tcp_rpcs_send_handshake_error_packet(C, -3);
+    return -3;
+  }
   memcpy(&D->remote_pid, &P.sender_pid, sizeof(struct process_id));
   if (!matches_pid(&PID, &P.peer_pid) &&
       !(funcs->mode_flags & TCP_RPC_IGNORE_PID)) {

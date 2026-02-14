@@ -745,6 +745,210 @@ pub unsafe extern "C" fn mtproxy_ffi_tcp_rpc_decode_compact_header(
     }
 }
 
+/// Parses a tcp-rpc nonce packet into normalized fields.
+///
+/// # Safety
+/// All output pointers must be writable and valid for the provided capacity.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_tcp_rpc_parse_nonce_packet(
+    packet: *const u8,
+    packet_len: i32,
+    out_schema: *mut i32,
+    out_key_select: *mut i32,
+    out_crypto_ts: *mut i32,
+    out_nonce: *mut u8,
+    out_nonce_len: i32,
+    out_extra_keys_count: *mut i32,
+    out_extra_key_signatures: *mut i32,
+    out_extra_key_signatures_len: i32,
+    out_dh_params_select: *mut i32,
+    out_has_dh_params: *mut i32,
+) -> i32 {
+    if out_extra_key_signatures_len < 0 {
+        return -1;
+    }
+    let Ok(packet_count) = usize::try_from(packet_len) else {
+        return -1;
+    };
+    let Some(packet_bytes) = (unsafe { slice_from_ptr(packet, packet_count) }) else {
+        return -1;
+    };
+    if out_nonce_len != 16 {
+        return -2;
+    }
+    let Some(out_nonce_out) = (unsafe { mut_ref_from_ptr(out_nonce.cast::<[u8; 16]>()) })
+    else {
+        return -1;
+    };
+    let Some(schema_ref) = (unsafe { mut_ref_from_ptr(out_schema) }) else {
+        return -1;
+    };
+    let Some(key_select_ref) = (unsafe { mut_ref_from_ptr(out_key_select) }) else {
+        return -1;
+    };
+    let Some(crypto_ts_ref) = (unsafe { mut_ref_from_ptr(out_crypto_ts) }) else {
+        return -1;
+    };
+    let Some(extra_keys_count_ref) = (unsafe { mut_ref_from_ptr(out_extra_keys_count) }) else {
+        return -1;
+    };
+    let Some(dh_params_select_ref) = (unsafe { mut_ref_from_ptr(out_dh_params_select) }) else {
+        return -1;
+    };
+    let Some(has_dh_params_ref) = (unsafe { mut_ref_from_ptr(out_has_dh_params) }) else {
+        return -1;
+    };
+
+    let Ok(extra_count) = usize::try_from(out_extra_key_signatures_len) else {
+        return -1;
+    };
+    let out_extra_key_signatures = if extra_count == 0 {
+        &mut []
+    } else {
+        match (unsafe { mut_slice_from_ptr(out_extra_key_signatures, extra_count) }) {
+            Some(extra) => extra,
+            None => return -1,
+        }
+    };
+
+    tcp_rpc_parse_nonce_packet_impl(
+        packet_bytes,
+        schema_ref,
+        key_select_ref,
+        crypto_ts_ref,
+        out_nonce_out,
+        extra_keys_count_ref,
+        out_extra_key_signatures,
+        dh_params_select_ref,
+        has_dh_params_ref,
+    )
+}
+
+/// Validates one nonce packet against C/RPC client policy and crypto selector context.
+///
+/// Returns 0 on success or negative on parse/policy failure.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_tcp_rpc_client_process_nonce_packet(
+    packet: *const u8,
+    packet_len: i32,
+    allow_unencrypted: i32,
+    allow_encrypted: i32,
+    require_dh: i32,
+    has_crypto_temp: i32,
+    nonce_time: i32,
+    main_secret_len: i32,
+    main_key_signature: i32,
+    out_schema: *mut i32,
+    out_key_select: *mut i32,
+    out_has_dh_params: *mut i32,
+) -> i32 {
+    let Ok(packet_count) = usize::try_from(packet_len) else {
+        return -1;
+    };
+    let Some(packet_bytes) = (unsafe { slice_from_ptr(packet, packet_count) }) else {
+        return -1;
+    };
+    let Some(schema_ref) = (unsafe { mut_ref_from_ptr(out_schema) }) else {
+        return -1;
+    };
+    let Some(key_select_ref) = (unsafe { mut_ref_from_ptr(out_key_select) }) else {
+        return -1;
+    };
+    let Some(has_dh_params_ref) = (unsafe { mut_ref_from_ptr(out_has_dh_params) }) else {
+        return -1;
+    };
+
+    tcp_rpc_client_process_nonce_packet_impl(
+        packet_bytes,
+        allow_unencrypted,
+        allow_encrypted,
+        require_dh,
+        has_crypto_temp,
+        nonce_time,
+        main_secret_len,
+        main_key_signature,
+        schema_ref,
+        key_select_ref,
+        has_dh_params_ref,
+    )
+}
+
+/// Validates one nonce packet against C/RPC server policy and crypto selector context.
+///
+/// Returns 0 on success or negative on parse/policy failure.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_tcp_rpc_server_process_nonce_packet(
+    packet: *const u8,
+    packet_len: i32,
+    allow_unencrypted: i32,
+    allow_encrypted: i32,
+    now_ts: i32,
+    main_secret_len: i32,
+    main_key_signature: i32,
+    out_schema: *mut i32,
+    out_key_select: *mut i32,
+    out_has_dh_params: *mut i32,
+) -> i32 {
+    let Ok(packet_count) = usize::try_from(packet_len) else {
+        return -1;
+    };
+    let Some(packet_bytes) = (unsafe { slice_from_ptr(packet, packet_count) }) else {
+        return -1;
+    };
+    let Some(schema_ref) = (unsafe { mut_ref_from_ptr(out_schema) }) else {
+        return -1;
+    };
+    let Some(key_select_ref) = (unsafe { mut_ref_from_ptr(out_key_select) }) else {
+        return -1;
+    };
+    let Some(has_dh_params_ref) = (unsafe { mut_ref_from_ptr(out_has_dh_params) }) else {
+        return -1;
+    };
+
+    tcp_rpc_server_process_nonce_packet_impl(
+        packet_bytes,
+        allow_unencrypted,
+        allow_encrypted,
+        now_ts,
+        main_secret_len,
+        main_key_signature,
+        schema_ref,
+        key_select_ref,
+        has_dh_params_ref,
+    )
+}
+
+/// Parses a tcp-rpc handshake packet into normalized fields.
+///
+/// # Safety
+/// All output pointers must be writable and valid for the provided structures.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_tcp_rpc_parse_handshake_packet(
+    packet: *const u8,
+    packet_len: i32,
+    out_flags: *mut i32,
+    out_sender_pid: *mut MtproxyProcessId,
+    out_peer_pid: *mut MtproxyProcessId,
+) -> i32 {
+    let Ok(packet_count) = usize::try_from(packet_len) else {
+        return -1;
+    };
+    let Some(packet_bytes) = (unsafe { slice_from_ptr(packet, packet_count) }) else {
+        return -1;
+    };
+    let Some(flags_ref) = (unsafe { mut_ref_from_ptr(out_flags) }) else {
+        return -1;
+    };
+    let Some(sender_pid_ref) = (unsafe { mut_ref_from_ptr(out_sender_pid) }) else {
+        return -1;
+    };
+    let Some(peer_pid_ref) = (unsafe { mut_ref_from_ptr(out_peer_pid) }) else {
+        return -1;
+    };
+
+    tcp_rpc_parse_handshake_packet_impl(packet_bytes, flags_ref, sender_pid_ref, peer_pid_ref)
+}
+
 /// Classifies packet length for non-compact tcp-rpc client parser path.
 #[no_mangle]
 pub extern "C" fn mtproxy_ffi_tcp_rpc_client_packet_len_state(

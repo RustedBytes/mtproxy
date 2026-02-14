@@ -32,8 +32,14 @@ pub(crate) const NET_EVENTS_IMPLEMENTED_OPS: u32 = NET_EVENTS_CONTRACT_OPS;
 pub(crate) const NET_TIMERS_IMPLEMENTED_OPS: u32 = NET_TIMERS_CONTRACT_OPS;
 pub(crate) const NET_MSG_BUFFERS_IMPLEMENTED_OPS: u32 = NET_MSG_BUFFERS_CONTRACT_OPS;
 pub(crate) const TCP_RPC_COMMON_CONTRACT_OPS: u32 = (1u32 << 0) | (1u32 << 1);
-pub(crate) const TCP_RPC_CLIENT_CONTRACT_OPS: u32 = 1u32 << 0;
-pub(crate) const TCP_RPC_SERVER_CONTRACT_OPS: u32 = (1u32 << 0) | (1u32 << 1);
+pub(crate) const TCP_RPC_CLIENT_CONTRACT_OPS: u32 =
+    (1u32 << 0) | (1u32 << 1) | (1u32 << 2);
+pub(crate) const TCP_RPC_SERVER_CONTRACT_OPS: u32 =
+    (1u32 << 0)
+        | (1u32 << 1)
+        | (1u32 << 2)
+        | (1u32 << 3)
+        | (1u32 << 4);
 pub(crate) const RPC_TARGETS_CONTRACT_OPS: u32 = 1u32 << 0;
 pub(crate) const TCP_RPC_COMMON_IMPLEMENTED_OPS: u32 = TCP_RPC_COMMON_CONTRACT_OPS;
 pub(crate) const TCP_RPC_CLIENT_IMPLEMENTED_OPS: u32 = TCP_RPC_CLIENT_CONTRACT_OPS;

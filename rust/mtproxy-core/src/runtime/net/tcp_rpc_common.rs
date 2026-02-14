@@ -118,6 +118,205 @@ pub trait PacketSerialization: Sized {
     fn from_bytes(bytes: &[u8]) -> Option<Self>;
 }
 
+fn read_i16_ne(bytes: &[u8], offset: usize) -> i16 {
+    let mut raw = [0_u8; 2];
+    raw.copy_from_slice(&bytes[offset..offset + 2]);
+    i16::from_ne_bytes(raw)
+}
+
+fn read_i32_ne(bytes: &[u8], offset: usize) -> i32 {
+    let mut raw = [0_u8; 4];
+    raw.copy_from_slice(&bytes[offset..offset + 4]);
+    i32::from_ne_bytes(raw)
+}
+
+fn parse_process_id(bytes: &[u8], offset: usize) -> ProcessId {
+    ProcessId {
+        ip: u32::from_ne_bytes([
+            bytes[offset],
+            bytes[offset + 1],
+            bytes[offset + 2],
+            bytes[offset + 3],
+        ]),
+        port: read_i16_ne(bytes, offset + 4),
+        pid: u16::from_ne_bytes([bytes[offset + 6], bytes[offset + 7]]),
+        utime: read_i32_ne(bytes, offset + 8),
+    }
+}
+
+const TCP_RPC_NONCE_MIN_LEN: usize = 16;
+const TCP_RPC_NONCE_BASE_LEN: usize = 32;
+const TCP_RPC_NONCE_EXT_BASE_LEN: usize = core::mem::size_of::<NonceExtPacket>() - RPC_MAX_EXTRA_KEYS * 4;
+const TCP_RPC_NONCE_DH_BASE_LEN: usize = core::mem::size_of::<NonceDhPacket>() - RPC_MAX_EXTRA_KEYS * 4;
+
+/// Parsed RPC nonce packet with variable nonce payload layout (Aes+extra and Aes+DH).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ParsedNoncePacket {
+    /// Packet type, must be `RPC_NONCE`.
+    pub packet_type: i32,
+    /// Negotiated crypto schema.
+    pub crypto_schema: CryptoSchema,
+    /// Key selector provided by the peer.
+    pub key_select: i32,
+    /// Nonce timestamp.
+    pub crypto_ts: i32,
+    /// Negotiation nonce bytes.
+    pub crypto_nonce: [u8; 16],
+    /// Number of optional extra keys.
+    pub extra_keys_count: i32,
+    /// Extra key selectors (for `AES_EXT` and `AES_DH` schemas).
+    pub extra_key_select: [i32; RPC_MAX_EXTRA_KEYS],
+    /// DH parameter selector for `AES_DH`.
+    pub dh_params_select: i32,
+    /// Raw DH public key for `AES_DH` payloads.
+    pub g_a: [u8; 256],
+    /// Whether `dh_params_select` and `g_a` are valid.
+    pub has_dh_params: bool,
+}
+
+impl ParsedNoncePacket {
+    /// Creates a parsed packet instance from a base `NoncePacket`.
+    #[must_use]
+    pub fn from_nonce_packet(packet: &NoncePacket) -> Self {
+        Self {
+            packet_type: packet.packet_type,
+            crypto_schema: CryptoSchema::from_i32(packet.crypto_schema).unwrap_or(CryptoSchema::None),
+            key_select: packet.key_select,
+            crypto_ts: packet.crypto_ts,
+            crypto_nonce: packet.crypto_nonce,
+            extra_keys_count: 0,
+            extra_key_select: [0; RPC_MAX_EXTRA_KEYS],
+            dh_params_select: 0,
+            g_a: [0; 256],
+            has_dh_params: false,
+        }
+    }
+}
+
+/// Computes expected full nonce packet length for a given schema and extra key count.
+#[must_use]
+pub fn expected_nonce_length(schema: CryptoSchema, extra_keys_count: i32) -> Option<usize> {
+    match schema {
+        CryptoSchema::None => Some(TCP_RPC_NONCE_BASE_LEN),
+        CryptoSchema::Aes => Some(TCP_RPC_NONCE_BASE_LEN),
+        CryptoSchema::AesExt => {
+            let extra = usize::try_from(extra_keys_count).ok()?;
+            if extra_keys_count < 0 || extra > RPC_MAX_EXTRA_KEYS {
+                return None;
+            }
+            Some(TCP_RPC_NONCE_EXT_BASE_LEN + extra * 4)
+        }
+        CryptoSchema::AesDh => {
+            let extra = usize::try_from(extra_keys_count).ok()?;
+            if extra_keys_count < 0 || extra > RPC_MAX_EXTRA_KEYS {
+                return None;
+            }
+            Some(TCP_RPC_NONCE_DH_BASE_LEN + extra * 4)
+        }
+    }
+}
+
+/// Parses a nonce packet that may be in base/AES+ext/AES+DH form.
+#[must_use]
+pub fn parse_nonce_packet(packet_bytes: &[u8]) -> Option<ParsedNoncePacket> {
+    if packet_bytes.len() < TCP_RPC_NONCE_MIN_LEN {
+        return None;
+    }
+
+    let packet_type = read_i32_ne(packet_bytes, 0);
+    if packet_type != RpcPacketType::Nonce as i32 {
+        return None;
+    }
+
+    let key_select = read_i32_ne(packet_bytes, 4);
+    let crypto_schema = CryptoSchema::from_i32(read_i32_ne(packet_bytes, 8))?;
+
+    let mut out = ParsedNoncePacket {
+        packet_type,
+        crypto_schema,
+        key_select,
+        crypto_ts: read_i32_ne(packet_bytes, 12),
+        crypto_nonce: [0_u8; 16],
+        extra_keys_count: 0,
+        extra_key_select: [0; RPC_MAX_EXTRA_KEYS],
+        dh_params_select: 0,
+        g_a: [0_u8; 256],
+        has_dh_params: false,
+    };
+
+    out.crypto_nonce.copy_from_slice(&packet_bytes[16..32]);
+
+    match crypto_schema {
+        CryptoSchema::None | CryptoSchema::Aes => {
+            if packet_bytes.len() != TCP_RPC_NONCE_BASE_LEN {
+                return None;
+            }
+        }
+        CryptoSchema::AesExt | CryptoSchema::AesDh => {
+            if packet_bytes.len() < TCP_RPC_NONCE_EXT_BASE_LEN {
+                return None;
+            }
+
+            out.extra_keys_count = read_i32_ne(packet_bytes, 32 + 4);
+            let extra_keys_count = out.extra_keys_count;
+
+            let expected_len = expected_nonce_length(crypto_schema, extra_keys_count)?;
+            if packet_bytes.len() != expected_len {
+                return None;
+            }
+
+            let extra_count = usize::try_from(extra_keys_count).ok()?;
+            let mut cursor = 36;
+            for idx in 0..extra_count {
+                out.extra_key_select[idx] = read_i32_ne(packet_bytes, cursor);
+                cursor += 4;
+            }
+
+            if crypto_schema == CryptoSchema::AesDh {
+                out.has_dh_params = true;
+                out.dh_params_select = read_i32_ne(packet_bytes, cursor);
+                cursor += 4;
+                out.g_a.copy_from_slice(&packet_bytes[cursor..cursor + 256]);
+            }
+        }
+    }
+
+    Some(out)
+}
+
+/// Parsed RPC handshake packet with strongly typed fields.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ParsedHandshakePacket {
+    /// Packet type, must be `RPC_HANDSHAKE`.
+    pub packet_type: i32,
+    /// Handshake flags.
+    pub flags: i32,
+    /// Sender process identifier.
+    pub sender_pid: ProcessId,
+    /// Peer process identifier.
+    pub peer_pid: ProcessId,
+}
+
+/// Parses a handshake packet.
+#[must_use]
+pub fn parse_handshake_packet(packet_bytes: &[u8]) -> Option<ParsedHandshakePacket> {
+    if packet_bytes.len() != HandshakePacket::size() {
+        return None;
+    }
+
+    let packet_type = read_i32_ne(packet_bytes, 0);
+    if packet_type != RpcPacketType::Handshake as i32 {
+        return None;
+    }
+
+    Some(ParsedHandshakePacket {
+        packet_type,
+        flags: read_i32_ne(packet_bytes, 4),
+        sender_pid: parse_process_id(packet_bytes, 8),
+        peer_pid: parse_process_id(packet_bytes, 20),
+    })
+}
+
 /// Basic RPC nonce packet (crypto schema 0 or 1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(C, packed(4))]
@@ -203,6 +402,107 @@ impl PacketSerialization for NoncePacket {
             return None;
         }
         
+        Some(packet)
+    }
+}
+
+impl PacketSerialization for HandshakePacket {
+    fn expected_packet_type() -> i32 {
+        RpcPacketType::Handshake as i32
+    }
+
+    fn packet_size() -> usize {
+        core::mem::size_of::<Self>()
+    }
+
+    fn to_bytes(&self) -> &[u8] {
+        // SAFETY: HandshakePacket uses #[repr(C, packed(4))], so raw access is safe.
+        #[allow(unsafe_code)]
+        #[allow(clippy::ptr_as_ptr)]
+        unsafe {
+            core::slice::from_raw_parts(
+                core::ptr::addr_of!(*self).cast::<u8>(),
+                Self::packet_size(),
+            )
+        }
+    }
+
+    fn from_bytes(bytes: &[u8]) -> Option<Self> {
+        if bytes.len() != Self::size() {
+            return None;
+        }
+
+        let mut packet = Self {
+            packet_type: 0,
+            flags: 0,
+            sender_pid: ProcessId::default(),
+            peer_pid: ProcessId::default(),
+        };
+
+        #[allow(unsafe_code)]
+        #[allow(clippy::ptr_as_ptr)]
+        unsafe {
+            core::ptr::copy_nonoverlapping(
+                bytes.as_ptr(),
+                core::ptr::addr_of_mut!(packet).cast::<u8>(),
+                Self::size(),
+            );
+        }
+
+        if packet.packet_type != RpcPacketType::Handshake as i32 {
+            return None;
+        }
+
+        Some(packet)
+    }
+}
+
+impl PacketSerialization for HandshakeErrorPacket {
+    fn expected_packet_type() -> i32 {
+        RpcPacketType::HandshakeError as i32
+    }
+
+    fn packet_size() -> usize {
+        core::mem::size_of::<Self>()
+    }
+
+    fn to_bytes(&self) -> &[u8] {
+        // SAFETY: HandshakeErrorPacket uses #[repr(C, packed(4))], so raw access is safe.
+        #[allow(unsafe_code)]
+        #[allow(clippy::ptr_as_ptr)]
+        unsafe {
+            core::slice::from_raw_parts(
+                core::ptr::addr_of!(*self).cast::<u8>(),
+                Self::packet_size(),
+            )
+        }
+    }
+
+    fn from_bytes(bytes: &[u8]) -> Option<Self> {
+        if bytes.len() != Self::size() {
+            return None;
+        }
+
+        let mut packet = Self {
+            packet_type: 0,
+            error_code: 0,
+            sender_pid: ProcessId::default(),
+        };
+
+        #[allow(unsafe_code)]
+        #[allow(clippy::ptr_as_ptr)]
+        unsafe {
+            core::ptr::copy_nonoverlapping(
+                bytes.as_ptr(),
+                core::ptr::addr_of_mut!(packet).cast::<u8>(),
+                Self::size(),
+            );
+        }
+
+        if packet.packet_type != RpcPacketType::HandshakeError as i32 {
+            return None;
+        }
+
         Some(packet)
     }
 }

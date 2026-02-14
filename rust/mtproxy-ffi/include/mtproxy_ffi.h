@@ -384,9 +384,14 @@ typedef struct mtproxy_ffi_network_boundary {
 #define MTPROXY_FFI_TCP_RPC_COMMON_OP_COMPACT_ENCODE      (1u << 0)
 
 #define MTPROXY_FFI_TCP_RPC_CLIENT_OP_PACKET_LEN_STATE    (1u << 0)
+#define MTPROXY_FFI_TCP_RPC_CLIENT_OP_PARSE_NONCE_PACKET  (1u << 1)
+#define MTPROXY_FFI_TCP_RPC_CLIENT_OP_PROCESS_NONCE_PACKET (1u << 2)
 
 #define MTPROXY_FFI_TCP_RPC_SERVER_OP_HEADER_MALFORMED    (1u << 0)
 #define MTPROXY_FFI_TCP_RPC_SERVER_OP_PACKET_LEN_STATE    (1u << 1)
+#define MTPROXY_FFI_TCP_RPC_SERVER_OP_PARSE_NONCE_PACKET  (1u << 2)
+#define MTPROXY_FFI_TCP_RPC_SERVER_OP_PARSE_HANDSHAKE_PACKET (1u << 3)
+#define MTPROXY_FFI_TCP_RPC_SERVER_OP_PROCESS_NONCE_PACKET (1u << 4)
 
 #define MTPROXY_FFI_RPC_TARGETS_OP_NORMALIZE_PID          (1u << 0)
 
@@ -686,12 +691,65 @@ int32_t mtproxy_ffi_tcp_rpc_decode_compact_header(
   int32_t *out_header_bytes
 );
 
+// net-tcp-rpc-common helper: parses a raw nonce packet.
+// Returns 0 on success, -1 on parse failure, negative values on argument mismatch.
+int32_t mtproxy_ffi_tcp_rpc_parse_nonce_packet(
+  const uint8_t *packet,
+  int32_t packet_len,
+  int32_t *out_schema,
+  int32_t *out_key_select,
+  int32_t *out_crypto_ts,
+  uint8_t *out_nonce,
+  int32_t out_nonce_len,
+  int32_t *out_extra_keys_count,
+  int32_t *out_extra_key_signatures,
+  int32_t out_extra_key_signatures_len,
+  int32_t *out_dh_params_select,
+  int32_t *out_has_dh_params
+);
+
+int32_t mtproxy_ffi_tcp_rpc_client_process_nonce_packet(
+  const uint8_t *packet,
+  int32_t packet_len,
+  int32_t allow_unencrypted,
+  int32_t allow_encrypted,
+  int32_t require_dh,
+  int32_t has_crypto_temp,
+  int32_t nonce_time,
+  int32_t main_secret_len,
+  int32_t main_key_signature,
+  int32_t *out_schema,
+  int32_t *out_key_select,
+  int32_t *out_has_dh_params
+);
+
+// net-tcp-rpc-common helper: parses handshake packet and sender/peer PIDs.
+int32_t mtproxy_ffi_tcp_rpc_parse_handshake_packet(
+  const uint8_t *packet,
+  int32_t packet_len,
+  int32_t *out_flags,
+  mtproxy_ffi_process_id_t *out_sender_pid,
+  mtproxy_ffi_process_id_t *out_peer_pid
+);
+
 // net-tcp-rpc-client helper: classifies packet length from non-compact mode parser.
 int32_t mtproxy_ffi_tcp_rpc_client_packet_len_state(int32_t packet_len, int32_t max_packet_len);
 
 // net-tcp-rpc-server helpers: classifies malformed header and packet length state.
 int32_t mtproxy_ffi_tcp_rpc_server_packet_header_malformed(int32_t packet_len);
 int32_t mtproxy_ffi_tcp_rpc_server_packet_len_state(int32_t packet_len, int32_t max_packet_len);
+int32_t mtproxy_ffi_tcp_rpc_server_process_nonce_packet(
+  const uint8_t *packet,
+  int32_t packet_len,
+  int32_t allow_unencrypted,
+  int32_t allow_encrypted,
+  int32_t now_ts,
+  int32_t main_secret_len,
+  int32_t main_key_signature,
+  int32_t *out_schema,
+  int32_t *out_key_select,
+  int32_t *out_has_dh_params
+);
 
 // net-rpc-targets helper: normalizes zero-ip PID to default local IP.
 int32_t mtproxy_ffi_rpc_target_normalize_pid(mtproxy_ffi_process_id_t *pid, uint32_t default_ip);

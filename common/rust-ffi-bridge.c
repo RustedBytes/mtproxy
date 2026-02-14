@@ -220,7 +220,9 @@ int rust_ffi_check_rpc_boundary(void) {
   }
 
   const uint32_t expected_tcp_rpc_client_contract_ops =
-      MTPROXY_FFI_TCP_RPC_CLIENT_OP_PACKET_LEN_STATE;
+      MTPROXY_FFI_TCP_RPC_CLIENT_OP_PACKET_LEN_STATE |
+      MTPROXY_FFI_TCP_RPC_CLIENT_OP_PARSE_NONCE_PACKET |
+      MTPROXY_FFI_TCP_RPC_CLIENT_OP_PROCESS_NONCE_PACKET;
   if ((boundary.tcp_rpc_client_contract_ops &
        expected_tcp_rpc_client_contract_ops) !=
       expected_tcp_rpc_client_contract_ops) {
@@ -233,7 +235,10 @@ int rust_ffi_check_rpc_boundary(void) {
 
   const uint32_t expected_tcp_rpc_server_contract_ops =
       MTPROXY_FFI_TCP_RPC_SERVER_OP_HEADER_MALFORMED |
-      MTPROXY_FFI_TCP_RPC_SERVER_OP_PACKET_LEN_STATE;
+      MTPROXY_FFI_TCP_RPC_SERVER_OP_PACKET_LEN_STATE |
+      MTPROXY_FFI_TCP_RPC_SERVER_OP_PARSE_NONCE_PACKET |
+      MTPROXY_FFI_TCP_RPC_SERVER_OP_PROCESS_NONCE_PACKET |
+      MTPROXY_FFI_TCP_RPC_SERVER_OP_PARSE_HANDSHAKE_PACKET;
   if ((boundary.tcp_rpc_server_contract_ops &
        expected_tcp_rpc_server_contract_ops) !=
       expected_tcp_rpc_server_contract_ops) {
