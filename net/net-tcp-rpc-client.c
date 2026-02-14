@@ -30,7 +30,6 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
@@ -43,7 +42,6 @@
 #include "net/net-tcp-rpc-common.h"
 #include "precise-time.h"
 
-#include "net/net-config.h"
 #include "net/net-crypto-aes.h"
 #include "net/net-crypto-dh.h"
 #include "net/net-rpc-flags.h"
