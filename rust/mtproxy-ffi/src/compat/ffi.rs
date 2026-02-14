@@ -2,12 +2,11 @@
 
 use super::core::*;
 use crate::*;
-use std::ffi::CStr;
 
 /// Returns FFI API version to C callers.
 #[no_mangle]
 pub extern "C" fn mtproxy_ffi_api_version() -> u32 {
-    crate::FFI_API_VERSION
+    ffi_api_version()
 }
 
 /// Performs a minimal startup compatibility handshake.
@@ -17,11 +16,7 @@ pub extern "C" fn mtproxy_ffi_api_version() -> u32 {
 /// - `-1`: incompatible API version
 #[no_mangle]
 pub extern "C" fn mtproxy_ffi_startup_handshake(expected_api_version: u32) -> i32 {
-    if expected_api_version == crate::FFI_API_VERSION {
-        0
-    } else {
-        -1
-    }
+    startup_handshake_impl(expected_api_version)
 }
 
 /// Returns extracted Step 9 boundary contract for mp-queue/jobs migration.
@@ -32,17 +27,7 @@ pub extern "C" fn mtproxy_ffi_startup_handshake(expected_api_version: u32) -> i3
 pub unsafe extern "C" fn mtproxy_ffi_get_concurrency_boundary(
     out: *mut MtproxyConcurrencyBoundary,
 ) -> i32 {
-    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out) }) else {
-        return -1;
-    };
-    *out_ref = MtproxyConcurrencyBoundary {
-        boundary_version: CONCURRENCY_BOUNDARY_VERSION,
-        mpq_contract_ops: MPQ_CONTRACT_OPS,
-        mpq_implemented_ops: MPQ_IMPLEMENTED_OPS,
-        jobs_contract_ops: JOBS_CONTRACT_OPS,
-        jobs_implemented_ops: JOBS_IMPLEMENTED_OPS,
-    };
-    0
+    unsafe { get_concurrency_boundary_ffi(out) }
 }
 
 /// Returns extracted Step 10 boundary contract for net-core migration.
@@ -51,19 +36,7 @@ pub unsafe extern "C" fn mtproxy_ffi_get_concurrency_boundary(
 /// `out` must be a valid writable pointer to `MtproxyNetworkBoundary`.
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_get_network_boundary(out: *mut MtproxyNetworkBoundary) -> i32 {
-    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out) }) else {
-        return -1;
-    };
-    *out_ref = MtproxyNetworkBoundary {
-        boundary_version: NETWORK_BOUNDARY_VERSION,
-        net_events_contract_ops: NET_EVENTS_CONTRACT_OPS,
-        net_events_implemented_ops: NET_EVENTS_IMPLEMENTED_OPS,
-        net_timers_contract_ops: NET_TIMERS_CONTRACT_OPS,
-        net_timers_implemented_ops: NET_TIMERS_IMPLEMENTED_OPS,
-        net_msg_buffers_contract_ops: NET_MSG_BUFFERS_CONTRACT_OPS,
-        net_msg_buffers_implemented_ops: NET_MSG_BUFFERS_IMPLEMENTED_OPS,
-    };
-    0
+    unsafe { get_network_boundary_ffi(out) }
 }
 
 /// Returns extracted Step 11 boundary contract for RPC/TCP migration.
@@ -72,21 +45,7 @@ pub unsafe extern "C" fn mtproxy_ffi_get_network_boundary(out: *mut MtproxyNetwo
 /// `out` must be a valid writable pointer to `MtproxyRpcBoundary`.
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_get_rpc_boundary(out: *mut MtproxyRpcBoundary) -> i32 {
-    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out) }) else {
-        return -1;
-    };
-    *out_ref = MtproxyRpcBoundary {
-        boundary_version: RPC_BOUNDARY_VERSION,
-        tcp_rpc_common_contract_ops: TCP_RPC_COMMON_CONTRACT_OPS,
-        tcp_rpc_common_implemented_ops: TCP_RPC_COMMON_IMPLEMENTED_OPS,
-        tcp_rpc_client_contract_ops: TCP_RPC_CLIENT_CONTRACT_OPS,
-        tcp_rpc_client_implemented_ops: TCP_RPC_CLIENT_IMPLEMENTED_OPS,
-        tcp_rpc_server_contract_ops: TCP_RPC_SERVER_CONTRACT_OPS,
-        tcp_rpc_server_implemented_ops: TCP_RPC_SERVER_IMPLEMENTED_OPS,
-        rpc_targets_contract_ops: RPC_TARGETS_CONTRACT_OPS,
-        rpc_targets_implemented_ops: RPC_TARGETS_IMPLEMENTED_OPS,
-    };
-    0
+    unsafe { get_rpc_boundary_ffi(out) }
 }
 
 /// Returns extracted Step 12 boundary contract for crypto integration migration.
@@ -95,19 +54,7 @@ pub unsafe extern "C" fn mtproxy_ffi_get_rpc_boundary(out: *mut MtproxyRpcBounda
 /// `out` must be a valid writable pointer to `MtproxyCryptoBoundary`.
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_get_crypto_boundary(out: *mut MtproxyCryptoBoundary) -> i32 {
-    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out) }) else {
-        return -1;
-    };
-    *out_ref = MtproxyCryptoBoundary {
-        boundary_version: CRYPTO_BOUNDARY_VERSION,
-        net_crypto_aes_contract_ops: NET_CRYPTO_AES_CONTRACT_OPS,
-        net_crypto_aes_implemented_ops: NET_CRYPTO_AES_IMPLEMENTED_OPS,
-        net_crypto_dh_contract_ops: NET_CRYPTO_DH_CONTRACT_OPS,
-        net_crypto_dh_implemented_ops: NET_CRYPTO_DH_IMPLEMENTED_OPS,
-        aesni_contract_ops: AESNI_CONTRACT_OPS,
-        aesni_implemented_ops: AESNI_IMPLEMENTED_OPS,
-    };
-    0
+    unsafe { get_crypto_boundary_ffi(out) }
 }
 
 /// Returns extracted Step 13 boundary contract for engine/mtproto app migration.
@@ -118,17 +65,7 @@ pub unsafe extern "C" fn mtproxy_ffi_get_crypto_boundary(out: *mut MtproxyCrypto
 pub unsafe extern "C" fn mtproxy_ffi_get_application_boundary(
     out: *mut MtproxyApplicationBoundary,
 ) -> i32 {
-    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out) }) else {
-        return -1;
-    };
-    *out_ref = MtproxyApplicationBoundary {
-        boundary_version: APPLICATION_BOUNDARY_VERSION,
-        engine_rpc_contract_ops: ENGINE_RPC_CONTRACT_OPS,
-        engine_rpc_implemented_ops: ENGINE_RPC_IMPLEMENTED_OPS,
-        mtproto_proxy_contract_ops: MTPROTO_PROXY_CONTRACT_OPS,
-        mtproto_proxy_implemented_ops: MTPROTO_PROXY_IMPLEMENTED_OPS,
-    };
-    0
+    unsafe { get_application_boundary_ffi(out) }
 }
 
 /// Converts net event flags into Linux epoll flags.
@@ -160,20 +97,7 @@ pub unsafe extern "C" fn mtproxy_ffi_resolver_gethostbyname_plan(
     out_kind: *mut i32,
     out_ipv4: *mut u32,
 ) -> i32 {
-    let Some(name_ref) = (unsafe { ref_from_ptr(name) }) else {
-        return -1;
-    };
-    let Some(kind_ref) = (unsafe { mut_ref_from_ptr(out_kind) }) else {
-        return -1;
-    };
-    let Some(ip_ref) = (unsafe { mut_ref_from_ptr(out_ipv4) }) else {
-        return -1;
-    };
-    let name = unsafe { CStr::from_ptr(name_ref) };
-    let (kind, ip) = resolver_gethostbyname_plan_impl(name.to_bytes());
-    *kind_ref = kind;
-    *ip_ref = ip;
-    0
+    unsafe { resolver_gethostbyname_plan_ffi(name, out_kind, out_ipv4) }
 }
 
 /// Converts Linux epoll flags into net event flags.
@@ -201,22 +125,15 @@ pub unsafe extern "C" fn mtproxy_ffi_net_select_best_key_signature(
     extra_num: i32,
     extra_key_signatures: *const i32,
 ) -> i32 {
-    if !(0..=16).contains(&extra_num) {
-        return 0;
+    unsafe {
+        net_select_best_key_signature_ffi(
+            main_secret_len,
+            main_key_signature,
+            key_signature,
+            extra_num,
+            extra_key_signatures,
+        )
     }
-
-    let extra = if extra_num == 0 {
-        &[]
-    } else {
-        let Ok(count) = usize::try_from(extra_num) else {
-            return 0;
-        };
-        let Some(values) = (unsafe { slice_from_ptr(extra_key_signatures, count) }) else {
-            return 0;
-        };
-        values
-    };
-    net_select_best_key_signature_impl(main_secret_len, main_key_signature, key_signature, extra)
 }
 
 /// Returns whether a connection is active (`C_CONNECTED && !C_READY_PENDING`).
@@ -237,16 +154,7 @@ pub extern "C" fn mtproxy_ffi_net_compute_conn_events(flags: i32, use_epollet: i
 /// `rule_text` must be a valid NUL-terminated C string.
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_net_add_nat_info(rule_text: *const c_char) -> i32 {
-    let Some(rule_text_ref) = (unsafe { ref_from_ptr(rule_text) }) else {
-        eprintln!("expected <local-addr>:<global-addr> in --nat-info");
-        return -1;
-    };
-    let rule = unsafe { CStr::from_ptr(rule_text_ref) };
-    let Ok(rule_text) = rule.to_str() else {
-        eprintln!("expected <local-addr>:<global-addr> in --nat-info");
-        return -1;
-    };
-    net_add_nat_info_impl(rule_text)
+    unsafe { net_add_nat_info_ffi(rule_text) }
 }
 
 /// Applies NAT translation for IPv4 host-order address.
@@ -328,19 +236,7 @@ pub unsafe extern "C" fn mtproxy_ffi_net_tcp_tls_parse_header(
     header: *const u8,
     out_payload_len: *mut i32,
 ) -> i32 {
-    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out_payload_len) }) else {
-        return -1;
-    };
-    let Some(h) = (unsafe { copy_bytes::<5>(header) }) else {
-        return -1;
-    };
-    match net_tcp_tls_parse_header_impl(&h) {
-        Ok(payload_len) => {
-            *out_ref = payload_len;
-            0
-        }
-        Err(()) => -1,
-    }
+    unsafe { net_tcp_tls_parse_header_ffi(header, out_payload_len) }
 }
 
 /// Clamps decrypt chunk length to remaining TLS payload bytes.
@@ -395,15 +291,13 @@ pub unsafe extern "C" fn mtproxy_ffi_net_tcp_reader_skip_from_parse_result(
     need_more_bytes: i32,
     out_skip_bytes: *mut i32,
 ) -> i32 {
-    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out_skip_bytes) }) else {
-        return -1;
-    };
-    match net_tcp_reader_skip_from_parse_result_impl(parse_res, buffered_bytes, need_more_bytes) {
-        Some(skip) => {
-            *out_ref = skip;
-            1
-        }
-        None => 0,
+    unsafe {
+        net_tcp_reader_skip_from_parse_result_ffi(
+            parse_res,
+            buffered_bytes,
+            need_more_bytes,
+            out_skip_bytes,
+        )
     }
 }
 
@@ -432,16 +326,7 @@ pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_domain_bucket_index(
     domain: *const u8,
     len: i32,
 ) -> i32 {
-    if len < 0 {
-        return -1;
-    }
-    let Ok(len) = usize::try_from(len) else {
-        return -1;
-    };
-    let Some(domain) = (unsafe { slice_from_ptr(domain, len) }) else {
-        return -1;
-    };
-    net_tcp_rpc_ext_domain_bucket_index_impl(domain)
+    unsafe { net_tcp_rpc_ext_domain_bucket_index_ffi(domain, len) }
 }
 
 /// Computes 16-byte client-random cache hash bucket index (`14` bits).
@@ -452,10 +337,7 @@ pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_domain_bucket_index(
 pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_client_random_bucket_index(
     random: *const u8,
 ) -> i32 {
-    let Some(random_buf) = (unsafe { copy_bytes::<16>(random) }) else {
-        return -1;
-    };
-    net_tcp_rpc_ext_client_random_bucket_index_impl(&random_buf)
+    unsafe { net_tcp_rpc_ext_client_random_bucket_index_ffi(random) }
 }
 
 /// Selects server-hello encrypted-size profile from probe stats.
@@ -471,20 +353,16 @@ pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_select_server_hello_profile
     out_size: *mut i32,
     out_profile: *mut i32,
 ) -> i32 {
-    let Some(out_size_ref) = (unsafe { mut_ref_from_ptr(out_size) }) else {
-        return -1;
-    };
-    let Some(out_profile_ref) = (unsafe { mut_ref_from_ptr(out_profile) }) else {
-        return -1;
-    };
-    let Some((size, profile)) =
-        net_tcp_rpc_ext_select_server_hello_profile_impl(min_len, max_len, sum_len, sample_count)
-    else {
-        return -1;
-    };
-    *out_size_ref = size;
-    *out_profile_ref = profile;
-    0
+    unsafe {
+        net_tcp_rpc_ext_select_server_hello_profile_ffi(
+            min_len,
+            max_len,
+            sum_len,
+            sample_count,
+            out_size,
+            out_profile,
+        )
+    }
 }
 
 /// Runs one net-thread notification event via Rust dispatcher.
@@ -504,38 +382,20 @@ pub unsafe extern "C" fn mtproxy_ffi_net_thread_run_notification_event(
     job_decref: Option<NetThreadRpcFn>,
     event_free: Option<NetThreadRpcFn>,
 ) -> i32 {
-    let (
-        Some(rpc_ready),
-        Some(rpc_close),
-        Some(rpc_alarm),
-        Some(rpc_wakeup),
-        Some(fail_connection),
-        Some(job_decref),
-        Some(event_free),
-    ) = (
-        rpc_ready,
-        rpc_close,
-        rpc_alarm,
-        rpc_wakeup,
-        fail_connection,
-        job_decref,
-        event_free,
-    )
-    else {
-        return -1;
-    };
-    net_thread_run_notification_event_impl(
-        event_type,
-        who,
-        event,
-        rpc_ready,
-        rpc_close,
-        rpc_alarm,
-        rpc_wakeup,
-        fail_connection,
-        job_decref,
-        event_free,
-    )
+    unsafe {
+        net_thread_run_notification_event_ffi(
+            event_type,
+            who,
+            event,
+            rpc_ready,
+            rpc_close,
+            rpc_alarm,
+            rpc_wakeup,
+            fail_connection,
+            job_decref,
+            event_free,
+        )
+    }
 }
 
 /// Returns HTTP status text and normalizes unknown status code to `500`.
@@ -544,13 +404,7 @@ pub unsafe extern "C" fn mtproxy_ffi_net_thread_run_notification_event(
 /// `code` must be a valid writable pointer to `i32`.
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_net_http_error_msg_text(code: *mut i32) -> *const c_char {
-    let Some(code_ref) = (unsafe { mut_ref_from_ptr(code) }) else {
-        return core::ptr::null();
-    };
-    let in_code = *code_ref;
-    let (normalized_code, message_ptr) = net_http_error_msg_text_impl(in_code);
-    *code_ref = normalized_code;
-    message_ptr
+    unsafe { net_http_error_msg_text_ffi(code) }
 }
 
 /// Formats unix time as legacy HTTP date (`29` bytes, no trailing NUL required).
@@ -563,21 +417,7 @@ pub unsafe extern "C" fn mtproxy_ffi_net_http_gen_date(
     out_len: i32,
     time: i32,
 ) -> i32 {
-    if out_len < 29 {
-        return -1;
-    }
-    let Ok(out_count) = usize::try_from(out_len) else {
-        return -1;
-    };
-    let Some(out_slice) = (unsafe { mut_slice_from_ptr(out.cast::<u8>(), out_count) }) else {
-        return -1;
-    };
-    let date = net_http_gen_date_impl(time);
-    out_slice[..29].copy_from_slice(&date);
-    if out_count > 29 {
-        out_slice[29] = 0;
-    }
-    0
+    unsafe { net_http_gen_date_ffi(out, out_len, time) }
 }
 
 /// Parses legacy HTTP date into unix time.
@@ -589,23 +429,7 @@ pub unsafe extern "C" fn mtproxy_ffi_net_http_gen_time(
     date_text: *const c_char,
     out_time: *mut i32,
 ) -> i32 {
-    let Some(date_text_ref) = (unsafe { ref_from_ptr(date_text) }) else {
-        return -8;
-    };
-    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out_time) }) else {
-        return -8;
-    };
-    let text = unsafe { CStr::from_ptr(date_text_ref) };
-    let Ok(text) = text.to_str() else {
-        return -8;
-    };
-    match net_http_gen_time_impl(text) {
-        Ok(time) => {
-            *out_ref = time;
-            0
-        }
-        Err(code) => code,
-    }
+    unsafe { net_http_gen_time_ffi(date_text, out_time) }
 }
 
 /// Extracts one HTTP header value from raw header block.
@@ -623,37 +447,7 @@ pub unsafe extern "C" fn mtproxy_ffi_net_http_get_header(
     arg_name: *const c_char,
     arg_len: i32,
 ) -> i32 {
-    if b_len <= 0 {
-        return -1;
-    }
-    let Ok(buffer_len) = usize::try_from(b_len) else {
-        return -1;
-    };
-    let Some(out) = (unsafe { mut_slice_from_ptr(buffer.cast::<u8>(), buffer_len) }) else {
-        return -1;
-    };
-
-    if q_headers_len < 0 || arg_len < 0 {
-        out[0] = 0;
-        return -1;
-    }
-    let Ok(headers_len) = usize::try_from(q_headers_len) else {
-        out[0] = 0;
-        return -1;
-    };
-    let Ok(name_len) = usize::try_from(arg_len) else {
-        out[0] = 0;
-        return -1;
-    };
-    let Some(headers) = (unsafe { slice_from_ptr(q_headers.cast::<u8>(), headers_len) }) else {
-        out[0] = 0;
-        return -1;
-    };
-    let Some(name) = (unsafe { slice_from_ptr(arg_name.cast::<u8>(), name_len) }) else {
-        out[0] = 0;
-        return -1;
-    };
-    net_http_get_header_impl(headers, out, name)
+    unsafe { net_http_get_header_ffi(q_headers, q_headers_len, buffer, b_len, arg_name, arg_len) }
 }
 
 /// Selects message-buffer size-class index matching C allocation policy.
@@ -666,16 +460,7 @@ pub unsafe extern "C" fn mtproxy_ffi_msg_buffers_pick_size_index(
     buffer_size_values: i32,
     size_hint: i32,
 ) -> i32 {
-    if buffer_size_values <= 0 {
-        return -1;
-    }
-    let Ok(count) = usize::try_from(buffer_size_values) else {
-        return -1;
-    };
-    let Some(sizes) = (unsafe { slice_from_ptr(buffer_sizes, count) }) else {
-        return -1;
-    };
-    msg_buffers_pick_size_index_impl(sizes, size_hint)
+    unsafe { msg_buffers_pick_size_index_ffi(buffer_sizes, buffer_size_values, size_hint) }
 }
 
 /// Encodes compact/medium tcp-rpc length prefix exactly like C path.
@@ -689,16 +474,9 @@ pub unsafe extern "C" fn mtproxy_ffi_tcp_rpc_encode_compact_header(
     out_prefix_word: *mut i32,
     out_prefix_bytes: *mut i32,
 ) -> i32 {
-    let Some(out_word) = (unsafe { mut_ref_from_ptr(out_prefix_word) }) else {
-        return -1;
-    };
-    let Some(out_bytes) = (unsafe { mut_ref_from_ptr(out_prefix_bytes) }) else {
-        return -1;
-    };
-    let (prefix_word, prefix_bytes) = tcp_rpc_encode_compact_header_impl(payload_len, is_medium);
-    *out_word = prefix_word;
-    *out_bytes = prefix_bytes;
-    0
+    unsafe {
+        tcp_rpc_encode_compact_header_ffi(payload_len, is_medium, out_prefix_word, out_prefix_bytes)
+    }
 }
 
 /// Decodes compact tcp-rpc packet header.
@@ -715,33 +493,13 @@ pub unsafe extern "C" fn mtproxy_ffi_tcp_rpc_decode_compact_header(
     out_payload_len: *mut i32,
     out_header_bytes: *mut i32,
 ) -> i32 {
-    let Some(out_len) = (unsafe { mut_ref_from_ptr(out_payload_len) }) else {
-        return -1;
-    };
-    let Some(out_bytes) = (unsafe { mut_ref_from_ptr(out_header_bytes) }) else {
-        return -1;
-    };
-
-    let remaining = if first_byte == 0x7f {
-        // Need 3 more bytes for wide format
-        let Some(ptr) = (unsafe { ref_from_ptr(remaining_bytes) }) else {
-            return -1;
-        };
-        let slice = unsafe { core::slice::from_raw_parts(ptr, 3) };
-        let mut arr = [0_u8; 3];
-        arr.copy_from_slice(slice);
-        Some(arr)
-    } else {
-        None
-    };
-
-    match tcp_rpc_decode_compact_header_impl(first_byte, remaining) {
-        Some((payload_len, header_bytes)) => {
-            *out_len = payload_len;
-            *out_bytes = header_bytes;
-            0
-        }
-        None => -1,
+    unsafe {
+        tcp_rpc_decode_compact_header_ffi(
+            first_byte,
+            remaining_bytes,
+            out_payload_len,
+            out_header_bytes,
+        )
     }
 }
 
@@ -906,11 +664,7 @@ pub unsafe extern "C" fn mtproxy_ffi_rpc_target_normalize_pid(
     pid: *mut MtproxyProcessId,
     default_ip: u32,
 ) -> i32 {
-    let Some(pid_ref) = (unsafe { mut_ref_from_ptr(pid) }) else {
-        return -1;
-    };
-    rpc_target_normalize_pid_impl(pid_ref, default_ip);
-    0
+    unsafe { rpc_target_normalize_pid_ffi(pid, default_ip) }
 }
 
 /// Returns default query-type mask for `engine-rpc-common` trivial handlers.
@@ -996,31 +750,17 @@ pub unsafe extern "C" fn mtproxy_ffi_engine_net_try_open_port_range(
     try_open_ctx: *mut c_void,
     out_selected_port: *mut i32,
 ) -> i32 {
-    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out_selected_port) }) else {
-        return -1;
-    };
-
-    match engine_net_try_open_port_range_impl(
-        start_port,
-        end_port,
-        mod_port,
-        rem_port,
-        quit_on_fail != 0,
-        try_open,
-        try_open_ctx,
-    ) {
-        Ok(Some(port)) => {
-            *out_ref = port;
-            0
-        }
-        Ok(None) => 1,
-        Err(()) => {
-            if quit_on_fail != 0 {
-                -2
-            } else {
-                -1
-            }
-        }
+    unsafe {
+        engine_net_try_open_port_range_ffi(
+            start_port,
+            end_port,
+            mod_port,
+            rem_port,
+            quit_on_fail,
+            try_open,
+            try_open_ctx,
+            out_selected_port,
+        )
     }
 }
 
@@ -1046,32 +786,18 @@ pub unsafe extern "C" fn mtproxy_ffi_engine_net_open_privileged_port(
     try_open_ctx: *mut c_void,
     out_selected_port: *mut i32,
 ) -> i32 {
-    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out_selected_port) }) else {
-        return -1;
-    };
-
-    match engine_net_open_privileged_port_impl(
-        port,
-        start_port,
-        end_port,
-        port_mod,
-        tcp_enabled != 0,
-        quit_on_fail != 0,
-        try_open,
-        try_open_ctx,
-    ) {
-        Ok(Some(selected_port)) => {
-            *out_ref = selected_port;
-            0
-        }
-        Ok(None) => 1,
-        Err(()) => {
-            if quit_on_fail != 0 {
-                -2
-            } else {
-                -1
-            }
-        }
+    unsafe {
+        engine_net_open_privileged_port_ffi(
+            port,
+            start_port,
+            end_port,
+            port_mod,
+            tcp_enabled,
+            quit_on_fail,
+            try_open,
+            try_open_ctx,
+            out_selected_port,
+        )
     }
 }
 
