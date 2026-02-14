@@ -360,7 +360,7 @@ mod tests {
         }
 
         let first = unsafe { state.first_timer() };
-        assert!(ptr::eq(first, &mut t2));
+        assert!(ptr::eq(first, &t2));
         assert_eq!(t2.h_idx, 1);
         assert_eq!(state.heap_size, 3);
     }
@@ -390,7 +390,7 @@ mod tests {
         }
 
         let first = unsafe { state.first_timer() };
-        assert!(ptr::eq(first, &mut t3));
+        assert!(ptr::eq(first, &t3));
         assert_eq!(state.heap_size, 2);
         assert_eq!(t2.h_idx, 0);
     }

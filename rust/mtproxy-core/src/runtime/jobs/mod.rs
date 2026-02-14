@@ -1796,8 +1796,8 @@ mod tests {
     fn test_job_flags() {
         assert_eq!(job_flags::JF_LOCKED, 0x10000);
         assert_eq!(job_flags::JF_COMPLETED, 0x40000);
-        assert_eq!(job_flags::jfs_set(0), 0x1000000);
-        assert_eq!(job_flags::jfs_set(1), 0x2000000);
+        assert_eq!(job_flags::jfs_set(0), 0x0100_0000);
+        assert_eq!(job_flags::jfs_set(1), 0x0200_0000);
     }
 
     #[test]
@@ -2361,7 +2361,7 @@ mod tests {
             runtime_execute_callback(&mut timer_job, JobSignal::Alarm as u32),
             0
         );
-        assert_eq!(timer_job.timer_wakeup_seconds, 2.5);
+        assert!((timer_job.timer_wakeup_seconds - 2.5).abs() < f64::EPSILON);
         assert_eq!(
             runtime_execute_callback(&mut timer_job, JobSignal::Abort as u32),
             JOB_COMPLETED
@@ -2385,7 +2385,7 @@ mod tests {
         let timer = runtime_job_timer_alarm(true, 0.5, true);
         assert_eq!(timer.callback_kind, RuntimeJobCallbackKind::TimerTransition);
         assert!(timer.timer_ready);
-        assert_eq!(timer.timer_wakeup_seconds, 0.5);
+        assert!((timer.timer_wakeup_seconds - 0.5).abs() < f64::EPSILON);
     }
 
     #[test]

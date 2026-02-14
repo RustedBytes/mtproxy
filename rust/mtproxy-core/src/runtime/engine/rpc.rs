@@ -176,7 +176,7 @@ mod tests {
 
     #[test]
     fn test_query_result_routing_helpers() {
-        let qid = i64::from_ne_bytes(0xA123_4567_89ab_cdef_u64.to_ne_bytes());
+        let qid = i64::from_ne_bytes(0xa123_4567_89ab_cdef_u64.to_ne_bytes());
         assert_eq!(query_result_type_id_from_qid(qid), 10);
         assert_eq!(
             query_result_dispatch_decision(false, false),

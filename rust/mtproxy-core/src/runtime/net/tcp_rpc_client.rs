@@ -512,7 +512,7 @@ mod tests {
         
         assert_eq!(client.state, ClientState::NonceSent);
         assert_eq!(client.nonce, nonce);
-        assert_eq!(client.nonce_time, 123.0);
+        assert!((client.nonce_time - 123.0).abs() < f64::EPSILON);
         assert!(client.crypto_flags.encryption_sent);
         
         assert!(client.process_nonce_received(1).is_ok());

@@ -34,8 +34,7 @@ pub unsafe extern "C" fn mtproxy_ffi_net_msg_new_msg_part(
     _neighbor: *mut MsgPart,
     x: *mut MsgBuffer,
 ) -> *mut MsgPart {
-    let mp = new_msg_part_impl(_neighbor, x);
-    mp
+    new_msg_part_impl(_neighbor, x)
 }
 
 #[no_mangle]

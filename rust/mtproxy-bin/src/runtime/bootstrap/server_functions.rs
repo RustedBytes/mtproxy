@@ -1426,7 +1426,7 @@ mod tests {
     fn lock_test_state() -> MutexGuard<'static, ()> {
         TEST_LOCK
             .lock()
-            .unwrap_or_else(|poison| poison.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     fn count_callback(_value: i32, _optarg: Option<&str>) -> i32 {
@@ -1534,13 +1534,13 @@ mod tests {
             "alpha",
             NO_ARGUMENT,
             None,
-            b'a' as i32,
+            i32::from(b'a'),
             LONGOPT_CUSTOM_SET,
             Some(count_callback),
             "alpha option",
         )
         .expect("alpha should register");
-        parse_option_alias("alpha", b'b' as i32).expect("short alias should register");
+        parse_option_alias("alpha", i32::from(b'b')).expect("short alias should register");
         parse_option_long_alias("alpha", "beta").expect("long alias should register");
 
         let args = vec![
@@ -1551,7 +1551,7 @@ mod tests {
         parse_engine_options_long(&args).expect("aliases should parse");
         assert_eq!(CALLBACK_COUNT.load(Ordering::Relaxed), 3);
 
-        remove_parse_option(b'a' as i32).expect("base value should be removed");
+        remove_parse_option(i32::from(b'a')).expect("base value should be removed");
         let err = parse_engine_options_long(&["mtproxy-rust".to_owned(), "-a".to_owned()])
             .expect_err("removed option must be rejected");
         assert_eq!(
@@ -1569,7 +1569,7 @@ mod tests {
             "required",
             REQUIRED_ARGUMENT,
             None,
-            b'r' as i32,
+            i32::from(b'r'),
             LONGOPT_CUSTOM_SET,
             Some(count_callback),
             "required arg",
@@ -1579,7 +1579,7 @@ mod tests {
             "optional",
             OPTIONAL_ARGUMENT,
             None,
-            b'o' as i32,
+            i32::from(b'o'),
             LONGOPT_CUSTOM_SET,
             Some(count_callback),
             "optional arg",
@@ -1589,7 +1589,7 @@ mod tests {
             "flag",
             NO_ARGUMENT,
             None,
-            b'f' as i32,
+            i32::from(b'f'),
             LONGOPT_CUSTOM_SET,
             Some(count_callback),
             "plain flag",

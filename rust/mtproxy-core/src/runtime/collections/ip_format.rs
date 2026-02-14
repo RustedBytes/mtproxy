@@ -74,12 +74,12 @@ mod tests {
     #[test]
     fn test_format_ipv4() {
         // Test localhost
-        let localhost = 0x7f000001u32;
+        let localhost = 0x7f00_0001_u32;
         let s = format_ipv4(localhost);
         assert_eq!(s.as_str(), "127.0.0.1");
 
         // Test 192.168.1.1
-        let addr = 0xc0a80101u32;
+        let addr = 0xc0a8_0101_u32;
         let s = format_ipv4(addr);
         assert_eq!(s.as_str(), "192.168.1.1");
     }
@@ -91,6 +91,6 @@ mod tests {
         addr[15] = 1;
         let s = format_ipv6(&addr);
         // The simplified format may not compress zeros perfectly
-        assert!(s.len() > 0);
+        assert!(!s.is_empty());
     }
 }

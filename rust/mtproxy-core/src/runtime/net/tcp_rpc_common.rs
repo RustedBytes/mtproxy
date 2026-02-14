@@ -197,8 +197,7 @@ impl ParsedNoncePacket {
 #[must_use]
 pub fn expected_nonce_length(schema: CryptoSchema, extra_keys_count: i32) -> Option<usize> {
     match schema {
-        CryptoSchema::None => Some(TCP_RPC_NONCE_BASE_LEN),
-        CryptoSchema::Aes => Some(TCP_RPC_NONCE_BASE_LEN),
+        CryptoSchema::None | CryptoSchema::Aes => Some(TCP_RPC_NONCE_BASE_LEN),
         CryptoSchema::AesExt => {
             let extra = usize::try_from(extra_keys_count).ok()?;
             if extra_keys_count < 0 || extra > RPC_MAX_EXTRA_KEYS {
@@ -975,7 +974,7 @@ mod tests {
         let (payload_len, header_bytes) = result.unwrap();
         assert_eq!(header_bytes, 4);
         // Payload len is (0x0001007f >> 6)
-        assert_eq!(payload_len, (0x0001_007f_u32 >> 6) as i32);
+        assert_eq!(payload_len, 0x0401);
     }
 
     #[test]
@@ -985,7 +984,7 @@ mod tests {
         let (encoded, bytes) = encode_compact_header(original_len, 0);
         
         if bytes == 1 {
-            let first_byte = (encoded & 0xff) as u8;
+            let first_byte = encoded.to_le_bytes()[0];
             let (decoded_len, decoded_bytes) = decode_compact_header(first_byte, None).unwrap();
             assert_eq!(decoded_len, original_len);
             assert_eq!(decoded_bytes, 1);

@@ -1,3 +1,3 @@
 mod abi;
 mod core;
-mod ffi;
+pub(crate) mod ffi;

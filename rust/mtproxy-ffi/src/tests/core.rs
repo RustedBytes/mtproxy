@@ -279,7 +279,7 @@ fn engine_rpc_common_dispatch_helpers_match_default_c_rules() {
 
 #[test]
 fn engine_rpc_decision_helpers_match_c_routing_rules() {
-    let qid = i64::from_ne_bytes(0xA123_4567_89ab_cdef_u64.to_ne_bytes());
+    let qid = i64::from_ne_bytes(0xa123_4567_89ab_cdef_u64.to_ne_bytes());
     assert_eq!(
         mtproxy_ffi_engine_rpc_query_result_type_id_from_qid(qid),
         10

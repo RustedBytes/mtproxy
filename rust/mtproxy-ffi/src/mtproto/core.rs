@@ -116,18 +116,6 @@ pub(super) fn mtproto_cfg_clear_cluster(
     group_stats.tot_clusters = group_stats.tot_clusters.wrapping_sub(1);
 }
 
-/// Updates endpoint-specific defaults used by `create_target`.
-///
-/// # Safety
-/// Mutates process-global `default_cfg_ct` fields.
-#[allow(clippy::cast_possible_truncation)]
-
-/// Returns current wall-clock unix seconds.
-///
-/// # Safety
-/// Calls C runtime `time(0)` via FFI.
-#[allow(clippy::cast_possible_truncation)]
-
 pub(super) fn mtproto_parse_client_packet_impl(
     data: &[u8],
     out: &mut MtproxyMtprotoClientPacketParseResult,

@@ -2120,7 +2120,7 @@ mod tests {
     #[test]
     fn target_bucket_ipv4_is_stable() {
         let bucket = target_bucket_ipv4(0x1234usize, 0x7f00_0001, 443, 99_961);
-        assert!(bucket >= 0 && bucket < 99_961);
+        assert!((0..99_961).contains(&bucket));
         assert_eq!(
             bucket,
             target_bucket_ipv4(0x1234usize, 0x7f00_0001, 443, 99_961)
@@ -2131,7 +2131,7 @@ mod tests {
     fn target_bucket_ipv6_is_stable() {
         let addr = [0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1];
         let bucket = target_bucket_ipv6(0x1234usize, &addr, 443, 99_961);
-        assert!(bucket >= 0 && bucket < 99_961);
+        assert!((0..99_961).contains(&bucket));
         assert_eq!(bucket, target_bucket_ipv6(0x1234usize, &addr, 443, 99_961));
     }
 
@@ -2140,8 +2140,8 @@ mod tests {
         let addr6 = [0xff; 16];
         let bucket4 = target_bucket_ipv4(usize::MAX, 0x7f00_0001, 443, 99_961);
         let bucket6 = target_bucket_ipv6(usize::MAX, &addr6, 443, 99_961);
-        assert!(bucket4 >= 0 && bucket4 < 99_961);
-        assert!(bucket6 >= 0 && bucket6 < 99_961);
+        assert!((0..99_961).contains(&bucket4));
+        assert!((0..99_961).contains(&bucket6));
     }
 
     #[test]
