@@ -1,4 +1,4 @@
-use crate::crypto::{
+use crate::crypto::ffi::{
     mtproxy_ffi_aesni_crypt, mtproxy_ffi_crc32_partial, mtproxy_ffi_crc32c_partial,
     mtproxy_ffi_sha1,
 };
