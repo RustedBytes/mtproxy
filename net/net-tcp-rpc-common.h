@@ -26,6 +26,8 @@
 
 #pragma once
 
+#include <stdint.h>
+
 #include "net/net-connections.h"
 #include "pid.h"
 
@@ -166,7 +168,12 @@ enum {
 };
 
 static inline struct tcp_rpc_data *TCP_RPC_DATA(connection_job_t c) {
-  return (struct tcp_rpc_data *)CONN_INFO(c)->custom_data;
+  // tcp_rpc_data is stored in custom_data[] (byte array), so align manually
+  // before casting to avoid UB on platforms/runtimes that enforce alignment.
+  const uintptr_t base = (uintptr_t)CONN_INFO(c)->custom_data;
+  const uintptr_t align = (uintptr_t)__alignof__(struct tcp_rpc_data);
+  const uintptr_t aligned = (base + align - 1) & ~(align - 1);
+  return (struct tcp_rpc_data *)aligned;
 }
 
 int tcp_rpc_flush_packet(connection_job_t C);

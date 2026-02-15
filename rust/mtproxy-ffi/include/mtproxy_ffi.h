@@ -734,6 +734,22 @@ int32_t mtproxy_ffi_tcp_rpc_parse_handshake_packet(
 
 // net-tcp-rpc-client helper: classifies packet length from non-compact mode parser.
 int32_t mtproxy_ffi_tcp_rpc_client_packet_len_state(int32_t packet_len, int32_t max_packet_len);
+int32_t mtproxy_ffi_net_tcp_rpc_client_parse_execute(void *c);
+int32_t mtproxy_ffi_net_tcp_rpc_client_connected(void *c);
+int32_t mtproxy_ffi_net_tcp_rpc_client_close_connection(void *c, int32_t who);
+int32_t mtproxy_ffi_net_tcp_rpc_client_check_ready(void *c);
+int32_t mtproxy_ffi_net_tcp_rpc_client_default_check_ready(void *c);
+int32_t mtproxy_ffi_net_tcp_rpc_client_init_outbound(void *c);
+void mtproxy_ffi_net_tcp_rpc_client_force_enable_dh(void);
+int32_t mtproxy_ffi_net_tcp_rpc_client_default_check_perm(void *c);
+int32_t mtproxy_ffi_net_tcp_rpc_client_init_crypto(void *c);
+int32_t mtproxy_ffi_net_tcp_rpc_client_start_crypto(
+  void *c,
+  char *nonce,
+  int32_t key_select,
+  uint8_t *temp_key,
+  int32_t temp_key_len
+);
 
 // net-tcp-rpc-server helpers: classifies malformed header and packet length state.
 int32_t mtproxy_ffi_tcp_rpc_server_packet_header_malformed(int32_t packet_len);

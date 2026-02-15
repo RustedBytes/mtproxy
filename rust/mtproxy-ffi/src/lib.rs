@@ -73,6 +73,7 @@ mod net_connections;
 mod net_events;
 mod net_http_server;
 mod net_msg;
+mod net_tcp_rpc_client;
 mod net_timers;
 mod server_functions;
 mod stats;
