@@ -183,6 +183,35 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_http_query_job_run(
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_add_stats(w: *mut c_void) {
+    unsafe { mtproto_add_stats_ffi(w) };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_mtfront_prepare_stats(sb: *mut c_void) {
+    unsafe { mtproto_mtfront_prepare_stats_ffi(sb) };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_hts_execute(
+    c: *mut c_void,
+    msg: *mut c_void,
+    op: c_int,
+) -> i32 {
+    unsafe { mtproto_hts_execute_ffi(c, msg, op) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_f_parse_option(val: c_int) -> i32 {
+    unsafe { mtproto_f_parse_option_ffi(val) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_mtfront_pre_init() {
+    unsafe { mtproto_mtfront_pre_init_ffi() };
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_conn_reset() {
     unsafe { mtproto_ext_conn_reset_ffi() };
 }
@@ -363,6 +392,15 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_client_send_non_http_wrap(
     tlio_out: *mut c_void,
 ) -> i32 {
     unsafe { mtproto_client_send_non_http_wrap_ffi(tlio_in, tlio_out) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_http_send_message(
+    c: *mut c_void,
+    tlio_in: *mut c_void,
+    flags: c_int,
+) -> i32 {
+    unsafe { mtproto_http_send_message_ffi(c, tlio_in, flags) }
 }
 
 #[no_mangle]

@@ -1076,6 +1076,15 @@ int32_t mtproxy_ffi_mtproto_http_query_job_run(
   int32_t op,
   void *jt
 );
+void mtproxy_ffi_mtproto_add_stats(void *w);
+void mtproxy_ffi_mtproto_mtfront_prepare_stats(void *sb);
+int32_t mtproxy_ffi_mtproto_hts_execute(
+  void *c,
+  void *msg,
+  int32_t op
+);
+int32_t mtproxy_ffi_mtproto_f_parse_option(int32_t val);
+void mtproxy_ffi_mtproto_mtfront_pre_init(void);
 void mtproxy_ffi_mtproto_ext_conn_reset(void);
 int32_t mtproxy_ffi_mtproto_ext_conn_create(
   int32_t in_fd,
@@ -1157,6 +1166,11 @@ int32_t mtproxy_ffi_mtproto_build_http_ok_header(
 int32_t mtproxy_ffi_mtproto_client_send_non_http_wrap(
   void *tlio_in,
   void *tlio_out
+);
+int32_t mtproxy_ffi_mtproto_http_send_message(
+  void *c,
+  void *tlio_in,
+  int32_t flags
 );
 
 // mtproto-proxy entrypoint helpers for legacy C wrapper.
