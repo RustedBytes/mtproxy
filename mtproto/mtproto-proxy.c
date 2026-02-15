@@ -103,7 +103,6 @@ enum mtproxy_constants {
 };
 
 static const double default_ping_interval = 5.0;
-static const double http_max_wait_timeout = 960.0;
 static double ping_interval = 5.0;
 static int window_clamp;
 
@@ -184,22 +183,6 @@ static inline int
 find_ext_connection_by_out_conn_id(long long out_conn_id, ext_connection_t *Ex) {
   check_engine_class();
   int32_t rc = mtproxy_ffi_mtproto_ext_conn_get_by_out_conn_id(out_conn_id, Ex);
-  assert(rc >= 0);
-  return rc > 0;
-}
-
-// MUST be new
-static int create_ext_connection(connection_job_t CI, long long in_conn_id,
-                                 connection_job_t CO, long long auth_key_id,
-                                 ext_connection_t *Ex) {
-  check_engine_class();
-  int out_fd = CO ? CONN_INFO(CO)->fd : 0;
-  int out_gen = CO ? CONN_INFO(CO)->generation : 0;
-  assert(!CO || (unsigned)CONN_INFO(CO)->fd < MAX_CONNECTIONS);
-  assert(CO != CI);
-  int32_t rc = mtproxy_ffi_mtproto_ext_conn_create(
-      CONN_INFO(CI)->fd, CONN_INFO(CI)->generation, in_conn_id, out_fd, out_gen,
-      auth_key_id, Ex);
   assert(rc >= 0);
   return rc > 0;
 }
@@ -747,120 +730,11 @@ struct client_packet_info {
   connection_job_t conn;
 };
 
+extern int32_t mtproxy_ffi_mtproto_process_client_packet_runtime(void *tlio_in,
+                                                                  void *c);
+
 int process_client_packet(struct tl_in_state *tlio_in, connection_job_t C) {
-  int len = tl_fetch_unread();
-  if (len < 0) {
-    return 0;
-  }
-
-  unsigned char *buf = len > 0 ? malloc((size_t)len) : 0;
-  if (len > 0 && !buf) {
-    return 0;
-  }
-  if (len > 0 && tl_fetch_lookup_data(buf, len) != len) {
-    free(buf);
-    return 0;
-  }
-
-  mtproxy_ffi_mtproto_client_packet_process_result_t planned = {0};
-  int32_t parse_rc = mtproxy_ffi_mtproto_process_client_packet(
-      buf, (size_t)len, CONN_INFO(C)->fd, CONN_INFO(C)->generation, &planned);
-  free(buf);
-  if (parse_rc < 0) {
-    return 0;
-  }
-
-  switch (planned.kind) {
-  case MTPROXY_FFI_MTPROTO_CLIENT_PACKET_ACTION_PROXY_ANS_FORWARD: {
-    if (planned.payload_offset < 0 || planned.payload_offset > len) {
-      return 0;
-    }
-    int payload_offset = planned.payload_offset;
-    tl_fetch_skip(payload_offset);
-    int flags = planned.flags;
-    long long out_conn_id = planned.out_conn_id;
-    assert(tl_fetch_unread() == len - payload_offset);
-    vkprintf(2,
-             "got RPC_PROXY_ANS from connection %d:%llx, data size = %d, "
-             "flags = %d\n",
-             CONN_INFO(C)->fd, out_conn_id, tl_fetch_unread(), flags);
-    connection_job_t D =
-        connection_get_by_fd_generation(planned.in_fd, planned.in_gen);
-    if (D) {
-      vkprintf(2, "proxying answer into connection %d:%llx\n", planned.in_fd,
-               (unsigned long long)planned.in_conn_id);
-      tot_forwarded_responses++;
-      client_send_message(JOB_REF_PASS(D), planned.in_conn_id, tlio_in, flags);
-    } else {
-      vkprintf(2, "external connection not found, dropping proxied answer\n");
-      dropped_responses++;
-      _notify_remote_closed(JOB_REF_CREATE_PASS(C), out_conn_id);
-    }
-    return 1;
-  }
-  case MTPROXY_FFI_MTPROTO_CLIENT_PACKET_ACTION_PROXY_ANS_NOTIFY_CLOSE: {
-    vkprintf(2, "external connection not found, dropping proxied answer\n");
-    dropped_responses++;
-    _notify_remote_closed(JOB_REF_CREATE_PASS(C), planned.out_conn_id);
-    return 1;
-  }
-  case MTPROXY_FFI_MTPROTO_CLIENT_PACKET_ACTION_SIMPLE_ACK_FORWARD: {
-    long long out_conn_id = planned.out_conn_id;
-    int confirm = planned.confirm;
-    vkprintf(2, "got RPC_SIMPLE_ACK for connection = %llx, value %08x\n",
-             out_conn_id, confirm);
-    connection_job_t D =
-        connection_get_by_fd_generation(planned.in_fd, planned.in_gen);
-    if (D) {
-      vkprintf(2, "proxying simple ack %08x into connection %d:%llx\n", confirm,
-               planned.in_fd, (unsigned long long)planned.in_conn_id);
-      if (planned.in_conn_id) {
-        assert(0);
-      } else {
-        if (TCP_RPC_DATA(D)->flags & RPC_F_COMPACT) {
-          confirm = __builtin_bswap32(confirm);
-        }
-        push_rpc_confirmation(JOB_REF_PASS(D), confirm);
-      }
-      tot_forwarded_simple_acks++;
-    } else {
-      vkprintf(2, "external connection not found, dropping simple ack\n");
-      dropped_simple_acks++;
-      _notify_remote_closed(JOB_REF_CREATE_PASS(C), out_conn_id);
-    }
-    return 1;
-  }
-  case MTPROXY_FFI_MTPROTO_CLIENT_PACKET_ACTION_SIMPLE_ACK_NOTIFY_CLOSE: {
-    vkprintf(2, "external connection not found, dropping simple ack\n");
-    dropped_simple_acks++;
-    _notify_remote_closed(JOB_REF_CREATE_PASS(C), planned.out_conn_id);
-    return 1;
-  }
-  case MTPROXY_FFI_MTPROTO_CLIENT_PACKET_ACTION_CLOSE_EXT_REMOVED: {
-    vkprintf(2, "got RPC_CLOSE_EXT for connection = %llx\n",
-             (unsigned long long)planned.out_conn_id);
-    ext_connection_t Ex = {
-        .in_fd = planned.in_fd,
-        .in_gen = planned.in_gen,
-        .out_fd = planned.out_fd,
-        .out_gen = planned.out_gen,
-        .in_conn_id = planned.in_conn_id,
-        .out_conn_id = planned.out_conn_id,
-        .auth_key_id = planned.auth_key_id,
-    };
-    notify_ext_connection(&Ex, 2);
-    return 1;
-  }
-  case MTPROXY_FFI_MTPROTO_CLIENT_PACKET_ACTION_CLOSE_EXT_NOOP: {
-    vkprintf(2, "got RPC_CLOSE_EXT for unknown connection = %llx\n",
-             (unsigned long long)planned.out_conn_id);
-    return 1;
-  }
-  default:
-    break;
-  }
-
-  return 0;
+  return mtproxy_ffi_mtproto_process_client_packet_runtime(tlio_in, C);
 }
 
 int client_packet_job_run(job_t job, int op, struct job_thread *JT) {
@@ -1092,6 +966,14 @@ char mtproto_cors_http_headers[] =
     "Access-Control-Allow-Headers: origin, content-type\r\n"
     "Access-Control-Max-Age: 1728000\r\n";
 
+extern int32_t mtproxy_ffi_mtproto_forward_tcp_query(
+    void *tlio_in, void *c, void *target, int32_t flags, int64_t auth_key_id,
+    const int32_t *remote_ip_port, const int32_t *our_ip_port);
+extern int32_t mtproxy_ffi_mtproto_forward_mtproto_packet(
+    void *tlio_in, void *c, int32_t len, const int32_t *remote_ip_port,
+    int32_t rpc_flags);
+extern void *mtproxy_ffi_mtproto_choose_proxy_target(int32_t target_dc);
+
 int forward_mtproto_packet(struct tl_in_state *tlio_in, connection_job_t C,
                            int len, int remote_ip_port[5], int rpc_flags);
 int forward_tcp_query(struct tl_in_state *tlio_in, connection_job_t C,
@@ -1117,191 +999,11 @@ struct http_query_info {
 };
 
 int process_http_query(struct tl_in_state *tlio_in, job_t HQJ) {
-  struct http_query_info *D = (struct http_query_info *)HQJ->j_custom;
-  connection_job_t c = D->conn;
-  char *qHeaders = D->header + D->first_line_size;
-  int qHeadersLen = D->header_size - D->first_line_size;
-
-  assert(D->first_line_size > 0 && D->first_line_size <= D->header_size);
-
-  if (verbosity > 1) {
-    fprintf(stderr, "===============\n%.*s\n==============\n", D->header_size,
-            D->header);
-    fprintf(stderr, "%d,%d,%d,%d\n", D->host_offset, D->host_size,
-            D->uri_offset, D->uri_size);
-
-    fprintf(stderr, "hostname: '%.*s'\n", D->host_size,
-            D->header + D->host_offset);
-    fprintf(stderr, "URI: '%.*s'\n", D->uri_size, D->header + D->uri_offset);
-  }
-
-  if (verbosity >= 2) {
-    char PostPreview[81];
-    int preview_len =
-        (D->data_size < sizeof(PostPreview) ? D->data_size
-                                            : sizeof(PostPreview) - 1);
-    tl_fetch_lookup_data(PostPreview, preview_len);
-    PostPreview[preview_len] = 0;
-    kprintf("have %d POST bytes: `%.80s`\n", D->data_size, PostPreview);
-  }
-
-  char *qUri = D->header + D->uri_offset;
-  int qUriLen = D->uri_size;
-
-  char *get_qm_ptr = memchr(qUri, '?', D->uri_size);
-  if (get_qm_ptr) {
-    // qGet = get_qm_ptr + 1;
-    // qGetLen = qUri + qUriLen - qGet;
-    qUriLen = get_qm_ptr - qUri;
-  } else {
-    // qGet = 0;
-    // qGetLen = 0;
-  }
-
-  if (qUriLen >= 20) {
-    return -414;
-  }
-
-  if (qUriLen >= 4 && !memcmp(qUri, "/api", 4)) {
-    if (qUriLen >= 5 && qUri[4] == 'w') {
-      HTS_DATA(c)->query_flags |= QF_EXTRA_HEADERS;
-      extra_http_response_headers = mtproto_cors_http_headers;
-    } else {
-      HTS_DATA(c)->query_flags &= ~QF_EXTRA_HEADERS;
-    }
-    if (D->query_type == htqt_options) {
-      char response_buffer[512];
-      int len = snprintf(
-          response_buffer, 511,
-          "HTTP/1.1 200 OK\r\nConnection: %s\r\nContent-type: "
-          "text/plain\r\nPragma: no-cache\r\nCache-control: "
-          "no-store\r\n%sContent-length: 0\r\n\r\n",
-          (HTS_DATA(c)->query_flags & QF_KEEPALIVE) ? "keep-alive" : "close",
-          HTS_DATA(c)->query_flags & QF_EXTRA_HEADERS
-              ? mtproto_cors_http_headers
-              : "");
-      assert(len < 511);
-      struct raw_message *m = calloc(sizeof(struct raw_message), 1);
-      rwm_create(m, response_buffer, len);
-      http_flush(c, m);
-      return 0;
-    }
-    if (D->data_size & 3) {
-      return -404;
-    }
-    cur_http_origin_len =
-        get_http_header(qHeaders, qHeadersLen, cur_http_origin,
-                        sizeof(cur_http_origin) - 1, "Origin", 6);
-    cur_http_referer_len =
-        get_http_header(qHeaders, qHeadersLen, cur_http_referer,
-                        sizeof(cur_http_referer) - 1, "Referer", 7);
-    cur_http_user_agent_len =
-        get_http_header(qHeaders, qHeadersLen, cur_http_user_agent,
-                        sizeof(cur_http_user_agent) - 1, "User-Agent", 10);
-
-    int tmp_ip_port[5], *remote_ip_port = 0;
-    if ((CONN_INFO(c)->remote_ip & 0xff000000) == 0x0a000000 ||
-        (CONN_INFO(c)->remote_ip & 0xff000000) == 0x7f000000) {
-      char x_real_ip[64], x_real_port[16];
-      int x_real_ip_len =
-          get_http_header(qHeaders, qHeadersLen, x_real_ip,
-                          sizeof(x_real_ip) - 1, "X-Real-IP", 9);
-      int x_real_port_len =
-          get_http_header(qHeaders, qHeadersLen, x_real_port,
-                          sizeof(x_real_port) - 1, "X-Real-Port", 11);
-      if (x_real_ip_len > 0) {
-        uint32_t real_ip = 0;
-        int32_t parsed_ipv6_len = -1;
-        int32_t parse_ipv4_rc =
-            mtproxy_ffi_mtproto_parse_text_ipv4(x_real_ip, &real_ip);
-        int32_t parse_ipv6_rc = mtproxy_ffi_mtproto_parse_text_ipv6(
-            x_real_ip, (uint8_t *)tmp_ip_port, &parsed_ipv6_len);
-        if ((parse_ipv4_rc == 0 && real_ip >= (1u << 24)) ||
-            (parse_ipv6_rc == 0 && parsed_ipv6_len > 0)) {
-          if (parse_ipv4_rc == 0 && real_ip >= (1u << 24)) {
-            tmp_ip_port[0] = 0;
-            tmp_ip_port[1] = 0;
-            tmp_ip_port[2] = 0xffff0000;
-            tmp_ip_port[3] = htonl(real_ip);
-          }
-          int port = (x_real_port_len > 0 ? atoi(x_real_port) : 0);
-          tmp_ip_port[4] = (port > 0 && port < 65536 ? port : 0);
-          remote_ip_port = tmp_ip_port;
-          vkprintf(3,
-                   "set remote IPv6:port to %08x:%08x:%08x:%08x:%08x according "
-                   "to X-Real-Ip '%s', X-Real-Port '%s'\n",
-                   tmp_ip_port[0], tmp_ip_port[1], tmp_ip_port[2],
-                   tmp_ip_port[3], tmp_ip_port[4], x_real_ip,
-                   x_real_port_len > 0 ? x_real_port : "");
-        }
-      }
-    }
-
-    int res =
-        forward_mtproto_packet(tlio_in, c, D->data_size, remote_ip_port, 0);
-    return res ? 1 : -404;
-  }
-
-  return -404;
+  return mtproxy_ffi_mtproto_process_http_query(tlio_in, HQJ);
 }
 
 int http_query_job_run(job_t job, int op, struct job_thread *JT) {
-  struct http_query_info *HQ = (struct http_query_info *)(job->j_custom);
-
-  switch (op) {
-  case JS_RUN: { // ENGINE context
-    lru_insert_conn(HQ->conn);
-    struct tl_in_state *tlio_in = tl_in_state_alloc();
-    tlf_init_raw_message(tlio_in, &HQ->msg, HQ->msg.total_bytes, 0);
-    int res = process_http_query(tlio_in, job);
-    tl_in_state_free(tlio_in);
-    assert(!HQ->msg.magic);
-    // rwm_free (&HQ->msg);
-    if (res < 0) {
-      write_http_error(HQ->conn, -res);
-    } else if (res > 0) {
-      assert(HQ->flags & 1);
-      HQ->flags &= ~1;
-    }
-    return JOB_COMPLETED;
-  }
-  case JS_ALARM:
-    if (!job->j_error) {
-      job->j_error = ETIMEDOUT;
-    }
-    return JOB_COMPLETED;
-  case JS_ABORT:
-    if (!job->j_error) {
-      job->j_error = ECANCELED;
-    }
-    return JOB_COMPLETED;
-  case JS_FINISH: // NET-CPU
-    if (HQ->flags & 1) {
-      connection_job_t c = HQ->conn ? job_incref(HQ->conn)
-                                    : connection_get_by_fd_generation(
-                                          HQ->conn_fd, HQ->conn_generation);
-      if (c) {
-        assert(CONN_INFO(c)->pending_queries == 1);
-        CONN_INFO(c)->pending_queries--;
-        if (!(HTS_DATA(c)->query_flags & QF_KEEPALIVE) &&
-            CONN_INFO(c)->status == conn_working) {
-          connection_write_close(c);
-        }
-        job_decref(JOB_REF_PASS(c));
-      }
-      --pending_http_queries;
-      HQ->flags &= ~1;
-    }
-    if (HQ->conn) {
-      job_decref(JOB_REF_PASS(HQ->conn));
-    }
-    if (HQ->msg.magic) {
-      rwm_free(&HQ->msg);
-    }
-    return job_free(JOB_REF_PASS(job));
-  default:
-    return JOB_ERROR;
-  }
+  return mtproxy_ffi_mtproto_http_query_job_run(job, op, JT);
 }
 
 int hts_stats_execute(connection_job_t c, struct raw_message *msg, int op) {
@@ -1622,72 +1324,13 @@ int client_send_message(JOB_REF_ARG(C), long long in_conn_id,
 // connection_job_t get_target_connection (conn_target_job_t S, int rotate);
 
 conn_target_job_t choose_proxy_target(int target_dc) {
-  assert(CurConf->auth_clusters > 0);
-  struct mf_cluster *MFC = mf_cluster_lookup(CurConf, target_dc, 1);
-  if (!MFC) {
-    return 0;
-  }
-  int attempts = 5;
-  while (attempts-- > 0) {
-    assert(MFC->targets_num > 0);
-    conn_target_job_t S = MFC->cluster_targets[lrand48() % MFC->targets_num];
-    connection_job_t C = 0;
-    rpc_target_choose_random_connections(S, 0, 1, &C);
-    if (C && TCP_RPC_DATA(C)->extra_int == get_conn_tag(C)) {
-      job_decref(JOB_REF_PASS(C));
-      return S;
-    }
-  }
-  return 0;
-}
-
-static int forward_mtproto_enc_packet(struct tl_in_state *tlio_in,
-                                      connection_job_t C, long long auth_key_id,
-                                      int len, int remote_ip_port[5],
-                                      int rpc_flags) {
-  if (len < offsetof (struct encrypted_message, message) /*|| (len & 15) != (offsetof (struct encrypted_message, server_salt) & 15)*/) {
-    return 0;
-  }
-  vkprintf(2,
-           "received mtproto encrypted packet of %d bytes from connection %p "
-           "(#%d~%d), key=%016llx\n",
-           len, C, CONN_INFO(C)->fd, CONN_INFO(C)->generation, auth_key_id);
-
-  CONN_INFO(C)->query_start_time = get_utime_monotonic();
-
-  conn_target_job_t S = choose_proxy_target(TCP_RPC_DATA(C)->extra_int4);
-
-  assert(tl_fetch_unread() == len);
-  return forward_tcp_query(tlio_in, C, S, rpc_flags, auth_key_id,
-                           remote_ip_port, 0);
+  return mtproxy_ffi_mtproto_choose_proxy_target(target_dc);
 }
 
 int forward_mtproto_packet(struct tl_in_state *tlio_in, connection_job_t C,
                            int len, int remote_ip_port[5], int rpc_flags) {
-  int header[7];
-  if (len < sizeof(header) || (len & 3)) {
-    return 0;
-  }
-  assert(tl_fetch_lookup_data(header, sizeof(header)) == sizeof(header));
-  mtproxy_ffi_mtproto_packet_inspect_result_t inspected = {0};
-  int32_t inspect_rc = mtproxy_ffi_mtproto_inspect_packet_header(
-      (const uint8_t *)header, sizeof(header), len, &inspected);
-  if (inspect_rc < 0) {
-    return 0;
-  }
-  if (inspected.kind == MTPROXY_FFI_MTPROTO_PACKET_KIND_ENCRYPTED) {
-    long long auth_key_id = inspected.auth_key_id;
-    return forward_mtproto_enc_packet(tlio_in, C, auth_key_id, len,
-                                      remote_ip_port, rpc_flags);
-  }
-  if (inspected.kind != MTPROXY_FFI_MTPROTO_PACKET_KIND_UNENCRYPTED_DH) {
-    return 0;
-  }
-  vkprintf(2, "received mtproto packet of %d bytes\n", len);
-  conn_target_job_t S = choose_proxy_target(TCP_RPC_DATA(C)->extra_int4);
-
-  assert(len == tl_fetch_unread());
-  return forward_tcp_query(tlio_in, C, S, 2 | rpc_flags, 0, remote_ip_port, 0);
+  return mtproxy_ffi_mtproto_forward_mtproto_packet(tlio_in, C, len,
+                                                    remote_ip_port, rpc_flags);
 }
 
 /*
@@ -1701,197 +1344,8 @@ int forward_mtproto_packet(struct tl_in_state *tlio_in, connection_job_t C,
 int forward_tcp_query(struct tl_in_state *tlio_in, connection_job_t c,
                       conn_target_job_t S, int flags, long long auth_key_id,
                       int remote_ip_port[5], int our_ip_port[5]) {
-  connection_job_t d = 0;
-  int c_fd = CONN_INFO(c)->fd;
-  ext_connection_t ExStorage = {0};
-  ext_connection_t *Ex = 0;
-  if (get_ext_connection_by_in_fd(c_fd, &ExStorage)) {
-    Ex = &ExStorage;
-  }
-
-  if (CONN_INFO(c)->type == &ct_tcp_rpc_ext_server_mtfront) {
-    flags |= TCP_RPC_DATA(c)->flags & RPC_F_DROPPED;
-    flags |= 0x1000;
-  } else if (CONN_INFO(c)->type == &ct_http_server_mtfront) {
-    flags |= 0x3005;
-  }
-
-  if (Ex && Ex->auth_key_id != auth_key_id) {
-    int32_t update_rc = mtproxy_ffi_mtproto_ext_conn_update_auth_key(
-        Ex->in_fd, Ex->in_conn_id, auth_key_id);
-    assert(update_rc >= 0);
-    Ex->auth_key_id = auth_key_id;
-  }
-
-  if (Ex) {
-    assert(Ex->out_fd > 0 && Ex->out_fd < MAX_CONNECTIONS);
-    d = connection_get_by_fd_generation(Ex->out_fd, Ex->out_gen);
-    if (!d || !CONN_INFO(d)->target) {
-      if (d) {
-        job_decref(JOB_REF_PASS(d));
-      }
-      remove_ext_connection(Ex, 1);
-      Ex = 0;
-    }
-  }
-
-  if (!d) {
-    int attempts = 5;
-    while (S && attempts-- > 0) {
-      rpc_target_choose_random_connections(S, 0, 1, &d);
-      if (d) {
-        if (TCP_RPC_DATA(d)->extra_int == get_conn_tag(d)) {
-          break;
-        } else {
-          job_decref(JOB_REF_PASS(d));
-        }
-      }
-    }
-    if (!d) {
-      vkprintf(2,
-               "nowhere to forward user query from connection %d, dropping\n",
-               CONN_INFO(c)->fd);
-      dropped_queries++;
-      if (CONN_INFO(c)->type == &ct_tcp_rpc_ext_server_mtfront) {
-        __sync_fetch_and_or(&TCP_RPC_DATA(c)->flags, RPC_F_DROPPED);
-      }
-      return 0;
-    }
-    if (flags & RPC_F_DROPPED) {
-      // there was at least one dropped inbound packet on this connection, have
-      // to close it now instead of forwarding next queries
-      fail_connection(c, -35);
-      return 0;
-    }
-    if (!create_ext_connection(c, 0, d, auth_key_id, &ExStorage)) {
-      job_decref(JOB_REF_PASS(d));
-      dropped_queries++;
-      return 0;
-    }
-    Ex = &ExStorage;
-  }
-
-  tot_forwarded_queries++;
-
-  assert(Ex);
-
-  vkprintf(3,
-           "forwarding user query from connection %d~%d (ext_conn_id %llx) "
-           "into connection %d~%d (ext_conn_id %llx)\n",
-           Ex->in_fd, Ex->in_gen, (unsigned long long)Ex->in_conn_id,
-           Ex->out_fd, Ex->out_gen, (unsigned long long)Ex->out_conn_id);
-
-  if (proxy_tag_set) {
-    flags |= 8;
-  }
-
-  int payload_len = tl_fetch_unread();
-  if (payload_len < 0) {
-    job_decref(JOB_REF_PASS(d));
-    return 0;
-  }
-  unsigned char *payload = payload_len ? malloc((size_t)payload_len) : 0;
-  if (payload_len > 0 && !payload) {
-    job_decref(JOB_REF_PASS(d));
-    return 0;
-  }
-  if (payload_len > 0 && tl_fetch_lookup_data(payload, payload_len) != payload_len) {
-    free(payload);
-    job_decref(JOB_REF_PASS(d));
-    return 0;
-  }
-
-  uint8_t remote_ipv6[16], our_ipv6[16];
-  int remote_port, our_port;
-  if (remote_ip_port) {
-    memcpy(remote_ipv6, remote_ip_port, 16);
-    remote_port = remote_ip_port[4];
-  } else {
-    if (CONN_INFO(c)->remote_ip) {
-      memset(remote_ipv6, 0, sizeof(remote_ipv6));
-      remote_ipv6[10] = 0xff;
-      remote_ipv6[11] = 0xff;
-      uint32_t remote_ipv4 = htonl(CONN_INFO(c)->remote_ip);
-      memcpy(remote_ipv6 + 12, &remote_ipv4, 4);
-    } else {
-      memcpy(remote_ipv6, CONN_INFO(c)->remote_ipv6, sizeof(remote_ipv6));
-    }
-    remote_port = CONN_INFO(c)->remote_port;
-  }
-  if (our_ip_port) {
-    memcpy(our_ipv6, our_ip_port, 16);
-    our_port = our_ip_port[4];
-  } else {
-    if (CONN_INFO(c)->our_ip) {
-      memset(our_ipv6, 0, sizeof(our_ipv6));
-      our_ipv6[10] = 0xff;
-      our_ipv6[11] = 0xff;
-      uint32_t our_ipv4 = htonl(nat_translate_ip(CONN_INFO(c)->our_ip));
-      memcpy(our_ipv6 + 12, &our_ipv4, 4);
-    } else {
-      memcpy(our_ipv6, CONN_INFO(c)->our_ipv6, sizeof(our_ipv6));
-    }
-    our_port = CONN_INFO(c)->our_port;
-  }
-
-  const uint8_t *proxy_tag_ptr = 0;
-  size_t proxy_tag_len = 0;
-  if (flags & 8) {
-    proxy_tag_ptr = (const uint8_t *)proxy_tag;
-    proxy_tag_len = sizeof(proxy_tag);
-  }
-  size_t http_origin_len = (size_t)(cur_http_origin_len >= 0 ? cur_http_origin_len : 0);
-  size_t http_referer_len =
-      (size_t)(cur_http_referer_len >= 0 ? cur_http_referer_len : 0);
-  size_t http_user_agent_len =
-      (size_t)(cur_http_user_agent_len >= 0 ? cur_http_user_agent_len : 0);
-
-  size_t req_len = 0;
-  int32_t build_rc = mtproxy_ffi_mtproto_build_rpc_proxy_req(
-      flags, Ex->out_conn_id, remote_ipv6, remote_port, our_ipv6, our_port,
-      proxy_tag_ptr, proxy_tag_len, (const uint8_t *)cur_http_origin,
-      http_origin_len, (const uint8_t *)cur_http_referer, http_referer_len,
-      (const uint8_t *)cur_http_user_agent, http_user_agent_len, payload,
-      (size_t)payload_len, 0, 0, &req_len);
-  if (build_rc < 0) {
-    free(payload);
-    job_decref(JOB_REF_PASS(d));
-    return 0;
-  }
-  unsigned char *req = req_len ? malloc(req_len) : 0;
-  if (req_len > 0 && !req) {
-    free(payload);
-    job_decref(JOB_REF_PASS(d));
-    return 0;
-  }
-  build_rc = mtproxy_ffi_mtproto_build_rpc_proxy_req(
-      flags, Ex->out_conn_id, remote_ipv6, remote_port, our_ipv6, our_port,
-      proxy_tag_ptr, proxy_tag_len, (const uint8_t *)cur_http_origin,
-      http_origin_len, (const uint8_t *)cur_http_referer, http_referer_len,
-      (const uint8_t *)cur_http_user_agent, http_user_agent_len, payload,
-      (size_t)payload_len, req, req_len, &req_len);
-  free(payload);
-  if (build_rc != 0 || req_len > 0x7fffffff) {
-    free(req);
-    job_decref(JOB_REF_PASS(d));
-    return 0;
-  }
-
-  struct tl_out_state *tlio_out = tl_out_state_alloc();
-  tls_init_tcp_raw_msg(tlio_out, JOB_REF_PASS(d), 0);
-  tl_store_raw_data(req, (int)req_len);
-  free(req);
-  tl_store_end_ext(0);
-  tl_out_state_free(tlio_out);
-
-  if (CONN_INFO(c)->type == &ct_http_server_mtfront) {
-    assert(CONN_INFO(c)->pending_queries >= 0);
-    assert(CONN_INFO(c)->pending_queries > 0);
-    assert(CONN_INFO(c)->pending_queries == 1);
-    set_connection_timeout(c, http_max_wait_timeout);
-  }
-
-  return 1;
+  return mtproxy_ffi_mtproto_forward_tcp_query(tlio_in, c, S, flags, auth_key_id,
+                                               remote_ip_port, our_ip_port);
 }
 
 /* -------------------------- EXTERFACE ---------------------------- */

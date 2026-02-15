@@ -158,6 +158,31 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_process_client_packet(
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_process_client_packet_runtime(
+    tlio_in: *mut c_void,
+    c: *mut c_void,
+) -> i32 {
+    unsafe { mtproto_process_client_packet_runtime_ffi(tlio_in, c) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_process_http_query(
+    tlio_in: *mut c_void,
+    hqj: *mut c_void,
+) -> i32 {
+    unsafe { mtproto_process_http_query_ffi(tlio_in, hqj) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_http_query_job_run(
+    job: *mut c_void,
+    op: c_int,
+    jt: *mut c_void,
+) -> i32 {
+    unsafe { mtproto_http_query_job_run_ffi(job, op, jt) }
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_conn_reset() {
     unsafe { mtproto_ext_conn_reset_ffi() };
 }
@@ -338,6 +363,45 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_client_send_non_http_wrap(
     tlio_out: *mut c_void,
 ) -> i32 {
     unsafe { mtproto_client_send_non_http_wrap_ffi(tlio_in, tlio_out) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_forward_tcp_query(
+    tlio_in: *mut c_void,
+    c: *mut c_void,
+    target: *mut c_void,
+    flags: c_int,
+    auth_key_id: i64,
+    remote_ip_port: *const c_int,
+    our_ip_port: *const c_int,
+) -> i32 {
+    unsafe {
+        mtproto_forward_tcp_query_ffi(
+            tlio_in,
+            c,
+            target,
+            flags,
+            auth_key_id,
+            remote_ip_port,
+            our_ip_port,
+        )
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_forward_mtproto_packet(
+    tlio_in: *mut c_void,
+    c: *mut c_void,
+    len: c_int,
+    remote_ip_port: *const c_int,
+    rpc_flags: c_int,
+) -> i32 {
+    unsafe { mtproto_forward_mtproto_packet_ffi(tlio_in, c, len, remote_ip_port, rpc_flags) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_choose_proxy_target(target_dc: c_int) -> *mut c_void {
+    unsafe { mtproto_choose_proxy_target_ffi(target_dc) }
 }
 
 /// Parses mtfront function envelope from unread TL bytes.

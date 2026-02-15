@@ -1067,6 +1067,15 @@ int32_t mtproxy_ffi_mtproto_process_client_packet(
   int32_t conn_gen,
   mtproxy_ffi_mtproto_client_packet_process_result_t *out
 );
+int32_t mtproxy_ffi_mtproto_process_http_query(
+  void *tlio_in,
+  void *hqj
+);
+int32_t mtproxy_ffi_mtproto_http_query_job_run(
+  void *job,
+  int32_t op,
+  void *jt
+);
 void mtproxy_ffi_mtproto_ext_conn_reset(void);
 int32_t mtproxy_ffi_mtproto_ext_conn_create(
   int32_t in_fd,
