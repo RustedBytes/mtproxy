@@ -1051,6 +1051,23 @@ pub unsafe extern "C" fn mtproxy_ffi_net_connections_fail_connection(
     unsafe { fail_connection_impl(c, err) };
 }
 
+/// Frees connection object and queues after close path completion.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_connections_cpu_server_free_connection(
+    c: ConnectionJob,
+) -> c_int {
+    unsafe { cpu_server_free_connection_impl(c) }
+}
+
+/// Performs connection close bookkeeping, job signaling, and stat updates.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_connections_cpu_server_close_connection(
+    c: ConnectionJob,
+    who: c_int,
+) -> c_int {
+    unsafe { cpu_server_close_connection_impl(c, who) }
+}
+
 /// Updates event refcount and releases socket job when needed.
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_net_connections_connection_event_incref(

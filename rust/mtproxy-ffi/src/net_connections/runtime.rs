@@ -21,6 +21,7 @@ const C_SPECIAL: c_int = 0x1_0000;
 const C_NOQACK: c_int = 0x2_0000;
 const C_RAWMSG: c_int = 0x40_000;
 const C_NET_FAILED: c_int = 0x80_000;
+const C_ISDH: c_int = 0x80_0000;
 const C_PERMANENT: c_int = 0x44_000;
 const C_WANTRD: c_int = 1;
 const C_CONNECTED: c_int = 0x0200_0000;
@@ -648,6 +649,24 @@ unsafe extern "C" {
         calls_delta: c_longlong,
         intr_delta: c_longlong,
         bytes_delta: c_longlong,
+    );
+    fn mtproxy_ffi_net_connections_stats_add_close_failure(
+        total_failed_delta: c_int,
+        total_connect_failures_delta: c_int,
+        unused_closed_delta: c_int,
+    );
+    fn mtproxy_ffi_net_connections_stat_dec_active_dh();
+    fn mtproxy_ffi_net_connections_stats_add_close_basic(
+        outbound_delta: c_int,
+        inbound_delta: c_int,
+        active_outbound_delta: c_int,
+        active_inbound_delta: c_int,
+        active_connections_delta: c_int,
+    );
+    fn mtproxy_ffi_net_connections_close_connection_signal_special_aux();
+    fn mtproxy_ffi_net_connections_stats_add_free_connection_counts(
+        allocated_outbound_delta: c_int,
+        allocated_inbound_delta: c_int,
     );
 }
 
@@ -2164,6 +2183,154 @@ pub(super) unsafe fn fail_connection_impl(c: ConnectionJob, err: c_int) {
     if (action & FAIL_CONNECTION_ACTION_SIGNAL_ABORT) != 0 {
         unsafe { job_signal_create_pass(c, JS_ABORT) };
     }
+}
+
+pub(super) unsafe fn cpu_server_free_connection_impl(c: ConnectionJob) -> c_int {
+    assert_eq!(unsafe { (*c.cast::<AsyncJob>()).j_refcnt }, 1);
+    let conn = unsafe { conn_info(c) };
+
+    assert!((unsafe { (*conn).flags } & C_ERROR) != 0);
+    assert!((unsafe { (*conn).flags } & C_FAILED) != 0);
+    assert!(unsafe { (*conn).target.is_null() });
+    assert!(unsafe { (*conn).io_conn.is_null() });
+
+    loop {
+        let raw = unsafe { mtproxy_ffi_net_connections_mpq_pop_nw((*conn).out_queue, 4) }
+            .cast::<RawMessage>();
+        if raw.is_null() {
+            break;
+        }
+        unsafe {
+            rwm_free(raw);
+            libc::free(raw.cast());
+        }
+    }
+    unsafe {
+        free_mp_queue((*conn).out_queue);
+        (*conn).out_queue = ptr::null_mut();
+    }
+
+    loop {
+        let raw = unsafe { mtproxy_ffi_net_connections_mpq_pop_nw((*conn).in_queue, 4) }
+            .cast::<RawMessage>();
+        if raw.is_null() {
+            break;
+        }
+        unsafe {
+            rwm_free(raw);
+            libc::free(raw.cast());
+        }
+    }
+    unsafe {
+        free_mp_queue((*conn).in_queue);
+        (*conn).in_queue = ptr::null_mut();
+    }
+
+    let type_ = unsafe { (*conn).type_ };
+    assert!(!type_.is_null());
+    if let Some(crypto_free) = unsafe { (*type_).crypto_free } {
+        unsafe { crypto_free(c) };
+    }
+
+    unsafe {
+        libc::close((*conn).fd);
+        (*conn).fd = -1;
+    }
+
+    let (allocated_outbound_delta, allocated_inbound_delta) =
+        mtproxy_core::runtime::net::connections::free_connection_allocated_deltas(unsafe {
+            (*conn).basic_type
+        });
+    unsafe {
+        mtproxy_ffi_net_connections_stats_add_free_connection_counts(
+            allocated_outbound_delta,
+            allocated_inbound_delta,
+        );
+    }
+
+    let free_buffers = unsafe { (*type_).free_buffers };
+    assert!(free_buffers.is_some());
+    unsafe { free_buffers.unwrap()(c) }
+}
+
+pub(super) unsafe fn cpu_server_close_connection_impl(c: ConnectionJob, _who: c_int) -> c_int {
+    let conn = unsafe { conn_info(c) };
+
+    assert!((unsafe { (*conn).flags } & C_ERROR) != 0);
+    assert_eq!(unsafe { (*conn).status }, CONN_ERROR);
+    assert!((unsafe { (*conn).flags } & C_FAILED) != 0);
+
+    let (total_failed_delta, total_connect_failures_delta, unused_closed_delta) =
+        mtproxy_core::runtime::net::connections::close_connection_failure_deltas(
+            unsafe { (*conn).error },
+            unsafe { (*conn).flags },
+        );
+    unsafe {
+        mtproxy_ffi_net_connections_stats_add_close_failure(
+            total_failed_delta,
+            total_connect_failures_delta,
+            unused_closed_delta,
+        );
+    }
+
+    if mtproxy_core::runtime::net::connections::close_connection_has_isdh(unsafe { (*conn).flags }) {
+        unsafe {
+            mtproxy_ffi_net_connections_stat_dec_active_dh();
+            atomic_i32(ptr::addr_of_mut!((*conn).flags)).fetch_and(!C_ISDH, Ordering::SeqCst);
+        }
+    }
+
+    let io_conn = unsafe { (*conn).io_conn };
+    assert!(!io_conn.is_null());
+    unsafe {
+        (*conn).io_conn = ptr::null_mut();
+        job_signal(1, io_conn, JS_ABORT);
+    }
+
+    let (outbound_delta, inbound_delta, active_outbound_delta, active_inbound_delta, active_connections_delta, signal_target) =
+        mtproxy_core::runtime::net::connections::close_connection_basic_deltas(
+            unsafe { (*conn).basic_type },
+            unsafe { (*conn).flags },
+            unsafe { !(*conn).target.is_null() },
+        );
+    unsafe {
+        mtproxy_ffi_net_connections_stats_add_close_basic(
+            outbound_delta,
+            inbound_delta,
+            active_outbound_delta,
+            active_inbound_delta,
+            active_connections_delta,
+        );
+    }
+
+    if signal_target {
+        let target = unsafe { (*conn).target };
+        assert!(!target.is_null());
+        unsafe {
+            (*conn).target = ptr::null_mut();
+            job_signal(1, target, JS_RUN);
+        }
+    }
+
+    if mtproxy_core::runtime::net::connections::close_connection_has_special(unsafe { (*conn).flags }) {
+        unsafe {
+            (*conn).flags &= !C_SPECIAL;
+        }
+        let orig_special_connections =
+            unsafe { atomic_i32(ptr::addr_of_mut!(active_special_connections)) }
+                .fetch_sub(1, Ordering::SeqCst);
+        if mtproxy_core::runtime::net::connections::close_connection_should_signal_special_aux(
+            orig_special_connections,
+            unsafe { max_special_connections },
+        ) {
+            unsafe {
+                mtproxy_ffi_net_connections_close_connection_signal_special_aux();
+            }
+        }
+    }
+
+    unsafe { job_timer_remove(c) };
+    0
 }
 
 pub(super) unsafe fn connection_event_incref_impl(fd: c_int, val: c_longlong) {

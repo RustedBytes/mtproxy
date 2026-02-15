@@ -31,7 +31,6 @@
 
 #include <arpa/inet.h>
 #include <assert.h>
-#include <errno.h>
 #include <fcntl.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
@@ -52,11 +51,9 @@
 #include "net/net-connections.h"
 #include "net/net-events.h"
 #include "precise-time.h"
-#include "server-functions.h"
 #include "vv/vv-tree.h"
 
 #include "net/net-msg-buffers.h"
-#include "net/net-tcp-connections.h"
 
 #include "common/common-stats.h"
 
@@ -535,6 +532,10 @@ extern int32_t mtproxy_ffi_net_connections_clear_connection_timeout(
     connection_job_t c);
 extern void mtproxy_ffi_net_connections_fail_connection(connection_job_t c,
                                                         int32_t err);
+extern int32_t
+mtproxy_ffi_net_connections_cpu_server_free_connection(connection_job_t c);
+extern int32_t mtproxy_ffi_net_connections_cpu_server_close_connection(
+    connection_job_t c, int32_t who);
 extern void mtproxy_ffi_net_connections_connection_event_incref(int32_t fd,
                                                                 int64_t val);
 extern connection_job_t
@@ -781,6 +782,45 @@ void mtproxy_ffi_net_connections_stats_add_tcp_write(int64_t calls_delta,
   connections_module_stat_tls->tcp_writev_intr += intr_delta;
   connections_module_stat_tls->tcp_writev_bytes += bytes_delta;
 }
+void mtproxy_ffi_net_connections_stats_add_close_failure(
+    int32_t total_failed_delta, int32_t total_connect_failures_delta,
+    int32_t unused_closed_delta) {
+  connections_module_stat_tls->total_failed_connections += total_failed_delta;
+  connections_module_stat_tls->total_connect_failures +=
+      total_connect_failures_delta;
+  connections_module_stat_tls->unused_connections_closed += unused_closed_delta;
+}
+void mtproxy_ffi_net_connections_stat_dec_active_dh(void) {
+  connections_module_stat_tls->active_dh_connections--;
+}
+void mtproxy_ffi_net_connections_stats_add_close_basic(
+    int32_t outbound_delta, int32_t inbound_delta, int32_t active_outbound_delta,
+    int32_t active_inbound_delta, int32_t active_connections_delta) {
+  connections_module_stat_tls->outbound_connections += outbound_delta;
+  connections_module_stat_tls->inbound_connections += inbound_delta;
+  connections_module_stat_tls->active_outbound_connections +=
+      active_outbound_delta;
+  connections_module_stat_tls->active_inbound_connections += active_inbound_delta;
+  connections_module_stat_tls->active_connections += active_connections_delta;
+}
+void mtproxy_ffi_net_connections_close_connection_signal_special_aux(void) {
+  int i;
+  for (i = 0; i < special_listen_sockets; i++) {
+    connection_job_t LC =
+        connection_get_by_fd_generation(special_socket[i].fd,
+                                        special_socket[i].generation);
+    assert(LC);
+    job_signal(JOB_REF_PASS(LC), JS_AUX);
+  }
+}
+void mtproxy_ffi_net_connections_stats_add_free_connection_counts(
+    int32_t allocated_outbound_delta, int32_t allocated_inbound_delta) {
+  connections_module_stat_tls->allocated_connections--;
+  connections_module_stat_tls->allocated_outbound_connections +=
+      allocated_outbound_delta;
+  connections_module_stat_tls->allocated_inbound_connections +=
+      allocated_inbound_delta;
+}
 void mtproxy_ffi_net_connections_conn_job_ready_pending_activate(
     connection_job_t C) {
   struct connection_info *c = CONN_INFO(C);
@@ -849,65 +889,7 @@ int cpu_server_read_write(connection_job_t C) {
   frees connection structure, including mpq and buffers
 */
 int cpu_server_free_connection(connection_job_t C) {
-  assert_net_cpu_thread();
-  assert(C->j_refcnt == 1);
-
-  struct connection_info *c = CONN_INFO(C);
-  if (!(c->flags & C_ERROR)) {
-    vkprintf(0, "target = %p, basic=%d\n", c->target, c->basic_type);
-  }
-  assert(c->flags & C_ERROR);
-  assert(c->flags & C_FAILED);
-  assert(!c->target);
-  assert(!c->io_conn);
-
-  vkprintf(1, "Closing connection socket #%d\n", c->fd);
-
-  while (1) {
-    struct raw_message *raw = mpq_pop_nw(c->out_queue, 4);
-    if (!raw) {
-      break;
-    }
-    rwm_free(raw);
-    free(raw);
-  }
-
-  free_mp_queue(c->out_queue);
-  c->out_queue = NULL;
-
-  while (1) {
-    struct raw_message *raw = mpq_pop_nw(c->in_queue, 4);
-    if (!raw) {
-      break;
-    }
-    rwm_free(raw);
-    free(raw);
-  }
-
-  free_mp_queue(c->in_queue);
-  c->in_queue = NULL;
-
-  if (c->type->crypto_free) {
-    c->type->crypto_free(C);
-  }
-
-  close(c->fd);
-  c->fd = -1;
-
-  int32_t allocated_outbound_delta = 0;
-  int32_t allocated_inbound_delta = 0;
-  int32_t free_stats_rc =
-      mtproxy_ffi_net_connections_free_connection_allocated_deltas(
-          c->basic_type, &allocated_outbound_delta, &allocated_inbound_delta);
-  assert(free_stats_rc == 0);
-
-  connections_module_stat_tls->allocated_connections--;
-  connections_module_stat_tls->allocated_outbound_connections +=
-      allocated_outbound_delta;
-  connections_module_stat_tls->allocated_inbound_connections +=
-      allocated_inbound_delta;
-
-  return c->type->free_buffers(C);
+  return mtproxy_ffi_net_connections_cpu_server_free_connection(C);
 }
 
 /*
@@ -917,88 +899,7 @@ int cpu_server_free_connection(connection_job_t C) {
   updates stats
 */
 int cpu_server_close_connection(connection_job_t C, int who) {
-  assert_net_cpu_thread();
-  struct connection_info *c = CONN_INFO(C);
-
-  assert(c->flags & C_ERROR);
-  assert(c->status == conn_error);
-  assert(c->flags & C_FAILED);
-
-  int32_t total_failed_delta = 0;
-  int32_t total_connect_failures_delta = 0;
-  int32_t unused_closed_delta = 0;
-  int32_t close_failure_rc =
-      mtproxy_ffi_net_connections_close_connection_failure_deltas(
-          c->error, c->flags, &total_failed_delta,
-          &total_connect_failures_delta, &unused_closed_delta);
-  assert(close_failure_rc == 0);
-  connections_module_stat_tls->total_failed_connections += total_failed_delta;
-  connections_module_stat_tls->total_connect_failures +=
-      total_connect_failures_delta;
-  connections_module_stat_tls->unused_connections_closed += unused_closed_delta;
-
-  int32_t has_isdh =
-      mtproxy_ffi_net_connections_close_connection_has_isdh(c->flags);
-  assert(has_isdh == 0 || has_isdh == 1);
-  if (has_isdh) {
-    connections_module_stat_tls->active_dh_connections--;
-    __sync_fetch_and_and(&c->flags, ~C_ISDH);
-  }
-
-  assert(c->io_conn);
-  job_signal(JOB_REF_PASS(c->io_conn), JS_ABORT);
-
-  int32_t outbound_delta = 0;
-  int32_t inbound_delta = 0;
-  int32_t active_outbound_delta = 0;
-  int32_t active_inbound_delta = 0;
-  int32_t active_connections_delta = 0;
-  int32_t signal_target = 0;
-  int32_t close_basic_rc =
-      mtproxy_ffi_net_connections_close_connection_basic_deltas(
-          c->basic_type, c->flags, c->target != NULL, &outbound_delta,
-          &inbound_delta, &active_outbound_delta, &active_inbound_delta,
-          &active_connections_delta, &signal_target);
-  assert(close_basic_rc == 0);
-  assert(signal_target == 0 || signal_target == 1);
-
-  connections_module_stat_tls->outbound_connections += outbound_delta;
-  connections_module_stat_tls->inbound_connections += inbound_delta;
-  connections_module_stat_tls->active_outbound_connections +=
-      active_outbound_delta;
-  connections_module_stat_tls->active_inbound_connections +=
-      active_inbound_delta;
-  connections_module_stat_tls->active_connections += active_connections_delta;
-
-  if (signal_target) {
-    assert(c->target);
-    job_signal(JOB_REF_PASS(c->target), JS_RUN);
-  }
-
-  int32_t has_special =
-      mtproxy_ffi_net_connections_close_connection_has_special(c->flags);
-  assert(has_special == 0 || has_special == 1);
-  if (has_special) {
-    c->flags &= ~C_SPECIAL;
-    int orig_special_connections =
-        __sync_fetch_and_add(&active_special_connections, -1);
-    int32_t signal_special_aux =
-        mtproxy_ffi_net_connections_close_connection_should_signal_special_aux(
-            orig_special_connections, max_special_connections);
-    assert(signal_special_aux == 0 || signal_special_aux == 1);
-    if (signal_special_aux) {
-      int i;
-      for (i = 0; i < special_listen_sockets; i++) {
-        connection_job_t LC = connection_get_by_fd_generation(
-            special_socket[i].fd, special_socket[i].generation);
-        assert(LC);
-        job_signal(JOB_REF_PASS(LC), JS_AUX);
-      }
-    }
-  }
-
-  job_timer_remove(C);
-  return 0;
+  return mtproxy_ffi_net_connections_cpu_server_close_connection(C, who);
 }
 
 int do_connection_job(job_t job, int op, struct job_thread *JT) {
