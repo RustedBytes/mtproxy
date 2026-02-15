@@ -38,8 +38,9 @@
 
 extern int32_t mtproxy_ffi_net_tcp_rpc_client_parse_execute(connection_job_t c);
 extern int32_t mtproxy_ffi_net_tcp_rpc_client_connected(connection_job_t c);
-extern int32_t mtproxy_ffi_net_tcp_rpc_client_close_connection(connection_job_t c,
-                                                               int32_t who);
+extern int32_t
+mtproxy_ffi_net_tcp_rpc_client_close_connection(connection_job_t c,
+                                                int32_t who);
 extern int32_t mtproxy_ffi_net_tcp_rpc_client_check_ready(connection_job_t c);
 extern int32_t
 mtproxy_ffi_net_tcp_rpc_client_default_check_ready(connection_job_t c);
@@ -48,11 +49,9 @@ extern void mtproxy_ffi_net_tcp_rpc_client_force_enable_dh(void);
 extern int32_t
 mtproxy_ffi_net_tcp_rpc_client_default_check_perm(connection_job_t c);
 extern int32_t mtproxy_ffi_net_tcp_rpc_client_init_crypto(connection_job_t c);
-extern int32_t
-mtproxy_ffi_net_tcp_rpc_client_start_crypto(connection_job_t c, char *nonce,
-                                            int32_t key_select,
-                                            unsigned char *temp_key,
-                                            int32_t temp_key_len);
+extern int32_t mtproxy_ffi_net_tcp_rpc_client_start_crypto(
+    connection_job_t c, char *nonce, int32_t key_select,
+    unsigned char *temp_key, int32_t temp_key_len);
 
 // Rust helper shims
 struct connection_info *
@@ -164,7 +163,7 @@ int tcp_rpcc_init_crypto(connection_job_t c) {
 int tcp_rpcc_start_crypto(connection_job_t c, char *nonce, int key_select,
                           unsigned char *temp_key, int temp_key_len) {
   return mtproxy_ffi_net_tcp_rpc_client_start_crypto(c, nonce, key_select,
-                                                      temp_key, temp_key_len);
+                                                     temp_key, temp_key_len);
 }
 
 /*

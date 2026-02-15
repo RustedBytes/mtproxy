@@ -342,7 +342,9 @@ const RPCF_ENC_SENT: i32 = 16;
 const RPCF_QUICKACK: i32 = 512;
 const RPCF_USE_CRC32C: i32 = 2048;
 
-fn process_id_from_ffi(pid: &MtproxyProcessId) -> mtproxy_core::runtime::net::tcp_rpc_common::ProcessId {
+fn process_id_from_ffi(
+    pid: &MtproxyProcessId,
+) -> mtproxy_core::runtime::net::tcp_rpc_common::ProcessId {
     mtproxy_core::runtime::net::tcp_rpc_common::ProcessId {
         ip: pid.ip,
         port: pid.port,
@@ -351,7 +353,10 @@ fn process_id_from_ffi(pid: &MtproxyProcessId) -> mtproxy_core::runtime::net::tc
     }
 }
 
-pub(super) fn tcp_rpc_server_default_execute_should_pong_impl(op: i32, raw_total_bytes: i32) -> i32 {
+pub(super) fn tcp_rpc_server_default_execute_should_pong_impl(
+    op: i32,
+    raw_total_bytes: i32,
+) -> i32 {
     i32::from(op == RPC_PACKET_PING && raw_total_bytes == 12)
 }
 
@@ -403,7 +408,8 @@ pub(super) fn tcp_rpc_server_validate_handshake_header_impl(
     handshake_packet_len: i32,
 ) -> i32 {
     if packet_num != -1
-        || packet_type != mtproxy_core::runtime::net::tcp_rpc_common::RpcPacketType::Handshake as i32
+        || packet_type
+            != mtproxy_core::runtime::net::tcp_rpc_common::RpcPacketType::Handshake as i32
     {
         return -2;
     }
@@ -426,8 +432,7 @@ pub(super) fn tcp_rpc_server_validate_handshake_impl(
     if (packet_flags & 0xff) != 0 {
         return -7;
     }
-    *out_enable_crc32c =
-        i32::from((packet_flags & default_rpc_flags & RPCF_USE_CRC32C) != 0);
+    *out_enable_crc32c = i32::from((packet_flags & default_rpc_flags & RPCF_USE_CRC32C) != 0);
     0
 }
 

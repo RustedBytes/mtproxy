@@ -40,8 +40,8 @@
 #include "engine/engine-net.h"
 #include "engine/engine.h"
 
-#include "net/net-tcp-rpc-client.h"
 #include "net/net-rpc-flags.h"
+#include "net/net-tcp-rpc-client.h"
 
 #include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 

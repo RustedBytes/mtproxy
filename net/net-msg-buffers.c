@@ -55,7 +55,8 @@ int init_msg_buffers(long max_buffer_bytes) {
   return mtproxy_ffi_net_msg_buffers_init(max_buffer_bytes);
 }
 
-struct msg_buffer *alloc_msg_buffer(struct msg_buffer *neighbor, int size_hint) {
+struct msg_buffer *alloc_msg_buffer(struct msg_buffer *neighbor,
+                                    int size_hint) {
   return mtproxy_ffi_net_msg_buffers_alloc(neighbor, size_hint);
 }
 

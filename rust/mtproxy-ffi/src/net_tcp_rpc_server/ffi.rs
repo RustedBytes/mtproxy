@@ -33,9 +33,7 @@ pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_server_do_wakeup(c: ConnectionJ
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_server_init_accepted(
-    c: ConnectionJob,
-) -> c_int {
+pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_server_init_accepted(c: ConnectionJob) -> c_int {
     unsafe { tcp_rpcs_init_accepted_impl(c) }
 }
 

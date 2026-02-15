@@ -184,11 +184,10 @@ pub(super) type ConnTargetJob = Job;
 static mut FREE_LATER_QUEUE: *mut MpQueue = ptr::null_mut();
 static mut TCP_RECV_BUFFERS_NUM: c_int = 0;
 static mut TCP_RECV_BUFFERS_TOTAL_SIZE: c_int = 0;
-static mut TCP_RECV_IOVEC: [libc::iovec; MAX_TCP_RECV_BUFFERS + 1] =
-    [libc::iovec {
-        iov_base: ptr::null_mut(),
-        iov_len: 0,
-    }; MAX_TCP_RECV_BUFFERS + 1];
+static mut TCP_RECV_IOVEC: [libc::iovec; MAX_TCP_RECV_BUFFERS + 1] = [libc::iovec {
+    iov_base: ptr::null_mut(),
+    iov_len: 0,
+}; MAX_TCP_RECV_BUFFERS + 1];
 static mut TCP_RECV_BUFFERS: [*mut MsgBuffer; MAX_TCP_RECV_BUFFERS] =
     [ptr::null_mut(); MAX_TCP_RECV_BUFFERS];
 
@@ -290,8 +289,7 @@ type ConnFn1 = Option<unsafe extern "C" fn(ConnectionJob) -> c_int>;
 type ConnFn2 = Option<unsafe extern "C" fn(ConnectionJob, c_int) -> c_int>;
 type ConnWakeupAioFn = Option<unsafe extern "C" fn(ConnectionJob, c_int) -> c_int>;
 type ConnWritePacketFn = Option<unsafe extern "C" fn(ConnectionJob, *mut RawMessage) -> c_int>;
-type ConnCryptoInitFn =
-    Option<unsafe extern "C" fn(ConnectionJob, *mut c_void, c_int) -> c_int>;
+type ConnCryptoInitFn = Option<unsafe extern "C" fn(ConnectionJob, *mut c_void, c_int) -> c_int>;
 
 #[repr(C)]
 pub(super) struct ConnType {
@@ -543,10 +541,7 @@ unsafe extern "C" {
     fn epoll_remove(fd: c_int) -> c_int;
     fn remove_event_from_heap(ev: *mut EventDescr, allow_hole: c_int) -> c_int;
     fn mtproxy_ffi_net_connections_mpq_pop_nw(mq: *mut MpQueue, flags: c_int) -> *mut c_void;
-    fn mtproxy_ffi_net_connections_rwm_union(
-        raw: *mut RawMessage,
-        tail: *mut RawMessage,
-    ) -> c_int;
+    fn mtproxy_ffi_net_connections_rwm_union(raw: *mut RawMessage, tail: *mut RawMessage) -> c_int;
 
     fn server_noop(c: ConnectionJob) -> c_int;
     fn server_failed(c: ConnectionJob) -> c_int;
@@ -616,13 +611,19 @@ unsafe extern "C" {
         ex2: *mut c_void,
         ex3: *mut c_void,
     );
-    fn tree_act_connection(tree: *mut TreeConnection, act: Option<unsafe extern "C" fn(ConnectionJob)>);
+    fn tree_act_connection(
+        tree: *mut TreeConnection,
+        act: Option<unsafe extern "C" fn(ConnectionJob)>,
+    );
     fn tree_insert_connection(
         tree: *mut TreeConnection,
         conn: ConnectionJob,
         priority: c_int,
     ) -> *mut TreeConnection;
-    fn tree_delete_connection(tree: *mut TreeConnection, conn: ConnectionJob) -> *mut TreeConnection;
+    fn tree_delete_connection(
+        tree: *mut TreeConnection,
+        conn: ConnectionJob,
+    ) -> *mut TreeConnection;
     fn tree_free_connection(tree: *mut TreeConnection);
     fn free_tree_ptr_connection(tree: *mut TreeConnection);
     fn mtproxy_ffi_net_connections_stat_inc_accept_nonblock_set_failed();
@@ -797,7 +798,8 @@ pub(super) unsafe fn connection_write_close_impl(c: ConnectionJob) {
 
     if (action & CONNECTION_WRITE_CLOSE_ACTION_SET_IO_STOPREAD) != 0 {
         let io = unsafe { socket_conn_info(io_conn) };
-        unsafe { atomic_i32(ptr::addr_of_mut!((*io).flags)) }.fetch_or(C_STOPREAD, Ordering::SeqCst);
+        unsafe { atomic_i32(ptr::addr_of_mut!((*io).flags)) }
+            .fetch_or(C_STOPREAD, Ordering::SeqCst);
     }
     if (action & CONNECTION_WRITE_CLOSE_ACTION_SET_CONN_STOPREAD) != 0 {
         unsafe { atomic_i32(ptr::addr_of_mut!((*conn).flags)) }
@@ -817,9 +819,10 @@ pub(super) unsafe fn fail_socket_connection_impl(c: SocketConnectionJob, who: c_
     let socket = unsafe { socket_conn_info(c) };
     assert!((unsafe { (*c.cast::<AsyncJob>()).j_flags } & JF_LOCKED) != 0);
 
-    let previous_flags =
-        unsafe { atomic_i32(ptr::addr_of_mut!((*socket).flags)) }.fetch_or(C_ERROR, Ordering::SeqCst);
-    let action = mtproxy_core::runtime::net::connections::fail_socket_connection_action(previous_flags);
+    let previous_flags = unsafe { atomic_i32(ptr::addr_of_mut!((*socket).flags)) }
+        .fetch_or(C_ERROR, Ordering::SeqCst);
+    let action =
+        mtproxy_core::runtime::net::connections::fail_socket_connection_action(previous_flags);
     if action == 0 {
         return;
     }
@@ -847,9 +850,12 @@ pub(super) unsafe fn net_server_socket_free_impl(c: SocketConnectionJob) -> c_in
     assert!((unsafe { (*socket).flags } & C_ERROR) != 0);
 
     let (socket_free_action, fail_error, allocated_socket_delta) =
-        mtproxy_core::runtime::net::connections::socket_free_plan(unsafe { !(*socket).conn.is_null() });
+        mtproxy_core::runtime::net::connections::socket_free_plan(unsafe {
+            !(*socket).conn.is_null()
+        });
     assert!(
-        socket_free_action == SOCKET_FREE_ACTION_NONE || socket_free_action == SOCKET_FREE_ACTION_FAIL_CONN
+        socket_free_action == SOCKET_FREE_ACTION_NONE
+            || socket_free_action == SOCKET_FREE_ACTION_FAIL_CONN
     );
 
     if socket_free_action == SOCKET_FREE_ACTION_FAIL_CONN {
@@ -885,8 +891,9 @@ pub(super) unsafe fn net_server_socket_reader_impl(c: SocketConnectionJob) -> c_
     let socket = unsafe { socket_conn_info(c) };
 
     loop {
-        if !mtproxy_core::runtime::net::connections::socket_reader_should_run(unsafe { (*socket).flags })
-        {
+        if !mtproxy_core::runtime::net::connections::socket_reader_should_run(unsafe {
+            (*socket).flags
+        }) {
             break;
         }
         if unsafe { TCP_RECV_BUFFERS_NUM } == 0 {
@@ -903,7 +910,8 @@ pub(super) unsafe fn net_server_socket_reader_impl(c: SocketConnectionJob) -> c_
         assert!(s > 0);
         let mut p = 1_usize;
 
-        unsafe { atomic_i32(ptr::addr_of_mut!((*socket).flags)) }.fetch_or(C_NORD, Ordering::SeqCst);
+        unsafe { atomic_i32(ptr::addr_of_mut!((*socket).flags)) }
+            .fetch_or(C_NORD, Ordering::SeqCst);
         let r_isize = unsafe {
             libc::readv(
                 (*socket).fd,
@@ -935,7 +943,8 @@ pub(super) unsafe fn net_server_socket_reader_impl(c: SocketConnectionJob) -> c_
         );
 
         if io_action == SOCKET_READER_IO_CONTINUE_INTR {
-            unsafe { atomic_i32(ptr::addr_of_mut!((*socket).flags)) }.fetch_and(!C_NORD, Ordering::SeqCst);
+            unsafe { atomic_i32(ptr::addr_of_mut!((*socket).flags)) }
+                .fetch_and(!C_NORD, Ordering::SeqCst);
             unsafe {
                 mtproxy_ffi_net_connections_stats_add_tcp_read(0, 1, 0);
             }
@@ -944,12 +953,14 @@ pub(super) unsafe fn net_server_socket_reader_impl(c: SocketConnectionJob) -> c_
         if io_action == SOCKET_READER_IO_FATAL_ABORT {
             unsafe {
                 job_signal_create_pass(c, JS_ABORT);
-                atomic_i32(ptr::addr_of_mut!((*socket).flags)).fetch_or(C_NET_FAILED, Ordering::SeqCst);
+                atomic_i32(ptr::addr_of_mut!((*socket).flags))
+                    .fetch_or(C_NET_FAILED, Ordering::SeqCst);
             }
             return 0;
         }
         if io_action == SOCKET_READER_IO_HAVE_DATA {
-            unsafe { atomic_i32(ptr::addr_of_mut!((*socket).flags)) }.fetch_and(!C_NORD, Ordering::SeqCst);
+            unsafe { atomic_i32(ptr::addr_of_mut!((*socket).flags)) }
+                .fetch_and(!C_NORD, Ordering::SeqCst);
         }
 
         let _ = s;
@@ -985,7 +996,8 @@ pub(super) unsafe fn net_server_socket_reader_impl(c: SocketConnectionJob) -> c_
         while rem > 0 {
             let next = unsafe { new_msg_part(ptr::null_mut(), TCP_RECV_BUFFERS[p - 1]) };
             assert!(!next.is_null());
-            let next_len = c_int::try_from(unsafe { TCP_RECV_IOVEC[p].iov_len }).unwrap_or(c_int::MAX);
+            let next_len =
+                c_int::try_from(unsafe { TCP_RECV_IOVEC[p].iov_len }).unwrap_or(c_int::MAX);
             unsafe {
                 (*next).offset = 0;
                 (*next).data_end = if rem > next_len { next_len } else { rem };
@@ -1038,13 +1050,15 @@ pub(super) unsafe fn net_server_socket_writer_impl(c: SocketConnectionJob) -> c_
     let stop = unsafe { (*socket).flags & C_STOPWRITE };
 
     loop {
-        if !mtproxy_core::runtime::net::connections::socket_writer_should_run(unsafe { (*socket).flags })
-        {
+        if !mtproxy_core::runtime::net::connections::socket_writer_should_run(unsafe {
+            (*socket).flags
+        }) {
             break;
         }
 
         if unsafe { (*out).total_bytes } == 0 {
-            unsafe { atomic_i32(ptr::addr_of_mut!((*socket).flags)) }.fetch_and(!C_WANTWR, Ordering::SeqCst);
+            unsafe { atomic_i32(ptr::addr_of_mut!((*socket).flags)) }
+                .fetch_and(!C_WANTWR, Ordering::SeqCst);
             break;
         }
 
@@ -1063,7 +1077,8 @@ pub(super) unsafe fn net_server_socket_writer_impl(c: SocketConnectionJob) -> c_
         };
         assert!(iovcnt > 0 && s > 0);
 
-        unsafe { atomic_i32(ptr::addr_of_mut!((*socket).flags)) }.fetch_or(C_NOWR, Ordering::SeqCst);
+        unsafe { atomic_i32(ptr::addr_of_mut!((*socket).flags)) }
+            .fetch_or(C_NOWR, Ordering::SeqCst);
         let r_isize = unsafe { libc::writev((*socket).fd, iov.as_ptr(), iovcnt) };
         unsafe {
             mtproxy_ffi_net_connections_stats_add_tcp_write(1, 0, 0);
@@ -1075,14 +1090,15 @@ pub(super) unsafe fn net_server_socket_writer_impl(c: SocketConnectionJob) -> c_
             0
         };
         let r = c_int::try_from(r_isize).unwrap_or(if r_isize < 0 { -1 } else { c_int::MAX });
-        let (io_action, next_eagain_count) = mtproxy_core::runtime::net::connections::socket_writer_io_action(
-            r,
-            write_errno,
-            unsafe { (*socket).eagain_count },
-            libc::EAGAIN,
-            libc::EINTR,
-            100,
-        );
+        let (io_action, next_eagain_count) =
+            mtproxy_core::runtime::net::connections::socket_writer_io_action(
+                r,
+                write_errno,
+                unsafe { (*socket).eagain_count },
+                libc::EAGAIN,
+                libc::EINTR,
+                100,
+            );
         assert!(
             io_action == SOCKET_WRITER_IO_HAVE_DATA
                 || io_action == SOCKET_WRITER_IO_BREAK_EAGAIN
@@ -1095,7 +1111,8 @@ pub(super) unsafe fn net_server_socket_writer_impl(c: SocketConnectionJob) -> c_
         }
 
         if io_action == SOCKET_WRITER_IO_CONTINUE_INTR {
-            unsafe { atomic_i32(ptr::addr_of_mut!((*socket).flags)) }.fetch_and(!C_NOWR, Ordering::SeqCst);
+            unsafe { atomic_i32(ptr::addr_of_mut!((*socket).flags)) }
+                .fetch_and(!C_NOWR, Ordering::SeqCst);
             unsafe {
                 mtproxy_ffi_net_connections_stats_add_tcp_write(0, 1, 0);
             }
@@ -1105,19 +1122,22 @@ pub(super) unsafe fn net_server_socket_writer_impl(c: SocketConnectionJob) -> c_
             unsafe {
                 kprintf(TOO_MUCH_EAGAIN_MSG.as_ptr().cast(), (*socket).fd);
                 job_signal_create_pass(c, JS_ABORT);
-                atomic_i32(ptr::addr_of_mut!((*socket).flags)).fetch_or(C_NET_FAILED, Ordering::SeqCst);
+                atomic_i32(ptr::addr_of_mut!((*socket).flags))
+                    .fetch_or(C_NET_FAILED, Ordering::SeqCst);
             }
             return 0;
         }
         if io_action == SOCKET_WRITER_IO_FATAL_OTHER {
             unsafe {
                 job_signal_create_pass(c, JS_ABORT);
-                atomic_i32(ptr::addr_of_mut!((*socket).flags)).fetch_or(C_NET_FAILED, Ordering::SeqCst);
+                atomic_i32(ptr::addr_of_mut!((*socket).flags))
+                    .fetch_or(C_NET_FAILED, Ordering::SeqCst);
             }
             return 0;
         }
         if io_action == SOCKET_WRITER_IO_HAVE_DATA {
-            unsafe { atomic_i32(ptr::addr_of_mut!((*socket).flags)) }.fetch_and(!C_NOWR, Ordering::SeqCst);
+            unsafe { atomic_i32(ptr::addr_of_mut!((*socket).flags)) }
+                .fetch_and(!C_NOWR, Ordering::SeqCst);
             unsafe {
                 mtproxy_ffi_net_connections_stats_add_tcp_write(0, 0, c_longlong::from(r));
             }
@@ -1173,19 +1193,11 @@ pub(super) unsafe fn net_server_socket_writer_impl(c: SocketConnectionJob) -> c_
     unsafe { (*out).total_bytes }
 }
 
-pub(super) unsafe fn do_socket_connection_job_impl(
-    job: Job,
-    op: c_int,
-    _jt: *mut c_void,
-) -> c_int {
+pub(super) unsafe fn do_socket_connection_job_impl(job: Job, op: c_int, _jt: *mut c_void) -> c_int {
     let c = job;
     let socket = unsafe { socket_conn_info(c) };
     let action = mtproxy_core::runtime::net::connections::socket_job_action(
-        op,
-        JS_ABORT,
-        JS_RUN,
-        JS_AUX,
-        JS_FINISH,
+        op, JS_ABORT, JS_RUN, JS_AUX, JS_FINISH,
     );
 
     if action == SOCKET_JOB_ACTION_ABORT {
@@ -1218,9 +1230,9 @@ pub(super) unsafe fn do_socket_connection_job_impl(
     }
 
     if action == SOCKET_JOB_ACTION_AUX {
-        if mtproxy_core::runtime::net::connections::socket_job_aux_should_update_epoll(
-            unsafe { (*socket).flags },
-        ) {
+        if mtproxy_core::runtime::net::connections::socket_job_aux_should_update_epoll(unsafe {
+            (*socket).flags
+        }) {
             let events = mtproxy_core::runtime::net::connections::compute_conn_events(
                 unsafe { (*socket).flags },
                 true,
@@ -1298,7 +1310,12 @@ pub(super) unsafe fn alloc_new_socket_connection_impl(c: ConnectionJob) -> Socke
     assert_eq!(unsafe { (*ev).refcnt }, 0);
     unsafe {
         (*socket).ev = ev;
-        epoll_sethandler((*socket).fd, 0, Some(net_server_socket_read_write_gateway), s.cast());
+        epoll_sethandler(
+            (*socket).fd,
+            0,
+            Some(net_server_socket_read_write_gateway),
+            s.cast(),
+        );
         (*socket).current_epoll_status = initial_epoll_status;
         epoll_insert((*socket).fd, (*socket).current_epoll_status);
         (*conn).io_conn = s;
@@ -1541,9 +1558,10 @@ pub(super) unsafe fn alloc_new_connection_impl(
                     (*conn).listening = (*lc).fd;
                     (*conn).listening_generation = (*lc).generation;
                 }
-                let listener_flags = mtproxy_core::runtime::net::connections::alloc_connection_listener_flags(
-                    unsafe { (*lc).flags },
-                );
+                let listener_flags =
+                    mtproxy_core::runtime::net::connections::alloc_connection_listener_flags(
+                        unsafe { (*lc).flags },
+                    );
                 unsafe {
                     (*conn).flags |= listener_flags;
                     (*conn).window_clamp = (*lc).window_clamp;
@@ -1595,9 +1613,10 @@ pub(super) unsafe fn alloc_new_connection_impl(
         return c;
     }
 
-    let failure_action = mtproxy_core::runtime::net::connections::alloc_connection_failure_action(
-        unsafe { (*conn).flags },
-    );
+    let failure_action =
+        mtproxy_core::runtime::net::connections::alloc_connection_failure_action(unsafe {
+            (*conn).flags
+        });
     assert!(failure_action != 0);
     assert!(
         (failure_action
@@ -1699,10 +1718,16 @@ pub(super) unsafe fn net_accept_new_connections_impl(lcj: Job) -> c_int {
         }
 
         if (unsafe { (*listening).flags } & C_IPV6) != 0 {
-            assert_eq!(usize::try_from(peer_addrlen).unwrap_or(0), size_of::<libc::sockaddr_in6>());
+            assert_eq!(
+                usize::try_from(peer_addrlen).unwrap_or(0),
+                size_of::<libc::sockaddr_in6>()
+            );
             assert_eq!(unsafe { peer.a6.sin6_family as c_int }, libc::AF_INET6);
         } else {
-            assert_eq!(usize::try_from(peer_addrlen).unwrap_or(0), size_of::<libc::sockaddr_in>());
+            assert_eq!(
+                usize::try_from(peer_addrlen).unwrap_or(0),
+                size_of::<libc::sockaddr_in>()
+            );
             assert_eq!(unsafe { peer.a4.sin_family as c_int }, libc::AF_INET);
         }
 
@@ -1772,17 +1797,20 @@ pub(super) unsafe fn init_listening_connection_ext_impl(
     assert!(fd_action == LISTENING_INIT_FD_OK || fd_action == LISTENING_INIT_FD_REJECT);
     if fd_action == LISTENING_INIT_FD_REJECT {
         unsafe {
-            kprintf(LISTENING_FD_REJECT_MSG.as_ptr().cast(), fd, max_connection_fd);
+            kprintf(
+                LISTENING_FD_REJECT_MSG.as_ptr().cast(),
+                fd,
+                max_connection_fd,
+            );
         }
         return -1;
     }
 
     let max_connection = unsafe { mtproxy_ffi_net_connections_get_max_connection() };
-    let updated_max =
-        mtproxy_core::runtime::net::connections::listening_init_update_max_connection(
-            fd,
-            max_connection,
-        );
+    let updated_max = mtproxy_core::runtime::net::connections::listening_init_update_max_connection(
+        fd,
+        max_connection,
+    );
     unsafe { mtproxy_ffi_net_connections_set_max_connection(updated_max) };
 
     let job_signals =
@@ -1822,12 +1850,7 @@ pub(super) unsafe fn init_listening_connection_ext_impl(
     }
 
     let mode_policy = mtproxy_core::runtime::net::connections::listening_init_mode_policy(
-        mode,
-        SM_LOWPRIO,
-        SM_SPECIAL,
-        SM_NOQACK,
-        SM_IPV6,
-        SM_RAWMSG,
+        mode, SM_LOWPRIO, SM_SPECIAL, SM_NOQACK, SM_IPV6, SM_RAWMSG,
     );
     let mode_known = LISTENING_MODE_LOWPRIO
         | LISTENING_MODE_SPECIAL
@@ -1878,7 +1901,12 @@ pub(super) unsafe fn init_listening_connection_ext_impl(
     }
 
     unsafe {
-        epoll_sethandler(fd, effective_prio, Some(net_server_socket_read_write_gateway), lcj.cast());
+        epoll_sethandler(
+            fd,
+            effective_prio,
+            Some(net_server_socket_read_write_gateway),
+            lcj.cast(),
+        );
         epoll_insert(fd, EVT_RWX);
         mtproxy_ffi_net_connections_stat_inc_listening();
         unlock_job(1, lcj);
@@ -1987,11 +2015,13 @@ pub(super) unsafe fn do_connection_job_impl(job: Job, op: c_int, _jt: *mut c_voi
     }
 
     if op == JS_ABORT {
-        assert!(mtproxy_core::runtime::net::connections::conn_job_abort_has_error(
-            unsafe { (*conn).flags },
-        ));
-        let old_flags =
-            unsafe { atomic_i32(ptr::addr_of_mut!((*conn).flags)) }.fetch_or(C_FAILED, Ordering::SeqCst);
+        assert!(
+            mtproxy_core::runtime::net::connections::conn_job_abort_has_error(unsafe {
+                (*conn).flags
+            },)
+        );
+        let old_flags = unsafe { atomic_i32(ptr::addr_of_mut!((*conn).flags)) }
+            .fetch_or(C_FAILED, Ordering::SeqCst);
         if mtproxy_core::runtime::net::connections::conn_job_abort_should_close(old_flags) {
             let type_ = unsafe { (*conn).type_ };
             assert!(!type_.is_null());
@@ -2018,9 +2048,10 @@ pub(super) unsafe fn do_connection_job_impl(job: Job, op: c_int, _jt: *mut c_voi
 pub(super) unsafe fn net_server_socket_read_write_impl(c: SocketConnectionJob) -> c_int {
     let socket = unsafe { socket_conn_info(c) };
 
-    let connect_action = mtproxy_core::runtime::net::connections::socket_read_write_connect_action(
-        unsafe { (*socket).flags },
-    );
+    let connect_action =
+        mtproxy_core::runtime::net::connections::socket_read_write_connect_action(unsafe {
+            (*socket).flags
+        });
     if connect_action == SOCKET_READ_WRITE_CONNECT_RETURN_ZERO {
         return 0;
     }
@@ -2051,8 +2082,9 @@ pub(super) unsafe fn net_server_socket_read_write_impl(c: SocketConnectionJob) -
             || connect_action == SOCKET_READ_WRITE_CONNECT_CONTINUE_IO
     );
 
-    while mtproxy_core::runtime::net::connections::socket_reader_should_run(unsafe { (*socket).flags })
-    {
+    while mtproxy_core::runtime::net::connections::socket_reader_should_run(unsafe {
+        (*socket).flags
+    }) {
         let type_ = unsafe { (*socket).type_ };
         assert!(!type_.is_null());
         let socket_reader = unsafe { (*type_).socket_reader };
@@ -2061,9 +2093,8 @@ pub(super) unsafe fn net_server_socket_read_write_impl(c: SocketConnectionJob) -
     }
 
     loop {
-        let raw =
-            unsafe { mtproxy_ffi_net_connections_mpq_pop_nw((*socket).out_packet_queue, 4) }
-                .cast::<RawMessage>();
+        let raw = unsafe { mtproxy_ffi_net_connections_mpq_pop_nw((*socket).out_packet_queue, 4) }
+            .cast::<RawMessage>();
         if raw.is_null() {
             break;
         }
@@ -2078,8 +2109,9 @@ pub(super) unsafe fn net_server_socket_read_write_impl(c: SocketConnectionJob) -
             .fetch_or(C_WANTWR, Ordering::SeqCst);
     }
 
-    while mtproxy_core::runtime::net::connections::socket_writer_should_run(unsafe { (*socket).flags })
-    {
+    while mtproxy_core::runtime::net::connections::socket_writer_should_run(unsafe {
+        (*socket).flags
+    }) {
         let type_ = unsafe { (*socket).type_ };
         assert!(!type_.is_null());
         let socket_writer = unsafe { (*type_).socket_writer };
@@ -2139,11 +2171,10 @@ pub(super) unsafe fn net_server_socket_read_write_gateway_impl(
 
 pub(super) unsafe fn set_connection_timeout_impl(c: ConnectionJob, timeout: c_double) -> c_int {
     let conn = unsafe { conn_info(c) };
-    let timeout_action =
-        mtproxy_core::runtime::net::connections::connection_timeout_action(
-            unsafe { (*conn).flags },
-            timeout,
-        );
+    let timeout_action = mtproxy_core::runtime::net::connections::connection_timeout_action(
+        unsafe { (*conn).flags },
+        timeout,
+    );
     if timeout_action == 0 {
         return 0;
     }
@@ -2165,10 +2196,10 @@ pub(super) unsafe fn fail_connection_impl(c: ConnectionJob, err: c_int) {
     let conn = unsafe { conn_info(c) };
     let previous_flags =
         unsafe { atomic_i32(ptr::addr_of_mut!((*conn).flags)) }.fetch_or(C_ERROR, Ordering::SeqCst);
-    let action = mtproxy_core::runtime::net::connections::fail_connection_action(
-        previous_flags,
-        unsafe { (*conn).error },
-    );
+    let action =
+        mtproxy_core::runtime::net::connections::fail_connection_action(previous_flags, unsafe {
+            (*conn).error
+        });
 
     if (action & FAIL_CONNECTION_ACTION_SET_STATUS_ERROR) != 0 {
         unsafe {
@@ -2273,7 +2304,8 @@ pub(super) unsafe fn cpu_server_close_connection_impl(c: ConnectionJob, _who: c_
         );
     }
 
-    if mtproxy_core::runtime::net::connections::close_connection_has_isdh(unsafe { (*conn).flags }) {
+    if mtproxy_core::runtime::net::connections::close_connection_has_isdh(unsafe { (*conn).flags })
+    {
         unsafe {
             mtproxy_ffi_net_connections_stat_dec_active_dh();
             atomic_i32(ptr::addr_of_mut!((*conn).flags)).fetch_and(!C_ISDH, Ordering::SeqCst);
@@ -2287,12 +2319,18 @@ pub(super) unsafe fn cpu_server_close_connection_impl(c: ConnectionJob, _who: c_
         job_signal(1, io_conn, JS_ABORT);
     }
 
-    let (outbound_delta, inbound_delta, active_outbound_delta, active_inbound_delta, active_connections_delta, signal_target) =
-        mtproxy_core::runtime::net::connections::close_connection_basic_deltas(
-            unsafe { (*conn).basic_type },
-            unsafe { (*conn).flags },
-            unsafe { !(*conn).target.is_null() },
-        );
+    let (
+        outbound_delta,
+        inbound_delta,
+        active_outbound_delta,
+        active_inbound_delta,
+        active_connections_delta,
+        signal_target,
+    ) = mtproxy_core::runtime::net::connections::close_connection_basic_deltas(
+        unsafe { (*conn).basic_type },
+        unsafe { (*conn).flags },
+        unsafe { !(*conn).target.is_null() },
+    );
     unsafe {
         mtproxy_ffi_net_connections_stats_add_close_basic(
             outbound_delta,
@@ -2312,7 +2350,9 @@ pub(super) unsafe fn cpu_server_close_connection_impl(c: ConnectionJob, _who: c_
         }
     }
 
-    if mtproxy_core::runtime::net::connections::close_connection_has_special(unsafe { (*conn).flags }) {
+    if mtproxy_core::runtime::net::connections::close_connection_has_special(unsafe {
+        (*conn).flags
+    }) {
         unsafe {
             (*conn).flags &= !C_SPECIAL;
         }
@@ -2387,8 +2427,7 @@ pub(super) unsafe fn connection_get_by_fd_impl(fd: c_int) -> ConnectionJob {
 
     let is_listening_job =
         unsafe { (*socket_job_struct).j_execute == Some(do_listening_connection_job) };
-    let is_socket_job =
-        unsafe { (*socket_job_struct).j_execute == Some(do_socket_connection_job) };
+    let is_socket_job = unsafe { (*socket_job_struct).j_execute == Some(do_socket_connection_job) };
     let socket_flags = if is_socket_job {
         unsafe { (*socket_conn_info(socket_job)).flags }
     } else {
@@ -2766,7 +2805,9 @@ unsafe fn target_lookup_ipv4_impl(
         port,
         PRIME_TARGETS as u32,
     );
-    assert!(bucket_i32 >= 0 && usize::try_from(bucket_i32).unwrap_or(PRIME_TARGETS) < PRIME_TARGETS);
+    assert!(
+        bucket_i32 >= 0 && usize::try_from(bucket_i32).unwrap_or(PRIME_TARGETS) < PRIME_TARGETS
+    );
     let bucket = usize::try_from(bucket_i32).unwrap_or(0);
 
     let mut prev: *mut ConnTargetJob = unsafe { ptr::addr_of_mut!(HTarget[bucket]) };
@@ -2782,7 +2823,8 @@ unsafe fn target_lookup_ipv4_impl(
                 && (*s).type_ == type_
                 && (*s).extra == extra
         } {
-            let match_action = mtproxy_core::runtime::net::connections::target_lookup_match_action(mode);
+            let match_action =
+                mtproxy_core::runtime::net::connections::target_lookup_match_action(mode);
             assert!(
                 match_action == TARGET_LOOKUP_MATCH_REMOVE_AND_RETURN
                     || match_action == TARGET_LOOKUP_MATCH_RETURN_FOUND
@@ -2842,7 +2884,9 @@ unsafe fn target_lookup_ipv6_impl(
         port,
         PRIME_TARGETS as u32,
     );
-    assert!(bucket_i32 >= 0 && usize::try_from(bucket_i32).unwrap_or(PRIME_TARGETS) < PRIME_TARGETS);
+    assert!(
+        bucket_i32 >= 0 && usize::try_from(bucket_i32).unwrap_or(PRIME_TARGETS) < PRIME_TARGETS
+    );
     let bucket = usize::try_from(bucket_i32).unwrap_or(0);
 
     let mut prev: *mut ConnTargetJob = unsafe { ptr::addr_of_mut!(HTarget[bucket]) };
@@ -2859,7 +2903,8 @@ unsafe fn target_lookup_ipv6_impl(
                 && (*s).target.s_addr == 0
                 && (*s).extra == extra
         } {
-            let match_action = mtproxy_core::runtime::net::connections::target_lookup_match_action(mode);
+            let match_action =
+                mtproxy_core::runtime::net::connections::target_lookup_match_action(mode);
             assert!(
                 match_action == TARGET_LOOKUP_MATCH_REMOVE_AND_RETURN
                     || match_action == TARGET_LOOKUP_MATCH_RETURN_FOUND
@@ -2927,9 +2972,9 @@ pub(super) unsafe fn destroy_dead_target_connections_impl(ctj: ConnTargetJob) {
 
         let conn = unsafe { conn_info(bad_conn) };
         let (active_outbound_delta, outbound_delta) =
-            mtproxy_core::runtime::net::connections::target_remove_dead_connection_deltas(
-                unsafe { (*conn).flags },
-            );
+            mtproxy_core::runtime::net::connections::target_remove_dead_connection_deltas(unsafe {
+                (*conn).flags
+            });
         unsafe {
             atomic_i32(ptr::addr_of_mut!((*target).active_outbound_connections))
                 .fetch_add(active_outbound_delta, Ordering::SeqCst);
@@ -2958,10 +3003,9 @@ pub(super) unsafe fn destroy_dead_target_connections_impl(ctj: ConnTargetJob) {
         (*target).ready_outbound_connections = good_c;
     }
     let (ready_outbound_delta, ready_targets_delta) =
-        mtproxy_core::runtime::net::connections::target_ready_transition(
-            was_ready,
-            unsafe { (*target).ready_outbound_connections },
-        );
+        mtproxy_core::runtime::net::connections::target_ready_transition(was_ready, unsafe {
+            (*target).ready_outbound_connections
+        });
     unsafe {
         mtproxy_ffi_net_connections_stats_add_ready(ready_outbound_delta, ready_targets_delta);
     }
@@ -3020,10 +3064,9 @@ pub(super) unsafe fn create_new_connections_impl(ctj: ConnTargetJob) -> c_int {
         (*target).ready_outbound_connections = good_c;
     }
     let (ready_outbound_delta, ready_targets_delta) =
-        mtproxy_core::runtime::net::connections::target_ready_transition(
-            was_ready,
-            unsafe { (*target).ready_outbound_connections },
-        );
+        mtproxy_core::runtime::net::connections::target_ready_transition(was_ready, unsafe {
+            (*target).ready_outbound_connections
+        });
     unsafe {
         mtproxy_ffi_net_connections_stats_add_ready(ready_outbound_delta, ready_targets_delta);
     }
@@ -3045,15 +3088,17 @@ pub(super) unsafe fn create_new_connections_impl(ctj: ConnTargetJob) -> c_int {
 
         while unsafe { (*target).outbound_connections < need_c } {
             let connect_action =
-                mtproxy_core::runtime::net::connections::target_connect_socket_action(
-                    unsafe { (*target).target.s_addr != 0 },
-                );
+                mtproxy_core::runtime::net::connections::target_connect_socket_action(unsafe {
+                    (*target).target.s_addr != 0
+                });
             assert!(connect_action == 1 || connect_action == 2);
 
             let cfd = if connect_action == 1 {
                 unsafe { client_socket((*target).target.s_addr, (*target).port, 0) }
             } else {
-                unsafe { client_socket_ipv6((*target).target_ipv6.as_ptr(), (*target).port, SM_IPV6) }
+                unsafe {
+                    client_socket_ipv6((*target).target_ipv6.as_ptr(), (*target).port, SM_IPV6)
+                }
             };
             if cfd < 0 {
                 break;
@@ -3188,7 +3233,10 @@ pub(super) unsafe fn create_target_impl(
         let old_global_refcnt = unsafe { atomic_i32(ptr::addr_of_mut!((*t_info).global_refcnt)) }
             .fetch_add(1, Ordering::SeqCst);
         let (active_targets_delta, inactive_targets_delta, created_state) =
-            mtproxy_core::runtime::net::connections::create_target_transition(true, old_global_refcnt);
+            mtproxy_core::runtime::net::connections::create_target_transition(
+                true,
+                old_global_refcnt,
+            );
         unsafe {
             mtproxy_ffi_net_connections_stats_add_targets(
                 active_targets_delta,
@@ -3234,7 +3282,10 @@ pub(super) unsafe fn create_target_impl(
         let (active_targets_delta, inactive_targets_delta, created_state) =
             mtproxy_core::runtime::net::connections::create_target_transition(false, 0);
         unsafe {
-            mtproxy_ffi_net_connections_stats_add_targets(active_targets_delta, inactive_targets_delta);
+            mtproxy_ffi_net_connections_stats_add_targets(
+                active_targets_delta,
+                inactive_targets_delta,
+            );
             mtproxy_ffi_net_connections_stat_add_allocated_targets(1);
         }
 
@@ -3310,8 +3361,15 @@ pub(super) unsafe fn free_target_impl(ctj: ConnTargetJob) -> c_int {
         let port = unsafe { (*target).port };
         let type_ = unsafe { (*target).type_ };
         let extra = unsafe { (*target).extra };
-        unsafe { kprintf(FREE_UNUSED_TARGET_IPV4_MSG.as_ptr().cast(), inet_ntoa(ad), port) };
-        let removed = unsafe { target_lookup_ipv4_impl(ad.s_addr, port, type_, extra, -1, ptr::null_mut()) };
+        unsafe {
+            kprintf(
+                FREE_UNUSED_TARGET_IPV4_MSG.as_ptr().cast(),
+                inet_ntoa(ad),
+                port,
+            )
+        };
+        let removed =
+            unsafe { target_lookup_ipv4_impl(ad.s_addr, port, type_, extra, -1, ptr::null_mut()) };
         assert_eq!(removed, ctj);
     } else {
         assert_eq!(free_action, TARGET_FREE_ACTION_DELETE_IPV6);
@@ -3407,9 +3465,10 @@ pub(super) unsafe fn do_conn_target_job_impl(job: Job, op: c_int, _jt: *mut c_vo
             return 0;
         }
 
-        let finalize_action = mtproxy_core::runtime::net::connections::target_job_finalize_free_action(
-            unsafe { mtproxy_ffi_net_connections_free_target(ctj) },
-        );
+        let finalize_action =
+            mtproxy_core::runtime::net::connections::target_job_finalize_free_action(unsafe {
+                mtproxy_ffi_net_connections_free_target(ctj)
+            });
         assert!(
             finalize_action == TARGET_JOB_FINALIZE_COMPLETED
                 || finalize_action == TARGET_JOB_FINALIZE_SCHEDULE_RETRY
@@ -3450,7 +3509,11 @@ pub(super) unsafe fn conn_target_get_connection_impl(
         allow_stopped: if allow_stopped != 0 { 1 } else { 0 },
     };
     unsafe {
-        tree_act_ex_connection(tree, Some(target_pick_policy_callback), ptr::addr_of_mut!(ctx).cast());
+        tree_act_ex_connection(
+            tree,
+            Some(target_pick_policy_callback),
+            ptr::addr_of_mut!(ctx).cast(),
+        );
     }
 
     if mtproxy_core::runtime::net::connections::target_pick_should_incref(!selected.is_null()) {

@@ -73,8 +73,7 @@ void tcp_rpc_conn_send_init(connection_job_t C, struct raw_message *raw,
     *r = *raw;
   }
   rwm_push_data_front(r, Q, 8);
-  unsigned crc32 =
-      rwm_custom_crc32(r, r->total_bytes, D->custom_crc_partial);
+  unsigned crc32 = rwm_custom_crc32(r, r->total_bytes, D->custom_crc_partial);
   rwm_push_data(r, &crc32, 4);
 
   socket_connection_job_t S = c->io_conn;
@@ -102,8 +101,7 @@ void tcp_rpc_conn_send_im(JOB_REF_ARG(C), struct raw_message *raw, int flags) {
     *r = *raw;
   }
   rwm_push_data_front(r, Q, 8);
-  unsigned crc32 =
-      rwm_custom_crc32(r, r->total_bytes, D->custom_crc_partial);
+  unsigned crc32 = rwm_custom_crc32(r, r->total_bytes, D->custom_crc_partial);
   rwm_push_data(r, &crc32, 4);
 
   rwm_union(&c->out, r);
@@ -193,8 +191,8 @@ int tcp_rpc_write_packet(connection_job_t C, struct raw_message *raw) {
     Q[1] = D->out_packet_num++;
 
     rwm_push_data_front(raw, Q, 8);
-    unsigned crc32 = rwm_custom_crc32(raw, raw->total_bytes,
-                                      D->custom_crc_partial);
+    unsigned crc32 =
+        rwm_custom_crc32(raw, raw->total_bytes, D->custom_crc_partial);
     rwm_push_data(raw, &crc32, 4);
 
     rwm_union(&c->out, raw);

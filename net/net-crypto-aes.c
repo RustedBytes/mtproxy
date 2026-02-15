@@ -75,8 +75,8 @@ int aes_crypto_ctr128_init(connection_job_t c, void *key_data,
 
 int aes_crypto_free(connection_job_t c) {
   struct connection_info *conn = CONN_INFO(c);
-  int32_t rc = mtproxy_ffi_crypto_aes_conn_free(&conn->crypto,
-                                                &conn->crypto_temp);
+  int32_t rc =
+      mtproxy_ffi_crypto_aes_conn_free(&conn->crypto, &conn->crypto_temp);
   return rc == 0 ? 0 : -1;
 }
 

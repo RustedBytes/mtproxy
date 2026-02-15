@@ -37,7 +37,13 @@ const JC_NONE: c_int = 0;
 const JOB_COMPLETED: c_int = 0x100;
 const JOB_ERROR: c_int = -1;
 
-const DEFAULT_BUFFER_SIZES: [c_int; 5] = [MSG_TINY_BUFFER, MSG_SMALL_BUFFER, MSG_STD_BUFFER, 16_384, 262_144];
+const DEFAULT_BUFFER_SIZES: [c_int; 5] = [
+    MSG_TINY_BUFFER,
+    MSG_SMALL_BUFFER,
+    MSG_STD_BUFFER,
+    16_384,
+    262_144,
+];
 
 type FreeBufferFn = unsafe extern "C" fn(*mut MsgBuffersChunk, *mut MsgBuffer) -> c_int;
 type JobFunction = unsafe extern "C" fn(*mut AsyncJob, c_int, *mut JobThread) -> c_int;
@@ -351,7 +357,11 @@ unsafe fn init_buffer_chunk_headers() {
     assert_eq!(unsafe { BUFFER_SIZE_VALUES }, 0);
 
     for (i, &size) in DEFAULT_BUFFER_SIZES.iter().enumerate() {
-        let ch = unsafe { ptr::addr_of_mut!(CHUNK_HEADERS).cast::<MsgBuffersChunk>().add(i) };
+        let ch = unsafe {
+            ptr::addr_of_mut!(CHUNK_HEADERS)
+                .cast::<MsgBuffersChunk>()
+                .add(i)
+        };
 
         unsafe {
             *ch = EMPTY_CHUNK;
@@ -384,8 +394,7 @@ unsafe fn msg_buffer_pick_size_index(size_hint: c_int) -> c_int {
 
 unsafe fn prepare_bs_inv(c: *mut MsgBuffersChunk) {
     let mut x = unsafe {
-        (*c)
-            .buffer_size
+        (*c).buffer_size
             .wrapping_add(c_int::try_from(BUFF_HD_BYTES).unwrap_or(c_int::MAX))
     };
     let i = c_int::try_from(x.trailing_zeros()).unwrap_or(0);
@@ -534,8 +543,7 @@ unsafe fn alloc_new_msg_buffers_chunk(ch: *mut MsgBuffersChunk) -> *mut MsgBuffe
         assert!(
             (*c).first_buffer.cast::<u8>() as usize
                 + usize::try_from(chunk_buffers * buffer_hd_size).unwrap_or(0)
-                <= c.cast::<u8>() as usize
-                    + usize::try_from(MSG_BUFFERS_CHUNK_SIZE).unwrap_or(0)
+                <= c.cast::<u8>() as usize + usize::try_from(MSG_BUFFERS_CHUNK_SIZE).unwrap_or(0)
         );
 
         (*c).two_power = two_power;
@@ -681,8 +689,7 @@ unsafe fn free_msg_buffers_chunk(c: *mut MsgBuffersChunk) {
 
 unsafe fn get_buffer_no(c: *mut MsgBuffersChunk, x: *mut MsgBuffer) -> c_int {
     let mut n = (x.cast::<u8>() as usize)
-        .wrapping_sub(unsafe { (*c).first_buffer.cast::<u8>() as usize })
-        as u32;
+        .wrapping_sub(unsafe { (*c).first_buffer.cast::<u8>() as usize }) as u32;
     n >>= u32::try_from(unsafe { (*c).bs_shift }).unwrap_or(0);
     n = n.wrapping_mul(u32::from_ne_bytes(unsafe { (*c).bs_inverse }.to_ne_bytes()));
 
@@ -693,8 +700,7 @@ unsafe fn get_buffer_no(c: *mut MsgBuffersChunk, x: *mut MsgBuffer) -> c_int {
     )
     .unwrap_or(0);
     let expected = unsafe {
-        (*c)
-            .first_buffer
+        (*c).first_buffer
             .cast::<u8>()
             .add(usize::try_from(n).unwrap_or(0) * stride)
             .cast::<MsgBuffer>()
@@ -959,7 +965,9 @@ pub(super) unsafe extern "C" fn free_std_msg_buffer(
 }
 
 unsafe fn job_custom_ptr(job: *mut AsyncJob) -> *mut *mut c_void {
-    job.cast::<u8>().add(size_of::<AsyncJob>()).cast::<*mut c_void>()
+    job.cast::<u8>()
+        .add(size_of::<AsyncJob>())
+        .cast::<*mut c_void>()
 }
 
 unsafe extern "C" fn free_msg_buffer_job(
@@ -997,14 +1005,18 @@ pub(super) unsafe fn raw_msg_buffer_prepare_stat_impl(sb: *mut StatsBuffer) -> c
         return -1;
     }
 
-    let total_used_buffers_size =
-        unsafe { raw_msg_buffer_stat_sum_ll(offset_of!(RawMsgBufferModuleStat, total_used_buffers_size)) };
-    let total_used_buffers =
-        unsafe { raw_msg_buffer_stat_sum_i(offset_of!(RawMsgBufferModuleStat, total_used_buffers)) };
-    let allocated_buffer_bytes =
-        unsafe { raw_msg_buffer_stat_sum_ll(offset_of!(RawMsgBufferModuleStat, allocated_buffer_bytes)) };
-    let buffer_chunk_alloc_ops =
-        unsafe { raw_msg_buffer_stat_sum_ll(offset_of!(RawMsgBufferModuleStat, buffer_chunk_alloc_ops)) };
+    let total_used_buffers_size = unsafe {
+        raw_msg_buffer_stat_sum_ll(offset_of!(RawMsgBufferModuleStat, total_used_buffers_size))
+    };
+    let total_used_buffers = unsafe {
+        raw_msg_buffer_stat_sum_i(offset_of!(RawMsgBufferModuleStat, total_used_buffers))
+    };
+    let allocated_buffer_bytes = unsafe {
+        raw_msg_buffer_stat_sum_ll(offset_of!(RawMsgBufferModuleStat, allocated_buffer_bytes))
+    };
+    let buffer_chunk_alloc_ops = unsafe {
+        raw_msg_buffer_stat_sum_ll(offset_of!(RawMsgBufferModuleStat, buffer_chunk_alloc_ops))
+    };
 
     unsafe {
         sb_printf(
@@ -1079,7 +1091,9 @@ pub(super) unsafe fn init_msg_buffers_impl(max_buffer_bytes: c_long) -> c_int {
 
     assert!((0..=MSG_MAX_ALLOCATED_BYTES).contains(&limit));
     assert!(
-        limit >= c_longlong::from(unsafe { allocated_buffer_chunks }) * c_longlong::from(MSG_BUFFERS_CHUNK_SIZE)
+        limit
+            >= c_longlong::from(unsafe { allocated_buffer_chunks })
+                * c_longlong::from(MSG_BUFFERS_CHUNK_SIZE)
     );
 
     unsafe {
@@ -1106,8 +1120,11 @@ pub(super) unsafe fn alloc_msg_buffer_impl(
     }
 
     let si = unsafe { msg_buffer_pick_size_index(size_hint) };
-    let ch =
-        unsafe { ptr::addr_of_mut!(CHUNK_HEADERS).cast::<MsgBuffersChunk>().add(usize::try_from(si).unwrap_or(0)) };
+    let ch = unsafe {
+        ptr::addr_of_mut!(CHUNK_HEADERS)
+            .cast::<MsgBuffersChunk>()
+            .add(usize::try_from(si).unwrap_or(0))
+    };
     let c_hint = chunk_save_get(si);
 
     unsafe { alloc_msg_buffer_internal(neighbor, ch, c_hint, si) }
@@ -1123,7 +1140,9 @@ pub(super) unsafe fn free_msg_buffer_impl(x: *mut MsgBuffer) -> c_int {
     assert!(magic == MSG_CHUNK_USED_MAGIC || magic == MSG_CHUNK_USED_LOCKED_MAGIC);
 
     let is_std_free = match unsafe { (*c).free_buffer } {
-        Some(free_buffer) => core::ptr::fn_addr_eq(free_buffer, free_std_msg_buffer as FreeBufferFn),
+        Some(free_buffer) => {
+            core::ptr::fn_addr_eq(free_buffer, free_std_msg_buffer as FreeBufferFn)
+        }
         None => false,
     };
 

@@ -11,16 +11,12 @@ pub unsafe extern "C" fn mtproxy_ffi_net_msg_buffers_raw_prepare_stat(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_msg_buffers_fetch_buffers_stat(
-    bs: *mut BuffersStat,
-) {
+pub unsafe extern "C" fn mtproxy_ffi_net_msg_buffers_fetch_buffers_stat(bs: *mut BuffersStat) {
     unsafe { fetch_buffers_stat_impl(bs) }
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_msg_buffers_init(
-    max_buffer_bytes: c_long,
-) -> c_int {
+pub unsafe extern "C" fn mtproxy_ffi_net_msg_buffers_init(max_buffer_bytes: c_long) -> c_int {
     unsafe { init_msg_buffers_impl(max_buffer_bytes) }
 }
 
@@ -33,9 +29,7 @@ pub unsafe extern "C" fn mtproxy_ffi_net_msg_buffers_alloc(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_msg_buffers_free(
-    buffer: *mut MsgBuffer,
-) -> c_int {
+pub unsafe extern "C" fn mtproxy_ffi_net_msg_buffers_free(buffer: *mut MsgBuffer) -> c_int {
     unsafe { free_msg_buffer_impl(buffer) }
 }
 

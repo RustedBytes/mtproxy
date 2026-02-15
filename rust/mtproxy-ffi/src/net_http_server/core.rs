@@ -429,10 +429,9 @@ pub(super) unsafe fn hts_parse_execute_impl(c: ConnectionJob) -> c_int {
         rwm_clone(&raw mut raw, ptr::addr_of_mut!((*conn).in_data));
     }
 
-    while unsafe { (*conn).status == CONN_WORKING
-        && (*conn).pending_queries == 0
-        && raw.total_bytes != 0 }
-    {
+    while unsafe {
+        (*conn).status == CONN_WORKING && (*conn).pending_queries == 0 && raw.total_bytes != 0
+    } {
         if unsafe { ((*conn).flags & (C_ERROR | C_STOPPARSE)) != 0 } {
             break;
         }
@@ -560,8 +559,9 @@ pub(super) unsafe fn hts_parse_execute_impl(c: ConnectionJob) -> c_int {
                                     (*d).host_offset = (*d).header_size;
                                     (*d).host_size = (*d).wlen;
                                 }
-                            } else if unsafe { (*d).wlen == 10 && word_eq_ascii_case(d, b"keep-alive") }
-                            {
+                            } else if unsafe {
+                                (*d).wlen == 10 && word_eq_ascii_case(d, b"keep-alive")
+                            } {
                                 unsafe {
                                     (*d).query_flags |= QF_KEEPALIVE;
                                 }
@@ -580,8 +580,7 @@ pub(super) unsafe fn hts_parse_execute_impl(c: ConnectionJob) -> c_int {
                     while unsafe {
                         (*d).header_size < MAX_HTTP_HEADER_SIZE
                             && ptr_cur < ptr_e
-                            && (*ptr_cur == b' '
-                                || (*ptr_cur == b'\t' && (*d).query_words >= 8))
+                            && (*ptr_cur == b' ' || (*ptr_cur == b'\t' && (*d).query_words >= 8))
                     } {
                         unsafe {
                             (*d).header_size += 1;
@@ -676,9 +675,8 @@ pub(super) unsafe fn hts_parse_execute_impl(c: ConnectionJob) -> c_int {
                         unsafe {
                             (*d).query_flags |= QF_CONNECTION;
                         }
-                    } else if unsafe {
-                        (*d).wlen == 14 && word_eq_ascii_case(d, b"content-length")
-                    } {
+                    } else if unsafe { (*d).wlen == 14 && word_eq_ascii_case(d, b"content-length") }
+                    {
                         unsafe {
                             (*d).query_flags |= QF_DATASIZE;
                         }
@@ -1078,7 +1076,9 @@ pub(super) unsafe fn get_http_header_impl(
     arg_name: *const c_char,
     arg_len: c_int,
 ) -> c_int {
-    unsafe { mtproxy_ffi_net_http_get_header(q_headers, q_headers_len, buffer, b_len, arg_name, arg_len) }
+    unsafe {
+        mtproxy_ffi_net_http_get_header(q_headers, q_headers_len, buffer, b_len, arg_name, arg_len)
+    }
 }
 
 pub(super) unsafe fn write_basic_http_header_raw_impl(
@@ -1144,7 +1144,11 @@ pub(super) unsafe fn write_basic_http_header_raw_impl(
             (*d).query_flags &= !QF_EXTRA_HEADERS;
         }
 
-        assert!(written >= 0 && usize::try_from(written).unwrap_or(HTTP_HEADER_BUFFER_SIZE) < HTTP_HEADER_BUFFER_SIZE - HTTP_HEADER_BUFFER_SLACK);
+        assert!(
+            written >= 0
+                && usize::try_from(written).unwrap_or(HTTP_HEADER_BUFFER_SIZE)
+                    < HTTP_HEADER_BUFFER_SIZE - HTTP_HEADER_BUFFER_SLACK
+        );
         let mut total = written;
 
         if len >= 0 {

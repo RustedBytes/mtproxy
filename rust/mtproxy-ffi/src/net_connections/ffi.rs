@@ -1019,9 +1019,7 @@ pub extern "C" fn mtproxy_ffi_net_connections_target_job_finalize_free_action(
 
 /// Runs `connection_write_close` runtime logic.
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_connections_connection_write_close(
-    c: ConnectionJob,
-) {
+pub unsafe extern "C" fn mtproxy_ffi_net_connections_connection_write_close(c: ConnectionJob) {
     unsafe { connection_write_close_impl(c) };
 }
 
@@ -1044,10 +1042,7 @@ pub unsafe extern "C" fn mtproxy_ffi_net_connections_clear_connection_timeout(
 
 /// Runs `fail_connection` runtime logic.
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_connections_fail_connection(
-    c: ConnectionJob,
-    err: c_int,
-) {
+pub unsafe extern "C" fn mtproxy_ffi_net_connections_fail_connection(c: ConnectionJob, err: c_int) {
     unsafe { fail_connection_impl(c, err) };
 }
 
@@ -1110,9 +1105,7 @@ pub unsafe extern "C" fn mtproxy_ffi_net_connections_server_noop(c: ConnectionJo
 
 /// Runtime pure-virtual error callback.
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_connections_server_failed(
-    c: ConnectionJob,
-) -> c_int {
+pub unsafe extern "C" fn mtproxy_ffi_net_connections_server_failed(c: ConnectionJob) -> c_int {
     unsafe { server_failed_impl(c) }
 }
 
@@ -1325,9 +1318,7 @@ pub unsafe extern "C" fn mtproxy_ffi_net_connections_create_target(
 
 /// Removes inactive target from hash table and decrements its job refcount.
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_connections_free_target_core(
-    ctj: ConnTargetJob,
-) -> c_int {
+pub unsafe extern "C" fn mtproxy_ffi_net_connections_free_target_core(ctj: ConnTargetJob) -> c_int {
     unsafe { free_target_impl(ctj) }
 }
 

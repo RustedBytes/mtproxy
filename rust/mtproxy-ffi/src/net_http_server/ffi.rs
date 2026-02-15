@@ -13,9 +13,7 @@ pub unsafe extern "C" fn mtproxy_ffi_net_http_server_hts_default_execute(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_http_server_hts_init_accepted(
-    c: ConnectionJob,
-) -> c_int {
+pub unsafe extern "C" fn mtproxy_ffi_net_http_server_hts_init_accepted(c: ConnectionJob) -> c_int {
     unsafe { hts_init_accepted_impl(c) }
 }
 
@@ -53,30 +51,22 @@ pub unsafe extern "C" fn mtproxy_ffi_net_http_server_hts_write_packet(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_http_server_hts_parse_execute(
-    c: ConnectionJob,
-) -> c_int {
+pub unsafe extern "C" fn mtproxy_ffi_net_http_server_hts_parse_execute(c: ConnectionJob) -> c_int {
     unsafe { hts_parse_execute_impl(c) }
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_http_server_hts_std_wakeup(
-    c: ConnectionJob,
-) -> c_int {
+pub unsafe extern "C" fn mtproxy_ffi_net_http_server_hts_std_wakeup(c: ConnectionJob) -> c_int {
     unsafe { hts_std_wakeup_impl(c) }
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_http_server_hts_std_alarm(
-    c: ConnectionJob,
-) -> c_int {
+pub unsafe extern "C" fn mtproxy_ffi_net_http_server_hts_std_alarm(c: ConnectionJob) -> c_int {
     unsafe { hts_std_alarm_impl(c) }
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_http_server_hts_do_wakeup(
-    c: ConnectionJob,
-) -> c_int {
+pub unsafe extern "C" fn mtproxy_ffi_net_http_server_hts_do_wakeup(c: ConnectionJob) -> c_int {
     unsafe { hts_do_wakeup_impl(c) }
 }
 

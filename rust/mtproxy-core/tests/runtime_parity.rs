@@ -1,5 +1,5 @@
-use std::vec::Vec;
 use std::sync::{Mutex, MutexGuard};
+use std::vec::Vec;
 
 use mtproxy_core::runtime::{
     engine::net::{select_listener_port_with, DEFAULT_PORT_MOD},

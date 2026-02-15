@@ -524,18 +524,20 @@ extern int32_t mtproxy_ffi_net_connections_fail_socket_connection_action(
 extern int32_t mtproxy_ffi_net_connections_socket_free_plan(
     int32_t has_conn, int32_t *out_fail_error,
     int32_t *out_allocated_socket_delta);
-extern void mtproxy_ffi_net_connections_connection_write_close(
-    connection_job_t c);
-extern int32_t mtproxy_ffi_net_connections_set_connection_timeout(
-    connection_job_t c, double timeout);
-extern int32_t mtproxy_ffi_net_connections_clear_connection_timeout(
-    connection_job_t c);
+extern void
+mtproxy_ffi_net_connections_connection_write_close(connection_job_t c);
+extern int32_t
+mtproxy_ffi_net_connections_set_connection_timeout(connection_job_t c,
+                                                   double timeout);
+extern int32_t
+mtproxy_ffi_net_connections_clear_connection_timeout(connection_job_t c);
 extern void mtproxy_ffi_net_connections_fail_connection(connection_job_t c,
                                                         int32_t err);
 extern int32_t
 mtproxy_ffi_net_connections_cpu_server_free_connection(connection_job_t c);
-extern int32_t mtproxy_ffi_net_connections_cpu_server_close_connection(
-    connection_job_t c, int32_t who);
+extern int32_t
+mtproxy_ffi_net_connections_cpu_server_close_connection(connection_job_t c,
+                                                        int32_t who);
 extern void mtproxy_ffi_net_connections_connection_event_incref(int32_t fd,
                                                                 int64_t val);
 extern connection_job_t
@@ -548,31 +550,35 @@ mtproxy_ffi_net_connections_server_check_ready_conn(connection_job_t c);
 extern int32_t mtproxy_ffi_net_connections_server_noop(connection_job_t c);
 extern int32_t mtproxy_ffi_net_connections_server_failed(connection_job_t c);
 extern int32_t mtproxy_ffi_net_connections_server_flush(connection_job_t c);
-extern int32_t mtproxy_ffi_net_connections_check_conn_functions(
-    conn_type_t *type, int32_t listening);
-extern void mtproxy_ffi_net_connections_compute_next_reconnect_target(
-    conn_target_job_t ct);
+extern int32_t
+mtproxy_ffi_net_connections_check_conn_functions(conn_type_t *type,
+                                                 int32_t listening);
+extern void
+mtproxy_ffi_net_connections_compute_next_reconnect_target(conn_target_job_t ct);
 extern connection_job_t
 mtproxy_ffi_net_connections_conn_target_get_connection(conn_target_job_t ct,
                                                        int32_t allow_stopped);
-extern int32_t mtproxy_ffi_net_connections_do_connection_job(
-    job_t job, int32_t op, struct job_thread *jt);
+extern int32_t
+mtproxy_ffi_net_connections_do_connection_job(job_t job, int32_t op,
+                                              struct job_thread *jt);
 extern connection_job_t mtproxy_ffi_net_connections_alloc_new_connection(
     int32_t cfd, conn_target_job_t ctj, listening_connection_job_t lcj,
     int32_t basic_type, conn_type_t *conn_type, void *conn_extra, uint32_t peer,
     unsigned char *peer_ipv6, int32_t peer_port);
 extern socket_connection_job_t
 mtproxy_ffi_net_connections_alloc_new_socket_connection(connection_job_t c);
-extern void mtproxy_ffi_net_connections_fail_socket_connection(
-    socket_connection_job_t c, int32_t who);
+extern void
+mtproxy_ffi_net_connections_fail_socket_connection(socket_connection_job_t c,
+                                                   int32_t who);
 extern int32_t
 mtproxy_ffi_net_connections_net_server_socket_free(socket_connection_job_t c);
 extern int32_t
 mtproxy_ffi_net_connections_net_server_socket_reader(socket_connection_job_t c);
 extern int32_t
 mtproxy_ffi_net_connections_net_server_socket_writer(socket_connection_job_t c);
-extern int32_t mtproxy_ffi_net_connections_do_socket_connection_job(
-    job_t job, int32_t op, struct job_thread *jt);
+extern int32_t
+mtproxy_ffi_net_connections_do_socket_connection_job(job_t job, int32_t op,
+                                                     struct job_thread *jt);
 extern int32_t mtproxy_ffi_net_connections_net_accept_new_connections(
     listening_connection_job_t lcj);
 extern int32_t mtproxy_ffi_net_connections_init_listening_connection_ext(
@@ -581,28 +587,31 @@ extern int32_t mtproxy_ffi_net_connections_init_listening_connection(
     int32_t fd, conn_type_t *type, void *extra);
 extern int32_t mtproxy_ffi_net_connections_init_listening_tcpv6_connection(
     int32_t fd, conn_type_t *type, void *extra, int32_t mode);
-extern int32_t mtproxy_ffi_net_connections_do_listening_connection_job(
-    job_t job, int32_t op, struct job_thread *jt);
+extern int32_t
+mtproxy_ffi_net_connections_do_listening_connection_job(job_t job, int32_t op,
+                                                        struct job_thread *jt);
 extern void mtproxy_ffi_net_connections_destroy_dead_target_connections(
     conn_target_job_t ctj);
-extern int32_t mtproxy_ffi_net_connections_create_new_connections(
-    conn_target_job_t ctj);
-extern int32_t mtproxy_ffi_net_connections_do_conn_target_job(
-    job_t job, int32_t op, struct job_thread *jt);
+extern int32_t
+mtproxy_ffi_net_connections_create_new_connections(conn_target_job_t ctj);
+extern int32_t
+mtproxy_ffi_net_connections_do_conn_target_job(job_t job, int32_t op,
+                                               struct job_thread *jt);
 extern int32_t
 mtproxy_ffi_net_connections_clean_unused_target(conn_target_job_t ctj);
-extern int32_t mtproxy_ffi_net_connections_destroy_target(int32_t ctj_tag_int,
-                                                          conn_target_job_t ctj);
-extern conn_target_job_t mtproxy_ffi_net_connections_create_target(
-    struct conn_target_info *source, int32_t *was_created);
+extern int32_t
+mtproxy_ffi_net_connections_destroy_target(int32_t ctj_tag_int,
+                                           conn_target_job_t ctj);
+extern conn_target_job_t
+mtproxy_ffi_net_connections_create_target(struct conn_target_info *source,
+                                          int32_t *was_created);
 extern int32_t
 mtproxy_ffi_net_connections_free_target_core(conn_target_job_t ctj);
-extern void mtproxy_ffi_net_connections_insert_free_later_struct(
-    struct free_later *f);
+extern void
+mtproxy_ffi_net_connections_insert_free_later_struct(struct free_later *f);
 extern void mtproxy_ffi_net_connections_free_later_act(void);
-extern int32_t
-mtproxy_ffi_net_connections_net_server_socket_read_write(socket_connection_job_t
-                                                             c);
+extern int32_t mtproxy_ffi_net_connections_net_server_socket_read_write(
+    socket_connection_job_t c);
 extern int32_t mtproxy_ffi_net_connections_net_server_socket_read_write_gateway(
     int32_t fd, void *data, event_t *ev);
 
@@ -700,8 +709,8 @@ int32_t mtproxy_ffi_net_connections_get_max_connection(void) {
 void mtproxy_ffi_net_connections_set_max_connection(int32_t value) {
   max_connection = value;
 }
-void mtproxy_ffi_net_connections_register_special_listen_socket(int32_t fd,
-                                                                int32_t generation) {
+void mtproxy_ffi_net_connections_register_special_listen_socket(
+    int32_t fd, int32_t generation) {
   int idx = __sync_fetch_and_add(&special_listen_sockets, 1);
   assert(idx < MAX_SPECIAL_LISTEN_SOCKETS);
   special_socket[idx].fd = fd;
@@ -712,7 +721,8 @@ void mtproxy_ffi_net_connections_stat_inc_listening(void) {
 }
 void mtproxy_ffi_net_connections_stats_add_ready(int32_t ready_outbound_delta,
                                                  int32_t ready_targets_delta) {
-  connections_module_stat_tls->ready_outbound_connections += ready_outbound_delta;
+  connections_module_stat_tls->ready_outbound_connections +=
+      ready_outbound_delta;
   connections_module_stat_tls->ready_targets += ready_targets_delta;
 }
 void mtproxy_ffi_net_connections_stats_add_targets(
@@ -794,21 +804,22 @@ void mtproxy_ffi_net_connections_stat_dec_active_dh(void) {
   connections_module_stat_tls->active_dh_connections--;
 }
 void mtproxy_ffi_net_connections_stats_add_close_basic(
-    int32_t outbound_delta, int32_t inbound_delta, int32_t active_outbound_delta,
-    int32_t active_inbound_delta, int32_t active_connections_delta) {
+    int32_t outbound_delta, int32_t inbound_delta,
+    int32_t active_outbound_delta, int32_t active_inbound_delta,
+    int32_t active_connections_delta) {
   connections_module_stat_tls->outbound_connections += outbound_delta;
   connections_module_stat_tls->inbound_connections += inbound_delta;
   connections_module_stat_tls->active_outbound_connections +=
       active_outbound_delta;
-  connections_module_stat_tls->active_inbound_connections += active_inbound_delta;
+  connections_module_stat_tls->active_inbound_connections +=
+      active_inbound_delta;
   connections_module_stat_tls->active_connections += active_connections_delta;
 }
 void mtproxy_ffi_net_connections_close_connection_signal_special_aux(void) {
   int i;
   for (i = 0; i < special_listen_sockets; i++) {
-    connection_job_t LC =
-        connection_get_by_fd_generation(special_socket[i].fd,
-                                        special_socket[i].generation);
+    connection_job_t LC = connection_get_by_fd_generation(
+        special_socket[i].fd, special_socket[i].generation);
     assert(LC);
     job_signal(JOB_REF_PASS(LC), JS_AUX);
   }
@@ -848,8 +859,8 @@ socket_connection_job_t alloc_new_socket_connection(connection_job_t C);
 
 static inline int compute_conn_events(socket_connection_job_t c) {
   struct socket_connection_info *s = SOCKET_CONN_INFO(c);
-  int32_t events = mtproxy_ffi_net_compute_conn_events(
-      s->flags, CONNECTIONS_USE_EPOLLET);
+  int32_t events =
+      mtproxy_ffi_net_compute_conn_events(s->flags, CONNECTIONS_USE_EPOLLET);
   assert(events == 0 || events == (EVT_READ | EVT_WRITE | EVT_SPEC));
   return events;
 }
@@ -1023,8 +1034,8 @@ connection_job_t connection_get_by_fd(int fd) {
 }
 
 connection_job_t connection_get_by_fd_generation(int fd, int generation) {
-  return mtproxy_ffi_net_connections_connection_get_by_fd_generation(fd,
-                                                                     generation);
+  return mtproxy_ffi_net_connections_connection_get_by_fd_generation(
+      fd, generation);
 }
 
 int server_check_ready(connection_job_t C) {
@@ -1109,16 +1120,14 @@ int create_all_outbound_connections(void) {
 connection_job_t conn_target_get_connection(conn_target_job_t CT,
                                             int allow_stopped) {
   return mtproxy_ffi_net_connections_conn_target_get_connection(CT,
-                                                                 allow_stopped);
+                                                                allow_stopped);
 }
 
 void insert_free_later_struct(struct free_later *F) {
   mtproxy_ffi_net_connections_insert_free_later_struct(F);
 }
 
-void free_later_act(void) {
-  mtproxy_ffi_net_connections_free_later_act();
-}
+void free_later_act(void) { mtproxy_ffi_net_connections_free_later_act(); }
 
 void free_connection_tree_ptr(struct tree_connection *T) {
   free_tree_ptr_connection(T);

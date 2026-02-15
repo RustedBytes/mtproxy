@@ -43,18 +43,19 @@ extern int32_t mtproxy_ffi_net_http_server_hts_default_execute(
     connection_job_t c, struct raw_message *raw, int32_t op);
 extern int32_t
 mtproxy_ffi_net_http_server_hts_init_accepted(connection_job_t c);
-extern int32_t mtproxy_ffi_net_http_server_hts_close_connection(
-    connection_job_t c, int32_t who);
+extern int32_t
+mtproxy_ffi_net_http_server_hts_close_connection(connection_job_t c,
+                                                 int32_t who);
 extern int32_t mtproxy_ffi_net_http_server_write_http_error_raw(
     connection_job_t c, struct raw_message *raw, int32_t code);
 extern int32_t mtproxy_ffi_net_http_server_write_http_error(connection_job_t c,
                                                             int32_t code);
-extern int32_t mtproxy_ffi_net_http_server_hts_write_packet(
-    connection_job_t c, struct raw_message *raw);
+extern int32_t
+mtproxy_ffi_net_http_server_hts_write_packet(connection_job_t c,
+                                             struct raw_message *raw);
 extern int32_t
 mtproxy_ffi_net_http_server_hts_parse_execute(connection_job_t c);
-extern int32_t
-mtproxy_ffi_net_http_server_hts_std_wakeup(connection_job_t c);
+extern int32_t mtproxy_ffi_net_http_server_hts_std_wakeup(connection_job_t c);
 extern int32_t mtproxy_ffi_net_http_server_hts_std_alarm(connection_job_t c);
 extern int32_t mtproxy_ffi_net_http_server_hts_do_wakeup(connection_job_t c);
 extern void mtproxy_ffi_net_http_server_gen_http_date(char *date_buffer,
@@ -69,7 +70,8 @@ extern int32_t mtproxy_ffi_net_http_server_write_basic_http_header_raw(
 extern void mtproxy_ffi_net_http_server_http_flush(connection_job_t c,
                                                    struct raw_message *raw);
 
-struct connection_info *mtproxy_ffi_net_http_server_conn_info(connection_job_t c) {
+struct connection_info *
+mtproxy_ffi_net_http_server_conn_info(connection_job_t c) {
   return CONN_INFO(c);
 }
 
@@ -87,7 +89,8 @@ int hts_close_connection(connection_job_t c, int who) {
   return mtproxy_ffi_net_http_server_hts_close_connection(c, who);
 }
 
-int write_http_error_raw(connection_job_t c, struct raw_message *raw, int code) {
+int write_http_error_raw(connection_job_t c, struct raw_message *raw,
+                         int code) {
   return mtproxy_ffi_net_http_server_write_http_error_raw(c, raw, code);
 }
 
@@ -119,7 +122,9 @@ void gen_http_date(char date_buffer[HTTP_DATE_LEN], int time) {
   mtproxy_ffi_net_http_server_gen_http_date(date_buffer, time);
 }
 
-char *cur_http_date(void) { return mtproxy_ffi_net_http_server_cur_http_date(); }
+char *cur_http_date(void) {
+  return mtproxy_ffi_net_http_server_cur_http_date();
+}
 
 int get_http_header(const char *qHeaders, const int qHeadersLen, char *buffer,
                     int b_len, const char *arg_name, const int arg_len) {

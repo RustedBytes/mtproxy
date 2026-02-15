@@ -35,23 +35,24 @@
 #include "net/net-tcp-rpc-server.h"
 #include "precise-time.h"
 
-extern int32_t mtproxy_ffi_net_tcp_rpc_server_default_execute(
-    connection_job_t c, int32_t op, struct raw_message *raw);
 extern int32_t
-mtproxy_ffi_net_tcp_rpc_server_parse_execute(connection_job_t c);
+mtproxy_ffi_net_tcp_rpc_server_default_execute(connection_job_t c, int32_t op,
+                                               struct raw_message *raw);
+extern int32_t mtproxy_ffi_net_tcp_rpc_server_parse_execute(connection_job_t c);
 extern int32_t mtproxy_ffi_net_tcp_rpc_server_wakeup(connection_job_t c);
 extern int32_t mtproxy_ffi_net_tcp_rpc_server_alarm(connection_job_t c);
 extern int32_t mtproxy_ffi_net_tcp_rpc_server_do_wakeup(connection_job_t c);
+extern int32_t mtproxy_ffi_net_tcp_rpc_server_init_accepted(connection_job_t c);
 extern int32_t
-mtproxy_ffi_net_tcp_rpc_server_init_accepted(connection_job_t c);
-extern int32_t mtproxy_ffi_net_tcp_rpc_server_close_connection(
-    connection_job_t c, int32_t who);
+mtproxy_ffi_net_tcp_rpc_server_close_connection(connection_job_t c,
+                                                int32_t who);
 extern int32_t
 mtproxy_ffi_net_tcp_rpc_server_init_accepted_nohs(connection_job_t c);
-extern int32_t mtproxy_ffi_net_tcp_rpc_server_default_check_perm(
-    connection_job_t c);
-extern int32_t mtproxy_ffi_net_tcp_rpc_server_init_crypto(
-    connection_job_t c, struct tcp_rpc_nonce_packet *P);
+extern int32_t
+mtproxy_ffi_net_tcp_rpc_server_default_check_perm(connection_job_t c);
+extern int32_t
+mtproxy_ffi_net_tcp_rpc_server_init_crypto(connection_job_t c,
+                                           struct tcp_rpc_nonce_packet *P);
 
 // Rust helper shims
 struct connection_info *
