@@ -1,6 +1,8 @@
 //! FFI export surface for net_connections runtime.
 
 use super::core::*;
+use super::runtime::*;
+use core::ffi::{c_uint, c_void};
 
 /// Computes outbound connection `ready` state.
 #[no_mangle]
@@ -1013,4 +1015,341 @@ pub extern "C" fn mtproxy_ffi_net_connections_target_job_finalize_free_action(
     free_target_rc: c_int,
 ) -> c_int {
     mtproxy_core::runtime::net::connections::target_job_finalize_free_action(free_target_rc)
+}
+
+/// Runs `connection_write_close` runtime logic.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_connections_connection_write_close(
+    c: ConnectionJob,
+) {
+    unsafe { connection_write_close_impl(c) };
+}
+
+/// Runs `set_connection_timeout` runtime logic.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_connections_set_connection_timeout(
+    c: ConnectionJob,
+    timeout: c_double,
+) -> c_int {
+    unsafe { set_connection_timeout_impl(c, timeout) }
+}
+
+/// Runs `clear_connection_timeout` runtime logic.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_connections_clear_connection_timeout(
+    c: ConnectionJob,
+) -> c_int {
+    unsafe { clear_connection_timeout_impl(c) }
+}
+
+/// Runs `fail_connection` runtime logic.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_connections_fail_connection(
+    c: ConnectionJob,
+    err: c_int,
+) {
+    unsafe { fail_connection_impl(c, err) };
+}
+
+/// Updates event refcount and releases socket job when needed.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_connections_connection_event_incref(
+    fd: c_int,
+    val: c_longlong,
+) {
+    unsafe { connection_event_incref_impl(fd, val) };
+}
+
+/// Resolves connection by file descriptor.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_connections_connection_get_by_fd(
+    fd: c_int,
+) -> ConnectionJob {
+    unsafe { connection_get_by_fd_impl(fd) }
+}
+
+/// Resolves connection by file descriptor and generation.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_connections_connection_get_by_fd_generation(
+    fd: c_int,
+    generation: c_int,
+) -> ConnectionJob {
+    unsafe { connection_get_by_fd_generation_impl(fd, generation) }
+}
+
+/// Runs connection-oriented `server_check_ready`.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_connections_server_check_ready_conn(
+    c: ConnectionJob,
+) -> c_int {
+    unsafe { server_check_ready_conn_impl(c) }
+}
+
+/// Runtime noop callback.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_connections_server_noop(c: ConnectionJob) -> c_int {
+    unsafe { server_noop_impl(c) }
+}
+
+/// Runtime pure-virtual error callback.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_connections_server_failed(
+    c: ConnectionJob,
+) -> c_int {
+    unsafe { server_failed_impl(c) }
+}
+
+/// Runtime flush callback.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_connections_server_flush(c: ConnectionJob) -> c_int {
+    unsafe { server_flush_impl(c) }
+}
+
+/// Runs runtime `check_conn_functions`.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_connections_check_conn_functions(
+    type_: *mut ConnType,
+    listening: c_int,
+) -> c_int {
+    unsafe { check_conn_functions_impl(type_, listening) }
+}
+
+/// Computes reconnect schedule for target job.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_connections_compute_next_reconnect_target(
+    ct: ConnTargetJob,
+) {
+    unsafe { compute_next_reconnect_target_impl(ct) };
+}
+
+/// Picks outbound connection from target tree.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_connections_conn_target_get_connection(
+    ct: ConnTargetJob,
+    allow_stopped: c_int,
+) -> ConnectionJob {
+    unsafe { conn_target_get_connection_impl(ct, allow_stopped) }
+}
+
+/// Runs socket-failure cleanup path.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_connections_fail_socket_connection(
+    c: ConnectionJob,
+    who: c_int,
+) {
+    unsafe { fail_socket_connection_impl(c, who) };
+}
+
+/// Runs connection-job dispatcher.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_connections_do_connection_job(
+    job: ConnectionJob,
+    op: c_int,
+    jt: *mut c_void,
+) -> c_int {
+    unsafe { do_connection_job_impl(job, op, jt) }
+}
+
+/// Allocates socket-side async job for a connection and binds epoll handler.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_connections_alloc_new_socket_connection(
+    c: ConnectionJob,
+) -> ConnectionJob {
+    unsafe { alloc_new_socket_connection_impl(c) }
+}
+
+/// Allocates and initializes inbound/outbound connection job.
+#[no_mangle]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn mtproxy_ffi_net_connections_alloc_new_connection(
+    cfd: c_int,
+    ctj: ConnectionJob,
+    lcj: ConnectionJob,
+    basic_type: c_int,
+    conn_type: *mut ConnType,
+    conn_extra: *mut c_void,
+    peer: c_uint,
+    peer_ipv6: *mut u8,
+    peer_port: c_int,
+) -> ConnectionJob {
+    unsafe {
+        alloc_new_connection_impl(
+            cfd, ctj, lcj, basic_type, conn_type, conn_extra, peer, peer_ipv6, peer_port,
+        )
+    }
+}
+
+/// Frees socket-side connection job resources.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_connections_net_server_socket_free(
+    c: ConnectionJob,
+) -> c_int {
+    unsafe { net_server_socket_free_impl(c) }
+}
+
+/// Reads pending bytes from socket into connection input queue.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_connections_net_server_socket_reader(
+    c: ConnectionJob,
+) -> c_int {
+    unsafe { net_server_socket_reader_impl(c) }
+}
+
+/// Writes queued bytes from socket output buffer.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_connections_net_server_socket_writer(
+    c: ConnectionJob,
+) -> c_int {
+    unsafe { net_server_socket_writer_impl(c) }
+}
+
+/// Runs socket-job dispatcher.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_connections_do_socket_connection_job(
+    job: ConnectionJob,
+    op: c_int,
+    jt: *mut c_void,
+) -> c_int {
+    unsafe { do_socket_connection_job_impl(job, op, jt.cast()) }
+}
+
+/// Accepts pending inbound sockets for a listening connection.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_connections_net_accept_new_connections(
+    lcj: ConnectionJob,
+) -> c_int {
+    unsafe { net_accept_new_connections_impl(lcj) }
+}
+
+/// Initializes listening-connection job and epoll wiring.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_connections_init_listening_connection_ext(
+    fd: c_int,
+    type_: *mut ConnType,
+    extra: *mut c_void,
+    mode: c_int,
+    prio: c_int,
+) -> c_int {
+    unsafe { init_listening_connection_ext_impl(fd, type_, extra, mode, prio) }
+}
+
+/// Initializes default listening connection mode.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_connections_init_listening_connection(
+    fd: c_int,
+    type_: *mut ConnType,
+    extra: *mut c_void,
+) -> c_int {
+    unsafe { init_listening_connection_impl(fd, type_, extra) }
+}
+
+/// Initializes IPv6-capable listening connection mode.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_connections_init_listening_tcpv6_connection(
+    fd: c_int,
+    type_: *mut ConnType,
+    extra: *mut c_void,
+    mode: c_int,
+) -> c_int {
+    unsafe { init_listening_tcpv6_connection_impl(fd, type_, extra, mode) }
+}
+
+/// Removes dead target connections and refreshes readiness counters.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_connections_destroy_dead_target_connections(
+    ctj: ConnTargetJob,
+) {
+    unsafe { destroy_dead_target_connections_impl(ctj) };
+}
+
+/// Creates outbound connections for target according to current policy.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_connections_create_new_connections(
+    ctj: ConnTargetJob,
+) -> c_int {
+    unsafe { create_new_connections_impl(ctj) }
+}
+
+/// Runs target-job dispatcher.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_connections_do_conn_target_job(
+    job: ConnectionJob,
+    op: c_int,
+    jt: *mut c_void,
+) -> c_int {
+    unsafe { do_conn_target_job_impl(job, op, jt.cast()) }
+}
+
+/// Cleans unused target by failing stale connections or removing timer.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_connections_clean_unused_target(
+    ctj: ConnTargetJob,
+) -> c_int {
+    unsafe { clean_unused_target_impl(ctj) }
+}
+
+/// Drops one external reference from target and schedules cleanup when needed.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_connections_destroy_target(
+    ctj_tag_int: c_int,
+    ctj: ConnTargetJob,
+) -> c_int {
+    unsafe { destroy_target_impl(ctj_tag_int, ctj) }
+}
+
+/// Creates or reuses a target job entry and updates lifecycle stats.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_connections_create_target(
+    source: *mut ConnTargetInfo,
+    was_created: *mut c_int,
+) -> ConnTargetJob {
+    unsafe { create_target_impl(source, was_created) }
+}
+
+/// Removes inactive target from hash table and decrements its job refcount.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_connections_free_target_core(
+    ctj: ConnTargetJob,
+) -> c_int {
+    unsafe { free_target_impl(ctj) }
+}
+
+/// Enqueues a deferred free callback payload.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_connections_insert_free_later_struct(f: *mut FreeLater) {
+    unsafe { insert_free_later_struct_impl(f) };
+}
+
+/// Drains deferred free queue and invokes queued destructors.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_connections_free_later_act() {
+    unsafe { free_later_act_impl() };
+}
+
+/// Runs listening-job dispatcher.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_connections_do_listening_connection_job(
+    job: ConnectionJob,
+    op: c_int,
+    jt: *mut c_void,
+) -> c_int {
+    unsafe { do_listening_connection_job_impl(job, op, jt.cast()) }
+}
+
+/// Runs socket read/write orchestration path.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_connections_net_server_socket_read_write(
+    c: ConnectionJob,
+) -> c_int {
+    unsafe { net_server_socket_read_write_impl(c) }
+}
+
+/// Runs socket gateway from epoll callback.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_connections_net_server_socket_read_write_gateway(
+    fd: c_int,
+    data: *mut c_void,
+    ev: *mut c_void,
+) -> c_int {
+    unsafe { net_server_socket_read_write_gateway_impl(fd, data, ev) }
 }

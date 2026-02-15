@@ -110,6 +110,7 @@ pub(super) type TransformBlockFn =
 pub(super) type Crc32PartialFunc = Option<unsafe extern "C" fn(*const c_void, c_long, u32) -> u32>;
 
 unsafe extern "C" {
+    #[allow(clashing_extern_declarations)]
     fn alloc_msg_buffer(neighbor: *mut MsgBuffer, size_hint: c_int) -> *mut MsgBuffer;
     fn free_msg_buffer(buffer: *mut MsgBuffer) -> c_int;
     fn hexdump(start: *const c_void, end: *const c_void);

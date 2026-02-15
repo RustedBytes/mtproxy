@@ -195,6 +195,7 @@ unsafe extern "C" {
     #[allow(clashing_extern_declarations)]
     fn jobs_get_this_job_thread_c_impl() -> *mut JobThread;
 
+    #[allow(clashing_extern_declarations)]
     fn create_async_job(
         run_job: Option<JobFunction>,
         job_signals: u64,
@@ -204,6 +205,7 @@ unsafe extern "C" {
         parent_job_tag_int: c_int,
         parent_job: *mut AsyncJob,
     ) -> *mut AsyncJob;
+    #[allow(clashing_extern_declarations)]
     fn schedule_job(job_tag_int: c_int, job: *mut AsyncJob) -> c_int;
     fn job_free(job_tag_int: c_int, job: *mut AsyncJob) -> c_int;
 
