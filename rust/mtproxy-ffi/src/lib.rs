@@ -71,6 +71,7 @@ mod mp_queue;
 mod mtproto;
 mod net_connections;
 mod net_events;
+mod net_http_server;
 mod net_msg;
 mod net_timers;
 mod server_functions;

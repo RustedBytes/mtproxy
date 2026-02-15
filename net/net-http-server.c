@@ -22,55 +22,122 @@
 
     Copyright 2014-2016 Telegram Messenger Inc
               2015-2016 Vitaly Valtman
+
+    Copyright 2026 Rust Migration
 */
 
 #define _FILE_OFFSET_BITS 64
 
-#include <assert.h>
 #include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
 
-#include "kprintf.h"
 #include "net/net-connections.h"
 #include "net/net-http-server.h"
 #include "precise-time.h"
-
-/*
- *
- *                HTTP SERVER INTERFACE
- *
- */
-
-static const char http_server_version[] = "MTProxy/1.0";
-
-enum {
-  HTTP_HEADER_BUFFER_SIZE = 4096,
-  HTTP_HEADER_BUFFER_SLACK = 64,
-};
 
 int http_connections;
 long long http_queries, http_bad_headers, http_queries_size;
 
 char *extra_http_response_headers = "";
 
-int hts_std_wakeup(connection_job_t c);
-int hts_parse_execute(connection_job_t c);
-int hts_std_alarm(connection_job_t c);
-int hts_do_wakeup(connection_job_t c);
-int hts_init_accepted(connection_job_t c);
-int hts_close_connection(connection_job_t c, int who);
-int hts_write_packet(connection_job_t C, struct raw_message *raw);
-extern const char *mtproxy_ffi_net_http_error_msg_text(int32_t *code);
-extern int32_t mtproxy_ffi_net_http_gen_date(char *out, int32_t out_len,
-                                             int32_t time);
-extern int32_t mtproxy_ffi_net_http_get_header(const char *q_headers,
-                                               int32_t q_headers_len,
-                                               char *buffer, int32_t b_len,
-                                               const char *arg_name,
-                                               int32_t arg_len);
+extern int32_t mtproxy_ffi_net_http_server_hts_default_execute(
+    connection_job_t c, struct raw_message *raw, int32_t op);
+extern int32_t
+mtproxy_ffi_net_http_server_hts_init_accepted(connection_job_t c);
+extern int32_t mtproxy_ffi_net_http_server_hts_close_connection(
+    connection_job_t c, int32_t who);
+extern int32_t mtproxy_ffi_net_http_server_write_http_error_raw(
+    connection_job_t c, struct raw_message *raw, int32_t code);
+extern int32_t mtproxy_ffi_net_http_server_write_http_error(connection_job_t c,
+                                                            int32_t code);
+extern int32_t mtproxy_ffi_net_http_server_hts_write_packet(
+    connection_job_t c, struct raw_message *raw);
+extern int32_t
+mtproxy_ffi_net_http_server_hts_parse_execute(connection_job_t c);
+extern int32_t
+mtproxy_ffi_net_http_server_hts_std_wakeup(connection_job_t c);
+extern int32_t mtproxy_ffi_net_http_server_hts_std_alarm(connection_job_t c);
+extern int32_t mtproxy_ffi_net_http_server_hts_do_wakeup(connection_job_t c);
+extern void mtproxy_ffi_net_http_server_gen_http_date(char *date_buffer,
+                                                      int32_t time);
+extern char *mtproxy_ffi_net_http_server_cur_http_date(void);
+extern int32_t mtproxy_ffi_net_http_server_get_http_header(
+    const char *q_headers, int32_t q_headers_len, char *buffer, int32_t b_len,
+    const char *arg_name, int32_t arg_len);
+extern int32_t mtproxy_ffi_net_http_server_write_basic_http_header_raw(
+    connection_job_t c, struct raw_message *raw, int32_t code, int32_t date,
+    int32_t len, const char *add_header, const char *content_type);
+extern void mtproxy_ffi_net_http_server_http_flush(connection_job_t c,
+                                                   struct raw_message *raw);
+
+struct connection_info *mtproxy_ffi_net_http_server_conn_info(connection_job_t c) {
+  return CONN_INFO(c);
+}
+
+int32_t mtproxy_ffi_net_http_server_now(void) { return now; }
+
+int hts_default_execute(connection_job_t c, struct raw_message *raw, int op) {
+  return mtproxy_ffi_net_http_server_hts_default_execute(c, raw, op);
+}
+
+int hts_init_accepted(connection_job_t c) {
+  return mtproxy_ffi_net_http_server_hts_init_accepted(c);
+}
+
+int hts_close_connection(connection_job_t c, int who) {
+  return mtproxy_ffi_net_http_server_hts_close_connection(c, who);
+}
+
+int write_http_error_raw(connection_job_t c, struct raw_message *raw, int code) {
+  return mtproxy_ffi_net_http_server_write_http_error_raw(c, raw, code);
+}
+
+int write_http_error(connection_job_t c, int code) {
+  return mtproxy_ffi_net_http_server_write_http_error(c, code);
+}
+
+int hts_write_packet(connection_job_t c, struct raw_message *raw) {
+  return mtproxy_ffi_net_http_server_hts_write_packet(c, raw);
+}
+
+int hts_parse_execute(connection_job_t c) {
+  return mtproxy_ffi_net_http_server_hts_parse_execute(c);
+}
+
+int hts_std_wakeup(connection_job_t c) {
+  return mtproxy_ffi_net_http_server_hts_std_wakeup(c);
+}
+
+int hts_std_alarm(connection_job_t c) {
+  return mtproxy_ffi_net_http_server_hts_std_alarm(c);
+}
+
+int hts_do_wakeup(connection_job_t c) {
+  return mtproxy_ffi_net_http_server_hts_do_wakeup(c);
+}
+
+void gen_http_date(char date_buffer[HTTP_DATE_LEN], int time) {
+  mtproxy_ffi_net_http_server_gen_http_date(date_buffer, time);
+}
+
+char *cur_http_date(void) { return mtproxy_ffi_net_http_server_cur_http_date(); }
+
+int get_http_header(const char *qHeaders, const int qHeadersLen, char *buffer,
+                    int b_len, const char *arg_name, const int arg_len) {
+  return mtproxy_ffi_net_http_server_get_http_header(
+      qHeaders, qHeadersLen, buffer, b_len, arg_name, arg_len);
+}
+
+int write_basic_http_header_raw(connection_job_t c, struct raw_message *raw,
+                                int code, int date, int len,
+                                const char *add_header,
+                                const char *content_type) {
+  return mtproxy_ffi_net_http_server_write_basic_http_header_raw(
+      c, raw, code, date, len, add_header, content_type);
+}
+
+void http_flush(connection_job_t c, struct raw_message *raw) {
+  mtproxy_ffi_net_http_server_http_flush(c, raw);
+}
 
 conn_type_t ct_http_server = {.magic = CONN_FUNC_MAGIC,
                               .title = "http_server",
@@ -85,677 +152,8 @@ conn_type_t ct_http_server = {.magic = CONN_FUNC_MAGIC,
                               .alarm = hts_std_alarm,
                               .write_packet = hts_write_packet};
 
-enum http_query_parse_state {
-  htqp_start,
-  htqp_readtospace,
-  htqp_readtocolon,
-  htqp_readint,
-  htqp_skipspc,
-  htqp_skiptoeoln,
-  htqp_skipspctoeoln,
-  htqp_eoln,
-  htqp_wantlf,
-  htqp_wantlastlf,
-  htqp_linestart,
-  htqp_fatal,
-  htqp_done
+struct http_server_functions default_http_server = {
+    .execute = hts_default_execute,
+    .ht_wakeup = hts_do_wakeup,
+    .ht_alarm = hts_do_wakeup,
 };
-
-int hts_default_execute(connection_job_t c, struct raw_message *raw, int op);
-
-struct http_server_functions default_http_server = {.execute =
-                                                        hts_default_execute,
-                                                    .ht_wakeup = hts_do_wakeup,
-                                                    .ht_alarm = hts_do_wakeup};
-
-int hts_default_execute(connection_job_t c, struct raw_message *raw, int op) {
-  struct hts_data *D = HTS_DATA(c);
-
-  vkprintf(1, "http_server: op=%d, header_size=%d\n", op, D->header_size);
-
-  switch (op) {
-
-  case htqt_empty:
-    break;
-
-  case htqt_get:
-  case htqt_post:
-  case htqt_head:
-  case htqt_options:
-
-  default:
-    D->query_flags |= QF_ERROR;
-    break;
-  }
-
-  return D->data_size >= 0 ? -413 : -501;
-}
-
-int hts_init_accepted(connection_job_t c) {
-  http_connections++;
-  return 0;
-}
-
-int hts_close_connection(connection_job_t c, int who) {
-  http_connections--;
-  struct http_server_functions *funcs = HTS_FUNC(c);
-
-  if (funcs->ht_close != NULL) {
-    funcs->ht_close(c, who);
-  }
-
-  return cpu_server_close_connection(c, who);
-}
-
-static inline const char *http_get_error_msg_text(int *code) {
-  int32_t normalized = *code;
-  const char *message = mtproxy_ffi_net_http_error_msg_text(&normalized);
-  assert(message);
-  *code = normalized;
-  return message;
-}
-
-static const char error_text_pattern[] = "<html>\r\n"
-                                         "<head><title>%d %s</title></head>\r\n"
-                                         "<body bgcolor=\"white\">\r\n"
-                                         "<center><h1>%d %s</h1></center>\r\n"
-                                         "<hr><center>%s</center>\r\n"
-                                         "</body>\r\n"
-                                         "</html>\r\n";
-
-int write_http_error_raw(connection_job_t C, struct raw_message *raw,
-                         int code) {
-  if (code == 204) {
-    write_basic_http_header_raw(C, raw, code, 0, -1, 0, 0);
-    return 0;
-  } else {
-    static char buff[1024];
-    char *ptr = buff;
-    const char *error_message = http_get_error_msg_text(&code);
-    ptr += sprintf(ptr, error_text_pattern, code, error_message, code,
-                   error_message, http_server_version);
-    write_basic_http_header_raw(C, raw, code, 0, ptr - buff, 0, 0);
-    assert(rwm_push_data(raw, buff, ptr - buff) == ptr - buff);
-    return ptr - buff;
-  }
-}
-
-int write_http_error(connection_job_t C, int code) {
-  struct connection_info *c = CONN_INFO(C);
-  struct raw_message *raw = calloc(sizeof(*raw), 1);
-  rwm_init(raw, 0);
-  int r = write_http_error_raw(C, raw, code);
-
-  mpq_push_w(c->out_queue, raw, 0);
-  job_signal(JOB_REF_CREATE_PASS(C), JS_RUN);
-
-  return r;
-}
-
-int hts_write_packet(connection_job_t C, struct raw_message *raw) {
-  struct connection_info *c = CONN_INFO(C);
-  rwm_union(&c->out, raw);
-  return 0;
-}
-
-int hts_parse_execute(connection_job_t C) {
-  struct connection_info *c = CONN_INFO(C);
-  struct http_server_functions *funcs = HTS_FUNC(C);
-
-  struct hts_data *D = HTS_DATA(C);
-  char *ptr, *ptr_s, *ptr_e;
-  int len;
-  long long tt;
-
-  D->parse_state = htqp_start;
-
-  struct raw_message raw;
-  rwm_clone(&raw, &c->in);
-
-  while (c->status == conn_working && !c->pending_queries && raw.total_bytes) {
-    if (c->flags & (C_ERROR | C_STOPPARSE)) {
-      break;
-    }
-
-    len = rwm_get_block_ptr_bytes(&raw);
-    assert(len > 0);
-    ptr = ptr_s = rwm_get_block_ptr(&raw);
-    ptr_e = ptr + len;
-
-    assert(ptr);
-
-    while (ptr < ptr_e && D->parse_state != htqp_done) {
-      switch (D->parse_state) {
-      case htqp_start:
-        // fprintf (stderr, "htqp_start: ptr=%p (%.8s), hsize=%d, qf=%d,
-        // words=%d\n", ptr, ptr, D->header_size, D->query_flags,
-        // D->query_words);
-        memset(D, 0, offsetof(struct hts_data, query_seqno));
-        D->query_seqno++;
-        D->query_type = htqt_none;
-        D->data_size = -1;
-        D->parse_state = htqp_readtospace;
-
-      case htqp_readtospace:
-        // fprintf (stderr, "htqp_readtospace: ptr=%p (%.8s), hsize=%d, qf=%d,
-        // words=%d\n", ptr, ptr, D->header_size, D->query_flags,
-        // D->query_words);
-        while (ptr < ptr_e && ((unsigned)*ptr > ' ')) {
-          if (D->wlen < 15) {
-            D->word[D->wlen] = *ptr;
-          }
-          D->wlen++;
-          ptr++;
-        }
-        if (D->wlen > 4096) {
-          D->parse_state = htqp_fatal;
-          break;
-        }
-        if (ptr == ptr_e) {
-          break;
-        }
-        D->parse_state = htqp_skipspc;
-        D->query_words++;
-        if (D->query_words == 1) {
-          D->query_type = htqt_error;
-          if (D->wlen == 3 && !memcmp(D->word, "GET", 3)) {
-            D->query_type = htqt_get;
-          } else if (D->wlen == 4) {
-            if (!memcmp(D->word, "HEAD", 4)) {
-              D->query_type = htqt_head;
-            } else if (!memcmp(D->word, "POST", 4)) {
-              D->query_type = htqt_post;
-            }
-          } else if (D->wlen == 7 && !memcmp(D->word, "OPTIONS", 7)) {
-            D->query_type = htqt_options;
-          }
-          if (D->query_type == htqt_error) {
-            D->parse_state = htqp_skiptoeoln;
-            D->query_flags |= QF_ERROR;
-          }
-        } else if (D->query_words == 2) {
-          D->uri_offset = D->header_size;
-          D->uri_size = D->wlen;
-          if (!D->wlen) {
-            D->parse_state = htqp_skiptoeoln;
-            D->query_flags |= QF_ERROR;
-          }
-        } else if (D->query_words == 3) {
-          D->parse_state = htqp_skipspctoeoln;
-          if (D->wlen != 0) {
-            /* HTTP/x.y */
-            if (D->wlen != 8) {
-              D->parse_state = htqp_skiptoeoln;
-              D->query_flags |= QF_ERROR;
-            } else {
-              if (!memcmp(D->word, "HTTP/1.0", 8)) {
-                D->http_ver = HTTP_V10;
-              } else if (!memcmp(D->word, "HTTP/1.1", 8)) {
-                D->http_ver = HTTP_V11;
-              } else {
-                D->parse_state = htqp_skiptoeoln;
-                D->query_flags |= QF_ERROR;
-              }
-            }
-          } else {
-            D->http_ver = HTTP_V09;
-          }
-        } else {
-          assert(D->query_flags & (QF_HOST | QF_CONNECTION));
-          if (D->wlen) {
-            if (D->query_flags & QF_HOST) {
-              D->host_offset = D->header_size;
-              D->host_size = D->wlen;
-            } else if (D->wlen == 10 &&
-                       !strncasecmp(D->word, "keep-alive", 10)) {
-              D->query_flags |= QF_KEEPALIVE;
-            }
-          }
-          D->query_flags &= ~(QF_HOST | QF_CONNECTION);
-          D->parse_state = htqp_skipspctoeoln;
-        }
-        D->header_size += D->wlen;
-        break;
-
-      case htqp_skipspc:
-      case htqp_skipspctoeoln:
-        // fprintf (stderr, "htqp_skipspc[toeoln]: ptr=%p (%.8s), hsize=%d,
-        // qf=%d, words=%d\n", ptr, ptr, D->header_size, D->query_flags,
-        // D->query_words);
-        while (D->header_size < MAX_HTTP_HEADER_SIZE && ptr < ptr_e &&
-               (*ptr == ' ' || (*ptr == '\t' && D->query_words >= 8))) {
-          D->header_size++;
-          ptr++;
-        }
-        if (D->header_size >= MAX_HTTP_HEADER_SIZE) {
-          D->parse_state = htqp_fatal;
-          break;
-        }
-        if (ptr == ptr_e) {
-          break;
-        }
-        if (D->parse_state == htqp_skipspctoeoln) {
-          D->parse_state = htqp_eoln;
-          break;
-        }
-        if (D->query_words < 3) {
-          D->wlen = 0;
-          D->parse_state = htqp_readtospace;
-        } else {
-          assert(D->query_words >= 4);
-          if (D->query_flags & QF_DATASIZE) {
-            if (D->data_size != -1) {
-              D->parse_state = htqp_skiptoeoln;
-              D->query_flags |= QF_ERROR;
-            } else {
-              D->parse_state = htqp_readint;
-              D->data_size = 0;
-            }
-          } else if (D->query_flags & (QF_HOST | QF_CONNECTION)) {
-            D->wlen = 0;
-            D->parse_state = htqp_readtospace;
-          } else {
-            D->parse_state = htqp_skiptoeoln;
-          }
-        }
-        break;
-
-      case htqp_readtocolon:
-        // fprintf (stderr, "htqp_readtocolon: ptr=%p (%.8s), hsize=%d, qf=%d,
-        // words=%d\n", ptr, ptr, D->header_size, D->query_flags,
-        // D->query_words);
-        while (ptr < ptr_e && *ptr != ':' && *ptr > ' ') {
-          if (D->wlen < 15) {
-            D->word[D->wlen] = *ptr;
-          }
-          D->wlen++;
-          ptr++;
-        }
-        if (D->wlen > 4096) {
-          D->parse_state = htqp_fatal;
-          break;
-        }
-        if (ptr == ptr_e) {
-          break;
-        }
-
-        if (*ptr != ':') {
-          D->header_size += D->wlen;
-          D->parse_state = htqp_skiptoeoln;
-          D->query_flags |= QF_ERROR;
-          break;
-        }
-
-        ptr++;
-
-        if (D->wlen == 4 && !strncasecmp(D->word, "host", 4)) {
-          D->query_flags |= QF_HOST;
-        } else if (D->wlen == 10 && !strncasecmp(D->word, "connection", 10)) {
-          D->query_flags |= QF_CONNECTION;
-        } else if (D->wlen == 14 &&
-                   !strncasecmp(D->word, "content-length", 14)) {
-          D->query_flags |= QF_DATASIZE;
-        } else {
-          D->query_flags &= ~(QF_HOST | QF_DATASIZE | QF_CONNECTION);
-        }
-
-        D->header_size += D->wlen + 1;
-        D->parse_state = htqp_skipspc;
-        break;
-
-      case htqp_readint:
-        // fprintf (stderr, "htqp_readint: ptr=%p (%.8s), hsize=%d, qf=%d,
-        // words=%d\n", ptr, ptr, D->header_size, D->query_flags,
-        // D->query_words);
-
-        tt = D->data_size;
-        while (ptr < ptr_e && *ptr >= '0' && *ptr <= '9') {
-          if (tt >= 0x7fffffffL / 10) {
-            D->query_flags |= QF_ERROR;
-            D->parse_state = htqp_skiptoeoln;
-            break;
-          }
-          tt = tt * 10 + (*ptr - '0');
-          ptr++;
-          D->header_size++;
-          D->query_flags &= ~QF_DATASIZE;
-        }
-
-        D->data_size = tt;
-        if (ptr == ptr_e) {
-          break;
-        }
-
-        if (D->query_flags & QF_DATASIZE) {
-          D->query_flags |= QF_ERROR;
-          D->parse_state = htqp_skiptoeoln;
-        } else {
-          D->parse_state = htqp_skipspctoeoln;
-        }
-        break;
-
-      case htqp_skiptoeoln:
-        // fprintf (stderr, "htqp_skiptoeoln: ptr=%p (%.8s), hsize=%d, qf=%d,
-        // words=%d\n", ptr, ptr, D->header_size, D->query_flags,
-        // D->query_words);
-
-        while (D->header_size < MAX_HTTP_HEADER_SIZE && ptr < ptr_e &&
-               (*ptr != '\r' && *ptr != '\n')) {
-          D->header_size++;
-          ptr++;
-        }
-        if (D->header_size >= MAX_HTTP_HEADER_SIZE) {
-          D->parse_state = htqp_fatal;
-          break;
-        }
-        if (ptr == ptr_e) {
-          break;
-        }
-
-        D->parse_state = htqp_eoln;
-
-      case htqp_eoln:
-
-        if (ptr == ptr_e) {
-          break;
-        }
-        if (*ptr == '\r') {
-          ptr++;
-          D->header_size++;
-        }
-        D->parse_state = htqp_wantlf;
-
-      case htqp_wantlf:
-        // fprintf (stderr, "htqp_wantlf: ptr=%p (%.8s), hsize=%d, qf=%d,
-        // words=%d\n", ptr, ptr, D->header_size, D->query_flags,
-        // D->query_words);
-
-        if (ptr == ptr_e) {
-          break;
-        }
-        if (++D->query_words < 8) {
-          D->query_words = 8;
-          if (D->query_flags & QF_ERROR) {
-            D->parse_state = htqp_fatal;
-            break;
-          }
-        }
-
-        if (D->http_ver <= HTTP_V09) {
-          D->parse_state = htqp_wantlastlf;
-          break;
-        }
-
-        if (*ptr != '\n') {
-          D->query_flags |= QF_ERROR;
-          D->parse_state = htqp_skiptoeoln;
-          break;
-        }
-
-        ptr++;
-        D->header_size++;
-
-        D->parse_state = htqp_linestart;
-
-      case htqp_linestart:
-        // fprintf (stderr, "htqp_linestart: ptr=%p (%.8s), hsize=%d, qf=%d,
-        // words=%d\n", ptr, ptr, D->header_size, D->query_flags,
-        // D->query_words);
-
-        if (ptr == ptr_e) {
-          break;
-        }
-
-        if (!D->first_line_size) {
-          D->first_line_size = D->header_size;
-        }
-
-        if (*ptr == '\r') {
-          ptr++;
-          D->header_size++;
-          D->parse_state = htqp_wantlastlf;
-          break;
-        }
-        if (*ptr == '\n') {
-          D->parse_state = htqp_wantlastlf;
-          break;
-        }
-
-        if (D->query_flags & QF_ERROR) {
-          D->parse_state = htqp_skiptoeoln;
-        } else {
-          D->wlen = 0;
-          D->parse_state = htqp_readtocolon;
-        }
-        break;
-
-      case htqp_wantlastlf:
-        // fprintf (stderr, "htqp_wantlastlf: ptr=%p (%.8s), hsize=%d, qf=%d,
-        // words=%d\n", ptr, ptr, D->header_size, D->query_flags,
-        // D->query_words);
-
-        if (ptr == ptr_e) {
-          break;
-        }
-        if (*ptr != '\n') {
-          D->parse_state = htqp_fatal;
-          break;
-        }
-        ptr++;
-        D->header_size++;
-
-        if (!D->first_line_size) {
-          D->first_line_size = D->header_size;
-        }
-
-        D->parse_state = htqp_done;
-
-      case htqp_done:
-        // fprintf (stderr, "htqp_done: ptr=%p (%.8s), hsize=%d, qf=%d,
-        // words=%d\n", ptr, ptr, D->header_size, D->query_flags,
-        // D->query_words);
-        break;
-
-      case htqp_fatal:
-        // fprintf (stderr, "htqp_fatal: ptr=%p (%.8s), hsize=%d, qf=%d,
-        // words=%d\n", ptr, ptr, D->header_size, D->query_flags,
-        // D->query_words);
-        D->query_flags |= QF_ERROR;
-        D->parse_state = htqp_done;
-        break;
-
-      default:
-        assert(0);
-      }
-    }
-
-    len = ptr - ptr_s;
-    assert(rwm_skip_data(&raw, len) == len);
-
-    if (D->parse_state == htqp_done) {
-      if (D->header_size >= MAX_HTTP_HEADER_SIZE) {
-        D->query_flags |= QF_ERROR;
-      }
-      if (!(D->query_flags & QF_ERROR)) {
-        if (!funcs->execute) {
-          funcs->execute = hts_default_execute;
-        }
-
-        int res;
-        if (D->query_type == htqt_post && D->data_size < 0) {
-          // assert (rwm_skip_data (&c->in, D->header_size) == D->header_size);
-          res = -411;
-        } else if (D->query_type != htqt_post && D->data_size > 0) {
-          res = -413;
-        } else {
-          int bytes = D->header_size;
-          if (D->query_type == htqt_post) {
-            bytes += D->data_size;
-          }
-          struct raw_message r;
-          rwm_clone(&r, &c->in);
-          if (bytes < c->in.total_bytes) {
-            rwm_trunc(&r, bytes);
-          }
-
-          res = funcs->execute(C, &r, D->query_type);
-          rwm_free(&r);
-        }
-        http_queries++;
-        http_queries_size += D->header_size + D->data_size;
-        if (res > 0) {
-          // c->status = conn_reading_query;
-          rwm_free(&raw);
-          return res; // need more bytes
-        } else {
-          assert(rwm_skip_data(&c->in, D->header_size) == D->header_size);
-          if (res == SKIP_ALL_BYTES || !res) {
-            if (D->data_size > 0) {
-              int x = c->in.total_bytes;
-              int y = x > D->data_size ? D->data_size : x;
-              assert(rwm_skip_data(&c->in, y) == y);
-              if (y < x) {
-                D->parse_state = htqp_start;
-                return y - x;
-              }
-            }
-          } else {
-            if (res == -413) {
-              D->query_flags &= ~QF_KEEPALIVE;
-            }
-            write_http_error(C, -res);
-            D->query_flags &= ~QF_ERROR;
-          }
-        }
-      } else {
-        // fprintf (stderr, "[parse error]\n");
-        assert(rwm_skip_data(&c->in, D->header_size) == D->header_size);
-        http_bad_headers++;
-      }
-      if (D->query_flags & QF_ERROR) {
-        D->query_flags &= ~QF_KEEPALIVE;
-        write_http_error(C, 400);
-      }
-      if (!c->pending_queries && !(D->query_flags & QF_KEEPALIVE)) {
-        connection_write_close(C);
-        D->parse_state = -1;
-        return 0;
-      }
-      D->parse_state = htqp_start;
-      rwm_free(&raw);
-      rwm_clone(&raw, &c->in);
-    }
-  }
-
-  rwm_free(&raw);
-  return NEED_MORE_BYTES;
-}
-
-int hts_std_wakeup(connection_job_t c) {
-  struct connection_info *conn = CONN_INFO(c);
-  struct http_server_functions *funcs = HTS_FUNC(c);
-  if (funcs->ht_wakeup) {
-    funcs->ht_wakeup(c);
-  }
-  conn->generation = new_conn_generation();
-  return 0;
-}
-
-int hts_std_alarm(connection_job_t c) {
-  struct connection_info *conn = CONN_INFO(c);
-  struct http_server_functions *funcs = HTS_FUNC(c);
-  if (funcs->ht_alarm) {
-    funcs->ht_alarm(c);
-  }
-  conn->generation = new_conn_generation();
-  return 0;
-}
-
-int hts_do_wakeup(connection_job_t c) {
-  assert(0);
-  return 0;
-}
-
-/*
- *
- *                USEFUL HTTP FUNCTIONS
- *
- */
-
-char now_date_string[] = "Thu, 01 Jan 1970 00:00:00 GMT";
-int now_date_utime;
-
-void gen_http_date(char date_buffer[HTTP_DATE_LEN], int time) {
-  int32_t rc = mtproxy_ffi_net_http_gen_date(date_buffer, HTTP_DATE_LEN, time);
-  assert(rc == 0);
-}
-
-char *cur_http_date(void) {
-  if (now_date_utime != now) {
-    gen_http_date(now_date_string, now_date_utime = now);
-  }
-  return now_date_string;
-}
-
-int get_http_header(const char *qHeaders, const int qHeadersLen, char *buffer,
-                    int b_len, const char *arg_name, const int arg_len) {
-  return mtproxy_ffi_net_http_get_header(qHeaders, qHeadersLen, buffer, b_len,
-                                         arg_name, arg_len);
-}
-
-static const char header_pattern[] = "HTTP/1.1 %d %s\r\n"
-                                     "Server: %s\r\n"
-                                     "Date: %s\r\n"
-                                     "Content-Type: %.256s\r\n"
-                                     "Connection: %s\r\n%.1024s%.1024s";
-
-int write_basic_http_header_raw(connection_job_t C, struct raw_message *raw,
-                                int code, int date, int len,
-                                const char *add_header,
-                                const char *content_type) {
-  struct hts_data *D = HTS_DATA(C);
-
-  if (D->http_ver >= HTTP_V10 || D->http_ver == 0) {
-    static char buff[HTTP_HEADER_BUFFER_SIZE], date_buff[32];
-    char *ptr = buff;
-    const char *error_message = http_get_error_msg_text(&code);
-    if (date) {
-      gen_http_date(date_buff, date);
-    }
-    ptr += snprintf(ptr, HTTP_HEADER_BUFFER_SIZE - HTTP_HEADER_BUFFER_SLACK,
-                    header_pattern, code, error_message, http_server_version,
-                    date ? date_buff : cur_http_date(),
-                    content_type ? content_type : "text/html",
-                    (D->query_flags & QF_KEEPALIVE) ? "keep-alive" : "close",
-                    (D->query_flags & QF_EXTRA_HEADERS) &&
-                            extra_http_response_headers
-                        ? extra_http_response_headers
-                        : "",
-                    add_header ?: "");
-    D->query_flags &= ~QF_EXTRA_HEADERS;
-    assert(ptr < buff + HTTP_HEADER_BUFFER_SIZE - HTTP_HEADER_BUFFER_SLACK);
-    if (len >= 0) {
-      ptr += sprintf(ptr, "Content-Length: %d\r\n", len);
-    }
-
-    ptr += sprintf(ptr, "\r\n");
-
-    assert(rwm_push_data(raw, buff, ptr - buff) == ptr - buff);
-    return ptr - buff;
-  }
-
-  return 0;
-}
-
-void http_flush(connection_job_t C, struct raw_message *raw) {
-  struct connection_info *c = CONN_INFO(C);
-  if (raw) {
-    mpq_push_w(c->out_queue, raw, 0);
-  }
-  struct hts_data *D = HTS_DATA(C);
-  if (!c->pending_queries && !(D->query_flags & QF_KEEPALIVE)) {
-    connection_write_close(C);
-    D->parse_state = -1;
-  }
-  job_signal(JOB_REF_CREATE_PASS(C), JS_RUN);
-}
