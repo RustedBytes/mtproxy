@@ -751,6 +751,18 @@ int32_t mtproxy_ffi_net_tcp_rpc_client_start_crypto(
   int32_t temp_key_len
 );
 
+// net-tcp-rpc-server runtime: parser/callback/crypto path exported to C wrappers.
+int32_t mtproxy_ffi_net_tcp_rpc_server_default_execute(void *c, int32_t op, void *raw);
+int32_t mtproxy_ffi_net_tcp_rpc_server_parse_execute(void *c);
+int32_t mtproxy_ffi_net_tcp_rpc_server_wakeup(void *c);
+int32_t mtproxy_ffi_net_tcp_rpc_server_alarm(void *c);
+int32_t mtproxy_ffi_net_tcp_rpc_server_do_wakeup(void *c);
+int32_t mtproxy_ffi_net_tcp_rpc_server_init_accepted(void *c);
+int32_t mtproxy_ffi_net_tcp_rpc_server_close_connection(void *c, int32_t who);
+int32_t mtproxy_ffi_net_tcp_rpc_server_init_accepted_nohs(void *c);
+int32_t mtproxy_ffi_net_tcp_rpc_server_default_check_perm(void *c);
+int32_t mtproxy_ffi_net_tcp_rpc_server_init_crypto(void *c, void *packet);
+
 // net-tcp-rpc-server helpers: classifies malformed header and packet length state.
 int32_t mtproxy_ffi_tcp_rpc_server_packet_header_malformed(int32_t packet_len);
 int32_t mtproxy_ffi_tcp_rpc_server_packet_len_state(int32_t packet_len, int32_t max_packet_len);
