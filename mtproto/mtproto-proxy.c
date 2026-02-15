@@ -153,183 +153,65 @@ struct conn_target_info default_cfg_ct = {
  *
  */
 
-struct ext_connection {
-  struct ext_connection *o_prev, *o_next; // list of all with same out_fd
-  struct ext_connection *i_prev, *i_next; // list of all with same in_fd
-  struct ext_connection *h_next;          // next in hash on (in_fd, in_conn_id)
-  int in_fd, in_gen;
-  int out_fd, out_gen;
-  long long in_conn_id;
-  long long out_conn_id;
-  long long auth_key_id;
-  struct ext_connection *lru_prev, *lru_next;
-};
-
-struct ext_connection_ref {
-  struct ext_connection *ref;
-  long long out_conn_id;
-};
-
-long long ext_connections, ext_connections_created;
-
-struct ext_connection_ref OutExtConnections[EXT_CONN_TABLE_SIZE];
-struct ext_connection *InExtConnectionHash[EXT_CONN_HASH_SIZE];
-struct ext_connection ExtConnectionHead[MAX_CONNECTIONS];
-
-void lru_delete_ext_conn(struct ext_connection *Ext);
+typedef mtproxy_ffi_mtproto_ext_connection_t ext_connection_t;
 
 static inline void check_engine_class(void) { check_thread_class(JC_ENGINE); }
 
-static inline int ext_conn_hash(int in_fd, long long in_conn_id) {
-  int h =
-      mtproxy_ffi_mtproto_ext_conn_hash(in_fd, in_conn_id, EXT_CONN_HASH_SHIFT);
-  assert((unsigned)h < EXT_CONN_HASH_SIZE);
-  return h;
+static inline void ext_conn_fetch_counts(long long *current,
+                                         long long *created) {
+  int64_t cur = 0;
+  int64_t cre = 0;
+  int32_t rc = mtproxy_ffi_mtproto_ext_conn_counts(&cur, &cre);
+  if (rc < 0) {
+    *current = 0;
+    *created = 0;
+    return;
+  }
+  *current = cur;
+  *created = cre;
 }
 
-// Makes sense only for inbound client-side connections.
-// returns the only ext_connection with given in_fd
-struct ext_connection *get_ext_connection_by_in_fd(int in_fd) {
+static inline int get_ext_connection_by_in_fd(int in_fd,
+                                              ext_connection_t *Ex) {
   check_engine_class();
   assert((unsigned)in_fd < MAX_CONNECTIONS);
-  struct ext_connection *H = &ExtConnectionHead[in_fd];
-  struct ext_connection *Ex = H->i_next;
-  assert(H->i_next == H->i_prev);
-  if (!Ex || Ex == H) {
-    return 0;
-  }
-  assert(Ex->in_fd == in_fd);
-  return Ex;
+  int32_t rc = mtproxy_ffi_mtproto_ext_conn_get_by_in_fd(in_fd, Ex);
+  assert(rc >= 0);
+  return rc > 0;
 }
 
-// mode: 0 = find, 1 = delete, 2 = create if not found, 3 = find or create
-struct ext_connection *get_ext_connection_by_in_conn_id(int in_fd, int in_gen,
-                                                        long long in_conn_id,
-                                                        int mode,
-                                                        int *created) {
+static inline int
+find_ext_connection_by_out_conn_id(long long out_conn_id, ext_connection_t *Ex) {
   check_engine_class();
-  int h = ext_conn_hash(in_fd, in_conn_id);
-  struct ext_connection **prev = &InExtConnectionHash[h], *cur = *prev;
-  for (; cur; cur = *prev) {
-    if (cur->in_fd == in_fd && cur->in_conn_id == in_conn_id) {
-      assert(cur->out_conn_id);
-      if (mode == 0 || mode == 3) {
-        return cur;
-      }
-      if (mode != 1) {
-        return 0;
-      }
-      if (cur->i_next) {
-        cur->i_next->i_prev = cur->i_prev;
-        cur->i_prev->i_next = cur->i_next;
-        cur->i_next = cur->i_prev = 0;
-      }
-      if (cur->o_next) {
-        cur->o_next->o_prev = cur->o_prev;
-        cur->o_prev->o_next = cur->o_next;
-        cur->o_next = cur->o_prev = 0;
-      }
-      lru_delete_ext_conn(cur);
-      *prev = cur->h_next;
-      cur->h_next = 0;
-      int h = cur->out_conn_id & (EXT_CONN_TABLE_SIZE - 1);
-      assert(OutExtConnections[h].ref == cur);
-      assert(OutExtConnections[h].out_conn_id == cur->out_conn_id);
-      OutExtConnections[h].ref = 0;
-      cur->out_conn_id = 0;
-      memset(cur, 0, sizeof(struct ext_connection));
-      free(cur);
-      ext_connections--;
-      return (void *)-1L;
-    }
-    prev = &(cur->h_next);
-  }
-  if (mode != 2 && mode != 3) {
-    return 0;
-  }
-  assert(ext_connections < EXT_CONN_TABLE_SIZE / 2);
-  cur = calloc(sizeof(struct ext_connection), 1);
-  assert(cur);
-  cur->h_next = InExtConnectionHash[h];
-  InExtConnectionHash[h] = cur;
-  cur->in_fd = in_fd;
-  cur->in_gen = in_gen;
-  cur->in_conn_id = in_conn_id;
-  assert((unsigned)in_fd < MAX_CONNECTIONS);
-  if (in_fd) {
-    struct ext_connection *H = &ExtConnectionHead[in_fd];
-    if (!H->i_next) {
-      H->i_next = H->i_prev = H;
-    }
-    assert(H->i_next == H);
-    cur->i_next = H;
-    cur->i_prev = H->i_prev;
-    H->i_prev->i_next = cur;
-    H->i_prev = cur;
-  }
-  h = in_conn_id ? lrand48() : in_fd;
-  while (OutExtConnections[h &= (EXT_CONN_TABLE_SIZE - 1)].ref) {
-    h = lrand48();
-  }
-  OutExtConnections[h].ref = cur;
-  cur->out_conn_id = OutExtConnections[h].out_conn_id =
-      (OutExtConnections[h].out_conn_id | (EXT_CONN_TABLE_SIZE - 1)) + 1 + h;
-  assert(cur->out_conn_id);
-  if (created) {
-    ++*created;
-  }
-  ext_connections++;
-  ext_connections_created++;
-  return cur;
-}
-
-struct ext_connection *
-find_ext_connection_by_out_conn_id(long long out_conn_id) {
-  check_engine_class();
-  int h = out_conn_id & (EXT_CONN_TABLE_SIZE - 1);
-  struct ext_connection *cur = OutExtConnections[h].ref;
-  if (!cur || OutExtConnections[h].out_conn_id != out_conn_id) {
-    return 0;
-  }
-  assert(cur->out_conn_id == out_conn_id);
-  return cur;
+  int32_t rc = mtproxy_ffi_mtproto_ext_conn_get_by_out_conn_id(out_conn_id, Ex);
+  assert(rc >= 0);
+  return rc > 0;
 }
 
 // MUST be new
-struct ext_connection *create_ext_connection(connection_job_t CI,
-                                             long long in_conn_id,
-                                             connection_job_t CO,
-                                             long long auth_key_id) {
+static int create_ext_connection(connection_job_t CI, long long in_conn_id,
+                                 connection_job_t CO, long long auth_key_id,
+                                 ext_connection_t *Ex) {
   check_engine_class();
-  struct ext_connection *Ex = get_ext_connection_by_in_conn_id(
-      CONN_INFO(CI)->fd, CONN_INFO(CI)->generation, in_conn_id, 2, 0);
-  assert(Ex && "ext_connection already exists");
-  assert(!Ex->out_fd && !Ex->o_next && !Ex->auth_key_id);
+  int out_fd = CO ? CONN_INFO(CO)->fd : 0;
+  int out_gen = CO ? CONN_INFO(CO)->generation : 0;
   assert(!CO || (unsigned)CONN_INFO(CO)->fd < MAX_CONNECTIONS);
   assert(CO != CI);
-  if (CO) {
-    struct ext_connection *H = &ExtConnectionHead[CONN_INFO(CO)->fd];
-    assert(H->o_next);
-    Ex->o_next = H;
-    Ex->o_prev = H->o_prev;
-    H->o_prev->o_next = Ex;
-    H->o_prev = Ex;
-    Ex->out_fd = CONN_INFO(CO)->fd;
-    Ex->out_gen = CONN_INFO(CO)->generation;
-  }
-  Ex->auth_key_id = auth_key_id;
-  return Ex;
+  int32_t rc = mtproxy_ffi_mtproto_ext_conn_create(
+      CONN_INFO(CI)->fd, CONN_INFO(CI)->generation, in_conn_id, out_fd, out_gen,
+      auth_key_id, Ex);
+  assert(rc >= 0);
+  return rc > 0;
 }
 
 static int _notify_remote_closed(JOB_REF_ARG(C), long long out_conn_id);
 
-void remove_ext_connection(struct ext_connection *Ex, int send_notifications) {
+static void notify_ext_connection(const ext_connection_t *Ex,
+                                  int send_notifications) {
   assert(Ex);
   assert(Ex->out_conn_id);
-  assert(Ex == find_ext_connection_by_out_conn_id(Ex->out_conn_id));
   if (Ex->out_fd) {
     assert((unsigned)Ex->out_fd < MAX_CONNECTIONS);
-    assert(Ex->o_next);
     if (send_notifications & 1) {
       connection_job_t CO =
           connection_get_by_fd_generation(Ex->out_fd, Ex->out_gen);
@@ -340,7 +222,6 @@ void remove_ext_connection(struct ext_connection *Ex, int send_notifications) {
   }
   if (Ex->in_fd) {
     assert((unsigned)Ex->in_fd < MAX_CONNECTIONS);
-    assert(Ex->i_next);
     if (send_notifications & 2) {
       connection_job_t CI =
           connection_get_by_fd_generation(Ex->in_fd, Ex->in_gen);
@@ -354,8 +235,21 @@ void remove_ext_connection(struct ext_connection *Ex, int send_notifications) {
       }
     }
   }
-  assert(get_ext_connection_by_in_conn_id(Ex->in_fd, Ex->in_gen, Ex->in_conn_id,
-                                          1, 0) == (void *)-1L);
+}
+
+void remove_ext_connection(const ext_connection_t *Ex, int send_notifications) {
+  assert(Ex);
+  assert(Ex->out_conn_id);
+  ext_connection_t cur;
+  if (!find_ext_connection_by_out_conn_id(Ex->out_conn_id, &cur)) {
+    return;
+  }
+  notify_ext_connection(&cur, send_notifications);
+  ext_connection_t removed = {0};
+  int32_t rc =
+      mtproxy_ffi_mtproto_ext_conn_remove_by_out_conn_id(cur.out_conn_id,
+                                                         &removed);
+  assert(rc >= 0);
 }
 
 /*
@@ -442,8 +336,7 @@ static void update_local_stats_copy(struct worker_stats *S) {
   S->mtproto_proxy_errors = mtproto_proxy_errors;
   S->connections_failed_lru = connections_failed_lru;
   S->connections_failed_flood = connections_failed_flood;
-  S->ext_connections = ext_connections;
-  S->ext_connections_created = ext_connections_created;
+  ext_conn_fetch_counts(&S->ext_connections, &S->ext_connections_created);
   S->http_queries = http_queries;
   S->http_bad_headers = http_bad_headers;
 
@@ -577,11 +470,13 @@ void mtfront_prepare_stats(stats_buffer_t *sb) {
   long long tot_dh_rounds[3];
   int allocated_aes_crypto, allocated_aes_crypto_temp;
   int uptime = now - start_time;
+  long long ext_connections = 0, ext_connections_created = 0;
   compute_stats_sum();
   fetch_connections_stat(&conn);
   fetch_buffers_stat(&bufs);
   fetch_tot_dh_rounds_stat(tot_dh_rounds);
   fetch_aes_crypto_stat(&allocated_aes_crypto, &allocated_aes_crypto_temp);
+  ext_conn_fetch_counts(&ext_connections, &ext_connections_created);
 
   sb_prepare(sb);
   sb_memory(sb, AM_GET_MEMORY_USAGE_SELF);
@@ -867,39 +762,35 @@ int process_client_packet(struct tl_in_state *tlio_in, connection_job_t C) {
     return 0;
   }
 
-  mtproxy_ffi_mtproto_client_packet_parse_result_t parsed = {0};
-  int32_t parse_rc =
-      mtproxy_ffi_mtproto_parse_client_packet(buf, (size_t)len, &parsed);
+  mtproxy_ffi_mtproto_client_packet_process_result_t planned = {0};
+  int32_t parse_rc = mtproxy_ffi_mtproto_process_client_packet(
+      buf, (size_t)len, CONN_INFO(C)->fd, CONN_INFO(C)->generation, &planned);
   free(buf);
   if (parse_rc < 0) {
     return 0;
   }
 
-  switch (parsed.kind) {
-  case MTPROXY_FFI_MTPROTO_CLIENT_PACKET_KIND_PROXY_ANS: {
-    if (parsed.payload_offset < 0 || parsed.payload_offset > len) {
+  switch (planned.kind) {
+  case MTPROXY_FFI_MTPROTO_CLIENT_PACKET_ACTION_PROXY_ANS_FORWARD: {
+    if (planned.payload_offset < 0 || planned.payload_offset > len) {
       return 0;
     }
-    int payload_offset = parsed.payload_offset;
+    int payload_offset = planned.payload_offset;
     tl_fetch_skip(payload_offset);
-    int flags = parsed.flags;
-    long long out_conn_id = parsed.out_conn_id;
+    int flags = planned.flags;
+    long long out_conn_id = planned.out_conn_id;
     assert(tl_fetch_unread() == len - payload_offset);
     vkprintf(2,
              "got RPC_PROXY_ANS from connection %d:%llx, data size = %d, "
              "flags = %d\n",
              CONN_INFO(C)->fd, out_conn_id, tl_fetch_unread(), flags);
-    struct ext_connection *Ex = find_ext_connection_by_out_conn_id(out_conn_id);
-    connection_job_t D = 0;
-    if (Ex && Ex->out_fd == CONN_INFO(C)->fd &&
-        Ex->out_gen == CONN_INFO(C)->generation) {
-      D = connection_get_by_fd_generation(Ex->in_fd, Ex->in_gen);
-    }
+    connection_job_t D =
+        connection_get_by_fd_generation(planned.in_fd, planned.in_gen);
     if (D) {
-      vkprintf(2, "proxying answer into connection %d:%llx\n", Ex->in_fd,
-               Ex->in_conn_id);
+      vkprintf(2, "proxying answer into connection %d:%llx\n", planned.in_fd,
+               (unsigned long long)planned.in_conn_id);
       tot_forwarded_responses++;
-      client_send_message(JOB_REF_PASS(D), Ex->in_conn_id, tlio_in, flags);
+      client_send_message(JOB_REF_PASS(D), planned.in_conn_id, tlio_in, flags);
     } else {
       vkprintf(2, "external connection not found, dropping proxied answer\n");
       dropped_responses++;
@@ -907,21 +798,23 @@ int process_client_packet(struct tl_in_state *tlio_in, connection_job_t C) {
     }
     return 1;
   }
-  case MTPROXY_FFI_MTPROTO_CLIENT_PACKET_KIND_SIMPLE_ACK: {
-    long long out_conn_id = parsed.out_conn_id;
-    int confirm = parsed.confirm;
+  case MTPROXY_FFI_MTPROTO_CLIENT_PACKET_ACTION_PROXY_ANS_NOTIFY_CLOSE: {
+    vkprintf(2, "external connection not found, dropping proxied answer\n");
+    dropped_responses++;
+    _notify_remote_closed(JOB_REF_CREATE_PASS(C), planned.out_conn_id);
+    return 1;
+  }
+  case MTPROXY_FFI_MTPROTO_CLIENT_PACKET_ACTION_SIMPLE_ACK_FORWARD: {
+    long long out_conn_id = planned.out_conn_id;
+    int confirm = planned.confirm;
     vkprintf(2, "got RPC_SIMPLE_ACK for connection = %llx, value %08x\n",
              out_conn_id, confirm);
-    struct ext_connection *Ex = find_ext_connection_by_out_conn_id(out_conn_id);
-    connection_job_t D = 0;
-    if (Ex && Ex->out_fd == CONN_INFO(C)->fd &&
-        Ex->out_gen == CONN_INFO(C)->generation) {
-      D = connection_get_by_fd_generation(Ex->in_fd, Ex->in_gen);
-    }
+    connection_job_t D =
+        connection_get_by_fd_generation(planned.in_fd, planned.in_gen);
     if (D) {
       vkprintf(2, "proxying simple ack %08x into connection %d:%llx\n", confirm,
-               Ex->in_fd, Ex->in_conn_id);
-      if (Ex->in_conn_id) {
+               planned.in_fd, (unsigned long long)planned.in_conn_id);
+      if (planned.in_conn_id) {
         assert(0);
       } else {
         if (TCP_RPC_DATA(D)->flags & RPC_F_COMPACT) {
@@ -937,13 +830,30 @@ int process_client_packet(struct tl_in_state *tlio_in, connection_job_t C) {
     }
     return 1;
   }
-  case MTPROXY_FFI_MTPROTO_CLIENT_PACKET_KIND_CLOSE_EXT: {
-    long long out_conn_id = parsed.out_conn_id;
-    vkprintf(2, "got RPC_CLOSE_EXT for connection = %llx\n", out_conn_id);
-    struct ext_connection *Ex = find_ext_connection_by_out_conn_id(out_conn_id);
-    if (Ex) {
-      remove_ext_connection(Ex, 2);
-    }
+  case MTPROXY_FFI_MTPROTO_CLIENT_PACKET_ACTION_SIMPLE_ACK_NOTIFY_CLOSE: {
+    vkprintf(2, "external connection not found, dropping simple ack\n");
+    dropped_simple_acks++;
+    _notify_remote_closed(JOB_REF_CREATE_PASS(C), planned.out_conn_id);
+    return 1;
+  }
+  case MTPROXY_FFI_MTPROTO_CLIENT_PACKET_ACTION_CLOSE_EXT_REMOVED: {
+    vkprintf(2, "got RPC_CLOSE_EXT for connection = %llx\n",
+             (unsigned long long)planned.out_conn_id);
+    ext_connection_t Ex = {
+        .in_fd = planned.in_fd,
+        .in_gen = planned.in_gen,
+        .out_fd = planned.out_fd,
+        .out_gen = planned.out_gen,
+        .in_conn_id = planned.in_conn_id,
+        .out_conn_id = planned.out_conn_id,
+        .auth_key_id = planned.auth_key_id,
+    };
+    notify_ext_connection(&Ex, 2);
+    return 1;
+  }
+  case MTPROXY_FFI_MTPROTO_CLIENT_PACKET_ACTION_CLOSE_EXT_NOOP: {
+    vkprintf(2, "got RPC_CLOSE_EXT for unknown connection = %llx\n",
+             (unsigned long long)planned.out_conn_id);
     return 1;
   }
   default:
@@ -1033,11 +943,6 @@ int mtfront_client_ready(connection_job_t C) {
   vkprintf(1, "Connected to RPC Middle-End (fd=%d)\n", fd);
   rpcc_exists++;
 
-  struct ext_connection *H = &ExtConnectionHead[fd];
-  assert(!H->o_prev);
-  H->o_prev = H->o_next = H;
-  H->out_fd = fd;
-
   CONN_INFO(C)->last_response_time = precise_now;
   return 0;
 }
@@ -1050,16 +955,15 @@ int mtfront_client_close(connection_job_t C, int who) {
   vkprintf(1, "Disconnected from RPC Middle-End (fd=%d)\n", fd);
   if (D->extra_int) {
     assert(D->extra_int == get_conn_tag(C));
-    struct ext_connection *H = &ExtConnectionHead[fd], *Ex, *Ex_next;
-    assert(H->o_next);
-    for (Ex = H->o_next; Ex != H; Ex = Ex_next) {
-      Ex_next = Ex->o_next;
-      assert(Ex->out_fd == fd);
-      remove_ext_connection(Ex, 2);
+    ext_connection_t Ex;
+    for (;;) {
+      int32_t rc = mtproxy_ffi_mtproto_ext_conn_remove_any_by_out_fd(fd, &Ex);
+      assert(rc >= 0);
+      if (rc <= 0) {
+        break;
+      }
+      notify_ext_connection(&Ex, 2);
     }
-    assert(H->o_next == H && H->o_prev == H);
-    H->o_next = H->o_prev = 0;
-    H->out_fd = 0;
   }
   D->extra_int = 0;
   return 0;
@@ -1107,9 +1011,9 @@ int mtproto_proxy_rpc_close(connection_job_t C, int who);
 int do_close_in_ext_conn(void *_data, int s_len) {
   assert(s_len == 4);
   int fd = *(int *)_data;
-  struct ext_connection *Ex = get_ext_connection_by_in_fd(fd);
-  if (Ex) {
-    remove_ext_connection(Ex, 1);
+  ext_connection_t Ex;
+  if (get_ext_connection_by_in_fd(fd, &Ex)) {
+    remove_ext_connection(&Ex, 1);
   }
   return JOB_COMPLETED;
 }
@@ -1141,9 +1045,9 @@ int mtproto_ext_rpc_ready(connection_job_t C) {
 int mtproto_ext_rpc_close(connection_job_t C, int who) {
   assert((unsigned)CONN_INFO(C)->fd < MAX_CONNECTIONS);
   vkprintf(3, "ext_rpc connection closing (%d) by %d\n", CONN_INFO(C)->fd, who);
-  struct ext_connection *Ex = get_ext_connection_by_in_fd(CONN_INFO(C)->fd);
-  if (Ex) {
-    remove_ext_connection(Ex, 1);
+  ext_connection_t Ex;
+  if (get_ext_connection_by_in_fd(CONN_INFO(C)->fd, &Ex)) {
+    remove_ext_connection(&Ex, 1);
   }
   return 0;
 }
@@ -1154,10 +1058,6 @@ int mtproto_proxy_rpc_ready(connection_job_t C) {
   int fd = CONN_INFO(C)->fd;
   assert((unsigned)fd < MAX_CONNECTIONS);
   vkprintf(3, "proxy_rpc connection ready (%d)\n", fd);
-  struct ext_connection *H = &ExtConnectionHead[fd];
-  assert(!H->i_prev);
-  H->i_prev = H->i_next = H;
-  H->in_fd = fd;
   assert(!D->extra_int);
   D->extra_int = -get_conn_tag(C);
   lru_insert_conn(C);
@@ -1172,16 +1072,15 @@ int mtproto_proxy_rpc_close(connection_job_t C, int who) {
   vkprintf(3, "proxy_rpc connection closing (%d) by %d\n", fd, who);
   if (D->extra_int) {
     assert(D->extra_int == -get_conn_tag(C));
-    struct ext_connection *H = &ExtConnectionHead[fd], *Ex, *Ex_next;
-    assert(H->i_next);
-    for (Ex = H->i_next; Ex != H; Ex = Ex_next) {
-      Ex_next = Ex->i_next;
-      assert(Ex->in_fd == fd);
-      remove_ext_connection(Ex, 1);
+    ext_connection_t Ex;
+    for (;;) {
+      int32_t rc = mtproxy_ffi_mtproto_ext_conn_remove_any_by_in_fd(fd, &Ex);
+      assert(rc >= 0);
+      if (rc <= 0) {
+        break;
+      }
+      notify_ext_connection(&Ex, 1);
     }
-    assert(H->i_next == H && H->i_prev == H);
-    H->i_next = H->i_prev = 0;
-    H->in_fd = 0;
   }
   D->extra_int = 0;
   return 0;
@@ -1638,22 +1537,30 @@ int http_send_message(JOB_REF_ARG(C), struct tl_in_state *tlio_in, int flags) {
     D->query_flags &= ~QF_KEEPALIVE;
     write_http_error(C, -error_code);
   } else {
-    char response_buffer[512];
+    int len = tl_fetch_unread();
+    size_t header_len = 0;
+    int32_t rc = mtproxy_ffi_mtproto_build_http_ok_header(
+        D->query_flags & QF_KEEPALIVE, D->query_flags & QF_EXTRA_HEADERS, len,
+        0, 0, &header_len);
+    if (rc < 0 || header_len > 0x7fffffffUL) {
+      return 0;
+    }
+    unsigned char *header = header_len ? malloc(header_len) : 0;
+    if (header_len && !header) {
+      return 0;
+    }
+    rc = mtproxy_ffi_mtproto_build_http_ok_header(
+        D->query_flags & QF_KEEPALIVE, D->query_flags & QF_EXTRA_HEADERS, len,
+        header, header_len, &header_len);
+    if (rc != 0) {
+      free(header);
+      return 0;
+    }
     {
       struct tl_out_state *tlio_out = tl_out_state_alloc();
       tls_init_tcp_raw_msg_unaligned(tlio_out, JOB_REF_CREATE_PASS(C), 0);
-      int len = tl_fetch_unread();
-      tl_store_raw_data(
-          response_buffer,
-          snprintf(
-              response_buffer, sizeof(response_buffer) - 1,
-              "HTTP/1.1 200 OK\r\nConnection: %s\r\nContent-type: "
-              "application/octet-stream\r\nPragma: no-cache\r\nCache-control: "
-              "no-store\r\n%sContent-length: %d\r\n\r\n",
-              (D->query_flags & QF_KEEPALIVE) ? "keep-alive" : "close",
-              D->query_flags & QF_EXTRA_HEADERS ? mtproto_cors_http_headers
-                                                : "",
-              len));
+      tl_store_raw_data(header, (int)header_len);
+      free(header);
       assert(tl_copy_through_rust(tlio_in, tlio_out, len, 1) == len);
       tl_store_end_ext(0);
       tl_out_state_free(tlio_out);
@@ -1666,9 +1573,9 @@ int http_send_message(JOB_REF_ARG(C), struct tl_in_state *tlio_in, int flags) {
   assert((unsigned)CONN_INFO(C)->fd < MAX_CONNECTIONS);
   vkprintf(3, "detaching http connection (%d)\n", CONN_INFO(C)->fd);
 
-  struct ext_connection *Ex = get_ext_connection_by_in_fd(CONN_INFO(C)->fd);
-  if (Ex) {
-    remove_ext_connection(Ex, 1);
+  ext_connection_t Ex;
+  if (get_ext_connection_by_in_fd(CONN_INFO(C)->fd, &Ex)) {
+    remove_ext_connection(&Ex, 1);
   }
 
   // reference to C is passed to the new job
@@ -1695,8 +1602,9 @@ int client_send_message(JOB_REF_ARG(C), long long in_conn_id,
   {
     struct tl_out_state *tlio_out = tl_out_state_alloc();
     tls_init_tcp_raw_msg(tlio_out, JOB_REF_CREATE_PASS(C), 0);
-    assert(tl_copy_through_rust(tlio_in, tlio_out, tl_fetch_unread(), 1) >= 0);
-    tl_store_end_ext(0);
+    int32_t rc =
+        mtproxy_ffi_mtproto_client_send_non_http_wrap(tlio_in, tlio_out);
+    assert(rc == 0);
     tl_out_state_free(tlio_out);
   }
 
@@ -1795,7 +1703,11 @@ int forward_tcp_query(struct tl_in_state *tlio_in, connection_job_t c,
                       int remote_ip_port[5], int our_ip_port[5]) {
   connection_job_t d = 0;
   int c_fd = CONN_INFO(c)->fd;
-  struct ext_connection *Ex = get_ext_connection_by_in_fd(c_fd);
+  ext_connection_t ExStorage = {0};
+  ext_connection_t *Ex = 0;
+  if (get_ext_connection_by_in_fd(c_fd, &ExStorage)) {
+    Ex = &ExStorage;
+  }
 
   if (CONN_INFO(c)->type == &ct_tcp_rpc_ext_server_mtfront) {
     flags |= TCP_RPC_DATA(c)->flags & RPC_F_DROPPED;
@@ -1805,6 +1717,9 @@ int forward_tcp_query(struct tl_in_state *tlio_in, connection_job_t c,
   }
 
   if (Ex && Ex->auth_key_id != auth_key_id) {
+    int32_t update_rc = mtproxy_ffi_mtproto_ext_conn_update_auth_key(
+        Ex->in_fd, Ex->in_conn_id, auth_key_id);
+    assert(update_rc >= 0);
     Ex->auth_key_id = auth_key_id;
   }
 
@@ -1848,7 +1763,12 @@ int forward_tcp_query(struct tl_in_state *tlio_in, connection_job_t c,
       fail_connection(c, -35);
       return 0;
     }
-    Ex = create_ext_connection(c, 0, d, auth_key_id);
+    if (!create_ext_connection(c, 0, d, auth_key_id, &ExStorage)) {
+      job_decref(JOB_REF_PASS(d));
+      dropped_queries++;
+      return 0;
+    }
+    Ex = &ExStorage;
   }
 
   tot_forwarded_queries++;
@@ -1858,69 +1778,109 @@ int forward_tcp_query(struct tl_in_state *tlio_in, connection_job_t c,
   vkprintf(3,
            "forwarding user query from connection %d~%d (ext_conn_id %llx) "
            "into connection %d~%d (ext_conn_id %llx)\n",
-           Ex->in_fd, Ex->in_gen, Ex->in_conn_id, Ex->out_fd, Ex->out_gen,
-           Ex->out_conn_id);
+           Ex->in_fd, Ex->in_gen, (unsigned long long)Ex->in_conn_id,
+           Ex->out_fd, Ex->out_gen, (unsigned long long)Ex->out_conn_id);
 
   if (proxy_tag_set) {
     flags |= 8;
   }
 
-  struct tl_out_state *tlio_out = tl_out_state_alloc();
-  tls_init_tcp_raw_msg(tlio_out, JOB_REF_PASS(d), 0);
+  int payload_len = tl_fetch_unread();
+  if (payload_len < 0) {
+    job_decref(JOB_REF_PASS(d));
+    return 0;
+  }
+  unsigned char *payload = payload_len ? malloc((size_t)payload_len) : 0;
+  if (payload_len > 0 && !payload) {
+    job_decref(JOB_REF_PASS(d));
+    return 0;
+  }
+  if (payload_len > 0 && tl_fetch_lookup_data(payload, payload_len) != payload_len) {
+    free(payload);
+    job_decref(JOB_REF_PASS(d));
+    return 0;
+  }
 
-  tl_store_int(RPC_PROXY_REQ);
-  tl_store_int(flags);
-  tl_store_long(Ex->out_conn_id);
-
+  uint8_t remote_ipv6[16], our_ipv6[16];
+  int remote_port, our_port;
   if (remote_ip_port) {
-    tl_store_raw_data(remote_ip_port, 20);
+    memcpy(remote_ipv6, remote_ip_port, 16);
+    remote_port = remote_ip_port[4];
   } else {
     if (CONN_INFO(c)->remote_ip) {
-      tl_store_long(0);
-      tl_store_int(-0x10000);
-      tl_store_int(htonl(CONN_INFO(c)->remote_ip));
+      memset(remote_ipv6, 0, sizeof(remote_ipv6));
+      remote_ipv6[10] = 0xff;
+      remote_ipv6[11] = 0xff;
+      uint32_t remote_ipv4 = htonl(CONN_INFO(c)->remote_ip);
+      memcpy(remote_ipv6 + 12, &remote_ipv4, 4);
     } else {
-      tl_store_raw_data(CONN_INFO(c)->remote_ipv6, 16);
+      memcpy(remote_ipv6, CONN_INFO(c)->remote_ipv6, sizeof(remote_ipv6));
     }
-    tl_store_int(CONN_INFO(c)->remote_port);
+    remote_port = CONN_INFO(c)->remote_port;
   }
-
   if (our_ip_port) {
-    tl_store_raw_data(our_ip_port, 20);
+    memcpy(our_ipv6, our_ip_port, 16);
+    our_port = our_ip_port[4];
   } else {
     if (CONN_INFO(c)->our_ip) {
-      tl_store_long(0);
-      tl_store_int(-0x10000);
-      tl_store_int(htonl(nat_translate_ip(CONN_INFO(c)->our_ip)));
+      memset(our_ipv6, 0, sizeof(our_ipv6));
+      our_ipv6[10] = 0xff;
+      our_ipv6[11] = 0xff;
+      uint32_t our_ipv4 = htonl(nat_translate_ip(CONN_INFO(c)->our_ip));
+      memcpy(our_ipv6 + 12, &our_ipv4, 4);
     } else {
-      tl_store_raw_data(CONN_INFO(c)->our_ipv6, 16);
+      memcpy(our_ipv6, CONN_INFO(c)->our_ipv6, sizeof(our_ipv6));
     }
-    tl_store_int(CONN_INFO(c)->our_port);
+    our_port = CONN_INFO(c)->our_port;
   }
 
-  if (flags & 12) {
-    int *extra_size_ptr = tl_store_get_ptr(4);
-    int pos = tl_store_pos();
-    if (flags & 8) {
-      tl_store_int(TL_PROXY_TAG);
-      tl_store_string(proxy_tag, sizeof(proxy_tag));
-    }
-    if (flags & 4) {
-      tl_store_int(TL_HTTP_QUERY_INFO);
-      tl_store_string(cur_http_origin,
-                      cur_http_origin_len >= 0 ? cur_http_origin_len : 0);
-      tl_store_string(cur_http_referer,
-                      cur_http_referer_len >= 0 ? cur_http_referer_len : 0);
-      tl_store_string(cur_http_user_agent, cur_http_user_agent_len >= 0
-                                               ? cur_http_user_agent_len
-                                               : 0);
-    }
-    *extra_size_ptr = tl_store_pos() - pos;
+  const uint8_t *proxy_tag_ptr = 0;
+  size_t proxy_tag_len = 0;
+  if (flags & 8) {
+    proxy_tag_ptr = (const uint8_t *)proxy_tag;
+    proxy_tag_len = sizeof(proxy_tag);
+  }
+  size_t http_origin_len = (size_t)(cur_http_origin_len >= 0 ? cur_http_origin_len : 0);
+  size_t http_referer_len =
+      (size_t)(cur_http_referer_len >= 0 ? cur_http_referer_len : 0);
+  size_t http_user_agent_len =
+      (size_t)(cur_http_user_agent_len >= 0 ? cur_http_user_agent_len : 0);
+
+  size_t req_len = 0;
+  int32_t build_rc = mtproxy_ffi_mtproto_build_rpc_proxy_req(
+      flags, Ex->out_conn_id, remote_ipv6, remote_port, our_ipv6, our_port,
+      proxy_tag_ptr, proxy_tag_len, (const uint8_t *)cur_http_origin,
+      http_origin_len, (const uint8_t *)cur_http_referer, http_referer_len,
+      (const uint8_t *)cur_http_user_agent, http_user_agent_len, payload,
+      (size_t)payload_len, 0, 0, &req_len);
+  if (build_rc < 0) {
+    free(payload);
+    job_decref(JOB_REF_PASS(d));
+    return 0;
+  }
+  unsigned char *req = req_len ? malloc(req_len) : 0;
+  if (req_len > 0 && !req) {
+    free(payload);
+    job_decref(JOB_REF_PASS(d));
+    return 0;
+  }
+  build_rc = mtproxy_ffi_mtproto_build_rpc_proxy_req(
+      flags, Ex->out_conn_id, remote_ipv6, remote_port, our_ipv6, our_port,
+      proxy_tag_ptr, proxy_tag_len, (const uint8_t *)cur_http_origin,
+      http_origin_len, (const uint8_t *)cur_http_referer, http_referer_len,
+      (const uint8_t *)cur_http_user_agent, http_user_agent_len, payload,
+      (size_t)payload_len, req, req_len, &req_len);
+  free(payload);
+  if (build_rc != 0 || req_len > 0x7fffffff) {
+    free(req);
+    job_decref(JOB_REF_PASS(d));
+    return 0;
   }
 
-  int len = tl_fetch_unread();
-  assert(tl_copy_through_rust(tlio_in, tlio_out, len, 1) == len);
-
+  struct tl_out_state *tlio_out = tl_out_state_alloc();
+  tls_init_tcp_raw_msg(tlio_out, JOB_REF_PASS(d), 0);
+  tl_store_raw_data(req, (int)req_len);
+  free(req);
   tl_store_end_ext(0);
   tl_out_state_free(tlio_out);
 
@@ -2004,37 +1964,15 @@ struct tl_act_extra *mtfront_parse_function(struct tl_in_state *tlio_in,
 
 /* ------------------------ FLOOD CONTROL -------------------------- */
 
-struct ext_connection ConnLRU = {.lru_prev = &ConnLRU, .lru_next = &ConnLRU};
-
-void lru_delete_ext_conn(struct ext_connection *Ext) {
-  if (Ext->lru_next) {
-    Ext->lru_next->lru_prev = Ext->lru_prev;
-    Ext->lru_prev->lru_next = Ext->lru_next;
-  }
-  Ext->lru_next = Ext->lru_prev = 0;
-}
-
-void lru_insert_ext_conn(struct ext_connection *Ext) {
-  lru_delete_ext_conn(Ext);
-  Ext->lru_prev = ConnLRU.lru_prev;
-  Ext->lru_next = &ConnLRU;
-  Ext->lru_next->lru_prev = Ext;
-  Ext->lru_prev->lru_next = Ext;
-}
-
 void lru_delete_conn(connection_job_t c) {
-  struct ext_connection *Ext = get_ext_connection_by_in_fd(CONN_INFO(c)->fd);
-  if (Ext && Ext->in_fd == CONN_INFO(c)->fd) {
-    lru_delete_ext_conn(Ext);
-  }
+  int32_t rc = mtproxy_ffi_mtproto_ext_conn_lru_delete(CONN_INFO(c)->fd);
+  assert(rc >= 0);
 }
 
 void lru_insert_conn(connection_job_t c) {
-  struct ext_connection *Ext = get_ext_connection_by_in_fd(CONN_INFO(c)->fd);
-  if (Ext && Ext->in_fd == CONN_INFO(c)->fd &&
-      Ext->in_gen == CONN_INFO(c)->generation) {
-    lru_insert_ext_conn(Ext);
-  }
+  int32_t rc = mtproxy_ffi_mtproto_ext_conn_lru_insert(CONN_INFO(c)->fd,
+                                                        CONN_INFO(c)->generation);
+  assert(rc >= 0);
 }
 
 void check_all_conn_buffers(void) {
@@ -2043,15 +1981,19 @@ void check_all_conn_buffers(void) {
   long long max_buffer_memory =
       bufs.max_buffer_chunks * (long long)MSG_BUFFERS_CHUNK_SIZE;
   long long to_free = bufs.total_used_buffers_size - max_buffer_memory * 3 / 4;
-  while (to_free > 0 && ConnLRU.lru_next != &ConnLRU) {
-    struct ext_connection *Ext = ConnLRU.lru_next;
+  while (to_free > 0) {
+    ext_connection_t Ext = {0};
+    int32_t pop_rc = mtproxy_ffi_mtproto_ext_conn_lru_pop_oldest(&Ext);
+    assert(pop_rc >= 0);
+    if (pop_rc <= 0) {
+      break;
+    }
     vkprintf(2,
              "check_all_conn_buffers(): closing connection %d because of %lld "
              "total used buffer vytes (%lld max, %lld bytes to free)\n",
-             Ext->in_fd, bufs.total_used_buffers_size, max_buffer_memory,
-             to_free);
+             Ext.in_fd, bufs.total_used_buffers_size, max_buffer_memory, to_free);
     connection_job_t d =
-        connection_get_by_fd_generation(Ext->in_fd, Ext->in_gen);
+        connection_get_by_fd_generation(Ext.in_fd, Ext.in_gen);
     if (d) {
       int tot_used_bytes =
           CONN_INFO(d)->in.total_bytes + CONN_INFO(d)->in_u.total_bytes +
@@ -2060,7 +2002,6 @@ void check_all_conn_buffers(void) {
       fail_connection(d, -500);
       job_decref(JOB_REF_PASS(d));
     }
-    lru_delete_ext_conn(Ext);
     ++connections_failed_lru;
   }
 }
@@ -2433,6 +2374,7 @@ void mtfront_parse_extra_args(int argc, char *argv[]) {
 // executed BEFORE dropping privileges
 void mtfront_pre_init(void) {
   init_ct_server_mtfront();
+  mtproxy_ffi_mtproto_ext_conn_reset();
 
 #ifdef USE_RUST_FFI
   if (rust_ffi_startup_check() < 0) {

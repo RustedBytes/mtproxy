@@ -146,6 +146,200 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_parse_client_packet(
     unsafe { mtproto_parse_client_packet_ffi(data, len, out) }
 }
 
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_process_client_packet(
+    data: *const u8,
+    len: usize,
+    conn_fd: c_int,
+    conn_gen: c_int,
+    out: *mut MtproxyMtprotoClientPacketProcessResult,
+) -> i32 {
+    unsafe { mtproto_process_client_packet_ffi(data, len, conn_fd, conn_gen, out) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_conn_reset() {
+    unsafe { mtproto_ext_conn_reset_ffi() };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_conn_create(
+    in_fd: c_int,
+    in_gen: c_int,
+    in_conn_id: i64,
+    out_fd: c_int,
+    out_gen: c_int,
+    auth_key_id: i64,
+    out: *mut MtproxyMtprotoExtConnection,
+) -> i32 {
+    unsafe {
+        mtproto_ext_conn_create_ffi(in_fd, in_gen, in_conn_id, out_fd, out_gen, auth_key_id, out)
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_conn_get_by_in_fd(
+    in_fd: c_int,
+    out: *mut MtproxyMtprotoExtConnection,
+) -> i32 {
+    unsafe { mtproto_ext_conn_get_by_in_fd_ffi(in_fd, out) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_conn_get_by_out_conn_id(
+    out_conn_id: i64,
+    out: *mut MtproxyMtprotoExtConnection,
+) -> i32 {
+    unsafe { mtproto_ext_conn_get_by_out_conn_id_ffi(out_conn_id, out) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_conn_update_auth_key(
+    in_fd: c_int,
+    in_conn_id: i64,
+    auth_key_id: i64,
+) -> i32 {
+    unsafe { mtproto_ext_conn_update_auth_key_ffi(in_fd, in_conn_id, auth_key_id) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_conn_remove_by_out_conn_id(
+    out_conn_id: i64,
+    out: *mut MtproxyMtprotoExtConnection,
+) -> i32 {
+    unsafe { mtproto_ext_conn_remove_by_out_conn_id_ffi(out_conn_id, out) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_conn_remove_by_in_conn_id(
+    in_fd: c_int,
+    in_conn_id: i64,
+    out: *mut MtproxyMtprotoExtConnection,
+) -> i32 {
+    unsafe { mtproto_ext_conn_remove_by_in_conn_id_ffi(in_fd, in_conn_id, out) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_conn_remove_any_by_out_fd(
+    out_fd: c_int,
+    out: *mut MtproxyMtprotoExtConnection,
+) -> i32 {
+    unsafe { mtproto_ext_conn_remove_any_by_out_fd_ffi(out_fd, out) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_conn_remove_any_by_in_fd(
+    in_fd: c_int,
+    out: *mut MtproxyMtprotoExtConnection,
+) -> i32 {
+    unsafe { mtproto_ext_conn_remove_any_by_in_fd_ffi(in_fd, out) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_conn_lru_insert(
+    in_fd: c_int,
+    in_gen: c_int,
+) -> i32 {
+    unsafe { mtproto_ext_conn_lru_insert_ffi(in_fd, in_gen) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_conn_lru_delete(in_fd: c_int) -> i32 {
+    unsafe { mtproto_ext_conn_lru_delete_ffi(in_fd) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_conn_lru_pop_oldest(
+    out: *mut MtproxyMtprotoExtConnection,
+) -> i32 {
+    unsafe { mtproto_ext_conn_lru_pop_oldest_ffi(out) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_conn_counts(
+    out_current: *mut i64,
+    out_created: *mut i64,
+) -> i32 {
+    unsafe { mtproto_ext_conn_counts_ffi(out_current, out_created) }
+}
+
+#[no_mangle]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_build_rpc_proxy_req(
+    flags: c_int,
+    out_conn_id: i64,
+    remote_ipv6: *const u8,
+    remote_port: c_int,
+    our_ipv6: *const u8,
+    our_port: c_int,
+    proxy_tag: *const u8,
+    proxy_tag_len: usize,
+    http_origin: *const u8,
+    http_origin_len: usize,
+    http_referer: *const u8,
+    http_referer_len: usize,
+    http_user_agent: *const u8,
+    http_user_agent_len: usize,
+    payload: *const u8,
+    payload_len: usize,
+    out_buf: *mut u8,
+    out_cap: usize,
+    out_len: *mut usize,
+) -> i32 {
+    unsafe {
+        mtproto_build_rpc_proxy_req_ffi(
+            flags,
+            out_conn_id,
+            remote_ipv6,
+            remote_port,
+            our_ipv6,
+            our_port,
+            proxy_tag,
+            proxy_tag_len,
+            http_origin,
+            http_origin_len,
+            http_referer,
+            http_referer_len,
+            http_user_agent,
+            http_user_agent_len,
+            payload,
+            payload_len,
+            out_buf,
+            out_cap,
+            out_len,
+        )
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_build_http_ok_header(
+    keep_alive: c_int,
+    extra_headers: c_int,
+    content_len: c_int,
+    out_buf: *mut u8,
+    out_cap: usize,
+    out_len: *mut usize,
+) -> i32 {
+    unsafe {
+        mtproto_build_http_ok_header_ffi(
+            keep_alive,
+            extra_headers,
+            content_len,
+            out_buf,
+            out_cap,
+            out_len,
+        )
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_client_send_non_http_wrap(
+    tlio_in: *mut c_void,
+    tlio_out: *mut c_void,
+) -> i32 {
+    unsafe { mtproto_client_send_non_http_wrap_ffi(tlio_in, tlio_out) }
+}
+
 /// Parses mtfront function envelope from unread TL bytes.
 ///
 /// # Safety

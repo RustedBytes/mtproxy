@@ -484,6 +484,67 @@ impl ExtConnectionTable {
         self.remove_ext_connection_index(idx)
     }
 
+    #[must_use]
+    pub fn take_ext_connection_by_out_conn_id(
+        &mut self,
+        out_conn_id: i64,
+    ) -> Option<ExtConnection> {
+        let idx = self.by_out_conn_id.get(&out_conn_id).copied()?;
+        let conn = self.entry_ref(idx)?.conn;
+        if self.remove_ext_connection_index(idx) {
+            Some(conn)
+        } else {
+            None
+        }
+    }
+
+    #[must_use]
+    pub fn take_ext_connection_by_in_conn_id(
+        &mut self,
+        in_fd: i32,
+        in_conn_id: i64,
+    ) -> Option<ExtConnection> {
+        let idx = self.index_for_in_key(in_fd, in_conn_id)?;
+        let conn = self.entry_ref(idx)?.conn;
+        if self.remove_ext_connection_index(idx) {
+            Some(conn)
+        } else {
+            None
+        }
+    }
+
+    #[must_use]
+    pub fn pop_any_ext_connection_by_out_fd(&mut self, out_fd: i32) -> Option<ExtConnection> {
+        let idx = self.by_out_fd.get(&out_fd).and_then(|indices| {
+            indices
+                .iter()
+                .copied()
+                .find(|entry_idx| self.entry_ref(*entry_idx).is_some())
+        })?;
+        let conn = self.entry_ref(idx)?.conn;
+        if self.remove_ext_connection_index(idx) {
+            Some(conn)
+        } else {
+            None
+        }
+    }
+
+    #[must_use]
+    pub fn pop_any_ext_connection_by_in_fd(&mut self, in_fd: i32) -> Option<ExtConnection> {
+        let idx = self.by_in_fd.get(&in_fd).and_then(|indices| {
+            indices
+                .iter()
+                .copied()
+                .find(|entry_idx| self.entry_ref(*entry_idx).is_some())
+        })?;
+        let conn = self.entry_ref(idx)?.conn;
+        if self.remove_ext_connection_index(idx) {
+            Some(conn)
+        } else {
+            None
+        }
+    }
+
     fn remove_ext_connection_index(&mut self, idx: usize) -> bool {
         let Some(entry) = self.entry_ref(idx).cloned() else {
             return false;

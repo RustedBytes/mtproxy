@@ -160,6 +160,30 @@ typedef struct mtproxy_ffi_mtproto_client_packet_parse_result {
   int32_t payload_offset;
 } mtproxy_ffi_mtproto_client_packet_parse_result_t;
 
+typedef struct mtproxy_ffi_mtproto_ext_connection {
+  int32_t in_fd;
+  int32_t in_gen;
+  int32_t out_fd;
+  int32_t out_gen;
+  int64_t in_conn_id;
+  int64_t out_conn_id;
+  int64_t auth_key_id;
+} mtproxy_ffi_mtproto_ext_connection_t;
+
+typedef struct mtproxy_ffi_mtproto_client_packet_process_result {
+  int32_t kind;
+  int32_t payload_offset;
+  int32_t flags;
+  int32_t confirm;
+  int64_t out_conn_id;
+  int32_t in_fd;
+  int32_t in_gen;
+  int64_t in_conn_id;
+  int32_t out_fd;
+  int32_t out_gen;
+  int64_t auth_key_id;
+} mtproxy_ffi_mtproto_client_packet_process_result_t;
+
 #define MTPROXY_FFI_MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_OK                  0
 #define MTPROXY_FFI_MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_NOT_FOUND           1
 #define MTPROXY_FFI_MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_ERR_INVALID_ARGS   (-1)
@@ -268,6 +292,14 @@ typedef struct mtproxy_ffi_mtproto_client_packet_parse_result {
 #define MTPROXY_FFI_MTPROTO_CLIENT_PACKET_KIND_CLOSE_EXT  4
 #define MTPROXY_FFI_MTPROTO_CLIENT_PACKET_KIND_UNKNOWN    5
 #define MTPROXY_FFI_MTPROTO_CLIENT_PACKET_KIND_MALFORMED  6
+
+#define MTPROXY_FFI_MTPROTO_CLIENT_PACKET_ACTION_INVALID                 0
+#define MTPROXY_FFI_MTPROTO_CLIENT_PACKET_ACTION_PROXY_ANS_FORWARD       1
+#define MTPROXY_FFI_MTPROTO_CLIENT_PACKET_ACTION_PROXY_ANS_NOTIFY_CLOSE  2
+#define MTPROXY_FFI_MTPROTO_CLIENT_PACKET_ACTION_SIMPLE_ACK_FORWARD      3
+#define MTPROXY_FFI_MTPROTO_CLIENT_PACKET_ACTION_SIMPLE_ACK_NOTIFY_CLOSE 4
+#define MTPROXY_FFI_MTPROTO_CLIENT_PACKET_ACTION_CLOSE_EXT_REMOVED       5
+#define MTPROXY_FFI_MTPROTO_CLIENT_PACKET_ACTION_CLOSE_EXT_NOOP          6
 
 typedef struct mtproxy_ffi_tl_header_parse_result {
   int32_t status;
@@ -1027,6 +1059,95 @@ int32_t mtproxy_ffi_mtproto_parse_client_packet(
   const uint8_t *data,
   size_t len,
   mtproxy_ffi_mtproto_client_packet_parse_result_t *out
+);
+int32_t mtproxy_ffi_mtproto_process_client_packet(
+  const uint8_t *data,
+  size_t len,
+  int32_t conn_fd,
+  int32_t conn_gen,
+  mtproxy_ffi_mtproto_client_packet_process_result_t *out
+);
+void mtproxy_ffi_mtproto_ext_conn_reset(void);
+int32_t mtproxy_ffi_mtproto_ext_conn_create(
+  int32_t in_fd,
+  int32_t in_gen,
+  int64_t in_conn_id,
+  int32_t out_fd,
+  int32_t out_gen,
+  int64_t auth_key_id,
+  mtproxy_ffi_mtproto_ext_connection_t *out
+);
+int32_t mtproxy_ffi_mtproto_ext_conn_get_by_in_fd(
+  int32_t in_fd,
+  mtproxy_ffi_mtproto_ext_connection_t *out
+);
+int32_t mtproxy_ffi_mtproto_ext_conn_get_by_out_conn_id(
+  int64_t out_conn_id,
+  mtproxy_ffi_mtproto_ext_connection_t *out
+);
+int32_t mtproxy_ffi_mtproto_ext_conn_update_auth_key(
+  int32_t in_fd,
+  int64_t in_conn_id,
+  int64_t auth_key_id
+);
+int32_t mtproxy_ffi_mtproto_ext_conn_remove_by_out_conn_id(
+  int64_t out_conn_id,
+  mtproxy_ffi_mtproto_ext_connection_t *out
+);
+int32_t mtproxy_ffi_mtproto_ext_conn_remove_by_in_conn_id(
+  int32_t in_fd,
+  int64_t in_conn_id,
+  mtproxy_ffi_mtproto_ext_connection_t *out
+);
+int32_t mtproxy_ffi_mtproto_ext_conn_remove_any_by_out_fd(
+  int32_t out_fd,
+  mtproxy_ffi_mtproto_ext_connection_t *out
+);
+int32_t mtproxy_ffi_mtproto_ext_conn_remove_any_by_in_fd(
+  int32_t in_fd,
+  mtproxy_ffi_mtproto_ext_connection_t *out
+);
+int32_t mtproxy_ffi_mtproto_ext_conn_lru_insert(int32_t in_fd, int32_t in_gen);
+int32_t mtproxy_ffi_mtproto_ext_conn_lru_delete(int32_t in_fd);
+int32_t mtproxy_ffi_mtproto_ext_conn_lru_pop_oldest(
+  mtproxy_ffi_mtproto_ext_connection_t *out
+);
+int32_t mtproxy_ffi_mtproto_ext_conn_counts(
+  int64_t *out_current,
+  int64_t *out_created
+);
+int32_t mtproxy_ffi_mtproto_build_rpc_proxy_req(
+  int32_t flags,
+  int64_t out_conn_id,
+  const uint8_t remote_ipv6[16],
+  int32_t remote_port,
+  const uint8_t our_ipv6[16],
+  int32_t our_port,
+  const uint8_t *proxy_tag,
+  size_t proxy_tag_len,
+  const uint8_t *http_origin,
+  size_t http_origin_len,
+  const uint8_t *http_referer,
+  size_t http_referer_len,
+  const uint8_t *http_user_agent,
+  size_t http_user_agent_len,
+  const uint8_t *payload,
+  size_t payload_len,
+  uint8_t *out_buf,
+  size_t out_cap,
+  size_t *out_len
+);
+int32_t mtproxy_ffi_mtproto_build_http_ok_header(
+  int32_t keep_alive,
+  int32_t extra_headers,
+  int32_t content_len,
+  uint8_t *out_buf,
+  size_t out_cap,
+  size_t *out_len
+);
+int32_t mtproxy_ffi_mtproto_client_send_non_http_wrap(
+  void *tlio_in,
+  void *tlio_out
 );
 
 // mtproto-proxy entrypoint helpers for legacy C wrapper.

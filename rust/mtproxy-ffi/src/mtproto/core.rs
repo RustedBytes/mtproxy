@@ -65,6 +65,427 @@ pub(super) fn saturating_i32_from_usize(value: usize) -> i32 {
 pub(super) const AF_INET: c_int = 2;
 pub(super) const AF_INET6: c_int = 10;
 
+static MTPROTO_EXT_CONN_TABLE: std::sync::LazyLock<
+    Mutex<mtproxy_core::runtime::mtproto::proxy::ExtConnectionTable>,
+> = std::sync::LazyLock::new(|| {
+    Mutex::new(mtproxy_core::runtime::mtproto::proxy::ExtConnectionTable::new())
+});
+
+fn ext_conn_lock(
+) -> std::sync::MutexGuard<'static, mtproxy_core::runtime::mtproto::proxy::ExtConnectionTable> {
+    MTPROTO_EXT_CONN_TABLE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+fn ext_conn_to_ffi(
+    conn: mtproxy_core::runtime::mtproto::proxy::ExtConnection,
+) -> MtproxyMtprotoExtConnection {
+    MtproxyMtprotoExtConnection {
+        in_fd: conn.in_fd,
+        in_gen: conn.in_gen,
+        out_fd: conn.out_fd,
+        out_gen: conn.out_gen,
+        in_conn_id: conn.in_conn_id,
+        out_conn_id: conn.out_conn_id,
+        auth_key_id: conn.auth_key_id,
+    }
+}
+
+pub(super) unsafe fn mtproto_ext_conn_reset_ffi() {
+    let mut table = ext_conn_lock();
+    *table = mtproxy_core::runtime::mtproto::proxy::ExtConnectionTable::new();
+}
+
+pub(super) unsafe fn mtproto_ext_conn_create_ffi(
+    in_fd: c_int,
+    in_gen: c_int,
+    in_conn_id: i64,
+    out_fd: c_int,
+    out_gen: c_int,
+    auth_key_id: i64,
+    out: *mut MtproxyMtprotoExtConnection,
+) -> i32 {
+    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out) }) else {
+        return -1;
+    };
+    let mut table = ext_conn_lock();
+    let created = match table.get_ext_connection_by_in_conn_id(
+        in_fd,
+        in_gen,
+        in_conn_id,
+        mtproxy_core::runtime::mtproto::proxy::ExtConnLookupMode::CreateIfMissing,
+    ) {
+        Ok(mtproxy_core::runtime::mtproto::proxy::ExtConnLookupOutcome::Created(conn)) => conn,
+        Ok(mtproxy_core::runtime::mtproto::proxy::ExtConnLookupOutcome::AlreadyExists)
+        | Ok(mtproxy_core::runtime::mtproto::proxy::ExtConnLookupOutcome::Found(_)) => return 0,
+        Ok(_) => return 0,
+        Err(_) => return -1,
+    };
+    let bind_target = if out_fd != 0 {
+        Some((out_fd, out_gen))
+    } else {
+        None
+    };
+    match table.bind_ext_connection(created.in_fd, created.in_conn_id, bind_target, auth_key_id) {
+        Ok(conn) => {
+            *out_ref = ext_conn_to_ffi(conn);
+            1
+        }
+        Err(_) => {
+            let _ = table.remove_ext_connection_by_in_conn_id(created.in_fd, created.in_conn_id);
+            -1
+        }
+    }
+}
+
+pub(super) unsafe fn mtproto_ext_conn_get_by_in_fd_ffi(
+    in_fd: c_int,
+    out: *mut MtproxyMtprotoExtConnection,
+) -> i32 {
+    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out) }) else {
+        return -1;
+    };
+    let table = ext_conn_lock();
+    match table.get_ext_connection_by_in_fd(in_fd) {
+        Ok(Some(conn)) => {
+            *out_ref = ext_conn_to_ffi(conn);
+            1
+        }
+        Ok(None) => 0,
+        Err(_) => -1,
+    }
+}
+
+pub(super) unsafe fn mtproto_ext_conn_get_by_out_conn_id_ffi(
+    out_conn_id: i64,
+    out: *mut MtproxyMtprotoExtConnection,
+) -> i32 {
+    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out) }) else {
+        return -1;
+    };
+    let table = ext_conn_lock();
+    if let Some(conn) = table.find_ext_connection_by_out_conn_id(out_conn_id) {
+        *out_ref = ext_conn_to_ffi(conn);
+        1
+    } else {
+        0
+    }
+}
+
+pub(super) unsafe fn mtproto_ext_conn_update_auth_key_ffi(
+    in_fd: c_int,
+    in_conn_id: i64,
+    auth_key_id: i64,
+) -> i32 {
+    let mut table = ext_conn_lock();
+    if table
+        .update_auth_key(in_fd, in_conn_id, auth_key_id)
+        .is_ok()
+    {
+        1
+    } else {
+        0
+    }
+}
+
+pub(super) unsafe fn mtproto_ext_conn_remove_by_out_conn_id_ffi(
+    out_conn_id: i64,
+    out: *mut MtproxyMtprotoExtConnection,
+) -> i32 {
+    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out) }) else {
+        return -1;
+    };
+    let mut table = ext_conn_lock();
+    if let Some(conn) = table.take_ext_connection_by_out_conn_id(out_conn_id) {
+        *out_ref = ext_conn_to_ffi(conn);
+        1
+    } else {
+        0
+    }
+}
+
+pub(super) unsafe fn mtproto_ext_conn_remove_by_in_conn_id_ffi(
+    in_fd: c_int,
+    in_conn_id: i64,
+    out: *mut MtproxyMtprotoExtConnection,
+) -> i32 {
+    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out) }) else {
+        return -1;
+    };
+    let mut table = ext_conn_lock();
+    if let Some(conn) = table.take_ext_connection_by_in_conn_id(in_fd, in_conn_id) {
+        *out_ref = ext_conn_to_ffi(conn);
+        1
+    } else {
+        0
+    }
+}
+
+pub(super) unsafe fn mtproto_ext_conn_remove_any_by_out_fd_ffi(
+    out_fd: c_int,
+    out: *mut MtproxyMtprotoExtConnection,
+) -> i32 {
+    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out) }) else {
+        return -1;
+    };
+    let mut table = ext_conn_lock();
+    if let Some(conn) = table.pop_any_ext_connection_by_out_fd(out_fd) {
+        *out_ref = ext_conn_to_ffi(conn);
+        1
+    } else {
+        0
+    }
+}
+
+pub(super) unsafe fn mtproto_ext_conn_remove_any_by_in_fd_ffi(
+    in_fd: c_int,
+    out: *mut MtproxyMtprotoExtConnection,
+) -> i32 {
+    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out) }) else {
+        return -1;
+    };
+    let mut table = ext_conn_lock();
+    if let Some(conn) = table.pop_any_ext_connection_by_in_fd(in_fd) {
+        *out_ref = ext_conn_to_ffi(conn);
+        1
+    } else {
+        0
+    }
+}
+
+pub(super) unsafe fn mtproto_ext_conn_lru_insert_ffi(in_fd: c_int, in_gen: c_int) -> i32 {
+    let mut table = ext_conn_lock();
+    match table.lru_insert_by_in_fd_gen(in_fd, in_gen) {
+        Ok(true) => 1,
+        Ok(false) => 0,
+        Err(_) => -1,
+    }
+}
+
+pub(super) unsafe fn mtproto_ext_conn_lru_delete_ffi(in_fd: c_int) -> i32 {
+    let mut table = ext_conn_lock();
+    match table.lru_delete_by_in_fd(in_fd) {
+        Ok(true) => 1,
+        Ok(false) => 0,
+        Err(_) => -1,
+    }
+}
+
+pub(super) unsafe fn mtproto_ext_conn_lru_pop_oldest_ffi(
+    out: *mut MtproxyMtprotoExtConnection,
+) -> i32 {
+    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out) }) else {
+        return -1;
+    };
+    let mut table = ext_conn_lock();
+    if let Some(conn) = table.lru_pop_oldest() {
+        *out_ref = ext_conn_to_ffi(conn);
+        1
+    } else {
+        0
+    }
+}
+
+pub(super) unsafe fn mtproto_ext_conn_counts_ffi(
+    out_current: *mut i64,
+    out_created: *mut i64,
+) -> i32 {
+    let Some(out_current_ref) = (unsafe { mut_ref_from_ptr(out_current) }) else {
+        return -1;
+    };
+    let Some(out_created_ref) = (unsafe { mut_ref_from_ptr(out_created) }) else {
+        return -1;
+    };
+    let table = ext_conn_lock();
+    *out_current_ref = i64::try_from(table.ext_connections()).unwrap_or(i64::MAX);
+    *out_created_ref = i64::try_from(table.ext_connections_created()).unwrap_or(i64::MAX);
+    0
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) unsafe fn mtproto_build_rpc_proxy_req_ffi(
+    flags: c_int,
+    out_conn_id: i64,
+    remote_ipv6: *const u8,
+    remote_port: c_int,
+    our_ipv6: *const u8,
+    our_port: c_int,
+    proxy_tag: *const u8,
+    proxy_tag_len: usize,
+    http_origin: *const u8,
+    http_origin_len: usize,
+    http_referer: *const u8,
+    http_referer_len: usize,
+    http_user_agent: *const u8,
+    http_user_agent_len: usize,
+    payload: *const u8,
+    payload_len: usize,
+    out_buf: *mut u8,
+    out_cap: usize,
+    out_len: *mut usize,
+) -> i32 {
+    let Some(out_len_ref) = (unsafe { mut_ref_from_ptr(out_len) }) else {
+        return -1;
+    };
+    let Some(remote_ipv6_slice) = (unsafe { slice_from_ptr(remote_ipv6, 16) }) else {
+        return -1;
+    };
+    let Some(our_ipv6_slice) = (unsafe { slice_from_ptr(our_ipv6, 16) }) else {
+        return -1;
+    };
+    let Some(payload_slice) = (unsafe { slice_from_ptr(payload, payload_len) }) else {
+        return -1;
+    };
+
+    let mut remote_ipv6_arr = [0u8; 16];
+    remote_ipv6_arr.copy_from_slice(remote_ipv6_slice);
+    let mut our_ipv6_arr = [0u8; 16];
+    our_ipv6_arr.copy_from_slice(our_ipv6_slice);
+
+    let proxy_tag = if (flags & 8) != 0 {
+        let Some(tag) = (unsafe { slice_from_ptr(proxy_tag, proxy_tag_len) }) else {
+            return -1;
+        };
+        Some(tag)
+    } else {
+        None
+    };
+    let http_query_info = if (flags & 4) != 0 {
+        let Some(origin) = (unsafe { slice_from_ptr(http_origin, http_origin_len) }) else {
+            return -1;
+        };
+        let Some(referer) = (unsafe { slice_from_ptr(http_referer, http_referer_len) }) else {
+            return -1;
+        };
+        let Some(user_agent) = (unsafe { slice_from_ptr(http_user_agent, http_user_agent_len) })
+        else {
+            return -1;
+        };
+        Some(mtproxy_core::runtime::mtproto::proxy::HttpQueryInfo {
+            origin,
+            referer,
+            user_agent,
+        })
+    } else {
+        None
+    };
+
+    let input = mtproxy_core::runtime::mtproto::proxy::ProxyReqBuildInput {
+        flags,
+        out_conn_id,
+        remote_ipv6: remote_ipv6_arr,
+        remote_port,
+        our_ipv6: our_ipv6_arr,
+        our_port,
+        proxy_tag,
+        http_query_info,
+        payload: payload_slice,
+    };
+
+    let mut scratch_cap = payload_len
+        .saturating_add(proxy_tag_len)
+        .saturating_add(http_origin_len)
+        .saturating_add(http_referer_len)
+        .saturating_add(http_user_agent_len)
+        .saturating_add(256)
+        .max(64);
+
+    loop {
+        let mut scratch = vec![0u8; scratch_cap];
+        match mtproxy_core::runtime::mtproto::proxy::build_rpc_proxy_req(&mut scratch, &input) {
+            Ok(used) => {
+                *out_len_ref = used;
+                if out_buf.is_null() || out_cap < used {
+                    return 1;
+                }
+                let Some(out_slice) = (unsafe { mut_slice_from_ptr(out_buf, out_cap) }) else {
+                    return -1;
+                };
+                out_slice[..used].copy_from_slice(&scratch[..used]);
+                return 0;
+            }
+            Err(err) => {
+                if err.errnum != mtproxy_core::runtime::config::tl_parse::TL_ERROR_NOT_ENOUGH_DATA {
+                    return -2;
+                }
+                let next = scratch_cap.saturating_mul(2);
+                if next <= scratch_cap {
+                    return -2;
+                }
+                scratch_cap = next;
+            }
+        }
+    }
+}
+
+pub(super) unsafe fn mtproto_build_http_ok_header_ffi(
+    keep_alive: c_int,
+    extra_headers: c_int,
+    content_len: c_int,
+    out_buf: *mut u8,
+    out_cap: usize,
+    out_len: *mut usize,
+) -> i32 {
+    if content_len < 0 {
+        return -2;
+    }
+    let Some(out_len_ref) = (unsafe { mut_ref_from_ptr(out_len) }) else {
+        return -1;
+    };
+
+    let connection = if keep_alive != 0 {
+        "keep-alive"
+    } else {
+        "close"
+    };
+    let extra = if extra_headers != 0 {
+        "Access-Control-Allow-Origin: *\r\n\
+Access-Control-Allow-Methods: POST, OPTIONS\r\n\
+Access-Control-Allow-Headers: origin, content-type\r\n\
+Access-Control-Max-Age: 1728000\r\n"
+    } else {
+        ""
+    };
+    let header = format!(
+        "HTTP/1.1 200 OK\r\nConnection: {connection}\r\nContent-type: application/octet-stream\r\nPragma: no-cache\r\nCache-control: no-store\r\n{extra}Content-length: {content_len}\r\n\r\n"
+    );
+    let bytes = header.as_bytes();
+    *out_len_ref = bytes.len();
+    if out_buf.is_null() || out_cap < bytes.len() {
+        return 1;
+    }
+    let Some(out_slice) = (unsafe { mut_slice_from_ptr(out_buf, out_cap) }) else {
+        return -1;
+    };
+    out_slice[..bytes.len()].copy_from_slice(bytes);
+    0
+}
+
+pub(super) unsafe fn mtproto_client_send_non_http_wrap_ffi(
+    tlio_in: *mut c_void,
+    tlio_out: *mut c_void,
+) -> i32 {
+    let tlio_in = tlio_in.cast::<crate::tl_parse::abi::TlInState>();
+    let tlio_out = tlio_out.cast::<crate::tl_parse::abi::TlOutState>();
+    let unread = unsafe { crate::tl_parse::abi::mtproxy_ffi_tl_fetch_unread(tlio_in) };
+    if unread < 0 {
+        return -1;
+    }
+    let copy_rc =
+        unsafe { crate::tl_parse::abi::mtproxy_ffi_tl_copy_through(tlio_in, tlio_out, unread, 1) };
+    if copy_rc < 0 {
+        return -1;
+    }
+    let mut sent_kind = 0;
+    let end_rc =
+        unsafe { crate::tl_parse::abi::mtproxy_ffi_tl_store_end_ext(tlio_out, 0, &mut sent_kind) };
+    if end_rc < 0 {
+        return -1;
+    }
+    0
+}
+
 pub(super) fn mtproto_cfg_collect_auth_cluster_ids(
     mc: &MtproxyMfConfig,
     out: &mut [i32; MTPROTO_CFG_MAX_CLUSTERS],
@@ -160,6 +581,92 @@ pub(super) fn mtproto_parse_client_packet_impl(
         RpcClientPacket::Malformed { op } => {
             out.kind = MTPROTO_CLIENT_PACKET_KIND_MALFORMED;
             out.op = op;
+        }
+    }
+}
+
+fn mtproto_client_packet_fill_ext_fields(
+    out: &mut MtproxyMtprotoClientPacketProcessResult,
+    ext: mtproxy_core::runtime::mtproto::proxy::ExtConnection,
+) {
+    out.in_fd = ext.in_fd;
+    out.in_gen = ext.in_gen;
+    out.in_conn_id = ext.in_conn_id;
+    out.out_fd = ext.out_fd;
+    out.out_gen = ext.out_gen;
+    out.auth_key_id = ext.auth_key_id;
+}
+
+pub(super) fn mtproto_process_client_packet_impl(
+    data: &[u8],
+    conn_fd: i32,
+    conn_gen: i32,
+    out: &mut MtproxyMtprotoClientPacketProcessResult,
+) {
+    use mtproxy_core::runtime::mtproto::proxy::RpcClientPacket;
+
+    *out = MtproxyMtprotoClientPacketProcessResult::default();
+
+    match mtproxy_core::runtime::mtproto::proxy::parse_client_packet(data) {
+        RpcClientPacket::ProxyAns {
+            flags,
+            out_conn_id,
+            payload,
+        } => {
+            let payload_offset = data.len().saturating_sub(payload.len());
+            let payload_offset_i32 = saturating_i32_from_usize(payload_offset);
+            if payload_offset_i32 < 0 {
+                out.kind = MTPROTO_CLIENT_PACKET_ACTION_INVALID;
+                return;
+            }
+            out.payload_offset = payload_offset_i32;
+            out.flags = flags;
+            out.out_conn_id = out_conn_id;
+
+            let table = ext_conn_lock();
+            if let Some(ext) = table.find_ext_connection_by_out_conn_id(out_conn_id) {
+                if ext.out_fd == conn_fd && ext.out_gen == conn_gen {
+                    out.kind = MTPROTO_CLIENT_PACKET_ACTION_PROXY_ANS_FORWARD;
+                    mtproto_client_packet_fill_ext_fields(out, ext);
+                } else {
+                    out.kind = MTPROTO_CLIENT_PACKET_ACTION_PROXY_ANS_NOTIFY_CLOSE;
+                }
+            } else {
+                out.kind = MTPROTO_CLIENT_PACKET_ACTION_PROXY_ANS_NOTIFY_CLOSE;
+            }
+        }
+        RpcClientPacket::SimpleAck {
+            out_conn_id,
+            confirm,
+        } => {
+            out.confirm = confirm;
+            out.out_conn_id = out_conn_id;
+            let table = ext_conn_lock();
+            if let Some(ext) = table.find_ext_connection_by_out_conn_id(out_conn_id) {
+                if ext.out_fd == conn_fd && ext.out_gen == conn_gen {
+                    out.kind = MTPROTO_CLIENT_PACKET_ACTION_SIMPLE_ACK_FORWARD;
+                    mtproto_client_packet_fill_ext_fields(out, ext);
+                } else {
+                    out.kind = MTPROTO_CLIENT_PACKET_ACTION_SIMPLE_ACK_NOTIFY_CLOSE;
+                }
+            } else {
+                out.kind = MTPROTO_CLIENT_PACKET_ACTION_SIMPLE_ACK_NOTIFY_CLOSE;
+            }
+        }
+        RpcClientPacket::CloseExt { out_conn_id } => {
+            out.out_conn_id = out_conn_id;
+            let mut table = ext_conn_lock();
+            if let Some(ext) = table.take_ext_connection_by_out_conn_id(out_conn_id) {
+                out.kind = MTPROTO_CLIENT_PACKET_ACTION_CLOSE_EXT_REMOVED;
+                mtproto_client_packet_fill_ext_fields(out, ext);
+            } else {
+                out.kind = MTPROTO_CLIENT_PACKET_ACTION_CLOSE_EXT_NOOP;
+            }
+        }
+        RpcClientPacket::Pong
+        | RpcClientPacket::Unknown { .. }
+        | RpcClientPacket::Malformed { .. } => {
+            out.kind = MTPROTO_CLIENT_PACKET_ACTION_INVALID;
         }
     }
 }
@@ -773,6 +1280,24 @@ pub(super) unsafe fn mtproto_parse_client_packet_ffi(
         ..MtproxyMtprotoClientPacketParseResult::default()
     };
     mtproto_parse_client_packet_impl(bytes, out_ref);
+    0
+}
+
+pub(super) unsafe fn mtproto_process_client_packet_ffi(
+    data: *const u8,
+    len: usize,
+    conn_fd: c_int,
+    conn_gen: c_int,
+    out: *mut MtproxyMtprotoClientPacketProcessResult,
+) -> i32 {
+    let Some(out_ref) = (unsafe { mut_ref_from_ptr(out) }) else {
+        return -1;
+    };
+    let Some(bytes) = (unsafe { slice_from_ptr(data, len) }) else {
+        return -1;
+    };
+    *out_ref = MtproxyMtprotoClientPacketProcessResult::default();
+    mtproto_process_client_packet_impl(bytes, conn_fd, conn_gen, out_ref);
     0
 }
 

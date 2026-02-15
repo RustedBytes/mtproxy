@@ -23,15 +23,17 @@ use super::{
     mtproxy_ffi_get_utime_monotonic, mtproxy_ffi_gf32_combine_clmul,
     mtproxy_ffi_gf32_compute_powers_clmul, mtproxy_ffi_matches_pid, mtproxy_ffi_md5,
     mtproxy_ffi_md5_hex, mtproxy_ffi_msg_buffers_pick_size_index,
-    mtproxy_ffi_mtproto_cfg_decide_cluster_apply, mtproxy_ffi_mtproto_cfg_expect_semicolon,
-    mtproxy_ffi_mtproto_cfg_finalize, mtproxy_ffi_mtproto_cfg_getlex_ext,
-    mtproxy_ffi_mtproto_cfg_lookup_cluster_index, mtproxy_ffi_mtproto_cfg_parse_directive_step,
-    mtproxy_ffi_mtproto_cfg_parse_full_pass, mtproxy_ffi_mtproto_cfg_parse_proxy_target_step,
-    mtproxy_ffi_mtproto_cfg_preinit, mtproxy_ffi_mtproto_cfg_scan_directive_token,
-    mtproxy_ffi_mtproto_conn_tag, mtproxy_ffi_mtproto_ext_conn_hash,
-    mtproxy_ffi_mtproto_inspect_packet_header, mtproxy_ffi_mtproto_parse_client_packet,
-    mtproxy_ffi_mtproto_parse_function, mtproxy_ffi_mtproto_parse_text_ipv4,
-    mtproxy_ffi_mtproto_parse_text_ipv6, mtproxy_ffi_net_add_nat_info,
+    mtproxy_ffi_mtproto_build_http_ok_header, mtproxy_ffi_mtproto_cfg_decide_cluster_apply,
+    mtproxy_ffi_mtproto_cfg_expect_semicolon, mtproxy_ffi_mtproto_cfg_finalize,
+    mtproxy_ffi_mtproto_cfg_getlex_ext, mtproxy_ffi_mtproto_cfg_lookup_cluster_index,
+    mtproxy_ffi_mtproto_cfg_parse_directive_step, mtproxy_ffi_mtproto_cfg_parse_full_pass,
+    mtproxy_ffi_mtproto_cfg_parse_proxy_target_step, mtproxy_ffi_mtproto_cfg_preinit,
+    mtproxy_ffi_mtproto_cfg_scan_directive_token, mtproxy_ffi_mtproto_conn_tag,
+    mtproxy_ffi_mtproto_ext_conn_create, mtproxy_ffi_mtproto_ext_conn_hash,
+    mtproxy_ffi_mtproto_ext_conn_reset, mtproxy_ffi_mtproto_inspect_packet_header,
+    mtproxy_ffi_mtproto_parse_client_packet, mtproxy_ffi_mtproto_parse_function,
+    mtproxy_ffi_mtproto_parse_text_ipv4, mtproxy_ffi_mtproto_parse_text_ipv6,
+    mtproxy_ffi_mtproto_process_client_packet, mtproxy_ffi_net_add_nat_info,
     mtproxy_ffi_net_compute_conn_events, mtproxy_ffi_net_connection_is_active,
     mtproxy_ffi_net_epoll_conv_flags, mtproxy_ffi_net_epoll_unconv_flags,
     mtproxy_ffi_net_http_error_msg_text, mtproxy_ffi_net_http_gen_date,
@@ -66,16 +68,17 @@ use super::{
     MtproxyMtprotoCfgFinalizeResult, MtproxyMtprotoCfgGetlexExtResult,
     MtproxyMtprotoCfgParseFullResult, MtproxyMtprotoCfgParseProxyTargetStepResult,
     MtproxyMtprotoCfgPreinitResult, MtproxyMtprotoCfgProxyAction,
-    MtproxyMtprotoClientPacketParseResult, MtproxyMtprotoOldClusterState,
-    MtproxyMtprotoPacketInspectResult, MtproxyMtprotoParseFunctionResult, MtproxyNetworkBoundary,
-    MtproxyProcStats, MtproxyProcessId, MtproxyRpcBoundary, MtproxyTlHeaderParseResult,
-    AESNI_CIPHER_AES_256_CTR, AESNI_CONTRACT_OPS, AESNI_IMPLEMENTED_OPS,
-    APPLICATION_BOUNDARY_VERSION, CONCURRENCY_BOUNDARY_VERSION, CPUID_MAGIC, CRC32_REFLECTED_POLY,
-    CRYPTO_BOUNDARY_VERSION, DH_KEY_BYTES, DH_PARAMS_SELECT, ENGINE_RPC_CONTRACT_OPS,
-    ENGINE_RPC_IMPLEMENTED_OPS, EPOLLERR, EPOLLET, EPOLLIN, EPOLLOUT, EPOLLPRI, EPOLLRDHUP,
-    EVT_FROM_EPOLL, EVT_LEVEL, EVT_READ, EVT_SPEC, EVT_WRITE, FFI_API_VERSION,
-    GF32_CLMUL_POWERS_LEN, JOBS_CONTRACT_OPS, JOBS_IMPLEMENTED_OPS, MPQ_CONTRACT_OPS,
-    MPQ_IMPLEMENTED_OPS, MTPROTO_CFG_CLUSTER_APPLY_DECISION_ERR_PROXIES_INTERMIXED,
+    MtproxyMtprotoClientPacketParseResult, MtproxyMtprotoClientPacketProcessResult,
+    MtproxyMtprotoExtConnection, MtproxyMtprotoOldClusterState, MtproxyMtprotoPacketInspectResult,
+    MtproxyMtprotoParseFunctionResult, MtproxyNetworkBoundary, MtproxyProcStats, MtproxyProcessId,
+    MtproxyRpcBoundary, MtproxyTlHeaderParseResult, AESNI_CIPHER_AES_256_CTR, AESNI_CONTRACT_OPS,
+    AESNI_IMPLEMENTED_OPS, APPLICATION_BOUNDARY_VERSION, CONCURRENCY_BOUNDARY_VERSION, CPUID_MAGIC,
+    CRC32_REFLECTED_POLY, CRYPTO_BOUNDARY_VERSION, DH_KEY_BYTES, DH_PARAMS_SELECT,
+    ENGINE_RPC_CONTRACT_OPS, ENGINE_RPC_IMPLEMENTED_OPS, EPOLLERR, EPOLLET, EPOLLIN, EPOLLOUT,
+    EPOLLPRI, EPOLLRDHUP, EVT_FROM_EPOLL, EVT_LEVEL, EVT_READ, EVT_SPEC, EVT_WRITE,
+    FFI_API_VERSION, GF32_CLMUL_POWERS_LEN, JOBS_CONTRACT_OPS, JOBS_IMPLEMENTED_OPS,
+    MPQ_CONTRACT_OPS, MPQ_IMPLEMENTED_OPS,
+    MTPROTO_CFG_CLUSTER_APPLY_DECISION_ERR_PROXIES_INTERMIXED,
     MTPROTO_CFG_CLUSTER_APPLY_DECISION_ERR_TOO_MANY_AUTH_CLUSTERS,
     MTPROTO_CFG_CLUSTER_APPLY_DECISION_KIND_APPEND_LAST,
     MTPROTO_CFG_CLUSTER_APPLY_DECISION_KIND_CREATE_NEW, MTPROTO_CFG_CLUSTER_APPLY_DECISION_OK,
@@ -97,22 +100,24 @@ use super::{
     MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_INVALID_TARGET_ID,
     MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_INVALID_TIMEOUT,
     MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_ERR_TARGET_ID_SPACE, MTPROTO_CFG_SCAN_DIRECTIVE_TOKEN_OK,
-    MTPROTO_CLIENT_PACKET_KIND_CLOSE_EXT, MTPROTO_CLIENT_PACKET_KIND_MALFORMED,
-    MTPROTO_CLIENT_PACKET_KIND_PONG, MTPROTO_CLIENT_PACKET_KIND_PROXY_ANS,
-    MTPROTO_CLIENT_PACKET_KIND_SIMPLE_ACK, MTPROTO_CLIENT_PACKET_KIND_UNKNOWN,
-    MTPROTO_DIRECTIVE_TOKEN_KIND_DEFAULT_CLUSTER, MTPROTO_DIRECTIVE_TOKEN_KIND_MAX_CONNECTIONS,
-    MTPROTO_DIRECTIVE_TOKEN_KIND_MIN_CONNECTIONS, MTPROTO_DIRECTIVE_TOKEN_KIND_PROXY_FOR,
-    MTPROTO_DIRECTIVE_TOKEN_KIND_TIMEOUT, MTPROTO_PACKET_KIND_ENCRYPTED,
-    MTPROTO_PACKET_KIND_INVALID, MTPROTO_PACKET_KIND_UNENCRYPTED_DH, MTPROTO_PROXY_CONTRACT_OPS,
-    MTPROTO_PROXY_IMPLEMENTED_OPS, NETWORK_BOUNDARY_VERSION, NET_CRYPTO_AES_CONTRACT_OPS,
-    NET_CRYPTO_AES_IMPLEMENTED_OPS, NET_CRYPTO_DH_CONTRACT_OPS, NET_CRYPTO_DH_IMPLEMENTED_OPS,
-    NET_EVENTS_CONTRACT_OPS, NET_EVENTS_IMPLEMENTED_OPS, NET_MSG_BUFFERS_CONTRACT_OPS,
-    NET_MSG_BUFFERS_IMPLEMENTED_OPS, NET_TIMERS_CONTRACT_OPS, NET_TIMERS_IMPLEMENTED_OPS,
-    RPC_BOUNDARY_VERSION, RPC_INVOKE_REQ, RPC_REQ_RESULT, RPC_TARGETS_CONTRACT_OPS,
-    RPC_TARGETS_IMPLEMENTED_OPS, TCP_RPC_CLIENT_CONTRACT_OPS, TCP_RPC_CLIENT_IMPLEMENTED_OPS,
-    TCP_RPC_COMMON_CONTRACT_OPS, TCP_RPC_COMMON_IMPLEMENTED_OPS, TCP_RPC_PACKET_LEN_STATE_INVALID,
-    TCP_RPC_PACKET_LEN_STATE_READY, TCP_RPC_PACKET_LEN_STATE_SHORT, TCP_RPC_PACKET_LEN_STATE_SKIP,
-    TCP_RPC_SERVER_CONTRACT_OPS, TCP_RPC_SERVER_IMPLEMENTED_OPS, TLS_REQUEST_PUBLIC_KEY_BYTES,
+    MTPROTO_CLIENT_PACKET_ACTION_CLOSE_EXT_NOOP, MTPROTO_CLIENT_PACKET_ACTION_CLOSE_EXT_REMOVED,
+    MTPROTO_CLIENT_PACKET_ACTION_PROXY_ANS_FORWARD, MTPROTO_CLIENT_PACKET_KIND_CLOSE_EXT,
+    MTPROTO_CLIENT_PACKET_KIND_MALFORMED, MTPROTO_CLIENT_PACKET_KIND_PONG,
+    MTPROTO_CLIENT_PACKET_KIND_PROXY_ANS, MTPROTO_CLIENT_PACKET_KIND_SIMPLE_ACK,
+    MTPROTO_CLIENT_PACKET_KIND_UNKNOWN, MTPROTO_DIRECTIVE_TOKEN_KIND_DEFAULT_CLUSTER,
+    MTPROTO_DIRECTIVE_TOKEN_KIND_MAX_CONNECTIONS, MTPROTO_DIRECTIVE_TOKEN_KIND_MIN_CONNECTIONS,
+    MTPROTO_DIRECTIVE_TOKEN_KIND_PROXY_FOR, MTPROTO_DIRECTIVE_TOKEN_KIND_TIMEOUT,
+    MTPROTO_PACKET_KIND_ENCRYPTED, MTPROTO_PACKET_KIND_INVALID, MTPROTO_PACKET_KIND_UNENCRYPTED_DH,
+    MTPROTO_PROXY_CONTRACT_OPS, MTPROTO_PROXY_IMPLEMENTED_OPS, NETWORK_BOUNDARY_VERSION,
+    NET_CRYPTO_AES_CONTRACT_OPS, NET_CRYPTO_AES_IMPLEMENTED_OPS, NET_CRYPTO_DH_CONTRACT_OPS,
+    NET_CRYPTO_DH_IMPLEMENTED_OPS, NET_EVENTS_CONTRACT_OPS, NET_EVENTS_IMPLEMENTED_OPS,
+    NET_MSG_BUFFERS_CONTRACT_OPS, NET_MSG_BUFFERS_IMPLEMENTED_OPS, NET_TIMERS_CONTRACT_OPS,
+    NET_TIMERS_IMPLEMENTED_OPS, RPC_BOUNDARY_VERSION, RPC_INVOKE_REQ, RPC_REQ_RESULT,
+    RPC_TARGETS_CONTRACT_OPS, RPC_TARGETS_IMPLEMENTED_OPS, TCP_RPC_CLIENT_CONTRACT_OPS,
+    TCP_RPC_CLIENT_IMPLEMENTED_OPS, TCP_RPC_COMMON_CONTRACT_OPS, TCP_RPC_COMMON_IMPLEMENTED_OPS,
+    TCP_RPC_PACKET_LEN_STATE_INVALID, TCP_RPC_PACKET_LEN_STATE_READY,
+    TCP_RPC_PACKET_LEN_STATE_SHORT, TCP_RPC_PACKET_LEN_STATE_SKIP, TCP_RPC_SERVER_CONTRACT_OPS,
+    TCP_RPC_SERVER_IMPLEMENTED_OPS, TLS_REQUEST_PUBLIC_KEY_BYTES,
 };
 use core::ffi::c_void;
 
@@ -709,6 +714,119 @@ fn mtproto_client_packet_parser_bridge_parses_supported_shapes() {
     );
     assert_eq!(out.kind, MTPROTO_CLIENT_PACKET_KIND_UNKNOWN);
     assert_eq!(out.op, 0x1234_5678_i32);
+}
+
+#[test]
+fn mtproto_client_packet_process_bridge_plans_forward_and_close() {
+    unsafe { mtproxy_ffi_mtproto_ext_conn_reset() };
+
+    let mut ext = MtproxyMtprotoExtConnection::default();
+    assert_eq!(
+        unsafe { mtproxy_ffi_mtproto_ext_conn_create(11, 22, 0, 33, 44, 55, &raw mut ext) },
+        1
+    );
+    let out_conn_id = ext.out_conn_id;
+
+    let mut proxy_ans = [0u8; 20];
+    proxy_ans[0..4].copy_from_slice(&0x4403_da0d_i32.to_le_bytes());
+    proxy_ans[4..8].copy_from_slice(&7_i32.to_le_bytes());
+    proxy_ans[8..16].copy_from_slice(&out_conn_id.to_le_bytes());
+    proxy_ans[16..20].copy_from_slice(&0x1122_3344_i32.to_le_bytes());
+
+    let mut plan = MtproxyMtprotoClientPacketProcessResult::default();
+    assert_eq!(
+        unsafe {
+            mtproxy_ffi_mtproto_process_client_packet(
+                proxy_ans.as_ptr(),
+                proxy_ans.len(),
+                33,
+                44,
+                &raw mut plan,
+            )
+        },
+        0
+    );
+    assert_eq!(plan.kind, MTPROTO_CLIENT_PACKET_ACTION_PROXY_ANS_FORWARD);
+    assert_eq!(plan.payload_offset, 16);
+    assert_eq!(plan.flags, 7);
+    assert_eq!(plan.in_fd, 11);
+    assert_eq!(plan.in_gen, 22);
+    assert_eq!(plan.in_conn_id, 0);
+
+    let mut close_ext = [0u8; 12];
+    close_ext[0..4].copy_from_slice(&0x5eb6_34a2_i32.to_le_bytes());
+    close_ext[4..12].copy_from_slice(&out_conn_id.to_le_bytes());
+
+    assert_eq!(
+        unsafe {
+            mtproxy_ffi_mtproto_process_client_packet(
+                close_ext.as_ptr(),
+                close_ext.len(),
+                33,
+                44,
+                &raw mut plan,
+            )
+        },
+        0
+    );
+    assert_eq!(plan.kind, MTPROTO_CLIENT_PACKET_ACTION_CLOSE_EXT_REMOVED);
+    assert_eq!(plan.in_fd, 11);
+    assert_eq!(plan.out_fd, 33);
+    assert_eq!(plan.out_conn_id, out_conn_id);
+
+    assert_eq!(
+        unsafe {
+            mtproxy_ffi_mtproto_process_client_packet(
+                close_ext.as_ptr(),
+                close_ext.len(),
+                33,
+                44,
+                &raw mut plan,
+            )
+        },
+        0
+    );
+    assert_eq!(plan.kind, MTPROTO_CLIENT_PACKET_ACTION_CLOSE_EXT_NOOP);
+}
+
+#[test]
+fn mtproto_http_ok_header_builder_matches_response_shape() {
+    let mut out_len = 0usize;
+    assert_eq!(
+        unsafe {
+            mtproxy_ffi_mtproto_build_http_ok_header(
+                1,
+                1,
+                123,
+                core::ptr::null_mut(),
+                0,
+                &raw mut out_len,
+            )
+        },
+        1
+    );
+    assert!(out_len > 0);
+
+    let mut header = vec![0u8; out_len];
+    assert_eq!(
+        unsafe {
+            mtproxy_ffi_mtproto_build_http_ok_header(
+                1,
+                1,
+                123,
+                header.as_mut_ptr(),
+                header.len(),
+                &raw mut out_len,
+            )
+        },
+        0
+    );
+    header.truncate(out_len);
+    let text = core::str::from_utf8(&header).expect("valid UTF-8 HTTP header");
+    assert!(text.starts_with("HTTP/1.1 200 OK\r\n"));
+    assert!(text.contains("Connection: keep-alive\r\n"));
+    assert!(text.contains("Content-length: 123\r\n"));
+    assert!(text.contains("Access-Control-Allow-Origin: *\r\n"));
 }
 
 #[test]

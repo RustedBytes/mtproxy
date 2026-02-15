@@ -206,6 +206,34 @@ pub struct MtproxyMtprotoClientPacketParseResult {
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct MtproxyMtprotoExtConnection {
+    pub in_fd: i32,
+    pub in_gen: i32,
+    pub out_fd: i32,
+    pub out_gen: i32,
+    pub in_conn_id: i64,
+    pub out_conn_id: i64,
+    pub auth_key_id: i64,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct MtproxyMtprotoClientPacketProcessResult {
+    pub kind: i32,
+    pub payload_offset: i32,
+    pub flags: i32,
+    pub confirm: i32,
+    pub out_conn_id: i64,
+    pub in_fd: i32,
+    pub in_gen: i32,
+    pub in_conn_id: i64,
+    pub out_fd: i32,
+    pub out_gen: i32,
+    pub auth_key_id: i64,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct MtproxyMtprotoOldClusterState {
     pub cluster_id: i32,
     pub targets_num: u32,
