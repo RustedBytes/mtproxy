@@ -383,6 +383,52 @@ pub extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_is_allowed_timestamp(
     )
 }
 
+/// TLS parsing: checks if buffer has enough bytes remaining.
+///
+/// Returns 1 if enough bytes, 0 otherwise.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_tls_has_bytes(
+    pos: i32,
+    length: i32,
+    len: i32,
+) -> i32 {
+    net_tcp_rpc_ext_tls_has_bytes_ffi(pos, length, len)
+}
+
+/// TLS parsing: reads a 16-bit big-endian length from buffer and advances position.
+///
+/// # Safety
+/// `response` must point to at least `response_len` readable bytes.
+/// `pos` must be a valid writable pointer to i32.
+/// Returns the length value, or -1 on error.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_tls_read_length(
+    response: *const u8,
+    response_len: i32,
+    pos: *mut i32,
+) -> i32 {
+    unsafe { net_tcp_rpc_ext_tls_read_length_ffi(response, response_len, pos) }
+}
+
+/// TLS parsing: checks if buffer at position matches expected bytes.
+///
+/// # Safety
+/// `response` must point to at least `response_len` readable bytes.
+/// `expected` must point to at least `expected_len` readable bytes.
+/// Returns 1 if matches, 0 otherwise.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_tls_expect_bytes(
+    response: *const u8,
+    response_len: i32,
+    pos: i32,
+    expected: *const u8,
+    expected_len: i32,
+) -> i32 {
+    unsafe {
+        net_tcp_rpc_ext_tls_expect_bytes_ffi(response, response_len, pos, expected, expected_len)
+    }
+}
+
 /// Runs one net-thread notification event via Rust dispatcher.
 ///
 /// # Safety

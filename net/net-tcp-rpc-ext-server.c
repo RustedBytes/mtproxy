@@ -69,6 +69,14 @@ extern int32_t mtproxy_ffi_net_tcp_rpc_ext_select_server_hello_profile(
 extern int32_t mtproxy_ffi_net_tcp_rpc_ext_is_allowed_timestamp(
     int32_t timestamp, int32_t now, int32_t first_client_random_time,
     int32_t has_first_client_random);
+extern int32_t mtproxy_ffi_net_tcp_rpc_ext_tls_has_bytes(int32_t pos,
+                                                         int32_t length,
+                                                         int32_t len);
+extern int32_t mtproxy_ffi_net_tcp_rpc_ext_tls_read_length(
+    const uint8_t *response, int32_t response_len, int32_t *pos);
+extern int32_t mtproxy_ffi_net_tcp_rpc_ext_tls_expect_bytes(
+    const uint8_t *response, int32_t response_len, int32_t pos,
+    const uint8_t *expected, int32_t expected_len);
 
 /*
  *
@@ -333,8 +341,7 @@ static unsigned char *create_request(const char *domain) {
 }
 
 static int read_length(const unsigned char *response, int *pos) {
-  *pos += 2;
-  return response[*pos - 2] * 256 + response[*pos - 1];
+  return mtproxy_ffi_net_tcp_rpc_ext_tls_read_length(response, 65536, pos);
 }
 
 static int tls_fail_response_parse(const char *error) {
@@ -343,12 +350,13 @@ static int tls_fail_response_parse(const char *error) {
 }
 
 static int tls_has_bytes(int pos, int length, int len) {
-  return pos + length <= len;
+  return mtproxy_ffi_net_tcp_rpc_ext_tls_has_bytes(pos, length, len);
 }
 
 static int tls_expect_bytes(const unsigned char *response, int pos,
                             const void *expected, size_t expected_len) {
-  return memcmp(response + pos, expected, expected_len) == 0;
+  return mtproxy_ffi_net_tcp_rpc_ext_tls_expect_bytes(
+      response, 65536, pos, (const uint8_t *)expected, (int32_t)expected_len);
 }
 
 static int check_response(const unsigned char *response, int len,

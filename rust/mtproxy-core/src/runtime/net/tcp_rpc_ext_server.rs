@@ -64,6 +64,32 @@ pub fn select_server_hello_profile(
 pub const MAX_CLIENT_RANDOM_CACHE_TIME: i32 = 2 * 86400; // 2 days
 pub const MAX_ALLOWED_TIMESTAMP_ERROR: i32 = 10 * 60; // 10 minutes
 
+/// TLS parsing helper: checks if buffer has enough bytes remaining.
+#[must_use]
+#[inline]
+pub fn tls_has_bytes(pos: i32, length: i32, len: i32) -> bool {
+    pos + length <= len
+}
+
+/// TLS parsing helper: reads a 16-bit big-endian length from buffer.
+#[must_use]
+pub fn tls_read_length(response: &[u8], pos: &mut i32) -> i32 {
+    let idx = *pos as usize;
+    *pos += 2;
+    i32::from(response[idx]) * 256 + i32::from(response[idx + 1])
+}
+
+/// TLS parsing helper: checks if buffer matches expected bytes.
+#[must_use]
+pub fn tls_expect_bytes(response: &[u8], pos: i32, expected: &[u8]) -> bool {
+    let start = pos as usize;
+    let end = start + expected.len();
+    if end > response.len() {
+        return false;
+    }
+    &response[start..end] == expected
+}
+
 /// Check if a timestamp is allowed based on current time and cache state.
 ///
 /// # Arguments
@@ -105,8 +131,9 @@ pub fn is_allowed_timestamp(timestamp: i32, now: i32, first_client_random_time: 
 mod tests {
     use super::{
         client_random_bucket_index, domain_bucket_index, is_allowed_timestamp,
-        select_server_hello_profile, CLIENT_RANDOM_HASH_BITS, DOMAIN_HASH_MOD,
-        MAX_ALLOWED_TIMESTAMP_ERROR, SERVER_HELLO_PROFILE_FIXED, SERVER_HELLO_PROFILE_RANDOM_AVG,
+        select_server_hello_profile, tls_expect_bytes, tls_has_bytes, tls_read_length,
+        CLIENT_RANDOM_HASH_BITS, DOMAIN_HASH_MOD, MAX_ALLOWED_TIMESTAMP_ERROR,
+        SERVER_HELLO_PROFILE_FIXED, SERVER_HELLO_PROFILE_RANDOM_AVG,
         SERVER_HELLO_PROFILE_RANDOM_NEAR,
     };
 
@@ -169,6 +196,35 @@ mod tests {
         assert_eq!(select_server_hello_profile(10, 9, 100, 20), None);
         assert_eq!(select_server_hello_profile(10, 12, 100, 0), None);
         assert_eq!(select_server_hello_profile(10, 12, 100, -1), None);
+    }
+
+    #[test]
+    fn test_tls_has_bytes() {
+        assert!(tls_has_bytes(0, 10, 10));
+        assert!(tls_has_bytes(0, 10, 11));
+        assert!(!tls_has_bytes(0, 10, 9));
+        assert!(tls_has_bytes(5, 5, 10));
+        assert!(!tls_has_bytes(5, 6, 10));
+    }
+
+    #[test]
+    fn test_tls_read_length() {
+        let buffer = [0x01, 0x23, 0xFF, 0x00];
+        let mut pos = 0;
+        assert_eq!(tls_read_length(&buffer, &mut pos), 0x0123);
+        assert_eq!(pos, 2);
+        assert_eq!(tls_read_length(&buffer, &mut pos), 0xFF00);
+        assert_eq!(pos, 4);
+    }
+
+    #[test]
+    fn test_tls_expect_bytes() {
+        let buffer = b"\x16\x03\x03hello";
+        assert!(tls_expect_bytes(buffer, 0, b"\x16\x03\x03"));
+        assert!(tls_expect_bytes(buffer, 3, b"hello"));
+        assert!(!tls_expect_bytes(buffer, 0, b"\x16\x03\x04"));
+        assert!(!tls_expect_bytes(buffer, 0, b"too long expected"));
+        assert!(tls_expect_bytes(buffer, 8, b"")); // Empty match at end
     }
 
     #[test]

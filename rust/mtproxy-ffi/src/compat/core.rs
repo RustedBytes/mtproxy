@@ -213,6 +213,30 @@ pub(super) fn net_tcp_rpc_ext_is_allowed_timestamp_impl(
     }
 }
 
+pub(super) fn net_tcp_rpc_ext_tls_has_bytes_impl(pos: i32, length: i32, len: i32) -> i32 {
+    if mtproxy_core::runtime::net::tcp_rpc_ext_server::tls_has_bytes(pos, length, len) {
+        1
+    } else {
+        0
+    }
+}
+
+pub(super) fn net_tcp_rpc_ext_tls_read_length_impl(response: &[u8], pos: &mut i32) -> i32 {
+    mtproxy_core::runtime::net::tcp_rpc_ext_server::tls_read_length(response, pos)
+}
+
+pub(super) fn net_tcp_rpc_ext_tls_expect_bytes_impl(
+    response: &[u8],
+    pos: i32,
+    expected: &[u8],
+) -> i32 {
+    if mtproxy_core::runtime::net::tcp_rpc_ext_server::tls_expect_bytes(response, pos, expected) {
+        1
+    } else {
+        0
+    }
+}
+
 pub(super) fn net_stats_recent_idle_percent_impl(a_idle_time: f64, a_idle_quotient: f64) -> f64 {
     mtproxy_core::runtime::net::stats::recent_idle_percent(a_idle_time, a_idle_quotient)
 }
@@ -1544,6 +1568,58 @@ pub(super) fn net_tcp_rpc_ext_is_allowed_timestamp_ffi(
         first_client_random_time,
         has_first_client_random,
     )
+}
+
+pub(super) fn net_tcp_rpc_ext_tls_has_bytes_ffi(pos: i32, length: i32, len: i32) -> i32 {
+    net_tcp_rpc_ext_tls_has_bytes_impl(pos, length, len)
+}
+
+pub(super) unsafe fn net_tcp_rpc_ext_tls_read_length_ffi(
+    response: *const u8,
+    response_len: i32,
+    pos: *mut i32,
+) -> i32 {
+    let Some(pos_ref) = (unsafe { mut_ref_from_ptr(pos) }) else {
+        return -1;
+    };
+    if response_len < 0 {
+        return -1;
+    }
+    let Ok(len) = usize::try_from(response_len) else {
+        return -1;
+    };
+    let Some(response_slice) = (unsafe { slice_from_ptr(response, len) }) else {
+        return -1;
+    };
+    if *pos_ref < 0 || (*pos_ref + 2) as usize > response_slice.len() {
+        return -1;
+    }
+    net_tcp_rpc_ext_tls_read_length_impl(response_slice, pos_ref)
+}
+
+pub(super) unsafe fn net_tcp_rpc_ext_tls_expect_bytes_ffi(
+    response: *const u8,
+    response_len: i32,
+    pos: i32,
+    expected: *const u8,
+    expected_len: i32,
+) -> i32 {
+    if response_len < 0 || expected_len < 0 || pos < 0 {
+        return 0;
+    }
+    let Ok(resp_len) = usize::try_from(response_len) else {
+        return 0;
+    };
+    let Ok(exp_len) = usize::try_from(expected_len) else {
+        return 0;
+    };
+    let Some(response_slice) = (unsafe { slice_from_ptr(response, resp_len) }) else {
+        return 0;
+    };
+    let Some(expected_slice) = (unsafe { slice_from_ptr(expected, exp_len) }) else {
+        return 0;
+    };
+    net_tcp_rpc_ext_tls_expect_bytes_impl(response_slice, pos, expected_slice)
 }
 
 pub(super) unsafe fn net_thread_run_notification_event_ffi(
