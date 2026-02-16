@@ -273,20 +273,20 @@ unsigned tcp_get_default_rpc_flags(void) {
 
 static __thread double cur_dh_accept_rate_remaining;
 static __thread double cur_dh_accept_rate_time;
-static double max_dh_accept_rate;
 
 void tcp_set_max_dh_accept_rate(int rate) {
-  max_dh_accept_rate = rate;
   mtproxy_ffi_tcp_rpc_set_max_dh_accept_rate(rate);
 }
 
 int tcp_add_dh_accept(void) {
+  int max_dh_accept_rate = mtproxy_ffi_tcp_rpc_get_max_dh_accept_rate();
   if (max_dh_accept_rate) {
+    double max_rate_f64 = (double)max_dh_accept_rate;
     cur_dh_accept_rate_remaining +=
-        (precise_now - cur_dh_accept_rate_time) * max_dh_accept_rate;
+        (precise_now - cur_dh_accept_rate_time) * max_rate_f64;
     cur_dh_accept_rate_time = precise_now;
-    if (cur_dh_accept_rate_remaining > max_dh_accept_rate) {
-      cur_dh_accept_rate_remaining = max_dh_accept_rate;
+    if (cur_dh_accept_rate_remaining > max_rate_f64) {
+      cur_dh_accept_rate_remaining = max_rate_f64;
     }
     if (cur_dh_accept_rate_remaining < 1) {
       return -1;

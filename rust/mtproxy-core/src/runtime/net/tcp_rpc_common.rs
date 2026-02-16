@@ -874,10 +874,14 @@ static DEFAULT_RPC_FLAGS: AtomicU32 = AtomicU32::new(0);
 /// This mirrors the C function `tcp_set_default_rpc_flags`.
 #[must_use]
 pub fn set_default_rpc_flags(and_flags: u32, or_flags: u32) -> u32 {
-    let old = DEFAULT_RPC_FLAGS.load(Ordering::Relaxed);
-    let new = (old & and_flags) | or_flags;
-    DEFAULT_RPC_FLAGS.store(new, Ordering::Relaxed);
-    new
+    // Use fetch_update for atomic read-modify-write
+    // fetch_update returns Ok(old_value) on success, so we need to compute the new value
+    match DEFAULT_RPC_FLAGS.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |old| {
+        Some((old & and_flags) | or_flags)
+    }) {
+        Ok(_old) => DEFAULT_RPC_FLAGS.load(Ordering::Relaxed), // Return the new value
+        Err(_) => unreachable!(), // fetch_update with Some never fails
+    }
 }
 
 /// Gets the current default RPC flags.
