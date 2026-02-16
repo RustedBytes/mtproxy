@@ -180,8 +180,8 @@ pub fn add_length(buffer: &mut [u8], pos: &mut usize, length: i32) -> bool {
         length as u16
     };
     
-    buffer[*pos] = (length_u16 / 256) as u8;
-    buffer[*pos + 1] = (length_u16 % 256) as u8;
+    let bytes = length_u16.to_be_bytes();
+    buffer[*pos..*pos + 2].copy_from_slice(&bytes);
     *pos += 2;
     true
 }
@@ -232,22 +232,20 @@ pub fn add_grease(buffer: &mut [u8], pos: &mut usize, greases: &[u8], num: usize
     true
 }
 
-/// Checks if a client random exists in the hash table.
+/// Checks if a client random exists in a collection.
+/// Simplified version for pure Rust testing without hash table traversal.
 ///
 /// # Arguments
-/// * `client_randoms` - Array of hash table buckets (each is a linked list head pointer)
 /// * `random` - The 16-byte client random to search for
-/// * `get_next_by_hash` - Function to get next pointer from an entry
-/// * `get_random_bytes` - Function to get the 16-byte random from an entry
-/// * `hash_fn` - Function to compute bucket index from random bytes
+/// * `existing_randoms` - Collection of existing random values to check against
 ///
 /// # Returns
-/// `true` if the random exists in the cache, `false` otherwise
+/// `true` if the random exists in the collection, `false` otherwise
 ///
-/// # Safety
-/// This function is designed to be called from FFI with C pointers.
-/// The actual implementation will be in the FFI layer that can handle raw pointers.
-/// This is a pure Rust version for testing and documentation.
+/// # Note
+/// This is a simplified implementation for testing. The actual C implementation
+/// traverses a hash table with linked lists. The FFI layer handles the C pointer
+/// manipulation for the real hash table implementation.
 #[must_use]
 pub fn have_client_random_check(random: &[u8; 16], existing_randoms: &[&[u8; 16]]) -> bool {
     existing_randoms.iter().any(|&r| r == random)

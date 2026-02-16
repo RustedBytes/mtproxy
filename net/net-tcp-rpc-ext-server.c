@@ -233,6 +233,8 @@ get_domain_server_hello_encrypted_size(const struct domain_info *info) {
 
 enum {
   tls_request_length = 517,
+  max_grease = 7,
+  max_vla_size = 1024, // Maximum size for VLA to prevent stack overflow
 };
 
 static void add_string(unsigned char *str, int *pos, const char *data,
@@ -243,6 +245,7 @@ static void add_string(unsigned char *str, int *pos, const char *data,
 }
 
 static void add_random(unsigned char *str, int *pos, int random_len) {
+  assert(random_len > 0 && random_len <= max_vla_size);
   unsigned char rand_buf[random_len]; // VLA
   assert(mtproxy_ffi_crypto_rand_bytes(rand_buf, random_len) == 0);
   assert(mtproxy_ffi_net_tcp_rpc_ext_add_random_bytes(str, tls_request_length, pos,
@@ -257,7 +260,7 @@ static void add_length(unsigned char *str, int *pos, int length) {
 static void add_grease(unsigned char *str, int *pos,
                        const unsigned char *greases, int num) {
   assert(mtproxy_ffi_net_tcp_rpc_ext_add_grease(str, tls_request_length, pos,
-                                                greases, 7, num) == 0);
+                                                greases, max_grease, num) == 0);
 }
 
 static void add_public_key(unsigned char *str, int *pos) {
@@ -271,9 +274,6 @@ static unsigned char *create_request(const char *domain) {
   unsigned char *result = malloc(tls_request_length);
   int pos = 0;
 
-  enum {
-    max_grease = 7,
-  };
   unsigned char greases[max_grease];
   assert(mtproxy_ffi_crypto_rand_bytes(greases, max_grease) == 0);
   int i;
