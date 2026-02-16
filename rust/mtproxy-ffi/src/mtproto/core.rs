@@ -83,6 +83,7 @@ const JS_ABORT: c_int = 5;
 const JS_FINISH: c_int = 7;
 const JOB_COMPLETED: c_int = 0x100;
 const JOB_ERROR: c_int = -1;
+const JF_COMPLETED: c_int = 0x40000;
 const SKIP_ALL_BYTES: c_int = c_int::MIN;
 const JC_CONNECTION: c_int = 4;
 const JC_ENGINE: c_int = 8;
@@ -99,6 +100,7 @@ const OPT_P: c_int = b'P' as c_int;
 const AM_GET_MEMORY_USAGE_SELF: c_int = 1;
 const MAX_HTTP_HEADER_SIZE: c_int = 16384;
 const MAX_POST_SIZE: c_int = 262_144 * 4 - 4096;
+const MAX_CONNECTION_BUFFER_SPACE: c_int = 1 << 25;
 const MAX_HTTP_LISTEN_PORTS: usize = 128;
 const MAX_CONNECTIONS: usize = 65536;
 const MAX_WORKERS: usize = 256;
@@ -114,6 +116,9 @@ const SM_SPECIAL: c_int = 0x1_0000;
 const SM_NOQACK: c_int = 0x2_0000;
 const FORWARD_FLAG_PROXY_TAG: c_int = 8;
 const FORWARD_HTTP_TIMEOUT_SECONDS: c_double = 960.0;
+const PROXY_MODE_OUT: c_int = 2;
+const TCP_RPC_IGNORE_PID: c_int = 4;
+const C_EXTERNAL: c_int = 0x8000;
 const CONN_CUSTOM_DATA_BYTES: usize = 256;
 const MSG_BUFFERS_CHUNK_SIZE: i64 = (1 << 21) - 64;
 const ENCRYPTED_MESSAGE_MIN_LEN: c_int = 56; // offsetof(struct encrypted_message, message)
@@ -291,6 +296,12 @@ struct MtprotoClientPacketInfo {
 }
 
 #[repr(C)]
+struct MtprotoJobCallbackInfo {
+    func: MtprotoJobCallbackFn,
+    data: [u8; 0],
+}
+
+#[repr(C)]
 #[derive(Clone, Copy, Default)]
 struct MtprotoRpcsExecData {
     msg: MtprotoRawMessage,
@@ -323,6 +334,32 @@ struct MtprotoHtsData {
     extra_double2: c_double,
     parse_state: c_int,
     query_seqno: c_int,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct MtprotoConnTypePrefix {
+    magic: c_int,
+    flags: c_int,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct MtprotoTcpRpcClientFunctions {
+    info: *mut c_void,
+    rpc_extra: *mut c_void,
+    execute: *mut c_void,
+    check_ready: *mut c_void,
+    flush_packet: *mut c_void,
+    rpc_check_perm: *mut c_void,
+    rpc_init_crypto: *mut c_void,
+    rpc_start_crypto: *mut c_void,
+    rpc_wakeup: *mut c_void,
+    rpc_alarm: *mut c_void,
+    rpc_ready: *mut c_void,
+    rpc_close: *mut c_void,
+    max_packet_len: c_int,
+    mode_flags: c_int,
 }
 
 #[repr(C)]
@@ -450,13 +487,13 @@ unsafe extern "C" {
     ) -> c_int;
     fn connection_get_by_fd_generation(fd: c_int, generation: c_int) -> ConnectionJob;
     fn job_incref(job: ConnectionJob) -> ConnectionJob;
+    fn job_free(job_tag_int: c_int, job: ConnectionJob) -> c_int;
     fn rpc_target_choose_random_connections(
         s: ConnTargetJob,
         pid: *mut c_void,
         limit: c_int,
         buf: *mut ConnectionJob,
     ) -> c_int;
-    fn do_rpcs_execute(data: *mut c_void, s_len: c_int) -> c_int;
     fn fail_connection(c: ConnectionJob, who: c_int);
     fn set_connection_timeout(c: ConnectionJob, timeout: c_double) -> c_int;
     fn clear_connection_timeout(c: ConnectionJob) -> c_int;
@@ -554,7 +591,7 @@ unsafe extern "C" {
         data: *mut c_void,
         len: c_int,
     );
-    fn finish_postponed_http_response(data: *mut c_void, len: c_int) -> c_int;
+    fn do_close_in_ext_conn(data: *mut c_void, s_len: c_int) -> c_int;
     fn check_conn_buffers(c: ConnectionJob) -> c_int;
     fn fetch_connections_stat(st: *mut MtprotoConnectionsStat);
     fn fetch_buffers_stat(bs: *mut MtprotoBuffersStat);
@@ -590,6 +627,8 @@ unsafe extern "C" {
 
     static mut ct_http_server_mtfront: u8;
     static mut ct_tcp_rpc_ext_server_mtfront: u8;
+    static mut ct_tcp_rpc_client_mtfront: MtprotoConnTypePrefix;
+    static mut mtfront_rpc_client: MtprotoTcpRpcClientFunctions;
     static mut ext_rpc_methods: u8;
     static mut ct_http_server: u8;
     static mut http_methods_stats: u8;
@@ -638,6 +677,7 @@ unsafe extern "C" {
     static mut pending_http_queries: c_int;
     static mut api_invoke_requests: i64;
     static mut proxy_mode: c_int;
+    static mut rpcc_exists: c_int;
     static mut extra_http_response_headers: *mut c_char;
     static mut proxy_tag_set: c_int;
     static mut proxy_tag: [c_char; 16];
@@ -1236,13 +1276,46 @@ pub(super) unsafe fn mtproto_http_send_message_ffi(
     unsafe {
         schedule_job_callback(
             JC_CONNECTION,
-            Some(finish_postponed_http_response),
+            Some(mtproto_finish_postponed_http_response_bridge),
             core::ptr::addr_of_mut!(c_copy).cast(),
             saturating_i32_from_usize(core::mem::size_of::<ConnectionJob>()),
         );
     }
 
     1
+}
+
+pub(super) unsafe fn mtproto_finish_postponed_http_response_ffi(data: *mut c_void, len: c_int) -> c_int {
+    assert!(len == saturating_i32_from_usize(core::mem::size_of::<ConnectionJob>()));
+    let conn_ptr = data.cast::<ConnectionJob>();
+    assert!(!conn_ptr.is_null());
+    let c = unsafe { *conn_ptr };
+    assert!(!c.is_null());
+
+    let conn = unsafe { mtproto_conn_info_ptr(c) };
+    assert!(!conn.is_null());
+
+    if unsafe { ((*c.cast::<MtprotoAsyncJobPrefix>()).j_flags & JF_COMPLETED) == 0 } {
+        assert!(unsafe { (*conn).pending_queries >= 0 });
+        assert!(unsafe { (*conn).pending_queries > 0 });
+        assert!(unsafe { (*conn).pending_queries == 1 });
+        unsafe {
+            (*conn).pending_queries = 0;
+            pending_http_queries = pending_http_queries.wrapping_sub(1);
+            http_flush(c, core::ptr::null_mut());
+        }
+    } else {
+        assert!(unsafe { (*conn).pending_queries == 0 });
+    }
+    unsafe { mtproto_job_decref(c) };
+    JOB_COMPLETED
+}
+
+unsafe extern "C" fn mtproto_finish_postponed_http_response_bridge(
+    data: *mut c_void,
+    len: c_int,
+) -> c_int {
+    unsafe { mtproto_finish_postponed_http_response_ffi(data, len) }
 }
 
 pub(super) unsafe fn mtproto_client_send_message_runtime_ffi(
@@ -2284,6 +2357,46 @@ pub(super) unsafe fn mtproto_process_http_query_ffi(
     -404
 }
 
+pub(super) unsafe fn mtproto_callback_job_run_ffi(
+    job: *mut c_void,
+    op: c_int,
+    _jt: *mut c_void,
+) -> c_int {
+    if job.is_null() {
+        return JOB_ERROR;
+    }
+    let job_prefix = job.cast::<MtprotoAsyncJobPrefix>();
+    let d = unsafe {
+        (*job_prefix)
+            .j_custom
+            .as_ptr()
+            .cast_mut()
+            .cast::<MtprotoJobCallbackInfo>()
+    };
+    if d.is_null() {
+        return JOB_ERROR;
+    }
+
+    match op {
+        JS_RUN => {
+            let Some(func) = (unsafe { (*d).func }) else {
+                assert!(false);
+                return JOB_ERROR;
+            };
+            let custom_bytes = unsafe { (*job_prefix).j_custom_bytes };
+            let payload_offset = saturating_i32_from_usize(core::mem::size_of::<MtprotoJobCallbackFn>());
+            assert!(custom_bytes >= payload_offset);
+            let data_ptr = unsafe { d.cast::<u8>().add(payload_offset as usize).cast::<c_void>() };
+            func(data_ptr, custom_bytes - payload_offset)
+        }
+        JS_FINISH => unsafe { job_free(1, job.cast::<c_void>()) },
+        _ => {
+            assert!(false);
+            JOB_ERROR
+        }
+    }
+}
+
 pub(super) unsafe fn mtproto_http_query_job_run_ffi(
     job: *mut c_void,
     op: c_int,
@@ -2543,6 +2656,216 @@ pub(super) unsafe fn mtproto_rpcc_execute_ffi(
     0
 }
 
+pub(super) unsafe fn mtproto_mtfront_client_ready_ffi(c: *mut c_void) -> c_int {
+    if c.is_null() {
+        return 0;
+    }
+    let c = c.cast::<c_void>();
+    let d = unsafe { mtproto_rpc_data_ptr(c) };
+    let conn = unsafe { mtproto_conn_info_ptr(c) };
+    if d.is_null() || conn.is_null() {
+        return 0;
+    }
+
+    let fd = unsafe { (*conn).fd };
+    assert!((fd as u32) < MAX_CONNECTIONS as u32);
+    assert!(unsafe { (*d).extra_int == 0 });
+    let tag = unsafe { mtproto_conn_tag(c) };
+    assert!((tag as u32) > 0 && (tag as u32) <= 0x0100_0000);
+    unsafe {
+        (*d).extra_int = tag;
+    }
+
+    if unsafe { verbosity } >= 1 {
+        unsafe {
+            kprintf(
+                b"Connected to RPC Middle-End (fd=%d)\n\0".as_ptr().cast(),
+                fd,
+            );
+        }
+    }
+    unsafe {
+        rpcc_exists = rpcc_exists.wrapping_add(1);
+        (*conn).last_response_time = get_utime_monotonic();
+    }
+    0
+}
+
+pub(super) unsafe fn mtproto_mtfront_client_close_ffi(c: *mut c_void, _who: c_int) -> c_int {
+    if c.is_null() {
+        return 0;
+    }
+    let c = c.cast::<c_void>();
+    let d = unsafe { mtproto_rpc_data_ptr(c) };
+    let conn = unsafe { mtproto_conn_info_ptr(c) };
+    if d.is_null() || conn.is_null() {
+        return 0;
+    }
+
+    let fd = unsafe { (*conn).fd };
+    assert!((fd as u32) < MAX_CONNECTIONS as u32);
+
+    if unsafe { verbosity } >= 1 {
+        unsafe {
+            kprintf(
+                b"Disconnected from RPC Middle-End (fd=%d)\n\0"
+                    .as_ptr()
+                    .cast(),
+                fd,
+            );
+        }
+    }
+
+    if unsafe { (*d).extra_int } != 0 {
+        assert!(unsafe { (*d).extra_int == mtproto_conn_tag(c) });
+        loop {
+            let mut ex = MtproxyMtprotoExtConnection::default();
+            let rc = unsafe { mtproto_ext_conn_remove_any_by_out_fd_ffi(fd, &mut ex) };
+            assert!(rc >= 0);
+            if rc <= 0 {
+                break;
+            }
+            unsafe { mtproto_notify_ext_connection_runtime_ffi(&ex, 2) };
+        }
+    }
+    unsafe {
+        (*d).extra_int = 0;
+    }
+    0
+}
+
+pub(super) unsafe fn mtproto_http_close_ffi(c: *mut c_void, who: c_int) -> c_int {
+    if c.is_null() {
+        return 0;
+    }
+    let c = c.cast::<c_void>();
+    let conn = unsafe { mtproto_conn_info_ptr(c) };
+    if conn.is_null() {
+        return 0;
+    }
+    let fd = unsafe { (*conn).fd };
+    assert!((fd as u32) < MAX_CONNECTIONS as u32);
+
+    if unsafe { verbosity } >= 3 {
+        unsafe {
+            kprintf(
+                b"http connection closing (%d) by %d, %d queries pending\n\0"
+                    .as_ptr()
+                    .cast(),
+                fd,
+                who,
+                (*conn).pending_queries,
+            );
+        }
+    }
+
+    if unsafe { (*conn).pending_queries } != 0 {
+        assert!(unsafe { (*conn).pending_queries == 1 });
+        unsafe {
+            pending_http_queries = pending_http_queries.wrapping_sub(1);
+            (*conn).pending_queries = 0;
+        }
+    }
+
+    let mut fd_copy = fd;
+    unsafe {
+        schedule_job_callback(
+            JC_ENGINE,
+            Some(do_close_in_ext_conn),
+            core::ptr::addr_of_mut!(fd_copy).cast::<c_void>(),
+            saturating_i32_from_usize(core::mem::size_of::<c_int>()),
+        );
+    }
+    0
+}
+
+pub(super) unsafe fn mtproto_proxy_rpc_close_ffi(c: *mut c_void, who: c_int) -> c_int {
+    if c.is_null() {
+        return 0;
+    }
+    let c = c.cast::<c_void>();
+    let d = unsafe { mtproto_rpc_data_ptr(c) };
+    let conn = unsafe { mtproto_conn_info_ptr(c) };
+    if d.is_null() || conn.is_null() {
+        return 0;
+    }
+
+    let fd = unsafe { (*conn).fd };
+    assert!((fd as u32) < MAX_CONNECTIONS as u32);
+
+    if unsafe { verbosity } >= 3 {
+        unsafe {
+            kprintf(
+                b"proxy_rpc connection closing (%d) by %d\n\0".as_ptr().cast(),
+                fd,
+                who,
+            );
+        }
+    }
+
+    if unsafe { (*d).extra_int } != 0 {
+        assert!(unsafe { (*d).extra_int == -mtproto_conn_tag(c) });
+        loop {
+            let mut ex = MtproxyMtprotoExtConnection::default();
+            let rc = unsafe { mtproto_ext_conn_remove_any_by_in_fd_ffi(fd, &mut ex) };
+            assert!(rc >= 0);
+            if rc <= 0 {
+                break;
+            }
+            unsafe { mtproto_notify_ext_connection_runtime_ffi(&ex, 1) };
+        }
+    }
+    unsafe {
+        (*d).extra_int = 0;
+    }
+    0
+}
+
+pub(super) unsafe fn mtproto_do_rpcs_execute_ffi(data: *mut c_void, s_len: c_int) -> c_int {
+    assert!(s_len == saturating_i32_from_usize(core::mem::size_of::<MtprotoRpcsExecData>()));
+    let data = data.cast::<MtprotoRpcsExecData>();
+    assert!(!data.is_null());
+
+    let conn = unsafe { (*data).conn };
+    unsafe { lru_insert_conn(conn) };
+
+    let len = unsafe { (*data).msg.total_bytes };
+    let tlio_in = unsafe { tl_in_state_alloc() };
+    assert!(!tlio_in.is_null());
+    unsafe {
+        tlf_init_raw_message(tlio_in, core::ptr::addr_of_mut!((*data).msg), len, 0);
+    }
+
+    let res = unsafe {
+        mtproto_forward_mtproto_packet_ffi(
+            tlio_in.cast::<c_void>(),
+            conn,
+            len,
+            core::ptr::null(),
+            (*data).rpc_flags,
+        )
+    };
+    unsafe {
+        tl_in_state_free(tlio_in);
+        mtproto_job_decref(conn);
+    }
+
+    if res == 0 && unsafe { verbosity } >= 1 {
+        unsafe {
+            kprintf(
+                b"ext_rpcs_execute: cannot forward mtproto packet\n\0"
+                    .as_ptr()
+                    .cast(),
+            );
+        }
+    }
+    JOB_COMPLETED
+}
+
+unsafe extern "C" fn mtproto_do_rpcs_execute_bridge(data: *mut c_void, s_len: c_int) -> c_int {
+    unsafe { mtproto_do_rpcs_execute_ffi(data, s_len) }
+}
+
 pub(super) unsafe fn mtproto_ext_rpcs_execute_ffi(
     c: ConnectionJob,
     op: c_int,
@@ -2601,7 +2924,7 @@ pub(super) unsafe fn mtproto_ext_rpcs_execute_ffi(
             & (RPC_F_QUICKACK | RPC_F_DROPPED | RPC_F_COMPACT_MEDIUM | RPC_F_EXTMODE3);
         schedule_job_callback(
             JC_ENGINE,
-            Some(do_rpcs_execute),
+            Some(mtproto_do_rpcs_execute_bridge),
             core::ptr::addr_of_mut!(data).cast::<c_void>(),
             saturating_i32_from_usize(core::mem::size_of::<MtprotoRpcsExecData>()),
         );
@@ -2722,6 +3045,40 @@ pub(super) unsafe fn mtproto_check_all_conn_buffers_ffi() {
             connections_failed_lru = connections_failed_lru.wrapping_add(1);
         }
     }
+}
+
+pub(super) unsafe fn mtproto_check_conn_buffers_runtime_ffi(c: *mut c_void) -> c_int {
+    if c.is_null() {
+        return -1;
+    }
+    let c = c.cast::<c_void>();
+    let conn = unsafe { mtproto_conn_info_ptr(c) };
+    if conn.is_null() {
+        return -1;
+    }
+    let tot_used_bytes = unsafe {
+        (*conn).in_.total_bytes + (*conn).in_u.total_bytes + (*conn).out.total_bytes + (*conn).out_p.total_bytes
+    };
+    if tot_used_bytes > MAX_CONNECTION_BUFFER_SPACE {
+        if unsafe { verbosity } >= 2 {
+            unsafe {
+                kprintf(
+                    b"check_conn_buffers(): closing connection %d because of %d buffer bytes used (%d max)\n\0"
+                        .as_ptr()
+                        .cast(),
+                    (*conn).fd,
+                    tot_used_bytes,
+                    MAX_CONNECTION_BUFFER_SPACE,
+                );
+            }
+        }
+        unsafe {
+            fail_connection(c, -429);
+            connections_failed_flood = connections_failed_flood.wrapping_add(1);
+        }
+        return -1;
+    }
+    0
 }
 
 pub(super) unsafe fn mtproto_add_stats_ffi(w: *mut c_void) {
@@ -3463,6 +3820,47 @@ pub(super) unsafe fn mtproto_hts_execute_ffi(c: *mut c_void, msg: *mut c_void, o
     0
 }
 
+pub(super) unsafe fn mtproto_http_alarm_ffi(c: *mut c_void) -> c_int {
+    if c.is_null() {
+        return 0;
+    }
+    let c = c.cast::<c_void>();
+    let conn = unsafe { mtproto_conn_info_ptr(c) };
+    let d = unsafe { mtproto_hts_data_ptr(c) };
+    if conn.is_null() || d.is_null() {
+        return 0;
+    }
+
+    if unsafe { verbosity } >= 2 {
+        unsafe {
+            kprintf(
+                b"http_alarm() for connection %d\n\0".as_ptr().cast(),
+                (*conn).fd,
+            );
+        }
+    }
+
+    assert!(unsafe { (*conn).status == CONN_STATUS_WORKING });
+    unsafe {
+        (*d).query_flags &= !QF_KEEPALIVE;
+        write_http_error(c, 500);
+    }
+
+    if unsafe { (*conn).pending_queries } != 0 {
+        assert!(unsafe { (*conn).pending_queries == 1 });
+        unsafe {
+            pending_http_queries = pending_http_queries.wrapping_sub(1);
+            (*conn).pending_queries = 0;
+        }
+    }
+
+    unsafe {
+        (*d).parse_state = -1;
+        connection_write_close(c);
+    }
+    0
+}
+
 pub(super) unsafe fn mtproto_mtfront_prepare_parse_options_ffi() {
     unsafe {
         parse_option(
@@ -3933,6 +4331,25 @@ pub(super) unsafe fn mtproto_mtfront_pre_init_ffi() {
                 j += 1;
             }
         }
+    }
+}
+
+pub(super) unsafe fn mtproto_mtfront_pre_start_ffi() {
+    let res = unsafe { mtproto_cfg_do_reload_config_ffi(0x17) };
+    if res < 0 {
+        eprintln!("config check failed! (code {res})");
+        unsafe { libc::exit(-res) };
+    }
+
+    let cur_conf = unsafe { CurConf };
+    assert!(!cur_conf.is_null());
+    assert!(unsafe { (*cur_conf).have_proxy != 0 });
+
+    unsafe {
+        proxy_mode |= PROXY_MODE_OUT;
+        mtfront_rpc_client.mode_flags |= TCP_RPC_IGNORE_PID;
+        ct_tcp_rpc_client_mtfront.flags |= C_EXTERNAL;
+        assert!(proxy_mode == PROXY_MODE_OUT);
     }
 }
 

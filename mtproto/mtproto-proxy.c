@@ -22,11 +22,10 @@
               2012-2014 Andrey Lopatin
               2014-2018 Telegram Messenger Inc
 */
-#include "net/net-rpc-flags.h"
+
 #define _FILE_OFFSET_BITS 64
 
 #include <assert.h>
-#include <errno.h>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
@@ -39,33 +38,17 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-#include "common/rust-ffi-bridge.h"
 #include "common/tl-parse.h"
 #include "engine/engine-net.h"
 #include "engine/engine.h"
 #include "kprintf.h"
-#include "mtproto-common.h"
 #include "mtproto-config.h"
-#include "net/net-crypto-aes.h"
-#include "net/net-crypto-dh.h"
-#include "net/net-events.h"
 #include "net/net-http-server.h"
-#include "net/net-rpc-targets.h"
 #include "net/net-tcp-rpc-client.h"
 #include "net/net-tcp-rpc-ext-server.h"
 #include "net/net-tcp-rpc-server.h"
-#include "precise-time.h"
-#include "resolver.h"
 #include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 #include "server-functions.h"
-
-static const char VersionStr[] = "mtproxy-0.02";
-static const char CommitStr[] =
-#ifdef COMMIT
-    COMMIT;
-#else
-    "unknown";
-#endif
 
 const char FullVersionStr[] =
     "mtproxy-0.02 compiled at " __DATE__ " " __TIME__ " by gcc " __VERSION__ " "
@@ -178,11 +161,6 @@ static inline int get_ext_connection_by_in_fd(int in_fd,
   return rc > 0;
 }
 
-static void notify_ext_connection(const ext_connection_t *Ex,
-                                  int send_notifications) {
-  mtproxy_ffi_mtproto_notify_ext_connection_runtime(Ex, send_notifications);
-}
-
 void remove_ext_connection(const ext_connection_t *Ex, int send_notifications) {
   check_engine_class();
   mtproxy_ffi_mtproto_remove_ext_connection_runtime(Ex, send_notifications);
@@ -290,17 +268,7 @@ struct job_callback_info {
 };
 
 int callback_job_run(job_t job, int op, struct job_thread *JT) {
-  struct job_callback_info *D = (struct job_callback_info *)(job->j_custom);
-  switch (op) {
-  case JS_RUN:
-    return D->func(D->data, job->j_custom_bytes -
-                                offsetof(struct job_callback_info, data));
-    // return JOB_COMPLETED;
-  case JS_FINISH:
-    return job_free(JOB_REF_PASS(job));
-  default:
-    assert(0);
-  }
+  return mtproxy_ffi_mtproto_callback_job_run(job, op, JT);
 }
 
 void schedule_job_callback(int context, job_callback_func_t func, void *data,
@@ -376,38 +344,12 @@ static inline int get_conn_tag(connection_job_t C) {
 
 int mtfront_client_ready(connection_job_t C) {
   check_engine_class();
-  struct tcp_rpc_data *D = TCP_RPC_DATA(C);
-  int fd = CONN_INFO(C)->fd;
-  assert((unsigned)fd < MAX_CONNECTIONS);
-  assert(!D->extra_int);
-  D->extra_int = get_conn_tag(C);
-  vkprintf(1, "Connected to RPC Middle-End (fd=%d)\n", fd);
-  rpcc_exists++;
-
-  CONN_INFO(C)->last_response_time = precise_now;
-  return 0;
+  return mtproxy_ffi_mtproto_mtfront_client_ready(C);
 }
 
 int mtfront_client_close(connection_job_t C, int who) {
   check_engine_class();
-  struct tcp_rpc_data *D = TCP_RPC_DATA(C);
-  int fd = CONN_INFO(C)->fd;
-  assert((unsigned)fd < MAX_CONNECTIONS);
-  vkprintf(1, "Disconnected from RPC Middle-End (fd=%d)\n", fd);
-  if (D->extra_int) {
-    assert(D->extra_int == get_conn_tag(C));
-    ext_connection_t Ex;
-    for (;;) {
-      int32_t rc = mtproxy_ffi_mtproto_ext_conn_remove_any_by_out_fd(fd, &Ex);
-      assert(rc >= 0);
-      if (rc <= 0) {
-        break;
-      }
-      notify_ext_connection(&Ex, 2);
-    }
-  }
-  D->extra_int = 0;
-  return 0;
+  return mtproxy_ffi_mtproto_mtfront_client_close(C, who);
 }
 
 /*
@@ -461,16 +403,7 @@ int do_close_in_ext_conn(void *_data, int s_len) {
 
 // NET_CPU context
 int mtproto_http_close(connection_job_t C, int who) {
-  assert((unsigned)CONN_INFO(C)->fd < MAX_CONNECTIONS);
-  vkprintf(3, "http connection closing (%d) by %d, %d queries pending\n",
-           CONN_INFO(C)->fd, who, CONN_INFO(C)->pending_queries);
-  if (CONN_INFO(C)->pending_queries) {
-    assert(CONN_INFO(C)->pending_queries == 1);
-    pending_http_queries--;
-    CONN_INFO(C)->pending_queries = 0;
-  }
-  schedule_job_callback(JC_ENGINE, do_close_in_ext_conn, &CONN_INFO(C)->fd, 4);
-  return 0;
+  return mtproxy_ffi_mtproto_http_close(C, who);
 }
 
 int mtproto_ext_rpc_ready(connection_job_t C) {
@@ -507,24 +440,7 @@ int mtproto_proxy_rpc_ready(connection_job_t C) {
 
 int mtproto_proxy_rpc_close(connection_job_t C, int who) {
   check_engine_class();
-  struct tcp_rpc_data *D = TCP_RPC_DATA(C);
-  int fd = CONN_INFO(C)->fd;
-  assert((unsigned)fd < MAX_CONNECTIONS);
-  vkprintf(3, "proxy_rpc connection closing (%d) by %d\n", fd, who);
-  if (D->extra_int) {
-    assert(D->extra_int == -get_conn_tag(C));
-    ext_connection_t Ex;
-    for (;;) {
-      int32_t rc = mtproxy_ffi_mtproto_ext_conn_remove_any_by_in_fd(fd, &Ex);
-      assert(rc >= 0);
-      if (rc <= 0) {
-        break;
-      }
-      notify_ext_connection(&Ex, 1);
-    }
-  }
-  D->extra_int = 0;
-  return 0;
+  return mtproxy_ffi_mtproto_proxy_rpc_close(C, who);
 }
 
 char mtproto_cors_http_headers[] =
@@ -590,25 +506,7 @@ struct rpcs_exec_data {
 };
 
 int do_rpcs_execute(void *_data, int s_len) {
-  struct rpcs_exec_data *data = _data;
-  assert(s_len == sizeof(struct rpcs_exec_data));
-  assert(data);
-
-  lru_insert_conn(data->conn);
-
-  int len = data->msg.total_bytes;
-  struct tl_in_state *tlio_in = tl_in_state_alloc();
-  tlf_init_raw_message(tlio_in, &data->msg, len, 0);
-
-  int res =
-      forward_mtproto_packet(tlio_in, data->conn, len, 0, data->rpc_flags);
-  tl_in_state_free(tlio_in);
-  job_decref(JOB_REF_PASS(data->conn));
-
-  if (!res) {
-    vkprintf(1, "ext_rpcs_execute: cannot forward mtproto packet\n");
-  }
-  return JOB_COMPLETED;
+  return mtproxy_ffi_mtproto_do_rpcs_execute(_data, s_len);
 }
 
 int ext_rpcs_execute(connection_job_t c, int op, struct raw_message *msg) {
@@ -617,42 +515,12 @@ int ext_rpcs_execute(connection_job_t c, int op, struct raw_message *msg) {
 
 // NET-CPU context
 int mtproto_http_alarm(connection_job_t C) {
-  vkprintf(2, "http_alarm() for connection %d\n", CONN_INFO(C)->fd);
-
-  assert(CONN_INFO(C)->status == conn_working);
-  HTS_DATA(C)->query_flags &= ~QF_KEEPALIVE;
-
-  write_http_error(C, 500);
-
-  if (CONN_INFO(C)->pending_queries) {
-    assert(CONN_INFO(C)->pending_queries == 1);
-    --pending_http_queries;
-    CONN_INFO(C)->pending_queries = 0;
-  }
-
-  HTS_DATA(C)->parse_state = -1;
-  connection_write_close(C);
-
-  return 0;
+  return mtproxy_ffi_mtproto_http_alarm(C);
 }
 
 // NET-CPU context
 int finish_postponed_http_response(void *_data, int len) {
-  assert(len == sizeof(connection_job_t));
-  connection_job_t C = *(connection_job_t *)_data;
-  if (!check_job_completion(C)) {
-    assert(CONN_INFO(C)->pending_queries >= 0);
-    assert(CONN_INFO(C)->pending_queries > 0);
-    assert(CONN_INFO(C)->pending_queries == 1);
-    CONN_INFO(C)->pending_queries = 0;
-    --pending_http_queries;
-    // check_conn_buffers (C);
-    http_flush(C, 0);
-  } else {
-    assert(!CONN_INFO(C)->pending_queries);
-  }
-  job_decref(JOB_REF_PASS(C));
-  return JOB_COMPLETED;
+  return mtproxy_ffi_mtproto_finish_postponed_http_response(_data, len);
 }
 
 // ENGINE context
@@ -722,19 +590,7 @@ void check_all_conn_buffers(void) {
 }
 
 int check_conn_buffers(connection_job_t c) {
-  int tot_used_bytes =
-      CONN_INFO(c)->in.total_bytes + CONN_INFO(c)->in_u.total_bytes +
-      CONN_INFO(c)->out.total_bytes + CONN_INFO(c)->out_p.total_bytes;
-  if (tot_used_bytes > MAX_CONNECTION_BUFFER_SPACE) {
-    vkprintf(2,
-             "check_conn_buffers(): closing connection %d because of %d buffer "
-             "bytes used (%d max)\n",
-             CONN_INFO(c)->fd, tot_used_bytes, MAX_CONNECTION_BUFFER_SPACE);
-    fail_connection(c, -429);
-    ++connections_failed_flood;
-    return -1;
-  }
-  return 0;
+  return mtproxy_ffi_mtproto_check_conn_buffers_runtime(c);
 }
 
 // invoked in NET-CPU context!
@@ -875,20 +731,7 @@ void mtfront_pre_init(void) {
 }
 
 void mtfront_pre_start(void) {
-  int res = mtproxy_ffi_mtproto_cfg_do_reload_config(0x17);
-
-  if (res < 0) {
-    fprintf(stderr, "config check failed! (code %d)\n", res);
-    exit(-res);
-  }
-
-  assert(CurConf->have_proxy);
-
-  proxy_mode |= PROXY_MODE_OUT;
-  mtfront_rpc_client.mode_flags |= TCP_RPC_IGNORE_PID;
-  ct_tcp_rpc_client_mtfront.flags |= C_EXTERNAL;
-
-  assert(proxy_mode == PROXY_MODE_OUT);
+  mtproxy_ffi_mtproto_mtfront_pre_start();
 }
 
 void mtfront_on_exit(void) {

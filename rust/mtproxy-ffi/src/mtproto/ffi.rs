@@ -200,6 +200,15 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_http_query_job_run(
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_callback_job_run(
+    job: *mut c_void,
+    op: c_int,
+    jt: *mut c_void,
+) -> i32 {
+    unsafe { mtproto_callback_job_run_ffi(job, op, jt) }
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_mtproto_client_packet_job_run(
     job: *mut c_void,
     op: c_int,
@@ -232,6 +241,11 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_compute_stats_sum() {
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_mtproto_check_all_conn_buffers() {
     unsafe { mtproto_check_all_conn_buffers_ffi() };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_check_conn_buffers_runtime(c: *mut c_void) -> i32 {
+    unsafe { mtproto_check_conn_buffers_runtime_ffi(c) }
 }
 
 #[no_mangle]
@@ -272,12 +286,56 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_rpcc_execute(
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_mtfront_client_ready(c: *mut c_void) -> i32 {
+    unsafe { mtproto_mtfront_client_ready_ffi(c) }
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_rpcs_execute(
     c: *mut c_void,
     op: c_int,
     msg: *mut c_void,
 ) -> i32 {
     unsafe { mtproto_ext_rpcs_execute_ffi(c, op, msg) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_mtfront_client_close(
+    c: *mut c_void,
+    who: c_int,
+) -> i32 {
+    unsafe { mtproto_mtfront_client_close_ffi(c, who) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_proxy_rpc_close(c: *mut c_void, who: c_int) -> i32 {
+    unsafe { mtproto_proxy_rpc_close_ffi(c, who) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_do_rpcs_execute(
+    data: *mut c_void,
+    s_len: c_int,
+) -> i32 {
+    unsafe { mtproto_do_rpcs_execute_ffi(data, s_len) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_finish_postponed_http_response(
+    data: *mut c_void,
+    len: c_int,
+) -> i32 {
+    unsafe { mtproto_finish_postponed_http_response_ffi(data, len) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_http_alarm(c: *mut c_void) -> i32 {
+    unsafe { mtproto_http_alarm_ffi(c) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_http_close(c: *mut c_void, who: c_int) -> i32 {
+    unsafe { mtproto_http_close_ffi(c, who) }
 }
 
 #[no_mangle]
@@ -303,6 +361,11 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_check_children_status() {
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_mtproto_mtfront_pre_init() {
     unsafe { mtproto_mtfront_pre_init_ffi() };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_mtfront_pre_start() {
+    unsafe { mtproto_mtfront_pre_start_ffi() };
 }
 
 #[no_mangle]
