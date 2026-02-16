@@ -698,6 +698,10 @@ int32_t mtproxy_ffi_net_tcp_reader_should_continue(
 int32_t mtproxy_ffi_net_tcp_rpc_ext_domain_bucket_index(const uint8_t *domain, int32_t len);
 int32_t mtproxy_ffi_net_tcp_rpc_ext_client_random_bucket_index(const uint8_t random[16]);
 int32_t mtproxy_ffi_net_tcp_rpc_ext_select_server_hello_profile(
+    int32_t min_len, int32_t max_len, int32_t sum_len, int32_t sample_count,
+    int32_t *out_size, int32_t *out_profile);
+int32_t mtproxy_ffi_net_tcp_rpc_ext_is_allowed_timestamp(
+    int32_t timestamp, int32_t now, int32_t first_client_random_time, int32_t has_first_client_random);
   int32_t min_len,
   int32_t max_len,
   int32_t sum_len,

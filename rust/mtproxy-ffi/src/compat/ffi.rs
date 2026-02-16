@@ -365,6 +365,24 @@ pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_select_server_hello_profile
     }
 }
 
+/// Checks if a timestamp is allowed based on current time and cache state.
+///
+/// Returns 1 if allowed, 0 if not allowed.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_is_allowed_timestamp(
+    timestamp: i32,
+    now: i32,
+    first_client_random_time: i32,
+    has_first_client_random: i32,
+) -> i32 {
+    net_tcp_rpc_ext_is_allowed_timestamp_ffi(
+        timestamp,
+        now,
+        first_client_random_time,
+        has_first_client_random,
+    )
+}
+
 /// Runs one net-thread notification event via Rust dispatcher.
 ///
 /// # Safety

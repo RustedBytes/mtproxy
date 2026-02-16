@@ -60,12 +60,54 @@ pub fn select_server_hello_profile(
     Some((avg, SERVER_HELLO_PROFILE_RANDOM_AVG))
 }
 
+/// Constants for client random cache management.
+pub const MAX_CLIENT_RANDOM_CACHE_TIME: i32 = 2 * 86400; // 2 days
+pub const MAX_ALLOWED_TIMESTAMP_ERROR: i32 = 10 * 60; // 10 minutes
+
+/// Check if a timestamp is allowed based on current time and cache state.
+///
+/// # Arguments
+/// * `timestamp` - The timestamp from the request
+/// * `now` - Current Unix timestamp
+/// * `first_client_random_time` - Time of oldest cached client random (or None if cache is empty)
+///
+/// # Returns
+/// `true` if the timestamp is valid and the request should be allowed
+#[must_use]
+pub fn is_allowed_timestamp(timestamp: i32, now: i32, first_client_random_time: Option<i32>) -> bool {
+    // Do not allow timestamps in the future
+    // After time synchronization client should always have time in the past
+    if timestamp > now + 3 {
+        return false;
+    }
+
+    // If we have a first_client_random and timestamp is much newer than it,
+    // allow the request (it must have come after that old request)
+    if let Some(first_time) = first_client_random_time {
+        if timestamp > first_time + 3 {
+            return true;
+        }
+    }
+
+    // Allow all requests with timestamp recently in past, regardless of ability
+    // to check repeating client random. The allowed error must be big enough to
+    // allow requests after time synchronization.
+    if timestamp > now - MAX_ALLOWED_TIMESTAMP_ERROR {
+        return true;
+    }
+
+    // The request is too old to check client random, do not allow it to force
+    // client to synchronize its time
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        client_random_bucket_index, domain_bucket_index, select_server_hello_profile,
-        CLIENT_RANDOM_HASH_BITS, DOMAIN_HASH_MOD, SERVER_HELLO_PROFILE_FIXED,
-        SERVER_HELLO_PROFILE_RANDOM_AVG, SERVER_HELLO_PROFILE_RANDOM_NEAR,
+        client_random_bucket_index, domain_bucket_index, is_allowed_timestamp,
+        select_server_hello_profile, CLIENT_RANDOM_HASH_BITS, DOMAIN_HASH_MOD,
+        MAX_ALLOWED_TIMESTAMP_ERROR, SERVER_HELLO_PROFILE_FIXED, SERVER_HELLO_PROFILE_RANDOM_AVG,
+        SERVER_HELLO_PROFILE_RANDOM_NEAR,
     };
 
     #[test]
@@ -127,5 +169,37 @@ mod tests {
         assert_eq!(select_server_hello_profile(10, 9, 100, 20), None);
         assert_eq!(select_server_hello_profile(10, 12, 100, 0), None);
         assert_eq!(select_server_hello_profile(10, 12, 100, -1), None);
+    }
+
+    #[test]
+    fn test_is_allowed_timestamp_future() {
+        let now = 1000;
+        // Future timestamps (> now + 3) should be rejected
+        assert!(!is_allowed_timestamp(1004, now, None));
+        assert!(!is_allowed_timestamp(1005, now, None));
+    }
+
+    #[test]
+    fn test_is_allowed_timestamp_recent_past() {
+        let now = 1000;
+        // Recent past timestamps within MAX_ALLOWED_TIMESTAMP_ERROR should be allowed
+        assert!(is_allowed_timestamp(999, now, None));
+        assert!(is_allowed_timestamp(now - MAX_ALLOWED_TIMESTAMP_ERROR + 1, now, None));
+    }
+
+    #[test]
+    fn test_is_allowed_timestamp_old() {
+        let now = 1000;
+        // Old timestamps (> MAX_ALLOWED_TIMESTAMP_ERROR) should be rejected
+        assert!(!is_allowed_timestamp(now - MAX_ALLOWED_TIMESTAMP_ERROR - 1, now, None));
+    }
+
+    #[test]
+    fn test_is_allowed_timestamp_with_first_random() {
+        let now = 1000;
+        let first_random_time = 500;
+        // Timestamp much newer than first_client_random should be allowed
+        assert!(is_allowed_timestamp(504, now, Some(first_random_time)));
+        assert!(is_allowed_timestamp(600, now, Some(first_random_time)));
     }
 }

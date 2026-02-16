@@ -66,6 +66,9 @@ extern int32_t mtproxy_ffi_net_tcp_rpc_ext_client_random_bucket_index(
 extern int32_t mtproxy_ffi_net_tcp_rpc_ext_select_server_hello_profile(
     int32_t min_len, int32_t max_len, int32_t sum_len, int32_t sample_count,
     int32_t *out_size, int32_t *out_profile);
+extern int32_t mtproxy_ffi_net_tcp_rpc_ext_is_allowed_timestamp(
+    int32_t timestamp, int32_t now, int32_t first_client_random_time,
+    int32_t has_first_client_random);
 
 /*
  *
@@ -937,46 +940,10 @@ static void delete_old_client_randoms() {
 }
 
 static int is_allowed_timestamp(int timestamp) {
-  if (timestamp > now + 3) {
-    // do not allow timestamps in the future
-    // after time synchronization client should always have time in the past
-    vkprintf(1,
-             "Disallow request with timestamp %d from the future, now is %d\n",
-             timestamp, now);
-    return 0;
-  }
-
-  // first_client_random->time is an exact time when corresponding request was
-  // received if the timestamp is bigger than (first_client_random->time + 3),
-  // then the current request could be accepted only after the request with
-  // first_client_random, so the client random still must be cached if the
-  // request wasn't accepted, then the client_random still will be cached for
-  // max_client_random_cache_time seconds, so we can miss duplicate request only
-  // after a lot of time has passed
-  if (first_client_random != NULL &&
-      timestamp > first_client_random->time + 3) {
-    vkprintf(1, "Allow new request with timestamp %d\n", timestamp);
-    return 1;
-  }
-
-  // allow all requests with timestamp recently in past, regardless of ability
-  // to check repeating client random the allowed error must be big enough to
-  // allow requests after time synchronization
-  const int MAX_ALLOWED_TIMESTAMP_ERROR = 10 * 60;
-  if (timestamp > now - MAX_ALLOWED_TIMESTAMP_ERROR) {
-    // this can happen only first (MAX_ALLOWED_TIMESTAMP_ERROR + 3) sceonds
-    // after first_client_random->time
-    vkprintf(1,
-             "Allow recent request with timestamp %d without full check for "
-             "client random duplication\n",
-             timestamp);
-    return 1;
-  }
-
-  // the request is too old to check client random, do not allow it to force
-  // client to synchronize it's time
-  vkprintf(1, "Disallow too old request with timestamp %d\n", timestamp);
-  return 0;
+  int has_first_client_random = (first_client_random != NULL) ? 1 : 0;
+  int first_time = has_first_client_random ? first_client_random->time : 0;
+  return mtproxy_ffi_net_tcp_rpc_ext_is_allowed_timestamp(
+      timestamp, now, first_time, has_first_client_random);
 }
 
 static int proxy_connection(connection_job_t C,

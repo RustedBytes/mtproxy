@@ -195,6 +195,24 @@ pub(super) fn net_tcp_rpc_ext_select_server_hello_profile_impl(
     )
 }
 
+pub(super) fn net_tcp_rpc_ext_is_allowed_timestamp_impl(
+    timestamp: i32,
+    now: i32,
+    first_client_random_time: i32,
+    has_first_client_random: i32,
+) -> i32 {
+    let first_time = if has_first_client_random != 0 {
+        Some(first_client_random_time)
+    } else {
+        None
+    };
+    if mtproxy_core::runtime::net::tcp_rpc_ext_server::is_allowed_timestamp(timestamp, now, first_time) {
+        1
+    } else {
+        0
+    }
+}
+
 pub(super) fn net_stats_recent_idle_percent_impl(a_idle_time: f64, a_idle_quotient: f64) -> f64 {
     mtproxy_core::runtime::net::stats::recent_idle_percent(a_idle_time, a_idle_quotient)
 }
@@ -1512,6 +1530,20 @@ pub(super) unsafe fn net_tcp_rpc_ext_select_server_hello_profile_ffi(
     *out_size_ref = size;
     *out_profile_ref = profile;
     0
+}
+
+pub(super) fn net_tcp_rpc_ext_is_allowed_timestamp_ffi(
+    timestamp: i32,
+    now: i32,
+    first_client_random_time: i32,
+    has_first_client_random: i32,
+) -> i32 {
+    net_tcp_rpc_ext_is_allowed_timestamp_impl(
+        timestamp,
+        now,
+        first_client_random_time,
+        has_first_client_random,
+    )
 }
 
 pub(super) unsafe fn net_thread_run_notification_event_ffi(
