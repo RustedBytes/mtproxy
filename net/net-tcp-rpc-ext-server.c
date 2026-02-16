@@ -28,7 +28,6 @@
 #define _FILE_OFFSET_BITS 64
 
 #include <assert.h>
-#include <errno.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -40,7 +39,6 @@
 #include "common/precise-time.h"
 #include "net/net-connections.h"
 #include "net/net-crypto-aes.h"
-#include "net/net-events.h"
 #include "net/net-tcp-connections.h"
 #include "net/net-tcp-rpc-ext-server.h"
 #include "net/net-tcp-rpc-server.h"
@@ -58,17 +56,26 @@ struct domain_info;
 extern int32_t
 mtproxy_ffi_net_tcp_rpc_ext_domain_bucket_index(const uint8_t *domain,
                                                 int32_t len);
-extern int32_t mtproxy_ffi_net_tcp_rpc_ext_client_random_bucket_index(
-    const uint8_t random[16]);
-extern int32_t mtproxy_ffi_net_tcp_rpc_ext_is_allowed_timestamp(
-    int32_t timestamp, int32_t now, int32_t first_client_random_time,
-    int32_t has_first_client_random);
 extern int32_t mtproxy_ffi_net_tcp_rpc_ext_get_domain_server_hello_encrypted_size(
     int32_t base_size, int32_t use_random, int32_t rand_value);
 extern int32_t
 mtproxy_ffi_net_tcp_rpc_ext_server_update_domain_info(struct domain_info *info);
 extern int32_t mtproxy_ffi_net_tcp_rpc_ext_server_compact_parse_execute(
     connection_job_t c);
+extern int32_t mtproxy_ffi_net_tcp_rpc_ext_server_proxy_pass_parse_execute(
+    connection_job_t c);
+extern void mtproxy_ffi_net_tcp_rpc_ext_server_init_proxy_domains(
+    struct domain_info **domains, int32_t buckets);
+extern int32_t mtproxy_ffi_net_tcp_rpc_ext_server_proxy_connection(
+    connection_job_t c, const struct domain_info *info);
+extern int32_t mtproxy_ffi_net_tcp_rpc_ext_server_have_client_random(
+    const uint8_t random[16]);
+extern void mtproxy_ffi_net_tcp_rpc_ext_server_add_client_random(
+    const uint8_t random[16], int32_t now);
+extern void mtproxy_ffi_net_tcp_rpc_ext_server_delete_old_client_randoms(
+    int32_t now);
+extern int32_t mtproxy_ffi_net_tcp_rpc_ext_server_is_allowed_timestamp(
+    int32_t timestamp, int32_t now);
 
 /*
  *
@@ -115,22 +122,7 @@ conn_type_t ct_proxy_pass = {
 };
 
 int tcp_proxy_pass_parse_execute(connection_job_t C) {
-  struct connection_info *c = CONN_INFO(C);
-  if (!c->extra) {
-    fail_connection(C, -1);
-    return 0;
-  }
-  job_t E = job_incref(c->extra);
-  struct connection_info *e = CONN_INFO(E);
-
-  struct raw_message *r = malloc(sizeof(*r));
-  rwm_move(r, &c->in);
-  rwm_init(&c->in, 0);
-  vkprintf(3, "proxying %d bytes to %s:%d\n", r->total_bytes, show_remote_ip(E),
-           e->remote_port);
-  mpq_push_w(e->out_queue, PTR_MOVE(r), 0);
-  job_signal(JOB_REF_PASS(E), JS_RUN);
-  return 0;
+  return mtproxy_ffi_net_tcp_rpc_ext_server_proxy_pass_parse_execute(C);
 }
 
 int tcp_proxy_pass_close(connection_job_t C, int who) {
@@ -180,12 +172,6 @@ enum {
   domain_hash_mod = 257,
 };
 
-enum server_hello_profile {
-  server_hello_profile_fixed = 0,
-  server_hello_profile_random_near = 1,
-  server_hello_profile_random_avg = 2,
-};
-
 static struct domain_info *domains[domain_hash_mod];
 
 static inline int domain_bucket_index(const char *domain, size_t len) {
@@ -221,10 +207,6 @@ get_domain_server_hello_encrypted_size(const struct domain_info *info) {
       rand());
 }
 
-static int update_domain_info(struct domain_info *info) {
-  return mtproxy_ffi_net_tcp_rpc_ext_server_update_domain_info(info);
-}
-
 void tcp_rpc_add_proxy_domain(const char *domain) {
   assert(domain != NULL);
 
@@ -243,158 +225,28 @@ void tcp_rpc_add_proxy_domain(const char *domain) {
 }
 
 void tcp_rpc_init_proxy_domains() {
-  int i;
-  for (i = 0; i < domain_hash_mod; i++) {
-    struct domain_info *info = domains[i];
-    while (info != NULL) {
-      if (!update_domain_info(info)) {
-        kprintf("Failed to update response data about %s, so default response "
-                "settings wiil be used\n",
-                info->domain);
-        // keep target addresses as is
-        info->is_reversed_extension_order = 0;
-        info->use_random_encrypted_size = 1;
-        info->server_hello_encrypted_size = 2500 + rand() % 1120;
-      }
-
-      info = info->next;
-    }
-  }
-}
-
-struct client_random {
-  unsigned char random[16];
-  struct client_random *next_by_time;
-  struct client_random *next_by_hash;
-  int time;
-};
-
-enum {
-  random_hash_bits = 14,
-  random_hash_size = 1 << random_hash_bits,
-};
-static struct client_random *client_randoms[random_hash_size];
-
-static struct client_random *first_client_random;
-static struct client_random *last_client_random;
-
-static struct client_random **
-get_client_random_bucket(unsigned char random[16]) {
-  int32_t id = mtproxy_ffi_net_tcp_rpc_ext_client_random_bucket_index(random);
-  assert(0 <= id && id < random_hash_size);
-  return client_randoms + id;
+  mtproxy_ffi_net_tcp_rpc_ext_server_init_proxy_domains(domains, domain_hash_mod);
 }
 
 static int have_client_random(unsigned char random[16]) {
-  struct client_random *cur = *get_client_random_bucket(random);
-  while (cur != NULL) {
-    if (memcmp(random, cur->random, 16) == 0) {
-      return 1;
-    }
-    cur = cur->next_by_hash;
-  }
-  return 0;
+  return mtproxy_ffi_net_tcp_rpc_ext_server_have_client_random(random);
 }
 
 static void add_client_random(unsigned char random[16]) {
-  struct client_random *entry = malloc(sizeof(struct client_random));
-  memcpy(entry->random, random, 16);
-  entry->time = now;
-  entry->next_by_time = NULL;
-  if (last_client_random == NULL) {
-    assert(first_client_random == NULL);
-    first_client_random = last_client_random = entry;
-  } else {
-    last_client_random->next_by_time = entry;
-    last_client_random = entry;
-  }
-
-  struct client_random **bucket = get_client_random_bucket(random);
-  entry->next_by_hash = *bucket;
-  *bucket = entry;
+  mtproxy_ffi_net_tcp_rpc_ext_server_add_client_random(random, now);
 }
 
-enum {
-  max_client_random_cache_time = 2 * 86400,
-};
-
 static void delete_old_client_randoms() {
-  while (first_client_random != last_client_random) {
-    assert(first_client_random != NULL);
-    if (first_client_random->time > now - max_client_random_cache_time) {
-      return;
-    }
-
-    struct client_random *entry = first_client_random;
-    assert(entry->next_by_hash == NULL);
-
-    first_client_random = first_client_random->next_by_time;
-
-    struct client_random **cur = get_client_random_bucket(entry->random);
-    while (*cur != entry) {
-      cur = &(*cur)->next_by_hash;
-    }
-    *cur = NULL;
-
-    free(entry);
-  }
+  mtproxy_ffi_net_tcp_rpc_ext_server_delete_old_client_randoms(now);
 }
 
 static int is_allowed_timestamp(int timestamp) {
-  int has_first_client_random = (first_client_random != NULL) ? 1 : 0;
-  int first_time = has_first_client_random ? first_client_random->time : 0;
-  return mtproxy_ffi_net_tcp_rpc_ext_is_allowed_timestamp(
-      timestamp, now, first_time, has_first_client_random);
+  return mtproxy_ffi_net_tcp_rpc_ext_server_is_allowed_timestamp(timestamp, now);
 }
 
 static int proxy_connection(connection_job_t C,
                             const struct domain_info *info) {
-  struct connection_info *c = CONN_INFO(C);
-  assert(check_conn_functions(&ct_proxy_pass, 0) >= 0);
-
-  const char zero[16] = {};
-  if (info->target.s_addr == 0 && !memcmp(info->target_ipv6, zero, 16)) {
-    vkprintf(0, "failed to proxy request to %s\n", info->domain);
-    fail_connection(C, -17);
-    return 0;
-  }
-
-  int port = c->our_port == 80 ? 80 : 443;
-
-  int cfd = -1;
-  if (info->target.s_addr) {
-    cfd = client_socket(info->target.s_addr, port, 0);
-  } else {
-    cfd = client_socket_ipv6(info->target_ipv6, port, SM_IPV6);
-  }
-
-  if (cfd < 0) {
-    kprintf("failed to create proxy pass connection: %d (%m)", errno);
-    fail_connection(C, -27);
-    return 0;
-  }
-
-  c->type->crypto_free(C);
-  job_incref(C);
-  job_t EJ = alloc_new_connection(cfd, NULL, NULL, ct_outbound, &ct_proxy_pass,
-                                  C, ntohl(*(int *)&info->target.s_addr),
-                                  (void *)info->target_ipv6, port);
-
-  if (!EJ) {
-    kprintf("failed to create proxy pass connection (2)");
-    job_decref_f(C);
-    fail_connection(C, -37);
-    return 0;
-  }
-
-  c->type = &ct_proxy_pass;
-  c->extra = job_incref(EJ);
-
-  struct connection_info *e = CONN_INFO(EJ);
-  assert(e->io_conn);
-  unlock_job(JOB_REF_PASS(EJ));
-
-  return c->type->parse_execute(C);
+  return mtproxy_ffi_net_tcp_rpc_ext_server_proxy_connection(C, info);
 }
 
 struct connection_info *
@@ -409,6 +261,14 @@ struct tcp_rpc_data *mtproxy_ffi_net_tcp_rpc_ext_data(connection_job_t c) {
 struct tcp_rpc_server_functions *
 mtproxy_ffi_net_tcp_rpc_ext_funcs(connection_job_t c) {
   return TCP_RPCS_FUNC(c);
+}
+
+void mtproxy_ffi_net_tcp_rpc_ext_job_decref(connection_job_t c) {
+  job_decref(JOB_REF_PASS(c));
+}
+
+int32_t mtproxy_ffi_net_tcp_rpc_ext_unlock_job(connection_job_t c) {
+  return unlock_job(JOB_REF_PASS(c));
 }
 
 const char *mtproxy_ffi_net_tcp_rpc_ext_show_remote_ip(connection_job_t c) {
@@ -493,9 +353,3 @@ int tcp_rpcs_ext_init_accepted(connection_job_t C) {
 int tcp_rpcs_compact_parse_execute(connection_job_t C) {
   return mtproxy_ffi_net_tcp_rpc_ext_server_compact_parse_execute(C);
 }
-
-/*
- *
- *                END (EXTERNAL RPC SERVER)
- *
- */

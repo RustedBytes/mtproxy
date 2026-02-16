@@ -5,7 +5,9 @@ use core::ffi::{c_char, c_double, c_int, c_long, c_short, c_void};
 use core::mem::size_of;
 use core::ptr;
 use core::slice;
+use std::collections::{HashMap, VecDeque};
 use std::ffi::CStr;
+use std::sync::{Mutex, OnceLock};
 use std::vec::Vec;
 
 pub(super) type ConnectionJob = *mut c_void;
@@ -125,6 +127,13 @@ const PARSE_OVERLONG_LEN_FMT: &[u8] =
     b"error while parsing compact packet: got length %d in overlong encoding\n\0";
 const PARSE_RECEIVED_PACKET_FMT: &[u8] =
     b"received packet from connection %d (length %d, num %d, type %08x)\n\0";
+const PROXY_PASS_FORWARD_FMT: &[u8] = b"proxying %d bytes to %s:%d\n\0";
+const INIT_DOMAIN_FAIL_FMT: &[u8] =
+    b"Failed to update response data about %s, so default response settings wiil be used\n\0";
+const PROXY_FAIL_DOMAIN_FMT: &[u8] = b"failed to proxy request to %s\n\0";
+const PROXY_FAIL_SOCKET_FMT: &[u8] =
+    b"failed to create proxy pass connection: %d (%s)\n\0";
+const PROXY_FAIL_CONN_FMT: &[u8] = b"failed to create proxy pass connection (2)\n\0";
 
 const TLS_SERVER_HELLO_PREFIX: &[u8] = b"\x16\x03\x03\x00\x7a\x02\x00\x00\x76\x03\x03";
 const TLS_SERVER_HELLO_CIPHER_PREFIX: &[u8] = b"\x13\x01\x00\x00\x2e";
@@ -134,6 +143,10 @@ const TLS_SERVER_TRAILER: &[u8] = b"\x14\x03\x03\x00\x01\x01\x17\x03\x03";
 const TLS_CLIENT_CCS_PREFIX: &[u8] = b"\x14\x03\x03\x00\x01\x01\x17\x03\x03";
 const READ_LESS_BYTES: &[u8] = b"Read less bytes than expected\0";
 const WRITTEN_LESS_BYTES: &[u8] = b"Written less bytes than expected\0";
+
+const SM_IPV6: c_int = 2;
+const CT_OUTBOUND: c_int = 3;
+const MAX_CLIENT_RANDOM_CACHE_TIME: c_int = 2 * 86400;
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -324,6 +337,21 @@ pub(super) struct DomainInfo {
     pub next: *mut DomainInfo,
 }
 
+#[derive(Clone, Copy, Eq, PartialEq, Hash)]
+struct ClientRandomKey([u8; 16]);
+
+#[derive(Clone, Copy)]
+struct ClientRandomEntry {
+    random: ClientRandomKey,
+    time: c_int,
+}
+
+#[derive(Default)]
+struct ClientRandomState {
+    entries: VecDeque<ClientRandomEntry>,
+    counts: HashMap<ClientRandomKey, usize>,
+}
+
 #[repr(C)]
 #[derive(Clone, Copy)]
 struct AesKeyData {
@@ -362,8 +390,23 @@ unsafe extern "C" {
     fn mtproxy_ffi_crypto_tls_generate_public_key(out: *mut u8) -> c_int;
 
     fn kdb_gethostbyname(name: *const c_char) -> *mut libc::hostent;
+    fn client_socket(in_addr: u32, port: c_int, mode: c_int) -> c_int;
+    fn client_socket_ipv6(in6_addr_ptr: *const u8, port: c_int, mode: c_int) -> c_int;
+    fn alloc_new_connection(
+        cfd: c_int,
+        ctj: ConnectionJob,
+        lcj: ConnectionJob,
+        basic_type: c_int,
+        conn_type: *mut ConnFunctions,
+        conn_extra: *mut c_void,
+        peer: u32,
+        peer_ipv6: *mut u8,
+        peer_port: c_int,
+    ) -> ConnectionJob;
+    fn check_conn_functions(type_: *mut ConnFunctions, listening: c_int) -> c_int;
 
     fn rwm_fetch_lookup(raw: *mut RawMessage, buf: *mut c_void, bytes: c_int) -> c_int;
+    fn rwm_move(dest_raw: *mut RawMessage, src_raw: *mut RawMessage);
     fn rwm_skip_data(raw: *mut RawMessage, bytes: c_int) -> c_int;
     fn rwm_union(raw: *mut RawMessage, tail: *mut RawMessage) -> c_int;
     fn rwm_init(raw: *mut RawMessage, alloc_bytes: c_int) -> c_int;
@@ -378,6 +421,8 @@ unsafe extern "C" {
     fn job_incref(job: ConnectionJob) -> ConnectionJob;
     fn job_signal(job_tag_int: c_int, job: ConnectionJob, signo: c_int);
     fn job_timer_remove(job: ConnectionJob);
+    fn mtproxy_ffi_net_tcp_rpc_ext_job_decref(c: ConnectionJob);
+    fn mtproxy_ffi_net_tcp_rpc_ext_unlock_job(c: ConnectionJob) -> c_int;
 
     fn fail_connection(c: ConnectionJob, who: c_int);
     fn tcp_rpcs_parse_execute(c: ConnectionJob) -> c_int;
@@ -396,6 +441,7 @@ unsafe extern "C" {
 
     fn kprintf(format: *const c_char, ...);
 
+    static mut ct_proxy_pass: ConnFunctions;
     static mut verbosity: c_int;
 }
 
@@ -443,6 +489,24 @@ unsafe fn ext_secret_count() -> c_int {
 #[inline]
 unsafe fn ext_secret_at(index: c_int) -> *const u8 {
     unsafe { mtproxy_ffi_net_tcp_rpc_ext_ext_secret_at(index) }
+}
+
+#[inline]
+fn client_random_state() -> &'static Mutex<ClientRandomState> {
+    static STATE: OnceLock<Mutex<ClientRandomState>> = OnceLock::new();
+    STATE.get_or_init(|| Mutex::new(ClientRandomState::default()))
+}
+
+#[inline]
+unsafe fn read_client_random_key(random: *const u8) -> Option<ClientRandomKey> {
+    if random.is_null() {
+        return None;
+    }
+    let mut value = [0u8; 16];
+    unsafe {
+        ptr::copy_nonoverlapping(random, value.as_mut_ptr(), 16);
+    }
+    Some(ClientRandomKey(value))
 }
 
 #[inline]
@@ -2074,6 +2138,243 @@ unsafe fn parse_execute_inner(c: ConnectionJob) -> c_int {
         unsafe {
             (*d).in_packet_num += 1;
         }
+    }
+}
+
+pub(super) unsafe fn tcp_proxy_pass_parse_execute_impl(c: ConnectionJob) -> c_int {
+    let conn = unsafe { conn_info(c) };
+    let extra = unsafe { (*conn).extra };
+    if extra.is_null() {
+        unsafe {
+            fail_connection(c, -1);
+        }
+        return 0;
+    }
+
+    let e = unsafe { job_incref(extra) };
+    let e_conn = unsafe { conn_info(e) };
+
+    let raw = unsafe { libc::malloc(size_of::<RawMessage>()) }.cast::<RawMessage>();
+    if raw.is_null() {
+        unsafe {
+            mtproxy_ffi_net_tcp_rpc_ext_job_decref(e);
+            fail_connection(c, -1);
+        }
+        return 0;
+    }
+
+    unsafe {
+        rwm_move(raw, &mut (*conn).in_data);
+        rwm_init(&mut (*conn).in_data, 0);
+    }
+
+    if unsafe { verbosity } > 2 {
+        unsafe {
+            kprintf(
+                PROXY_PASS_FORWARD_FMT.as_ptr().cast(),
+                (*raw).total_bytes,
+                mtproxy_ffi_net_tcp_rpc_ext_show_remote_ip(e),
+                (*e_conn).remote_port,
+            );
+        }
+    }
+
+    unsafe {
+        mpq_push_w((*e_conn).out_queue, raw.cast::<c_void>(), 0);
+        job_signal(1, e, JS_RUN);
+    }
+    0
+}
+
+pub(super) unsafe fn tcp_rpc_init_proxy_domains_impl(
+    domains: *mut *mut DomainInfo,
+    buckets: c_int,
+) {
+    if domains.is_null() || buckets <= 0 {
+        return;
+    }
+
+    for i in 0..buckets {
+        let mut info = unsafe { *domains.add(usize::try_from(i).unwrap_or(0)) };
+        while !info.is_null() {
+            if unsafe { update_domain_info_inner(info) } == 0 {
+                unsafe {
+                    kprintf(INIT_DOMAIN_FAIL_FMT.as_ptr().cast(), (*info).domain);
+                    (*info).is_reversed_extension_order = 0;
+                    (*info).use_random_encrypted_size = 1;
+                    (*info).server_hello_encrypted_size =
+                        (2500 + libc::rand() % 1120) as c_short;
+                }
+            }
+            info = unsafe { (*info).next };
+        }
+    }
+}
+
+pub(super) unsafe fn proxy_connection_impl(c: ConnectionJob, info: *const DomainInfo) -> c_int {
+    if info.is_null() {
+        unsafe {
+            fail_connection(c, -17);
+        }
+        return 0;
+    }
+
+    let conn = unsafe { conn_info(c) };
+    assert!(unsafe { check_conn_functions(ptr::addr_of_mut!(ct_proxy_pass), 0) } >= 0);
+
+    let info_ref = unsafe { &*info };
+    if info_ref.target.s_addr == 0 && info_ref.target_ipv6.iter().all(|&x| x == 0) {
+        unsafe {
+            kprintf(PROXY_FAIL_DOMAIN_FMT.as_ptr().cast(), info_ref.domain);
+            fail_connection(c, -17);
+        }
+        return 0;
+    }
+
+    let port = if unsafe { (*conn).our_port } == 80 {
+        80
+    } else {
+        443
+    };
+
+    let cfd = if info_ref.target.s_addr != 0 {
+        unsafe { client_socket(info_ref.target.s_addr, port, 0) }
+    } else {
+        unsafe { client_socket_ipv6(info_ref.target_ipv6.as_ptr(), port, SM_IPV6) }
+    };
+
+    if cfd < 0 {
+        unsafe {
+            kprintf(
+                PROXY_FAIL_SOCKET_FMT.as_ptr().cast(),
+                errno_value(),
+                strerror_ptr(),
+            );
+            fail_connection(c, -27);
+        }
+        return 0;
+    }
+
+    if let Some(crypto_free_fn) = unsafe { (*(*conn).type_).crypto_free } {
+        unsafe {
+            crypto_free_fn(c);
+        }
+    }
+
+    unsafe {
+        job_incref(c);
+    }
+    let peer = u32::from_be(info_ref.target.s_addr);
+    let ej = unsafe {
+        alloc_new_connection(
+            cfd,
+            ptr::null_mut(),
+            ptr::null_mut(),
+            CT_OUTBOUND,
+            ptr::addr_of_mut!(ct_proxy_pass),
+            c,
+            peer,
+            info_ref.target_ipv6.as_ptr().cast_mut(),
+            port,
+        )
+    };
+
+    if ej.is_null() {
+        unsafe {
+            kprintf(PROXY_FAIL_CONN_FMT.as_ptr().cast());
+            mtproxy_ffi_net_tcp_rpc_ext_job_decref(c);
+            fail_connection(c, -37);
+        }
+        return 0;
+    }
+
+    unsafe {
+        (*conn).type_ = ptr::addr_of_mut!(ct_proxy_pass);
+        (*conn).extra = job_incref(ej);
+    }
+
+    let e_conn = unsafe { conn_info(ej) };
+    assert!(!unsafe { (*e_conn).io_conn.is_null() });
+    unsafe {
+        mtproxy_ffi_net_tcp_rpc_ext_unlock_job(ej);
+    }
+
+    if let Some(parse_execute_fn) = unsafe { (*(*conn).type_).parse_execute } {
+        unsafe { parse_execute_fn(c) }
+    } else {
+        0
+    }
+}
+
+pub(super) unsafe fn have_client_random_state_impl(random: *const u8) -> c_int {
+    let Some(key) = (unsafe { read_client_random_key(random) }) else {
+        return 0;
+    };
+    let state = client_random_state();
+    let guard = match state.lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    if guard.counts.contains_key(&key) { 1 } else { 0 }
+}
+
+pub(super) unsafe fn add_client_random_state_impl(random: *const u8, now: c_int) {
+    let Some(key) = (unsafe { read_client_random_key(random) }) else {
+        return;
+    };
+    let state = client_random_state();
+    let mut guard = match state.lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    guard.entries.push_back(ClientRandomEntry { random: key, time: now });
+    let count = guard.counts.entry(key).or_insert(0);
+    *count += 1;
+}
+
+pub(super) unsafe fn delete_old_client_randoms_state_impl(now: c_int) {
+    let state = client_random_state();
+    let mut guard = match state.lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+
+    while guard.entries.len() > 1 {
+        let Some(first) = guard.entries.front().copied() else {
+            break;
+        };
+        if first.time > now - MAX_CLIENT_RANDOM_CACHE_TIME {
+            break;
+        }
+
+        let removed = guard.entries.pop_front();
+        if let Some(entry) = removed {
+            if let Some(count) = guard.counts.get_mut(&entry.random) {
+                if *count <= 1 {
+                    guard.counts.remove(&entry.random);
+                } else {
+                    *count -= 1;
+                }
+            }
+        }
+    }
+}
+
+pub(super) unsafe fn is_allowed_timestamp_state_impl(timestamp: c_int, now: c_int) -> c_int {
+    let state = client_random_state();
+    let guard = match state.lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    let first_time = guard.entries.front().map(|entry| entry.time);
+    if mtproxy_core::runtime::net::tcp_rpc_ext_server::is_allowed_timestamp(
+        timestamp,
+        now,
+        first_time,
+    ) {
+        1
+    } else {
+        0
     }
 }
 

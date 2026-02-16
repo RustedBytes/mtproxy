@@ -50,3 +50,56 @@ pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_server_compact_parse_execut
 ) -> c_int {
     unsafe { tcp_rpcs_compact_parse_execute_impl(c) }
 }
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_server_proxy_pass_parse_execute(
+    c: ConnectionJob,
+) -> c_int {
+    unsafe { tcp_proxy_pass_parse_execute_impl(c) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_server_init_proxy_domains(
+    domains: *mut *mut DomainInfo,
+    buckets: c_int,
+) {
+    unsafe { tcp_rpc_init_proxy_domains_impl(domains, buckets) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_server_proxy_connection(
+    c: ConnectionJob,
+    info: *const DomainInfo,
+) -> c_int {
+    unsafe { proxy_connection_impl(c, info) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_server_have_client_random(
+    random: *const u8,
+) -> c_int {
+    unsafe { have_client_random_state_impl(random) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_server_add_client_random(
+    random: *const u8,
+    now: c_int,
+) {
+    unsafe { add_client_random_state_impl(random, now) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_server_delete_old_client_randoms(
+    now: c_int,
+) {
+    unsafe { delete_old_client_randoms_state_impl(now) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_server_is_allowed_timestamp(
+    timestamp: c_int,
+    now: c_int,
+) -> c_int {
+    unsafe { is_allowed_timestamp_state_impl(timestamp, now) }
+}
