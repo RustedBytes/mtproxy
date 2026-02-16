@@ -965,27 +965,40 @@ impl Default for DhAcceptRateState {
 ///
 /// # Arguments
 /// * `state` - Current rate limiting state (remaining tokens and last update time)
-/// * `max_rate` - Maximum operations per second (0 = unlimited)
-/// * `precise_now` - Current time in seconds
+/// * `max_rate` - Maximum operations per second (0 = unlimited, must be >= 0)
+/// * `precise_now` - Current time in seconds (must be >= state.last_time)
 ///
 /// # Returns
 /// `Ok(new_state)` if operation allowed, `Err(new_state)` if rate limited.
 /// The new state should be stored for the next call.
+///
+/// # Panics
+/// Panics in debug mode if `max_rate < 0` or `precise_now < state.last_time`.
 pub fn add_dh_accept(
     state: DhAcceptRateState,
     max_rate: i32,
     precise_now: f64,
 ) -> Result<DhAcceptRateState, DhAcceptRateState> {
-    if max_rate == 0 {
-        // No rate limiting
+    // Validate inputs in debug mode
+    debug_assert!(max_rate >= 0, "max_rate must be non-negative");
+    debug_assert!(
+        precise_now >= state.last_time,
+        "precise_now must not go backwards"
+    );
+
+    if max_rate <= 0 {
+        // No rate limiting or invalid rate
         return Ok(state);
     }
 
     let max_rate_f64 = f64::from(max_rate);
     let mut new_remaining = state.remaining;
 
+    // Calculate time delta, handling clock adjustments gracefully
+    let time_delta = (precise_now - state.last_time).max(0.0);
+
     // Add tokens based on time elapsed
-    new_remaining += (precise_now - state.last_time) * max_rate_f64;
+    new_remaining += time_delta * max_rate_f64;
 
     // Cap at max rate
     if new_remaining > max_rate_f64 {
@@ -1314,5 +1327,48 @@ mod tests {
         let state = result.unwrap();
         assert_eq!(state.remaining, 1.0); // capped at 2.0, then consumed 1.0
         assert_eq!(state.last_time, 100.0);
+    }
+
+    #[test]
+    #[cfg(not(debug_assertions))]
+    fn dh_accept_rate_handles_clock_adjustment() {
+        use super::{add_dh_accept, DhAcceptRateState};
+
+        let state = DhAcceptRateState {
+            remaining: 1.0,
+            last_time: 10.0,
+        };
+
+        // Clock goes backwards - should handle gracefully (time_delta = 0)
+        // Only test in release mode where debug assertions are disabled
+        let result = add_dh_accept(state, 2, 5.0);
+        assert!(result.is_ok());
+        let state = result.unwrap();
+        assert_eq!(state.remaining, 0.0); // 1.0 + 0*2 - 1 = 0
+        assert_eq!(state.last_time, 5.0);
+    }
+
+    #[test]
+    #[cfg(not(debug_assertions))]
+    fn dh_accept_rate_negative_rate_disables_limiting() {
+        use super::{add_dh_accept, DhAcceptRateState};
+
+        let state = DhAcceptRateState::new();
+
+        // Negative rate should disable rate limiting
+        // Only test in release mode where debug assertions are disabled
+        let result = add_dh_accept(state, -1, 0.0);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn dh_accept_rate_zero_rate_disables_limiting() {
+        use super::{add_dh_accept, DhAcceptRateState};
+
+        let state = DhAcceptRateState::new();
+
+        // Zero rate should disable rate limiting
+        let result = add_dh_accept(state, 0, 0.0);
+        assert!(result.is_ok());
     }
 }
