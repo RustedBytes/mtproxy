@@ -66,6 +66,19 @@ extern int32_t mtproxy_ffi_net_tcp_rpc_ext_client_random_bucket_index(
 extern int32_t mtproxy_ffi_net_tcp_rpc_ext_select_server_hello_profile(
     int32_t min_len, int32_t max_len, int32_t sum_len, int32_t sample_count,
     int32_t *out_size, int32_t *out_profile);
+extern int32_t mtproxy_ffi_net_tcp_rpc_ext_is_allowed_timestamp(
+    int32_t timestamp, int32_t now, int32_t first_client_random_time,
+    int32_t has_first_client_random);
+extern int32_t mtproxy_ffi_net_tcp_rpc_ext_tls_has_bytes(int32_t pos,
+                                                         int32_t length,
+                                                         int32_t len);
+extern int32_t mtproxy_ffi_net_tcp_rpc_ext_tls_read_length(
+    const uint8_t *response, int32_t response_len, int32_t *pos);
+extern int32_t mtproxy_ffi_net_tcp_rpc_ext_tls_expect_bytes(
+    const uint8_t *response, int32_t response_len, int32_t pos,
+    const uint8_t *expected, int32_t expected_len);
+extern int32_t mtproxy_ffi_net_tcp_rpc_ext_get_domain_server_hello_encrypted_size(
+    int32_t base_size, int32_t use_random, int32_t rand_value);
 
 /*
  *
@@ -213,59 +226,54 @@ static const struct domain_info *get_domain_info(const char *domain,
 
 static int
 get_domain_server_hello_encrypted_size(const struct domain_info *info) {
-  if (info->use_random_encrypted_size) {
-    int r = rand();
-    return info->server_hello_encrypted_size + ((r >> 1) & 1) - (r & 1);
-  } else {
-    return info->server_hello_encrypted_size;
-  }
+  return mtproxy_ffi_net_tcp_rpc_ext_get_domain_server_hello_encrypted_size(
+      info->server_hello_encrypted_size, info->use_random_encrypted_size,
+      rand());
 }
 
 enum {
   tls_request_length = 517,
+  max_grease = 7,
+  max_vla_size = 1024, // Maximum size for VLA to prevent stack overflow
 };
 
 static void add_string(unsigned char *str, int *pos, const char *data,
                        int data_len) {
-  assert(*pos + data_len <= tls_request_length);
-  memcpy(str + (*pos), data, data_len);
-  (*pos) += data_len;
+  assert(mtproxy_ffi_net_tcp_rpc_ext_add_string(str, tls_request_length, pos,
+                                                (const unsigned char *)data,
+                                                data_len) == 0);
 }
 
 static void add_random(unsigned char *str, int *pos, int random_len) {
-  assert(*pos + random_len <= tls_request_length);
-  assert(mtproxy_ffi_crypto_rand_bytes(str + (*pos), random_len) == 0);
-  (*pos) += random_len;
+  assert(random_len > 0 && random_len <= max_vla_size);
+  unsigned char rand_buf[random_len]; // VLA
+  assert(mtproxy_ffi_crypto_rand_bytes(rand_buf, random_len) == 0);
+  assert(mtproxy_ffi_net_tcp_rpc_ext_add_random_bytes(str, tls_request_length, pos,
+                                                      rand_buf, random_len) == 0);
 }
 
 static void add_length(unsigned char *str, int *pos, int length) {
-  assert(*pos + 2 <= tls_request_length);
-  str[*pos + 0] = (unsigned char)(length / 256);
-  str[*pos + 1] = (unsigned char)(length % 256);
-  (*pos) += 2;
+  assert(mtproxy_ffi_net_tcp_rpc_ext_add_length(str, tls_request_length, pos,
+                                                length) == 0);
 }
 
 static void add_grease(unsigned char *str, int *pos,
                        const unsigned char *greases, int num) {
-  assert(*pos + 2 <= tls_request_length);
-  str[*pos + 0] = greases[num];
-  str[*pos + 1] = greases[num];
-  (*pos) += 2;
+  assert(mtproxy_ffi_net_tcp_rpc_ext_add_grease(str, tls_request_length, pos,
+                                                greases, max_grease, num) == 0);
 }
 
 static void add_public_key(unsigned char *str, int *pos) {
-  assert(*pos + 32 <= tls_request_length);
-  assert(mtproxy_ffi_crypto_tls_generate_public_key(str + (*pos)) == 0);
-  (*pos) += 32;
+  unsigned char pub_key[32];
+  assert(mtproxy_ffi_crypto_tls_generate_public_key(pub_key) == 0);
+  assert(mtproxy_ffi_net_tcp_rpc_ext_add_public_key(str, tls_request_length, pos,
+                                                    pub_key) == 0);
 }
 
 static unsigned char *create_request(const char *domain) {
   unsigned char *result = malloc(tls_request_length);
   int pos = 0;
 
-  enum {
-    max_grease = 7,
-  };
   unsigned char greases[max_grease];
   assert(mtproxy_ffi_crypto_rand_bytes(greases, max_grease) == 0);
   int i;
@@ -330,8 +338,9 @@ static unsigned char *create_request(const char *domain) {
 }
 
 static int read_length(const unsigned char *response, int *pos) {
-  *pos += 2;
-  return response[*pos - 2] * 256 + response[*pos - 1];
+  // Buffer length assumed to be sufficient (up to 65536 bytes)
+  // Caller must ensure response buffer is valid for at least pos+2 bytes
+  return mtproxy_ffi_net_tcp_rpc_ext_tls_read_length(response, 65536, pos);
 }
 
 static int tls_fail_response_parse(const char *error) {
@@ -340,12 +349,15 @@ static int tls_fail_response_parse(const char *error) {
 }
 
 static int tls_has_bytes(int pos, int length, int len) {
-  return pos + length <= len;
+  return mtproxy_ffi_net_tcp_rpc_ext_tls_has_bytes(pos, length, len);
 }
 
 static int tls_expect_bytes(const unsigned char *response, int pos,
                             const void *expected, size_t expected_len) {
-  return memcmp(response + pos, expected, expected_len) == 0;
+  // Buffer length assumed to be sufficient (up to 65536 bytes)
+  // Caller must ensure response buffer is valid for expected range
+  return mtproxy_ffi_net_tcp_rpc_ext_tls_expect_bytes(
+      response, 65536, pos, (const uint8_t *)expected, (int32_t)expected_len);
 }
 
 static int check_response(const unsigned char *response, int len,
@@ -937,46 +949,10 @@ static void delete_old_client_randoms() {
 }
 
 static int is_allowed_timestamp(int timestamp) {
-  if (timestamp > now + 3) {
-    // do not allow timestamps in the future
-    // after time synchronization client should always have time in the past
-    vkprintf(1,
-             "Disallow request with timestamp %d from the future, now is %d\n",
-             timestamp, now);
-    return 0;
-  }
-
-  // first_client_random->time is an exact time when corresponding request was
-  // received if the timestamp is bigger than (first_client_random->time + 3),
-  // then the current request could be accepted only after the request with
-  // first_client_random, so the client random still must be cached if the
-  // request wasn't accepted, then the client_random still will be cached for
-  // max_client_random_cache_time seconds, so we can miss duplicate request only
-  // after a lot of time has passed
-  if (first_client_random != NULL &&
-      timestamp > first_client_random->time + 3) {
-    vkprintf(1, "Allow new request with timestamp %d\n", timestamp);
-    return 1;
-  }
-
-  // allow all requests with timestamp recently in past, regardless of ability
-  // to check repeating client random the allowed error must be big enough to
-  // allow requests after time synchronization
-  const int MAX_ALLOWED_TIMESTAMP_ERROR = 10 * 60;
-  if (timestamp > now - MAX_ALLOWED_TIMESTAMP_ERROR) {
-    // this can happen only first (MAX_ALLOWED_TIMESTAMP_ERROR + 3) sceonds
-    // after first_client_random->time
-    vkprintf(1,
-             "Allow recent request with timestamp %d without full check for "
-             "client random duplication\n",
-             timestamp);
-    return 1;
-  }
-
-  // the request is too old to check client random, do not allow it to force
-  // client to synchronize it's time
-  vkprintf(1, "Disallow too old request with timestamp %d\n", timestamp);
-  return 0;
+  int has_first_client_random = (first_client_random != NULL) ? 1 : 0;
+  int first_time = has_first_client_random ? first_client_random->time : 0;
+  return mtproxy_ffi_net_tcp_rpc_ext_is_allowed_timestamp(
+      timestamp, now, first_time, has_first_client_random);
 }
 
 static int proxy_connection(connection_job_t C,

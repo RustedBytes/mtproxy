@@ -705,6 +705,32 @@ int32_t mtproxy_ffi_net_tcp_rpc_ext_select_server_hello_profile(
   int32_t *out_size,
   int32_t *out_profile
 );
+int32_t mtproxy_ffi_net_tcp_rpc_ext_is_allowed_timestamp(
+  int32_t timestamp, int32_t now, int32_t first_client_random_time, int32_t has_first_client_random
+);
+int32_t mtproxy_ffi_net_tcp_rpc_ext_tls_has_bytes(int32_t pos, int32_t length, int32_t len);
+int32_t mtproxy_ffi_net_tcp_rpc_ext_tls_read_length(const uint8_t *response, int32_t response_len, int32_t *pos);
+int32_t mtproxy_ffi_net_tcp_rpc_ext_tls_expect_bytes(
+  const uint8_t *response, int32_t response_len, int32_t pos, const uint8_t *expected, int32_t expected_len
+);
+int32_t mtproxy_ffi_net_tcp_rpc_ext_get_domain_server_hello_encrypted_size(
+  int32_t base_size, int32_t use_random, int32_t rand_value
+);
+int32_t mtproxy_ffi_net_tcp_rpc_ext_add_length(
+  uint8_t *buffer, int32_t buffer_len, int32_t *pos, int32_t length
+);
+int32_t mtproxy_ffi_net_tcp_rpc_ext_add_string(
+  uint8_t *buffer, int32_t buffer_len, int32_t *pos, const uint8_t *data, int32_t data_len
+);
+int32_t mtproxy_ffi_net_tcp_rpc_ext_add_grease(
+  uint8_t *buffer, int32_t buffer_len, int32_t *pos, const uint8_t *greases, int32_t greases_len, int32_t num
+);
+int32_t mtproxy_ffi_net_tcp_rpc_ext_add_random_bytes(
+  uint8_t *buffer, int32_t buffer_len, int32_t *pos, const uint8_t *rand_bytes, int32_t rand_bytes_len
+);
+int32_t mtproxy_ffi_net_tcp_rpc_ext_add_public_key(
+  uint8_t *buffer, int32_t buffer_len, int32_t *pos, const uint8_t *public_key
+);
 
 // net-tcp-rpc-common helper: computes compact/medium packet length prefix.
 int32_t mtproxy_ffi_tcp_rpc_encode_compact_header(

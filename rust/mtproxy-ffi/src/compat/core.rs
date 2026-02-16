@@ -195,6 +195,121 @@ pub(super) fn net_tcp_rpc_ext_select_server_hello_profile_impl(
     )
 }
 
+pub(super) fn net_tcp_rpc_ext_is_allowed_timestamp_impl(
+    timestamp: i32,
+    now: i32,
+    first_client_random_time: i32,
+    has_first_client_random: i32,
+) -> i32 {
+    let first_time = if has_first_client_random != 0 {
+        Some(first_client_random_time)
+    } else {
+        None
+    };
+    if mtproxy_core::runtime::net::tcp_rpc_ext_server::is_allowed_timestamp(timestamp, now, first_time) {
+        1
+    } else {
+        0
+    }
+}
+
+pub(super) fn net_tcp_rpc_ext_tls_has_bytes_impl(pos: i32, length: i32, len: i32) -> i32 {
+    if mtproxy_core::runtime::net::tcp_rpc_ext_server::tls_has_bytes(pos, length, len) {
+        1
+    } else {
+        0
+    }
+}
+
+pub(super) fn net_tcp_rpc_ext_tls_read_length_impl(response: &[u8], pos: &mut i32) -> i32 {
+    mtproxy_core::runtime::net::tcp_rpc_ext_server::tls_read_length(response, pos)
+}
+
+pub(super) fn net_tcp_rpc_ext_tls_expect_bytes_impl(
+    response: &[u8],
+    pos: i32,
+    expected: &[u8],
+) -> i32 {
+    if mtproxy_core::runtime::net::tcp_rpc_ext_server::tls_expect_bytes(response, pos, expected) {
+        1
+    } else {
+        0
+    }
+}
+
+pub(super) fn net_tcp_rpc_ext_get_domain_server_hello_encrypted_size_impl(
+    base_size: i32,
+    use_random: i32,
+    rand_value: i32,
+) -> i32 {
+    mtproxy_core::runtime::net::tcp_rpc_ext_server::get_domain_server_hello_encrypted_size(
+        base_size,
+        use_random != 0,
+        rand_value,
+    )
+}
+
+pub(super) fn net_tcp_rpc_ext_add_length_impl(
+    buffer: &mut [u8],
+    pos: &mut usize,
+    length: i32,
+) -> i32 {
+    if mtproxy_core::runtime::net::tcp_rpc_ext_server::add_length(buffer, pos, length) {
+        0
+    } else {
+        -1
+    }
+}
+
+pub(super) fn net_tcp_rpc_ext_add_string_impl(
+    buffer: &mut [u8],
+    pos: &mut usize,
+    data: &[u8],
+) -> i32 {
+    if mtproxy_core::runtime::net::tcp_rpc_ext_server::add_string(buffer, pos, data) {
+        0
+    } else {
+        -1
+    }
+}
+
+pub(super) fn net_tcp_rpc_ext_add_grease_impl(
+    buffer: &mut [u8],
+    pos: &mut usize,
+    greases: &[u8],
+    num: usize,
+) -> i32 {
+    if mtproxy_core::runtime::net::tcp_rpc_ext_server::add_grease(buffer, pos, greases, num) {
+        0
+    } else {
+        -1
+    }
+}
+
+pub(super) fn net_tcp_rpc_ext_add_random_bytes_impl(
+    buffer: &mut [u8],
+    pos: &mut usize,
+    rand_bytes: &[u8],
+) -> i32 {
+    if mtproxy_core::runtime::net::tcp_rpc_ext_server::add_random_bytes(buffer, pos, rand_bytes) {
+        0
+    } else {
+        -1
+    }
+}
+
+pub(super) fn net_tcp_rpc_ext_add_public_key_impl(
+    buffer: &mut [u8],
+    pos: &mut usize,
+    public_key: &[u8; 32],
+) -> i32 {
+    if mtproxy_core::runtime::net::tcp_rpc_ext_server::add_public_key(buffer, pos, public_key) {
+        0
+    } else {
+        -1
+    }
+}
+
 pub(super) fn net_stats_recent_idle_percent_impl(a_idle_time: f64, a_idle_quotient: f64) -> f64 {
     mtproxy_core::runtime::net::stats::recent_idle_percent(a_idle_time, a_idle_quotient)
 }
@@ -1512,6 +1627,276 @@ pub(super) unsafe fn net_tcp_rpc_ext_select_server_hello_profile_ffi(
     *out_size_ref = size;
     *out_profile_ref = profile;
     0
+}
+
+pub(super) fn net_tcp_rpc_ext_is_allowed_timestamp_ffi(
+    timestamp: i32,
+    now: i32,
+    first_client_random_time: i32,
+    has_first_client_random: i32,
+) -> i32 {
+    net_tcp_rpc_ext_is_allowed_timestamp_impl(
+        timestamp,
+        now,
+        first_client_random_time,
+        has_first_client_random,
+    )
+}
+
+pub(super) fn net_tcp_rpc_ext_tls_has_bytes_ffi(pos: i32, length: i32, len: i32) -> i32 {
+    net_tcp_rpc_ext_tls_has_bytes_impl(pos, length, len)
+}
+
+pub(super) unsafe fn net_tcp_rpc_ext_tls_read_length_ffi(
+    response: *const u8,
+    response_len: i32,
+    pos: *mut i32,
+) -> i32 {
+    let Some(pos_ref) = (unsafe { mut_ref_from_ptr(pos) }) else {
+        return -1;
+    };
+    if response_len < 0 || *pos_ref < 0 {
+        return -1;
+    }
+    let Ok(len) = usize::try_from(response_len) else {
+        return -1;
+    };
+    let Some(response_slice) = (unsafe { slice_from_ptr(response, len) }) else {
+        return -1;
+    };
+    // Check for overflow before addition and ensure we have enough bytes
+    if *pos_ref > i32::MAX - 2 {
+        return -1;
+    }
+    let end_pos = (*pos_ref + 2) as usize;
+    if end_pos > response_slice.len() {
+        return -1;
+    }
+    net_tcp_rpc_ext_tls_read_length_impl(response_slice, pos_ref)
+}
+
+pub(super) unsafe fn net_tcp_rpc_ext_tls_expect_bytes_ffi(
+    response: *const u8,
+    response_len: i32,
+    pos: i32,
+    expected: *const u8,
+    expected_len: i32,
+) -> i32 {
+    if response_len < 0 || expected_len < 0 || pos < 0 {
+        return 0;
+    }
+    let Ok(resp_len) = usize::try_from(response_len) else {
+        return 0;
+    };
+    let Ok(exp_len) = usize::try_from(expected_len) else {
+        return 0;
+    };
+    let Some(response_slice) = (unsafe { slice_from_ptr(response, resp_len) }) else {
+        return 0;
+    };
+    let Some(expected_slice) = (unsafe { slice_from_ptr(expected, exp_len) }) else {
+        return 0;
+    };
+    net_tcp_rpc_ext_tls_expect_bytes_impl(response_slice, pos, expected_slice)
+}
+
+pub(super) fn net_tcp_rpc_ext_get_domain_server_hello_encrypted_size_ffi(
+    base_size: i32,
+    use_random: i32,
+    rand_value: i32,
+) -> i32 {
+    net_tcp_rpc_ext_get_domain_server_hello_encrypted_size_impl(base_size, use_random, rand_value)
+}
+
+pub(super) unsafe fn net_tcp_rpc_ext_add_length_ffi(
+    buffer: *mut u8,
+    buffer_len: i32,
+    pos: *mut i32,
+    length: i32,
+) -> i32 {
+    let Some(pos_ref) = (unsafe { mut_ref_from_ptr(pos) }) else {
+        return -1;
+    };
+    if buffer_len < 0 || *pos_ref < 0 {
+        return -1;
+    }
+    let Ok(len) = usize::try_from(buffer_len) else {
+        return -1;
+    };
+    let Some(buffer_slice) = (unsafe { mut_slice_from_ptr(buffer, len) }) else {
+        return -1;
+    };
+    let Ok(pos_usize) = usize::try_from(*pos_ref) else {
+        return -1;
+    };
+    let mut pos_mut = pos_usize;
+    let result = net_tcp_rpc_ext_add_length_impl(buffer_slice, &mut pos_mut, length);
+    if result == 0 {
+        let Ok(new_pos) = i32::try_from(pos_mut) else {
+            return -1;
+        };
+        *pos_ref = new_pos;
+    }
+    result
+}
+
+pub(super) unsafe fn net_tcp_rpc_ext_add_string_ffi(
+    buffer: *mut u8,
+    buffer_len: i32,
+    pos: *mut i32,
+    data: *const u8,
+    data_len: i32,
+) -> i32 {
+    let Some(pos_ref) = (unsafe { mut_ref_from_ptr(pos) }) else {
+        return -1;
+    };
+    if buffer_len < 0 || *pos_ref < 0 || data_len < 0 {
+        return -1;
+    };
+    let Ok(buf_len) = usize::try_from(buffer_len) else {
+        return -1;
+    };
+    let Ok(dat_len) = usize::try_from(data_len) else {
+        return -1;
+    };
+    let Some(buffer_slice) = (unsafe { mut_slice_from_ptr(buffer, buf_len) }) else {
+        return -1;
+    };
+    let Some(data_slice) = (unsafe { slice_from_ptr(data, dat_len) }) else {
+        return -1;
+    };
+    let Ok(pos_usize) = usize::try_from(*pos_ref) else {
+        return -1;
+    };
+    let mut pos_mut = pos_usize;
+    let result = net_tcp_rpc_ext_add_string_impl(buffer_slice, &mut pos_mut, data_slice);
+    if result == 0 {
+        let Ok(new_pos) = i32::try_from(pos_mut) else {
+            return -1;
+        };
+        *pos_ref = new_pos;
+    }
+    result
+}
+
+pub(super) unsafe fn net_tcp_rpc_ext_add_grease_ffi(
+    buffer: *mut u8,
+    buffer_len: i32,
+    pos: *mut i32,
+    greases: *const u8,
+    greases_len: i32,
+    num: i32,
+) -> i32 {
+    let Some(pos_ref) = (unsafe { mut_ref_from_ptr(pos) }) else {
+        return -1;
+    };
+    if buffer_len < 0 || *pos_ref < 0 || greases_len < 0 || num < 0 {
+        return -1;
+    };
+    let Ok(buf_len) = usize::try_from(buffer_len) else {
+        return -1;
+    };
+    let Ok(grs_len) = usize::try_from(greases_len) else {
+        return -1;
+    };
+    let Ok(num_usize) = usize::try_from(num) else {
+        return -1;
+    };
+    let Some(buffer_slice) = (unsafe { mut_slice_from_ptr(buffer, buf_len) }) else {
+        return -1;
+    };
+    let Some(greases_slice) = (unsafe { slice_from_ptr(greases, grs_len) }) else {
+        return -1;
+    };
+    let Ok(pos_usize) = usize::try_from(*pos_ref) else {
+        return -1;
+    };
+    let mut pos_mut = pos_usize;
+    let result = net_tcp_rpc_ext_add_grease_impl(buffer_slice, &mut pos_mut, greases_slice, num_usize);
+    if result == 0 {
+        let Ok(new_pos) = i32::try_from(pos_mut) else {
+            return -1;
+        };
+        *pos_ref = new_pos;
+    }
+    result
+}
+
+pub(super) unsafe fn net_tcp_rpc_ext_add_random_bytes_ffi(
+    buffer: *mut u8,
+    buffer_len: i32,
+    pos: *mut i32,
+    rand_bytes: *const u8,
+    rand_bytes_len: i32,
+) -> i32 {
+    let Some(pos_ref) = (unsafe { mut_ref_from_ptr(pos) }) else {
+        return -1;
+    };
+    if buffer_len < 0 || *pos_ref < 0 || rand_bytes_len < 0 {
+        return -1;
+    };
+    let Ok(buf_len) = usize::try_from(buffer_len) else {
+        return -1;
+    };
+    let Ok(rnd_len) = usize::try_from(rand_bytes_len) else {
+        return -1;
+    };
+    let Some(buffer_slice) = (unsafe { mut_slice_from_ptr(buffer, buf_len) }) else {
+        return -1;
+    };
+    let Some(rand_slice) = (unsafe { slice_from_ptr(rand_bytes, rnd_len) }) else {
+        return -1;
+    };
+    let Ok(pos_usize) = usize::try_from(*pos_ref) else {
+        return -1;
+    };
+    let mut pos_mut = pos_usize;
+    let result = net_tcp_rpc_ext_add_random_bytes_impl(buffer_slice, &mut pos_mut, rand_slice);
+    if result == 0 {
+        let Ok(new_pos) = i32::try_from(pos_mut) else {
+            return -1;
+        };
+        *pos_ref = new_pos;
+    }
+    result
+}
+
+pub(super) unsafe fn net_tcp_rpc_ext_add_public_key_ffi(
+    buffer: *mut u8,
+    buffer_len: i32,
+    pos: *mut i32,
+    public_key: *const u8,
+) -> i32 {
+    let Some(pos_ref) = (unsafe { mut_ref_from_ptr(pos) }) else {
+        return -1;
+    };
+    if buffer_len < 0 || *pos_ref < 0 {
+        return -1;
+    };
+    let Ok(buf_len) = usize::try_from(buffer_len) else {
+        return -1;
+    };
+    let Some(buffer_slice) = (unsafe { mut_slice_from_ptr(buffer, buf_len) }) else {
+        return -1;
+    };
+    let Some(key_slice) = (unsafe { slice_from_ptr(public_key, 32) }) else {
+        return -1;
+    };
+    let Ok(key_array) = <&[u8; 32]>::try_from(key_slice) else {
+        return -1;
+    };
+    let Ok(pos_usize) = usize::try_from(*pos_ref) else {
+        return -1;
+    };
+    let mut pos_mut = pos_usize;
+    let result = net_tcp_rpc_ext_add_public_key_impl(buffer_slice, &mut pos_mut, key_array);
+    if result == 0 {
+        let Ok(new_pos) = i32::try_from(pos_mut) else {
+            return -1;
+        };
+        *pos_ref = new_pos;
+    }
+    result
 }
 
 pub(super) unsafe fn net_thread_run_notification_event_ffi(

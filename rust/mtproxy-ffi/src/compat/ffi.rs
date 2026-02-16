@@ -365,6 +365,176 @@ pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_select_server_hello_profile
     }
 }
 
+/// Checks if a timestamp is allowed based on current time and cache state.
+///
+/// Returns 1 if allowed, 0 if not allowed.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_is_allowed_timestamp(
+    timestamp: i32,
+    now: i32,
+    first_client_random_time: i32,
+    has_first_client_random: i32,
+) -> i32 {
+    net_tcp_rpc_ext_is_allowed_timestamp_ffi(
+        timestamp,
+        now,
+        first_client_random_time,
+        has_first_client_random,
+    )
+}
+
+/// TLS parsing: checks if buffer has enough bytes remaining.
+///
+/// Returns 1 if enough bytes, 0 otherwise.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_tls_has_bytes(
+    pos: i32,
+    length: i32,
+    len: i32,
+) -> i32 {
+    net_tcp_rpc_ext_tls_has_bytes_ffi(pos, length, len)
+}
+
+/// TLS parsing: reads a 16-bit big-endian length from buffer and advances position.
+///
+/// # Safety
+/// `response` must point to at least `response_len` readable bytes.
+/// `pos` must be a valid writable pointer to i32.
+/// Returns the length value, or -1 on error.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_tls_read_length(
+    response: *const u8,
+    response_len: i32,
+    pos: *mut i32,
+) -> i32 {
+    unsafe { net_tcp_rpc_ext_tls_read_length_ffi(response, response_len, pos) }
+}
+
+/// TLS parsing: checks if buffer at position matches expected bytes.
+///
+/// # Safety
+/// `response` must point to at least `response_len` readable bytes.
+/// `expected` must point to at least `expected_len` readable bytes.
+/// Returns 1 if matches, 0 otherwise.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_tls_expect_bytes(
+    response: *const u8,
+    response_len: i32,
+    pos: i32,
+    expected: *const u8,
+    expected_len: i32,
+) -> i32 {
+    unsafe {
+        net_tcp_rpc_ext_tls_expect_bytes_ffi(response, response_len, pos, expected, expected_len)
+    }
+}
+
+/// Computes ServerHello encrypted size with optional random jitter.
+///
+/// Returns the base size with optional -1, 0, or +1 adjustment based on rand_value.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_get_domain_server_hello_encrypted_size(
+    base_size: i32,
+    use_random: i32,
+    rand_value: i32,
+) -> i32 {
+    net_tcp_rpc_ext_get_domain_server_hello_encrypted_size_ffi(base_size, use_random, rand_value)
+}
+
+/// Adds a 16-bit big-endian length to a TLS request buffer.
+///
+/// # Safety
+/// - `buffer` must point to `buffer_len` writable bytes
+/// - `pos` must be a writable i32 pointer
+///
+/// Returns 0 on success, -1 on failure.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_add_length(
+    buffer: *mut u8,
+    buffer_len: i32,
+    pos: *mut i32,
+    length: i32,
+) -> i32 {
+    unsafe { net_tcp_rpc_ext_add_length_ffi(buffer, buffer_len, pos, length) }
+}
+
+/// Copies string data to a TLS request buffer.
+///
+/// # Safety
+/// - `buffer` must point to `buffer_len` writable bytes
+/// - `pos` must be a writable i32 pointer
+/// - `data` must point to `data_len` readable bytes
+///
+/// Returns 0 on success, -1 on failure.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_add_string(
+    buffer: *mut u8,
+    buffer_len: i32,
+    pos: *mut i32,
+    data: *const u8,
+    data_len: i32,
+) -> i32 {
+    unsafe { net_tcp_rpc_ext_add_string_ffi(buffer, buffer_len, pos, data, data_len) }
+}
+
+/// Adds GREASE bytes to a TLS request buffer.
+///
+/// # Safety
+/// - `buffer` must point to `buffer_len` writable bytes
+/// - `pos` must be a writable i32 pointer
+/// - `greases` must point to `greases_len` readable bytes
+/// - `num` must be a valid index into greases array
+///
+/// Returns 0 on success, -1 on failure.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_add_grease(
+    buffer: *mut u8,
+    buffer_len: i32,
+    pos: *mut i32,
+    greases: *const u8,
+    greases_len: i32,
+    num: i32,
+) -> i32 {
+    unsafe { net_tcp_rpc_ext_add_grease_ffi(buffer, buffer_len, pos, greases, greases_len, num) }
+}
+
+/// Adds random bytes to a TLS request buffer.
+///
+/// # Safety
+/// - `buffer` must point to `buffer_len` writable bytes
+/// - `pos` must be a writable i32 pointer
+/// - `rand_bytes` must point to `rand_bytes_len` readable bytes
+///
+/// Returns 0 on success, -1 on failure.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_add_random_bytes(
+    buffer: *mut u8,
+    buffer_len: i32,
+    pos: *mut i32,
+    rand_bytes: *const u8,
+    rand_bytes_len: i32,
+) -> i32 {
+    unsafe { net_tcp_rpc_ext_add_random_bytes_ffi(buffer, buffer_len, pos, rand_bytes, rand_bytes_len) }
+}
+
+/// Adds a 32-byte public key to a TLS request buffer.
+///
+/// # Safety
+/// - `buffer` must point to `buffer_len` writable bytes
+/// - `pos` must be a writable i32 pointer
+/// - `public_key` must point to exactly 32 readable bytes
+///
+/// Returns 0 on success, -1 on failure.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_add_public_key(
+    buffer: *mut u8,
+    buffer_len: i32,
+    pos: *mut i32,
+    public_key: *const u8,
+) -> i32 {
+    unsafe { net_tcp_rpc_ext_add_public_key_ffi(buffer, buffer_len, pos, public_key) }
+}
+
 /// Runs one net-thread notification event via Rust dispatcher.
 ///
 /// # Safety
