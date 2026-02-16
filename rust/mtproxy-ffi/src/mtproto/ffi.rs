@@ -166,6 +166,23 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_process_client_packet_runtime(
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_push_rpc_confirmation_runtime(
+    c_tag_int: c_int,
+    c: *mut c_void,
+    confirm: c_int,
+) {
+    unsafe { mtproto_push_rpc_confirmation_runtime_ffi(c_tag_int, c, confirm) };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_mtfront_parse_function_runtime(
+    tlio_in: *mut c_void,
+    actor_id: i64,
+) -> *mut c_void {
+    unsafe { mtproto_mtfront_parse_function_runtime_ffi(tlio_in, actor_id) }
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_mtproto_process_http_query(
     tlio_in: *mut c_void,
     hqj: *mut c_void,
@@ -183,13 +200,52 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_http_query_job_run(
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_client_packet_job_run(
+    job: *mut c_void,
+    op: c_int,
+    jt: *mut c_void,
+) -> i32 {
+    unsafe { mtproto_client_packet_job_run_ffi(job, op, jt) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_client_send_message_runtime(
+    c_tag_int: c_int,
+    c: *mut c_void,
+    in_conn_id: i64,
+    tlio_in: *mut c_void,
+    flags: c_int,
+) -> i32 {
+    unsafe { mtproto_client_send_message_runtime_ffi(c_tag_int, c, in_conn_id, tlio_in, flags) }
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_mtproto_add_stats(w: *mut c_void) {
     unsafe { mtproto_add_stats_ffi(w) };
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_check_all_conn_buffers() {
+    unsafe { mtproto_check_all_conn_buffers_ffi() };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_update_local_stats_copy(s: *mut c_void) {
+    unsafe { mtproto_update_local_stats_copy_ffi(s) };
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_mtproto_mtfront_prepare_stats(sb: *mut c_void) {
     unsafe { mtproto_mtfront_prepare_stats_ffi(sb) };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_hts_stats_execute(
+    c: *mut c_void,
+    msg: *mut c_void,
+    op: c_int,
+) -> i32 {
+    unsafe { mtproto_hts_stats_execute_ffi(c, msg, op) }
 }
 
 #[no_mangle]
@@ -207,8 +263,23 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_f_parse_option(val: c_int) -> i32 {
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_check_children_dead() {
+    unsafe { mtproto_check_children_dead_ffi() };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_check_children_status() {
+    unsafe { mtproto_check_children_status_ffi() };
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_mtproto_mtfront_pre_init() {
     unsafe { mtproto_mtfront_pre_init_ffi() };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_mtfront_pre_loop() {
+    unsafe { mtproto_mtfront_pre_loop_ffi() };
 }
 
 #[no_mangle]

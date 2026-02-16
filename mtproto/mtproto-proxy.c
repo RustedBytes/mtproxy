@@ -292,40 +292,7 @@ char proxy_tag[16];
 int proxy_tag_set;
 
 static void update_local_stats_copy(struct worker_stats *S) {
-  S->cnt++;
-  __sync_synchronize();
-  S->updated_at = now;
-  fetch_tot_dh_rounds_stat(S->tot_dh_rounds);
-  fetch_connections_stat(&S->conn);
-  fetch_aes_crypto_stat(&S->allocated_aes_crypto,
-                        &S->allocated_aes_crypto_temp);
-  fetch_buffers_stat(&S->bufs);
-
-  S->ev_heap_size = ev_heap_size;
-  S->get_queries = get_queries;
-  S->http_connections = http_connections;
-  S->pending_http_queries = pending_http_queries;
-  S->active_rpcs = active_rpcs;
-  S->active_rpcs_created = active_rpcs_created;
-  S->rpc_dropped_running = rpc_dropped_running;
-  S->rpc_dropped_answers = rpc_dropped_answers;
-  S->tot_forwarded_queries = tot_forwarded_queries;
-  S->expired_forwarded_queries = expired_forwarded_queries;
-  S->dropped_queries = dropped_queries;
-  S->tot_forwarded_responses = tot_forwarded_responses;
-  S->dropped_responses = dropped_responses;
-  S->tot_forwarded_simple_acks = tot_forwarded_simple_acks;
-  S->dropped_simple_acks = dropped_simple_acks;
-  S->mtproto_proxy_errors = mtproto_proxy_errors;
-  S->connections_failed_lru = connections_failed_lru;
-  S->connections_failed_flood = connections_failed_flood;
-  ext_conn_fetch_counts(&S->ext_connections, &S->ext_connections_created);
-  S->http_queries = http_queries;
-  S->http_bad_headers = http_bad_headers;
-
-  __sync_synchronize();
-  S->cnt++;
-  __sync_synchronize();
+  mtproxy_ffi_mtproto_update_local_stats_copy(S);
 }
 
 void add_stats(struct worker_stats *W) {
@@ -459,38 +426,7 @@ static int _notify_remote_closed(JOB_REF_ARG(C), long long out_conn_id) {
 }
 
 void push_rpc_confirmation(JOB_REF_ARG(C), int confirm) {
-
-  if ((lrand48_j() & 1) || !(TCP_RPC_DATA(C)->flags & RPC_F_PAD)) {
-    struct raw_message *msg = malloc(sizeof(struct raw_message));
-    rwm_create(msg, "\xdd", 1);
-    rwm_push_data(msg, &confirm, 4);
-    mpq_push_w(CONN_INFO(C)->out_queue, msg, 0);
-    job_signal(JOB_REF_PASS(C), JS_RUN);
-  } else {
-    int x = -1;
-    struct raw_message m;
-    assert(rwm_create(&m, &x, 4) == 4);
-    assert(rwm_push_data(&m, &confirm, 4) == 4);
-
-    int z = lrand48_j() & 1;
-    while (z-- > 0) {
-      int t = lrand48_j();
-      assert(rwm_push_data(&m, &t, 4) == 4);
-    }
-
-    tcp_rpc_conn_send(JOB_REF_CREATE_PASS(C), &m, 0);
-
-    x = 0;
-    assert(rwm_create(&m, &x, 4) == 4);
-
-    z = lrand48_j() & 1;
-    while (z-- > 0) {
-      int t = lrand48_j();
-      assert(rwm_push_data(&m, &t, 4) == 4);
-    }
-
-    tcp_rpc_conn_send(JOB_REF_PASS(C), &m, 0);
-  }
+  mtproxy_ffi_mtproto_push_rpc_confirmation_runtime(C_tag_int, C, confirm);
 }
 
 struct client_packet_info {
@@ -507,37 +443,7 @@ int process_client_packet(struct tl_in_state *tlio_in, connection_job_t C) {
 }
 
 int client_packet_job_run(job_t job, int op, struct job_thread *JT) {
-  struct client_packet_info *D = (struct client_packet_info *)(job->j_custom);
-
-  switch (op) {
-  case JS_RUN: {
-    struct tl_in_state *tlio_in = tl_in_state_alloc();
-    tlf_init_raw_message(tlio_in, &D->msg, D->msg.total_bytes, 0);
-    process_client_packet(tlio_in, D->conn);
-    tl_in_state_free(tlio_in);
-    return JOB_COMPLETED;
-  }
-  case JS_ALARM:
-    if (!job->j_error) {
-      job->j_error = ETIMEDOUT;
-    }
-    return JOB_COMPLETED;
-  case JS_ABORT:
-    if (!job->j_error) {
-      job->j_error = ECANCELED;
-    }
-    return JOB_COMPLETED;
-  case JS_FINISH:
-    if (D->conn) {
-      job_decref(JOB_REF_PASS(D->conn));
-    }
-    if (D->msg.magic) {
-      rwm_free(&D->msg);
-    }
-    return job_free(JOB_REF_PASS(job));
-  default:
-    return JOB_ERROR;
-  }
+  return mtproxy_ffi_mtproto_client_packet_job_run(job, op, JT);
 }
 
 int rpcc_execute(connection_job_t C, int op, struct raw_message *msg) {
@@ -776,46 +682,7 @@ int http_query_job_run(job_t job, int op, struct job_thread *JT) {
 }
 
 int hts_stats_execute(connection_job_t c, struct raw_message *msg, int op) {
-  struct hts_data *D = HTS_DATA(c);
-
-  // lru_insert_conn (c); // dangerous in net-cpu context
-  if (check_conn_buffers(c) < 0) {
-    return -429;
-  }
-
-  if (op != htqt_get || D->data_size != -1) {
-    D->query_flags &= ~QF_KEEPALIVE;
-    return -501;
-  }
-  if (CONN_INFO(c)->remote_ip != 0x7f000001) {
-    return -404;
-  }
-
-  if (D->uri_size != 6) {
-    return -404;
-  }
-
-  char ReqHdr[MAX_HTTP_HEADER_SIZE];
-  assert(rwm_fetch_data(msg, &ReqHdr, D->header_size) == D->header_size);
-
-  if (memcmp(ReqHdr + D->uri_offset, "/stats", 6)) {
-    return -404;
-  }
-
-  stats_buffer_t sb;
-  sb_alloc(&sb, 1 << 20);
-  mtfront_prepare_stats(&sb);
-
-  struct raw_message *raw = calloc(sizeof(*raw), 1);
-  rwm_init(raw, 0);
-  write_basic_http_header_raw(c, raw, 200, 0, sb.pos, 0, "text/plain");
-  assert(rwm_push_data(raw, sb.buff, sb.pos) == sb.pos);
-  mpq_push_w(CONN_INFO(c)->out_queue, raw, 0);
-  job_signal(JOB_REF_CREATE_PASS(c), JS_RUN);
-
-  sb_release(&sb);
-
-  return 0;
+  return mtproxy_ffi_mtproto_hts_stats_execute(c, msg, op);
 }
 
 // NET-CPU context
@@ -930,34 +797,8 @@ int http_send_message(JOB_REF_ARG(C), struct tl_in_state *tlio_in, int flags) {
 
 int client_send_message(JOB_REF_ARG(C), long long in_conn_id,
                         struct tl_in_state *tlio_in, int flags) {
-  if (check_conn_buffers(C) < 0) {
-    job_decref(JOB_REF_PASS(C));
-    return -1;
-  }
-  if (in_conn_id) {
-    assert(0);
-    return 1;
-  }
-
-  if (CONN_INFO(C)->type == &ct_http_server_mtfront) {
-    return http_send_message(JOB_REF_PASS(C), tlio_in, flags);
-  }
-  {
-    struct tl_out_state *tlio_out = tl_out_state_alloc();
-    tls_init_tcp_raw_msg(tlio_out, JOB_REF_CREATE_PASS(C), 0);
-    int32_t rc =
-        mtproxy_ffi_mtproto_client_send_non_http_wrap(tlio_in, tlio_out);
-    assert(rc == 0);
-    tl_out_state_free(tlio_out);
-  }
-
-  if (check_conn_buffers(C) < 0) {
-    job_decref(JOB_REF_PASS(C));
-    return -1;
-  } else {
-    job_decref(JOB_REF_PASS(C));
-    return 1;
-  }
+  return mtproxy_ffi_mtproto_client_send_message_runtime(
+      C_tag_int, C, in_conn_id, tlio_in, flags);
 }
 
 /* ------------- process normal (encrypted) packet ----------------- */
@@ -991,70 +832,10 @@ int forward_tcp_query(struct tl_in_state *tlio_in, connection_job_t c,
 
 /* -------------------------- EXTERFACE ---------------------------- */
 
-static int mtfront_set_rust_parse_error(
-    struct tl_in_state *tlio_in,
-    const mtproxy_ffi_mtproto_parse_function_result_t *result) {
-  char msg[sizeof(result->error) + 1];
-  int len = result->error_len;
-  if (len < 0) {
-    len = 0;
-  }
-  if (len > (int)sizeof(result->error)) {
-    len = (int)sizeof(result->error);
-  }
-  if (len > 0) {
-    memcpy(msg, result->error, len);
-  }
-  msg[len] = 0;
-  if (!len) {
-    strcpy(msg, "MTProxy parse error");
-  }
-  return tlf_set_error(
-      tlio_in, result->errnum ? result->errnum : TL_ERROR_INTERNAL, msg);
-}
-
 struct tl_act_extra *mtfront_parse_function(struct tl_in_state *tlio_in,
                                             long long actor_id) {
-  ++api_invoke_requests;
-  int unread = tl_fetch_unread();
-  if (unread < 0) {
-    tl_fetch_set_error(TL_ERROR_NOT_ENOUGH_DATA, "Unable to inspect TL query");
-    return 0;
-  }
-  unsigned char *buf = unread > 0 ? malloc((size_t)unread) : 0;
-  if (unread > 0 && !buf) {
-    tl_fetch_set_error(TL_ERROR_INTERNAL, "Unable to allocate parser buffer");
-    return 0;
-  }
-  if (unread > 0 && tl_fetch_lookup_data(buf, unread) != unread) {
-    free(buf);
-    tl_fetch_set_error(TL_ERROR_INTERNAL, "Unable to read parser buffer");
-    return 0;
-  }
-
-  mtproxy_ffi_mtproto_parse_function_result_t result = {0};
-  int32_t rc = mtproxy_ffi_mtproto_parse_function(buf, (size_t)unread, actor_id,
-                                                  &result);
-  free(buf);
-  if (rc < 0) {
-    tl_fetch_set_error(TL_ERROR_INTERNAL, "Rust mtfront parser bridge failed");
-    return 0;
-  }
-
-  if (result.consumed > 0) {
-    int skip = result.consumed;
-    if (skip > unread) {
-      skip = unread;
-    }
-    tl_fetch_skip(skip);
-  }
-
-  if (result.status < 0) {
-    mtfront_set_rust_parse_error(tlio_in, &result);
-    return 0;
-  }
-
-  return 0;
+  return (struct tl_act_extra *)mtproxy_ffi_mtproto_mtfront_parse_function_runtime(
+      tlio_in, actor_id);
 }
 
 /* ------------------------ FLOOD CONTROL -------------------------- */
@@ -1071,34 +852,7 @@ void lru_insert_conn(connection_job_t c) {
 }
 
 void check_all_conn_buffers(void) {
-  struct buffers_stat bufs;
-  fetch_buffers_stat(&bufs);
-  long long max_buffer_memory =
-      bufs.max_buffer_chunks * (long long)MSG_BUFFERS_CHUNK_SIZE;
-  long long to_free = bufs.total_used_buffers_size - max_buffer_memory * 3 / 4;
-  while (to_free > 0) {
-    ext_connection_t Ext = {0};
-    int32_t pop_rc = mtproxy_ffi_mtproto_ext_conn_lru_pop_oldest(&Ext);
-    assert(pop_rc >= 0);
-    if (pop_rc <= 0) {
-      break;
-    }
-    vkprintf(2,
-             "check_all_conn_buffers(): closing connection %d because of %lld "
-             "total used buffer vytes (%lld max, %lld bytes to free)\n",
-             Ext.in_fd, bufs.total_used_buffers_size, max_buffer_memory, to_free);
-    connection_job_t d =
-        connection_get_by_fd_generation(Ext.in_fd, Ext.in_gen);
-    if (d) {
-      int tot_used_bytes =
-          CONN_INFO(d)->in.total_bytes + CONN_INFO(d)->in_u.total_bytes +
-          CONN_INFO(d)->out.total_bytes + CONN_INFO(d)->out_p.total_bytes;
-      to_free -= tot_used_bytes * 2;
-      fail_connection(d, -500);
-      job_decref(JOB_REF_PASS(d));
-    }
-    ++connections_failed_lru;
-  }
+  mtproxy_ffi_mtproto_check_all_conn_buffers();
 }
 
 int check_conn_buffers(connection_job_t c) {
@@ -1151,44 +905,7 @@ void init_ct_server_mtfront(void) {
  */
 
 static void check_children_dead(void) {
-  int i, j;
-  for (j = 0; j < 11; j++) {
-    for (i = 0; i < workers; i++) {
-      if (pids[i]) {
-        int status = 0;
-        int res = waitpid(pids[i], &status, WNOHANG);
-        if (res == pids[i]) {
-          if (WIFEXITED(status) || WIFSIGNALED(status)) {
-            pids[i] = 0;
-          } else {
-            break;
-          }
-        } else if (res == 0) {
-          break;
-        } else if (res != -1 || errno != EINTR) {
-          pids[i] = 0;
-        } else {
-          break;
-        }
-      }
-    }
-    if (i == workers) {
-      break;
-    }
-    if (j < 10) {
-      usleep(100000);
-    }
-  }
-  if (j == 11) {
-    int cnt = 0;
-    for (i = 0; i < workers; i++) {
-      if (pids[i]) {
-        ++cnt;
-        kill(pids[i], SIGKILL);
-      }
-    }
-    kprintf("WARNING: %d children unfinished --> they are now killed\n", cnt);
-  }
+  mtproxy_ffi_mtproto_check_children_dead();
 }
 
 static void kill_children(int signal) {
@@ -1205,35 +922,7 @@ static void kill_children(int signal) {
 void on_child_termination(void) {}
 
 void check_children_status(void) {
-  if (workers) {
-    int i;
-    for (i = 0; i < workers; i++) {
-      int status = 0;
-      int res = waitpid(pids[i], &status, WNOHANG);
-      if (res == pids[i]) {
-        if (WIFEXITED(status) || WIFSIGNALED(status)) {
-          kprintf("Child %d terminated, aborting\n", pids[i]);
-          pids[i] = 0;
-          kill_children(SIGTERM);
-          check_children_dead();
-          exit(EXIT_FAILURE);
-        }
-      } else if (res == 0) {
-      } else if (res != -1 || errno != EINTR) {
-        kprintf("Child %d: unknown result during wait (%d, %m), aborting\n",
-                pids[i], res);
-        pids[i] = 0;
-        kill_children(SIGTERM);
-        check_children_dead();
-        exit(EXIT_FAILURE);
-      }
-    }
-  } else if (slave_mode) {
-    if (getppid() != parent_pid) {
-      kprintf("Parent %d is changed to %d, aborting\n", parent_pid, getppid());
-      exit(EXIT_FAILURE);
-    }
-  }
+  mtproxy_ffi_mtproto_check_children_status();
 }
 
 void check_special_connections_overflow(void) {
@@ -1267,36 +956,7 @@ int secret_count;
 // DEFAULT_OUTBOUND_CONNECTION_CREATION_RATE;
 
 void mtfront_pre_loop(void) {
-  int i, enable_ipv6 = engine_check_ipv6_enabled() ? SM_IPV6 : 0;
-  if (domain_count == 0) {
-    tcp_maximize_buffers = 1;
-    if (window_clamp == 0) {
-      window_clamp = DEFAULT_WINDOW_CLAMP;
-    }
-  }
-  if (!workers) {
-    for (i = 0; i < http_ports_num; i++) {
-      init_listening_tcpv6_connection(
-          http_sfd[i], &ct_tcp_rpc_ext_server_mtfront, &ext_rpc_methods,
-          enable_ipv6 | SM_LOWPRIO | (domain_count == 0 ? SM_NOQACK : 0) |
-              (max_special_connections ? SM_SPECIAL : 0));
-      // assert (setsockopt (http_sfd[i], IPPROTO_TCP, TCP_MAXSEG,
-      // (int[]){1410}, sizeof (int)) >= 0); assert (setsockopt (http_sfd[i],
-      // IPPROTO_TCP, TCP_NODELAY, (int[]){1}, sizeof (int)) >= 0);
-      if (window_clamp) {
-        listening_connection_job_t LC = Events[http_sfd[i]].data;
-        assert(LC);
-        CONN_INFO(LC)->window_clamp = window_clamp;
-        if (setsockopt(http_sfd[i], IPPROTO_TCP, TCP_WINDOW_CLAMP,
-                       &window_clamp, 4) < 0) {
-          vkprintf(0,
-                   "error while setting window size for socket #%d to %d: %m\n",
-                   http_sfd[i], window_clamp);
-        }
-      }
-    }
-    // create_all_outbound_connections ();
-  }
+  mtproxy_ffi_mtproto_mtfront_pre_loop();
 }
 
 void precise_cron(void) { update_local_stats(); }

@@ -1128,6 +1128,19 @@ int32_t mtproxy_ffi_mtproto_process_client_packet(
   int32_t conn_gen,
   mtproxy_ffi_mtproto_client_packet_process_result_t *out
 );
+int32_t mtproxy_ffi_mtproto_process_client_packet_runtime(
+  void *tlio_in,
+  void *c
+);
+void mtproxy_ffi_mtproto_push_rpc_confirmation_runtime(
+  int32_t c_tag_int,
+  void *c,
+  int32_t confirm
+);
+void *mtproxy_ffi_mtproto_mtfront_parse_function_runtime(
+  void *tlio_in,
+  int64_t actor_id
+);
 int32_t mtproxy_ffi_mtproto_process_http_query(
   void *tlio_in,
   void *hqj
@@ -1137,15 +1150,37 @@ int32_t mtproxy_ffi_mtproto_http_query_job_run(
   int32_t op,
   void *jt
 );
+int32_t mtproxy_ffi_mtproto_client_packet_job_run(
+  void *job,
+  int32_t op,
+  void *jt
+);
+int32_t mtproxy_ffi_mtproto_client_send_message_runtime(
+  int32_t c_tag_int,
+  void *c,
+  int64_t in_conn_id,
+  void *tlio_in,
+  int32_t flags
+);
 void mtproxy_ffi_mtproto_add_stats(void *w);
+void mtproxy_ffi_mtproto_check_all_conn_buffers(void);
+void mtproxy_ffi_mtproto_update_local_stats_copy(void *s);
 void mtproxy_ffi_mtproto_mtfront_prepare_stats(void *sb);
+int32_t mtproxy_ffi_mtproto_hts_stats_execute(
+  void *c,
+  void *msg,
+  int32_t op
+);
 int32_t mtproxy_ffi_mtproto_hts_execute(
   void *c,
   void *msg,
   int32_t op
 );
 int32_t mtproxy_ffi_mtproto_f_parse_option(int32_t val);
+void mtproxy_ffi_mtproto_check_children_dead(void);
+void mtproxy_ffi_mtproto_check_children_status(void);
 void mtproxy_ffi_mtproto_mtfront_pre_init(void);
+void mtproxy_ffi_mtproto_mtfront_pre_loop(void);
 void mtproxy_ffi_mtproto_ext_conn_reset(void);
 int32_t mtproxy_ffi_mtproto_ext_conn_create(
   int32_t in_fd,
