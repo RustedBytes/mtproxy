@@ -723,6 +723,29 @@ int32_t mtproxy_ffi_tcp_rpc_decode_compact_header(
   int32_t *out_header_bytes
 );
 
+// net-tcp-rpc-common helper: sets default RPC flags.
+// Returns the new flags value after applying AND and OR operations.
+uint32_t mtproxy_ffi_tcp_rpc_set_default_rpc_flags(
+  uint32_t and_flags,
+  uint32_t or_flags
+);
+
+// net-tcp-rpc-common helper: gets default RPC flags.
+uint32_t mtproxy_ffi_tcp_rpc_get_default_rpc_flags(void);
+
+// net-tcp-rpc-common helper: sets maximum DH accept rate.
+void mtproxy_ffi_tcp_rpc_set_max_dh_accept_rate(int32_t rate);
+
+// net-tcp-rpc-common helper: gets maximum DH accept rate.
+int32_t mtproxy_ffi_tcp_rpc_get_max_dh_accept_rate(void);
+
+// net-tcp-rpc-common helper: constructs a ping packet.
+// Returns 0 on success, -1 on error. out_packet must point to a 12-byte buffer.
+int32_t mtproxy_ffi_tcp_rpc_construct_ping_packet(
+  int64_t ping_id,
+  uint8_t *out_packet
+);
+
 // net-tcp-rpc-common helper: parses a raw nonce packet.
 // Returns 0 on success, -1 on parse failure, negative values on argument mismatch.
 int32_t mtproxy_ffi_tcp_rpc_parse_nonce_packet(

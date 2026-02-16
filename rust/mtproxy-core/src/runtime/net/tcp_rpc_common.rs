@@ -863,6 +863,66 @@ const fn generate_crc32_table() -> [u32; 256] {
     table
 }
 
+use core::sync::atomic::{AtomicU32, Ordering};
+
+/// Global storage for default RPC flags.
+static DEFAULT_RPC_FLAGS: AtomicU32 = AtomicU32::new(0);
+
+/// Sets default RPC flags using bitwise AND and OR operations.
+///
+/// Returns the new flags value after applying the operations.
+/// This mirrors the C function `tcp_set_default_rpc_flags`.
+#[must_use]
+pub fn set_default_rpc_flags(and_flags: u32, or_flags: u32) -> u32 {
+    let old = DEFAULT_RPC_FLAGS.load(Ordering::Relaxed);
+    let new = (old & and_flags) | or_flags;
+    DEFAULT_RPC_FLAGS.store(new, Ordering::Relaxed);
+    new
+}
+
+/// Gets the current default RPC flags.
+///
+/// This mirrors the C function `tcp_get_default_rpc_flags`.
+#[must_use]
+pub fn get_default_rpc_flags() -> u32 {
+    DEFAULT_RPC_FLAGS.load(Ordering::Relaxed)
+}
+
+/// Global maximum DH accept rate (shared across threads).
+static MAX_DH_ACCEPT_RATE: AtomicU32 = AtomicU32::new(0);
+
+/// Sets the maximum DH accept rate (rate per second).
+///
+/// This mirrors the C function `tcp_set_max_dh_accept_rate`.
+/// 
+/// NOTE: This Rust implementation provides a simplified version of DH rate limiting.
+/// The C implementation uses thread-local state which cannot be directly replicated
+/// in a no_std environment. The FFI layer should maintain thread-local state if needed.
+pub fn set_max_dh_accept_rate(rate: i32) {
+    #[allow(clippy::cast_sign_loss)]
+    MAX_DH_ACCEPT_RATE.store(rate as u32, Ordering::Relaxed);
+}
+
+/// Gets the current maximum DH accept rate.
+#[must_use]
+#[allow(clippy::cast_possible_wrap)]
+pub fn get_max_dh_accept_rate() -> i32 {
+    MAX_DH_ACCEPT_RATE.load(Ordering::Relaxed) as i32
+}
+
+/// Constructs a ping packet with the given ping ID.
+///
+/// Returns a 12-byte array containing RPC_PING opcode and the ping ID.
+/// This mirrors the logic from `tcp_rpc_send_ping`.
+#[must_use]
+pub fn construct_ping_packet(ping_id: i64) -> [u8; 12] {
+    let mut packet = [0_u8; 12];
+    let rpc_ping = RpcPacketType::Ping.to_i32();
+    packet[0..4].copy_from_slice(&rpc_ping.to_le_bytes());
+    packet[4..12].copy_from_slice(&ping_id.to_le_bytes());
+    packet
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -1056,5 +1116,47 @@ mod tests {
         // Values >= 0x80 but != 0x7f should be invalid
         assert!(decode_compact_header(0x80, None).is_none());
         assert!(decode_compact_header(0xff, None).is_none());
+    }
+
+    #[test]
+    fn default_rpc_flags_operations() {
+        use super::{get_default_rpc_flags, set_default_rpc_flags};
+
+        // Set flags to 0x05
+        let _ = set_default_rpc_flags(0xFFFF_FFFF, 0x05);
+        assert_eq!(get_default_rpc_flags(), 0x05);
+
+        // Apply AND mask (keep only bits 0,2) and OR with 0x08
+        let result = set_default_rpc_flags(0x05, 0x08);
+        assert_eq!(result, 0x0D); // (0x05 & 0x05) | 0x08 = 0x0D
+        assert_eq!(get_default_rpc_flags(), 0x0D);
+    }
+
+    #[test]
+    fn max_dh_accept_rate_get_set() {
+        use super::{get_max_dh_accept_rate, set_max_dh_accept_rate};
+
+        set_max_dh_accept_rate(100);
+        assert_eq!(get_max_dh_accept_rate(), 100);
+
+        set_max_dh_accept_rate(0);
+        assert_eq!(get_max_dh_accept_rate(), 0);
+    }
+
+    #[test]
+    fn construct_ping_packet_format() {
+        use super::construct_ping_packet;
+
+        let ping_id = 0x0123_4567_89AB_CDEF_i64;
+        let packet = construct_ping_packet(ping_id);
+
+        // First 4 bytes should be RPC_PING (0x7bdef2a4)
+        let op = i32::from_le_bytes([packet[0], packet[1], packet[2], packet[3]]);
+        assert_eq!(op, 0x7bde_f2a4);
+
+        // Next 8 bytes should be the ping_id
+        let id =
+            i64::from_le_bytes([packet[4], packet[5], packet[6], packet[7], packet[8], packet[9], packet[10], packet[11]]);
+        assert_eq!(id, ping_id);
     }
 }

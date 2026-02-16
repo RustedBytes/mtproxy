@@ -320,6 +320,26 @@ pub(super) fn tcp_rpc_decode_compact_header_impl(
     mtproxy_core::runtime::net::tcp_rpc_common::decode_compact_header(first_byte, remaining_bytes)
 }
 
+pub(super) fn tcp_rpc_set_default_rpc_flags_impl(and_flags: u32, or_flags: u32) -> u32 {
+    mtproxy_core::runtime::net::tcp_rpc_common::set_default_rpc_flags(and_flags, or_flags)
+}
+
+pub(super) fn tcp_rpc_get_default_rpc_flags_impl() -> u32 {
+    mtproxy_core::runtime::net::tcp_rpc_common::get_default_rpc_flags()
+}
+
+pub(super) fn tcp_rpc_set_max_dh_accept_rate_impl(rate: i32) {
+    mtproxy_core::runtime::net::tcp_rpc_common::set_max_dh_accept_rate(rate);
+}
+
+pub(super) fn tcp_rpc_get_max_dh_accept_rate_impl() -> i32 {
+    mtproxy_core::runtime::net::tcp_rpc_common::get_max_dh_accept_rate()
+}
+
+pub(super) fn tcp_rpc_construct_ping_packet_impl(ping_id: i64) -> [u8; 12] {
+    mtproxy_core::runtime::net::tcp_rpc_common::construct_ping_packet(ping_id)
+}
+
 pub(super) fn tcp_rpc_client_packet_len_state_impl(packet_len: i32, max_packet_len: i32) -> i32 {
     mtproxy_core::runtime::net::tcp_rpc_client::packet_len_state(packet_len, max_packet_len)
 }

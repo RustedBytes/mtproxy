@@ -503,6 +503,48 @@ pub unsafe extern "C" fn mtproxy_ffi_tcp_rpc_decode_compact_header(
     }
 }
 
+/// Sets default RPC flags using bitwise AND and OR operations.
+///
+/// Returns the new flags value after the operations.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_tcp_rpc_set_default_rpc_flags(and_flags: u32, or_flags: u32) -> u32 {
+    tcp_rpc_set_default_rpc_flags_impl(and_flags, or_flags)
+}
+
+/// Gets the current default RPC flags.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_tcp_rpc_get_default_rpc_flags() -> u32 {
+    tcp_rpc_get_default_rpc_flags_impl()
+}
+
+/// Sets the maximum DH accept rate (rate per second).
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_tcp_rpc_set_max_dh_accept_rate(rate: i32) {
+    tcp_rpc_set_max_dh_accept_rate_impl(rate);
+}
+
+/// Gets the current maximum DH accept rate.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_tcp_rpc_get_max_dh_accept_rate() -> i32 {
+    tcp_rpc_get_max_dh_accept_rate_impl()
+}
+
+/// Constructs a ping packet with the given ping ID.
+///
+/// # Safety
+/// `out_packet` must be a valid writable pointer to a 12-byte buffer.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_tcp_rpc_construct_ping_packet(
+    ping_id: i64,
+    out_packet: *mut u8,
+) -> i32 {
+    let Some(out) = (unsafe { mut_ref_from_ptr(out_packet.cast::<[u8; 12]>()) }) else {
+        return -1;
+    };
+    *out = tcp_rpc_construct_ping_packet_impl(ping_id);
+    0
+}
+
 /// Parses a tcp-rpc nonce packet into normalized fields.
 ///
 /// # Safety
