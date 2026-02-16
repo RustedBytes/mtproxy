@@ -308,6 +308,29 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_mtfront_client_close(
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_do_close_in_ext_conn(
+    data: *mut c_void,
+    s_len: c_int,
+) -> i32 {
+    unsafe { mtproto_do_close_in_ext_conn_ffi(data, s_len) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_rpc_ready(c: *mut c_void) -> i32 {
+    unsafe { mtproto_ext_rpc_ready_ffi(c) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_rpc_close(c: *mut c_void, who: c_int) -> i32 {
+    unsafe { mtproto_ext_rpc_close_ffi(c, who) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_proxy_rpc_ready(c: *mut c_void) -> i32 {
+    unsafe { mtproto_proxy_rpc_ready_ffi(c) }
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_mtproto_proxy_rpc_close(c: *mut c_void, who: c_int) -> i32 {
     unsafe { mtproto_proxy_rpc_close_ffi(c, who) }
 }
@@ -356,6 +379,44 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_check_children_dead() {
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_mtproto_check_children_status() {
     unsafe { mtproto_check_children_status_ffi() };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_check_special_connections_overflow() {
+    unsafe { mtproto_check_special_connections_overflow_ffi() };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_kill_children(signal: c_int) {
+    unsafe { mtproto_kill_children_ffi(signal) };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_cron() {
+    unsafe { mtproto_cron_ffi() };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_usage() {
+    unsafe { mtproto_usage_ffi() };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_mtfront_parse_extra_args(
+    argc: c_int,
+    argv: *mut *mut c_char,
+) {
+    unsafe { mtproto_mtfront_parse_extra_args_ffi(argc, argv) };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_mtfront_sigusr1_handler() {
+    unsafe { mtproto_mtfront_sigusr1_handler_ffi() };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_mtfront_on_exit() {
+    unsafe { mtproto_mtfront_on_exit_ffi() };
 }
 
 #[no_mangle]

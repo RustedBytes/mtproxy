@@ -29,8 +29,6 @@
 #include <netdb.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
-#include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
@@ -48,7 +46,6 @@
 #include "net/net-tcp-rpc-ext-server.h"
 #include "net/net-tcp-rpc-server.h"
 #include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
-#include "server-functions.h"
 
 const char FullVersionStr[] =
     "mtproxy-0.02 compiled at " __DATE__ " " __TIME__ " by gcc " __VERSION__ " "
@@ -150,15 +147,6 @@ static inline void ext_conn_fetch_counts(long long *current,
   }
   *current = cur;
   *created = cre;
-}
-
-static inline int get_ext_connection_by_in_fd(int in_fd,
-                                              ext_connection_t *Ex) {
-  check_engine_class();
-  assert((unsigned)in_fd < MAX_CONNECTIONS);
-  int32_t rc = mtproxy_ffi_mtproto_ext_conn_get_by_in_fd(in_fd, Ex);
-  assert(rc >= 0);
-  return rc > 0;
 }
 
 void remove_ext_connection(const ext_connection_t *Ex, int send_notifications) {
@@ -335,13 +323,6 @@ int rpcc_execute(connection_job_t C, int op, struct raw_message *msg) {
   return mtproxy_ffi_mtproto_rpcc_execute(C, op, msg);
 }
 
-static inline int get_conn_tag(connection_job_t C) {
-  int generation = CONN_INFO(C)->generation;
-  int tag = mtproxy_ffi_mtproto_conn_tag(generation);
-  assert((unsigned)tag > 0 && (unsigned)tag <= 0x1000000u);
-  return tag;
-}
-
 int mtfront_client_ready(connection_job_t C) {
   check_engine_class();
   return mtproxy_ffi_mtproto_mtfront_client_ready(C);
@@ -392,13 +373,7 @@ int mtproto_proxy_rpc_close(connection_job_t C, int who);
 
 // ENGINE context
 int do_close_in_ext_conn(void *_data, int s_len) {
-  assert(s_len == 4);
-  int fd = *(int *)_data;
-  ext_connection_t Ex;
-  if (get_ext_connection_by_in_fd(fd, &Ex)) {
-    remove_ext_connection(&Ex, 1);
-  }
-  return JOB_COMPLETED;
+  return mtproxy_ffi_mtproto_do_close_in_ext_conn(_data, s_len);
 }
 
 // NET_CPU context
@@ -407,35 +382,16 @@ int mtproto_http_close(connection_job_t C, int who) {
 }
 
 int mtproto_ext_rpc_ready(connection_job_t C) {
-  assert((unsigned)CONN_INFO(C)->fd < MAX_CONNECTIONS);
-  vkprintf(1, "Client connected to proxy (fd=%d, %s:%d -> %s:%d)\n",
-           CONN_INFO(C)->fd, show_remote_ip(C), CONN_INFO(C)->remote_port,
-           show_our_ip(C), CONN_INFO(C)->our_port);
-  vkprintf(3, "ext_rpc connection ready (%d)\n", CONN_INFO(C)->fd);
-  lru_insert_conn(C);
-  return 0;
+  return mtproxy_ffi_mtproto_ext_rpc_ready(C);
 }
 
 int mtproto_ext_rpc_close(connection_job_t C, int who) {
-  assert((unsigned)CONN_INFO(C)->fd < MAX_CONNECTIONS);
-  vkprintf(3, "ext_rpc connection closing (%d) by %d\n", CONN_INFO(C)->fd, who);
-  ext_connection_t Ex;
-  if (get_ext_connection_by_in_fd(CONN_INFO(C)->fd, &Ex)) {
-    remove_ext_connection(&Ex, 1);
-  }
-  return 0;
+  return mtproxy_ffi_mtproto_ext_rpc_close(C, who);
 }
 
 int mtproto_proxy_rpc_ready(connection_job_t C) {
   check_engine_class();
-  struct tcp_rpc_data *D = TCP_RPC_DATA(C);
-  int fd = CONN_INFO(C)->fd;
-  assert((unsigned)fd < MAX_CONNECTIONS);
-  vkprintf(3, "proxy_rpc connection ready (%d)\n", fd);
-  assert(!D->extra_int);
-  D->extra_int = -get_conn_tag(C);
-  lru_insert_conn(C);
-  return 0;
+  return mtproxy_ffi_mtproto_proxy_rpc_ready(C);
 }
 
 int mtproto_proxy_rpc_close(connection_job_t C, int who) {
@@ -626,18 +582,8 @@ void init_ct_server_mtfront(void) {
  *
  */
 
-static void check_children_dead(void) {
-  mtproxy_ffi_mtproto_check_children_dead();
-}
-
 static void kill_children(int signal) {
-  int i;
-  assert(workers);
-  for (i = 0; i < workers; i++) {
-    if (pids[i]) {
-      kill(pids[i], signal);
-    }
-  }
+  mtproxy_ffi_mtproto_kill_children(signal);
 }
 
 // SIGCHLD
@@ -648,23 +594,11 @@ void check_children_status(void) {
 }
 
 void check_special_connections_overflow(void) {
-  if (max_special_connections && !slave_mode) {
-    int max_user_conn = workers ? SumStats.conn.max_special_connections
-                                : max_special_connections;
-    int cur_user_conn = workers ? SumStats.conn.active_special_connections
-                                : active_special_connections;
-    if (cur_user_conn * 10 > max_user_conn * 9) {
-      vkprintf(0, "CRITICAL: used %d user connections out of %d\n",
-               cur_user_conn, max_user_conn);
-    }
-  }
+  mtproxy_ffi_mtproto_check_special_connections_overflow();
 }
 
 void cron(void) {
-  check_children_status();
-  compute_stats_sum();
-  check_special_connections_overflow();
-  check_all_conn_buffers();
+  mtproxy_ffi_mtproto_cron();
 }
 
 int sfd;
@@ -697,14 +631,7 @@ void mtfront_sigusr1_handler(void) {
  */
 
 void usage(void) {
-  printf("usage: %s [-v] [-6] [-p<port>] [-H<http-port>{,<http-port>}] "
-         "[-M<workers>] [-u<username>] [-b<backlog>] [-c<max-conn>] "
-         "[-l<log-name>] [-W<window-size>] <config-file>\n",
-         progname);
-  printf("%s\n", FullVersionStr);
-  printf("\tSimple MT-Proto proxy\n");
-  parse_usage();
-  exit(2);
+  mtproxy_ffi_mtproto_usage();
 }
 
 server_functions_t mtproto_front_functions;
@@ -717,12 +644,7 @@ void mtfront_prepare_parse_options(void) {
 }
 
 void mtfront_parse_extra_args(int argc, char *argv[]) {
-  if (argc != 1) {
-    usage();
-    exit(2);
-  }
-  config_filename = argv[0];
-  vkprintf(0, "config_filename = '%s'\n", config_filename);
+  mtproxy_ffi_mtproto_mtfront_parse_extra_args(argc, argv);
 }
 
 // executed BEFORE dropping privileges
@@ -735,12 +657,7 @@ void mtfront_pre_start(void) {
 }
 
 void mtfront_on_exit(void) {
-  if (workers) {
-    if (signal_check_pending(SIGTERM)) {
-      kill_children(SIGTERM);
-    }
-    check_children_dead();
-  }
+  mtproxy_ffi_mtproto_mtfront_on_exit();
 }
 
 server_functions_t mtproto_front_functions = {

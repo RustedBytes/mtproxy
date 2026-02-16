@@ -1247,6 +1247,10 @@ int32_t mtproxy_ffi_mtproto_ext_rpcs_execute(
   void *msg
 );
 int32_t mtproxy_ffi_mtproto_mtfront_client_close(void *c, int32_t who);
+int32_t mtproxy_ffi_mtproto_do_close_in_ext_conn(void *data, int32_t s_len);
+int32_t mtproxy_ffi_mtproto_ext_rpc_ready(void *c);
+int32_t mtproxy_ffi_mtproto_ext_rpc_close(void *c, int32_t who);
+int32_t mtproxy_ffi_mtproto_proxy_rpc_ready(void *c);
 int32_t mtproxy_ffi_mtproto_proxy_rpc_close(void *c, int32_t who);
 int32_t mtproxy_ffi_mtproto_do_rpcs_execute(void *data, int32_t s_len);
 int32_t mtproxy_ffi_mtproto_finish_postponed_http_response(void *data, int32_t len);
@@ -1256,6 +1260,13 @@ int32_t mtproxy_ffi_mtproto_f_parse_option(int32_t val);
 void mtproxy_ffi_mtproto_mtfront_prepare_parse_options(void);
 void mtproxy_ffi_mtproto_check_children_dead(void);
 void mtproxy_ffi_mtproto_check_children_status(void);
+void mtproxy_ffi_mtproto_check_special_connections_overflow(void);
+void mtproxy_ffi_mtproto_kill_children(int32_t signal);
+void mtproxy_ffi_mtproto_cron(void);
+void mtproxy_ffi_mtproto_usage(void);
+void mtproxy_ffi_mtproto_mtfront_parse_extra_args(int32_t argc, char **argv);
+void mtproxy_ffi_mtproto_mtfront_sigusr1_handler(void);
+void mtproxy_ffi_mtproto_mtfront_on_exit(void);
 void mtproxy_ffi_mtproto_mtfront_pre_init(void);
 void mtproxy_ffi_mtproto_mtfront_pre_start(void);
 void mtproxy_ffi_mtproto_mtfront_pre_loop(void);

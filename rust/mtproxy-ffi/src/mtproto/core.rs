@@ -593,6 +593,8 @@ unsafe extern "C" {
     );
     fn do_close_in_ext_conn(data: *mut c_void, s_len: c_int) -> c_int;
     fn check_conn_buffers(c: ConnectionJob) -> c_int;
+    fn mtproxy_ffi_net_tcp_rpc_ext_show_our_ip(c: ConnectionJob) -> *const c_char;
+    fn mtproxy_ffi_net_tcp_rpc_ext_show_remote_ip(c: ConnectionJob) -> *const c_char;
     fn fetch_connections_stat(st: *mut MtprotoConnectionsStat);
     fn fetch_buffers_stat(bs: *mut MtprotoBuffersStat);
     fn fetch_tot_dh_rounds_stat(rounds: *mut i64);
@@ -609,7 +611,10 @@ unsafe extern "C" {
     fn tcp_rpc_add_proxy_domain(domain: *const c_char);
     fn tcp_rpcs_set_ext_secret(secret: *mut u8);
     fn parse_option(name: *const c_char, arg: c_int, var: *mut c_int, val: c_int, help: *const c_char, ...);
+    fn parse_usage() -> c_int;
     fn usage();
+    fn reopen_logs_ext(slave_mode: c_int);
+    fn signal_check_pending(sig: c_int) -> c_int;
     fn kprintf(format: *const c_char, ...);
     fn init_ct_server_mtfront();
     fn rust_ffi_startup_check() -> c_int;
@@ -634,9 +639,11 @@ unsafe extern "C" {
     static mut http_methods_stats: u8;
     static mut mtproto_cors_http_headers: c_char;
     static mut mtproto_front_functions: MtprotoServerFunctionsPrefix;
+    static mut progname: *const c_char;
     static mut engine_state: *mut MtprotoEngineStatePrefix;
     static mut optarg: *mut c_char;
     static mut max_special_connections: c_int;
+    static mut active_special_connections: c_int;
     static mut ping_interval: c_double;
     static mut window_clamp: c_int;
     static mut http_ports_num: c_int;
@@ -2734,6 +2741,114 @@ pub(super) unsafe fn mtproto_mtfront_client_close_ffi(c: *mut c_void, _who: c_in
     0
 }
 
+pub(super) unsafe fn mtproto_do_close_in_ext_conn_ffi(data: *mut c_void, s_len: c_int) -> c_int {
+    assert!(s_len == saturating_i32_from_usize(core::mem::size_of::<c_int>()));
+    let fd_ptr = data.cast::<c_int>();
+    assert!(!fd_ptr.is_null());
+    let fd = unsafe { *fd_ptr };
+    let mut ex = MtproxyMtprotoExtConnection::default();
+    let rc = unsafe { mtproto_ext_conn_get_by_in_fd_ffi(fd, &mut ex) };
+    assert!(rc >= 0);
+    if rc > 0 {
+        unsafe { mtproto_remove_ext_connection_runtime_ffi(&ex, 1) };
+    }
+    JOB_COMPLETED
+}
+
+pub(super) unsafe fn mtproto_ext_rpc_ready_ffi(c: *mut c_void) -> c_int {
+    if c.is_null() {
+        return 0;
+    }
+    let c = c.cast::<c_void>();
+    let conn = unsafe { mtproto_conn_info_ptr(c) };
+    if conn.is_null() {
+        return 0;
+    }
+    let fd = unsafe { (*conn).fd };
+    assert!((fd as u32) < MAX_CONNECTIONS as u32);
+    if unsafe { verbosity } >= 1 {
+        unsafe {
+            kprintf(
+                b"Client connected to proxy (fd=%d, %s:%d -> %s:%d)\n\0"
+                    .as_ptr()
+                    .cast(),
+                fd,
+                mtproxy_ffi_net_tcp_rpc_ext_show_remote_ip(c),
+                (*conn).remote_port as c_int,
+                mtproxy_ffi_net_tcp_rpc_ext_show_our_ip(c),
+                (*conn).our_port as c_int,
+            );
+        }
+    }
+    if unsafe { verbosity } >= 3 {
+        unsafe {
+            kprintf(b"ext_rpc connection ready (%d)\n\0".as_ptr().cast(), fd);
+        }
+    }
+    unsafe {
+        lru_insert_conn(c);
+    }
+    0
+}
+
+pub(super) unsafe fn mtproto_ext_rpc_close_ffi(c: *mut c_void, who: c_int) -> c_int {
+    if c.is_null() {
+        return 0;
+    }
+    let c = c.cast::<c_void>();
+    let conn = unsafe { mtproto_conn_info_ptr(c) };
+    if conn.is_null() {
+        return 0;
+    }
+    let fd = unsafe { (*conn).fd };
+    assert!((fd as u32) < MAX_CONNECTIONS as u32);
+    if unsafe { verbosity } >= 3 {
+        unsafe {
+            kprintf(
+                b"ext_rpc connection closing (%d) by %d\n\0"
+                    .as_ptr()
+                    .cast(),
+                fd,
+                who,
+            );
+        }
+    }
+    let mut ex = MtproxyMtprotoExtConnection::default();
+    let rc = unsafe { mtproto_ext_conn_get_by_in_fd_ffi(fd, &mut ex) };
+    assert!(rc >= 0);
+    if rc > 0 {
+        unsafe { mtproto_remove_ext_connection_runtime_ffi(&ex, 1) };
+    }
+    0
+}
+
+pub(super) unsafe fn mtproto_proxy_rpc_ready_ffi(c: *mut c_void) -> c_int {
+    if c.is_null() {
+        return 0;
+    }
+    let c = c.cast::<c_void>();
+    let d = unsafe { mtproto_rpc_data_ptr(c) };
+    let conn = unsafe { mtproto_conn_info_ptr(c) };
+    if d.is_null() || conn.is_null() {
+        return 0;
+    }
+    let fd = unsafe { (*conn).fd };
+    assert!((fd as u32) < MAX_CONNECTIONS as u32);
+    if unsafe { verbosity } >= 3 {
+        unsafe {
+            kprintf(b"proxy_rpc connection ready (%d)\n\0".as_ptr().cast(), fd);
+        }
+    }
+    assert!(unsafe { (*d).extra_int == 0 });
+    let tag = unsafe { mtproto_conn_tag(c) };
+    assert!((tag as u32) > 0 && (tag as u32) <= 0x0100_0000);
+    unsafe {
+        (*d).extra_int = -tag;
+        lru_insert_conn(c);
+    }
+    0
+}
+
 pub(super) unsafe fn mtproto_http_close_ffi(c: *mut c_void, who: c_int) -> c_int {
     if c.is_null() {
         return 0;
@@ -4189,6 +4304,105 @@ pub(super) unsafe fn mtproto_check_children_status_ffi() {
                 libc::exit(libc::EXIT_FAILURE);
             }
         }
+    }
+}
+
+pub(super) unsafe fn mtproto_check_special_connections_overflow_ffi() {
+    if unsafe { max_special_connections == 0 || slave_mode != 0 } {
+        return;
+    }
+    let max_user_conn = if unsafe { workers } != 0 {
+        unsafe { SumStats.conn.max_special_connections }
+    } else {
+        unsafe { max_special_connections }
+    };
+    let cur_user_conn = if unsafe { workers } != 0 {
+        unsafe { SumStats.conn.active_special_connections }
+    } else {
+        unsafe { active_special_connections }
+    };
+    if i64::from(cur_user_conn) * 10 > i64::from(max_user_conn) * 9 {
+        unsafe {
+            kprintf(
+                b"CRITICAL: used %d user connections out of %d\n\0"
+                    .as_ptr()
+                    .cast(),
+                cur_user_conn,
+                max_user_conn,
+            );
+        }
+    }
+}
+
+pub(super) unsafe fn mtproto_kill_children_ffi(signal: c_int) {
+    let workers_count = unsafe { workers };
+    assert!(workers_count != 0);
+    let limit = usize::try_from(workers_count).unwrap_or(0).min(MAX_WORKERS);
+    for i in 0..limit {
+        let pid = unsafe { pids[i] };
+        if pid != 0 {
+            unsafe {
+                libc::kill(pid, signal);
+            }
+        }
+    }
+}
+
+pub(super) unsafe fn mtproto_cron_ffi() {
+    unsafe {
+        mtproto_check_children_status_ffi();
+        mtproto_compute_stats_sum_ffi();
+        mtproto_check_special_connections_overflow_ffi();
+        mtproto_check_all_conn_buffers_ffi();
+    }
+}
+
+pub(super) unsafe fn mtproto_usage_ffi() {
+    unsafe {
+        libc::printf(
+            b"usage: %s [-v] [-6] [-p<port>] [-H<http-port>{,<http-port>}] [-M<workers>] [-u<username>] [-b<backlog>] [-c<max-conn>] [-l<log-name>] [-W<window-size>] <config-file>\n\0"
+                .as_ptr()
+                .cast(),
+            progname,
+        );
+        libc::printf(
+            b"%s\n\0".as_ptr().cast(),
+            core::ptr::addr_of!(FullVersionStr).cast::<c_char>(),
+        );
+        libc::printf(b"\tSimple MT-Proto proxy\n\0".as_ptr().cast());
+        parse_usage();
+        libc::exit(2);
+    }
+}
+
+pub(super) unsafe fn mtproto_mtfront_parse_extra_args_ffi(argc: c_int, argv: *mut *mut c_char) {
+    if argc != 1 || argv.is_null() || unsafe { (*argv).is_null() } {
+        unsafe { mtproto_usage_ffi() };
+    }
+    unsafe {
+        config_filename = *argv;
+        kprintf(
+            b"config_filename = '%s'\n\0".as_ptr().cast(),
+            config_filename,
+        );
+    }
+}
+
+pub(super) unsafe fn mtproto_mtfront_sigusr1_handler_ffi() {
+    unsafe {
+        reopen_logs_ext(slave_mode);
+        if workers != 0 {
+            mtproto_kill_children_ffi(libc::SIGUSR1);
+        }
+    }
+}
+
+pub(super) unsafe fn mtproto_mtfront_on_exit_ffi() {
+    if unsafe { workers } != 0 {
+        if unsafe { signal_check_pending(libc::SIGTERM) } != 0 {
+            unsafe { mtproto_kill_children_ffi(libc::SIGTERM) };
+        }
+        unsafe { mtproto_check_children_dead_ffi() };
     }
 }
 
