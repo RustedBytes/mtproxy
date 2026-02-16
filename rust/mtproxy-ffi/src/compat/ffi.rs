@@ -545,6 +545,31 @@ pub unsafe extern "C" fn mtproxy_ffi_tcp_rpc_construct_ping_packet(
     0
 }
 
+/// Attempts to add a DH accept operation under rate limiting.
+///
+/// Returns 0 if allowed, -1 if rate limit exceeded.
+/// Updates the state parameters (remaining and last_time) with new values.
+///
+/// # Safety
+/// `out_remaining` and `out_last_time` must be valid writable pointers.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_tcp_rpc_add_dh_accept(
+    remaining: f64,
+    last_time: f64,
+    max_rate: i32,
+    precise_now: f64,
+    out_remaining: *mut f64,
+    out_last_time: *mut f64,
+) -> i32 {
+    let Some(out_rem) = (unsafe { mut_ref_from_ptr(out_remaining) }) else {
+        return -1;
+    };
+    let Some(out_time) = (unsafe { mut_ref_from_ptr(out_last_time) }) else {
+        return -1;
+    };
+    tcp_rpc_add_dh_accept_impl(remaining, last_time, max_rate, precise_now, out_rem, out_time)
+}
+
 /// Parses a tcp-rpc nonce packet into normalized fields.
 ///
 /// # Safety

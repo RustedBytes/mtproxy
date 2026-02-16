@@ -746,6 +746,18 @@ int32_t mtproxy_ffi_tcp_rpc_construct_ping_packet(
   uint8_t *out_packet
 );
 
+// net-tcp-rpc-common helper: attempts to add a DH accept operation under rate limiting.
+// Returns 0 if allowed, -1 if rate limit exceeded.
+// Updates out_remaining and out_last_time with new state values.
+int32_t mtproxy_ffi_tcp_rpc_add_dh_accept(
+  double remaining,
+  double last_time,
+  int32_t max_rate,
+  double precise_now,
+  double *out_remaining,
+  double *out_last_time
+);
+
 // net-tcp-rpc-common helper: parses a raw nonce packet.
 // Returns 0 on success, -1 on parse failure, negative values on argument mismatch.
 int32_t mtproxy_ffi_tcp_rpc_parse_nonce_packet(

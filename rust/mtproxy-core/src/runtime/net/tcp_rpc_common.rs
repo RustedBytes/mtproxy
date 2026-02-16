@@ -928,6 +928,87 @@ pub fn construct_ping_packet(ping_id: i64) -> [u8; 12] {
     packet
 }
 
+/// State for DH accept rate limiting (token bucket algorithm).
+#[derive(Debug, Clone, Copy)]
+pub struct DhAcceptRateState {
+    /// Remaining tokens in the bucket.
+    pub remaining: f64,
+    /// Last time the state was updated.
+    pub last_time: f64,
+}
+
+impl DhAcceptRateState {
+    /// Creates a new initial state.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            remaining: 0.0,
+            last_time: 0.0,
+        }
+    }
+}
+
+impl Default for DhAcceptRateState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Attempts to add a DH accept operation under rate limiting.
+///
+/// This implements a token bucket algorithm with the given max rate.
+/// Returns `Ok(new_state)` if the operation is allowed with updated state,
+/// `Err(new_state)` if rate limit exceeded with updated state.
+///
+/// This mirrors the C function `tcp_add_dh_accept` but takes state as parameter
+/// to make it stateless and suitable for thread-local storage at the FFI layer.
+///
+/// # Arguments
+/// * `state` - Current rate limiting state (remaining tokens and last update time)
+/// * `max_rate` - Maximum operations per second (0 = unlimited)
+/// * `precise_now` - Current time in seconds
+///
+/// # Returns
+/// `Ok(new_state)` if operation allowed, `Err(new_state)` if rate limited.
+/// The new state should be stored for the next call.
+pub fn add_dh_accept(
+    state: DhAcceptRateState,
+    max_rate: i32,
+    precise_now: f64,
+) -> Result<DhAcceptRateState, DhAcceptRateState> {
+    if max_rate == 0 {
+        // No rate limiting
+        return Ok(state);
+    }
+
+    let max_rate_f64 = f64::from(max_rate);
+    let mut new_remaining = state.remaining;
+
+    // Add tokens based on time elapsed
+    new_remaining += (precise_now - state.last_time) * max_rate_f64;
+
+    // Cap at max rate
+    if new_remaining > max_rate_f64 {
+        new_remaining = max_rate_f64;
+    }
+
+    let new_state = DhAcceptRateState {
+        remaining: new_remaining,
+        last_time: precise_now,
+    };
+
+    // Check if we have tokens available
+    if new_remaining < 1.0 {
+        return Err(new_state);
+    }
+
+    // Consume one token
+    Ok(DhAcceptRateState {
+        remaining: new_remaining - 1.0,
+        last_time: precise_now,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -1163,5 +1244,75 @@ mod tests {
         let id =
             i64::from_le_bytes([packet[4], packet[5], packet[6], packet[7], packet[8], packet[9], packet[10], packet[11]]);
         assert_eq!(id, ping_id);
+    }
+
+    #[test]
+    fn dh_accept_rate_no_limit() {
+        use super::{add_dh_accept, DhAcceptRateState};
+
+        let state = DhAcceptRateState::new();
+
+        // When max rate is 0, always allow
+        let result = add_dh_accept(state, 0, 1.0);
+        assert!(result.is_ok());
+        
+        let result = add_dh_accept(state, 0, 2.0);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn dh_accept_rate_with_limit() {
+        use super::{add_dh_accept, DhAcceptRateState};
+
+        let state = DhAcceptRateState::new();
+
+        // Set rate to 2 per second, start at time 0.0
+        // First call: state is (0.0, 0.0), add (0.0-0.0)*2 = 0, cap at 2.0 → 0.0 < 1.0 → FAIL
+        let result = add_dh_accept(state, 2, 0.0);
+        assert!(result.is_err());
+        let state = result.unwrap_err();
+        assert_eq!(state.remaining, 0.0);
+        assert_eq!(state.last_time, 0.0);
+
+        // After 1 second: add (1.0-0.0)*2 = 2.0, cap at 2.0 → 2.0 >= 1.0 → OK
+        let result = add_dh_accept(state, 2, 1.0);
+        assert!(result.is_ok());
+        let state = result.unwrap();
+        assert_eq!(state.remaining, 1.0); // 2.0 - 1.0
+        assert_eq!(state.last_time, 1.0);
+
+        // Immediately after: add (1.0-1.0)*2 = 0, so 1.0 + 0 = 1.0 >= 1.0 → OK
+        let result = add_dh_accept(state, 2, 1.0);
+        assert!(result.is_ok());
+        let state = result.unwrap();
+        assert_eq!(state.remaining, 0.0); // 1.0 - 1.0
+        assert_eq!(state.last_time, 1.0);
+
+        // Immediately after: add (1.0-1.0)*2 = 0, so 0.0 + 0 = 0.0 < 1.0 → FAIL
+        let result = add_dh_accept(state, 2, 1.0);
+        assert!(result.is_err());
+        let state = result.unwrap_err();
+        assert_eq!(state.remaining, 0.0);
+
+        // After 0.5 seconds: add (1.5-1.0)*2 = 1.0, so 0.0 + 1.0 = 1.0 >= 1.0 → OK
+        let result = add_dh_accept(state, 2, 1.5);
+        assert!(result.is_ok());
+        let state = result.unwrap();
+        assert_eq!(state.remaining, 0.0); // 1.0 - 1.0
+        assert_eq!(state.last_time, 1.5);
+    }
+
+    #[test]
+    fn dh_accept_rate_caps_at_max() {
+        use super::{add_dh_accept, DhAcceptRateState};
+
+        let state = DhAcceptRateState::new();
+
+        // After a very long time, tokens should cap at max_rate
+        let result = add_dh_accept(state, 2, 100.0);
+        assert!(result.is_ok());
+        let state = result.unwrap();
+        assert_eq!(state.remaining, 1.0); // capped at 2.0, then consumed 1.0
+        assert_eq!(state.last_time, 100.0);
     }
 }

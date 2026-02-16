@@ -280,18 +280,18 @@ void tcp_set_max_dh_accept_rate(int rate) {
 
 int tcp_add_dh_accept(void) {
   int max_dh_accept_rate = mtproxy_ffi_tcp_rpc_get_max_dh_accept_rate();
-  if (max_dh_accept_rate) {
-    double max_rate_f64 = (double)max_dh_accept_rate;
-    cur_dh_accept_rate_remaining +=
-        (precise_now - cur_dh_accept_rate_time) * max_rate_f64;
-    cur_dh_accept_rate_time = precise_now;
-    if (cur_dh_accept_rate_remaining > max_rate_f64) {
-      cur_dh_accept_rate_remaining = max_rate_f64;
-    }
-    if (cur_dh_accept_rate_remaining < 1) {
-      return -1;
-    }
-    cur_dh_accept_rate_remaining -= 1;
-  }
-  return 0;
+  double new_remaining, new_last_time;
+  int result = mtproxy_ffi_tcp_rpc_add_dh_accept(
+      cur_dh_accept_rate_remaining,
+      cur_dh_accept_rate_time,
+      max_dh_accept_rate,
+      precise_now,
+      &new_remaining,
+      &new_last_time);
+  
+  // Update thread-local state with new values
+  cur_dh_accept_rate_remaining = new_remaining;
+  cur_dh_accept_rate_time = new_last_time;
+  
+  return result;
 }
