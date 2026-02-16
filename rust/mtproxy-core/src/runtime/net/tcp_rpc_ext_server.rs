@@ -156,14 +156,112 @@ pub fn is_allowed_timestamp(timestamp: i32, now: i32, first_client_random_time: 
     false
 }
 
+/// TLS request buffer size constant.
+pub const TLS_REQUEST_LENGTH: usize = 517;
+
+/// Adds a 16-bit big-endian length value to a TLS request buffer.
+///
+/// # Arguments
+/// * `buffer` - The output buffer to write to
+/// * `pos` - Current position in buffer (will be advanced by 2)
+/// * `length` - The 16-bit length value to encode
+///
+/// # Returns
+/// `true` if successful, `false` if buffer overflow would occur
+#[must_use]
+pub fn add_length(buffer: &mut [u8], pos: &mut usize, length: i32) -> bool {
+    if *pos + 2 > buffer.len() {
+        return false;
+    }
+    
+    let length_u16 = if length < 0 || length > 65535 {
+        return false;
+    } else {
+        length as u16
+    };
+    
+    buffer[*pos] = (length_u16 / 256) as u8;
+    buffer[*pos + 1] = (length_u16 % 256) as u8;
+    *pos += 2;
+    true
+}
+
+/// Copies string data to a TLS request buffer.
+///
+/// # Arguments
+/// * `buffer` - The output buffer to write to
+/// * `pos` - Current position in buffer (will be advanced by data.len())
+/// * `data` - The data bytes to copy
+///
+/// # Returns
+/// `true` if successful, `false` if buffer overflow would occur
+#[must_use]
+pub fn add_string(buffer: &mut [u8], pos: &mut usize, data: &[u8]) -> bool {
+    if *pos + data.len() > buffer.len() {
+        return false;
+    }
+    
+    buffer[*pos..*pos + data.len()].copy_from_slice(data);
+    *pos += data.len();
+    true
+}
+
+/// Adds GREASE bytes to a TLS request buffer.
+/// GREASE (Generate Random Extensions And Sustain Extensibility) helps prevent ossification.
+///
+/// # Arguments
+/// * `buffer` - The output buffer to write to
+/// * `pos` - Current position in buffer (will be advanced by 2)
+/// * `greases` - Array of GREASE values
+/// * `num` - Index into greases array
+///
+/// # Returns
+/// `true` if successful, `false` if buffer overflow or invalid index would occur
+#[must_use]
+pub fn add_grease(buffer: &mut [u8], pos: &mut usize, greases: &[u8], num: usize) -> bool {
+    if *pos + 2 > buffer.len() {
+        return false;
+    }
+    if num >= greases.len() {
+        return false;
+    }
+    
+    buffer[*pos] = greases[num];
+    buffer[*pos + 1] = greases[num];
+    *pos += 2;
+    true
+}
+
+/// Checks if a client random exists in the hash table.
+///
+/// # Arguments
+/// * `client_randoms` - Array of hash table buckets (each is a linked list head pointer)
+/// * `random` - The 16-byte client random to search for
+/// * `get_next_by_hash` - Function to get next pointer from an entry
+/// * `get_random_bytes` - Function to get the 16-byte random from an entry
+/// * `hash_fn` - Function to compute bucket index from random bytes
+///
+/// # Returns
+/// `true` if the random exists in the cache, `false` otherwise
+///
+/// # Safety
+/// This function is designed to be called from FFI with C pointers.
+/// The actual implementation will be in the FFI layer that can handle raw pointers.
+/// This is a pure Rust version for testing and documentation.
+#[must_use]
+pub fn have_client_random_check(random: &[u8; 16], existing_randoms: &[&[u8; 16]]) -> bool {
+    existing_randoms.iter().any(|&r| r == random)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        client_random_bucket_index, domain_bucket_index,
-        get_domain_server_hello_encrypted_size, is_allowed_timestamp, select_server_hello_profile,
-        tls_expect_bytes, tls_has_bytes, tls_read_length, CLIENT_RANDOM_HASH_BITS,
-        DOMAIN_HASH_MOD, MAX_ALLOWED_TIMESTAMP_ERROR, SERVER_HELLO_PROFILE_FIXED,
-        SERVER_HELLO_PROFILE_RANDOM_AVG, SERVER_HELLO_PROFILE_RANDOM_NEAR,
+        add_grease, add_length, add_string, client_random_bucket_index, domain_bucket_index,
+        get_domain_server_hello_encrypted_size, have_client_random_check, is_allowed_timestamp,
+        select_server_hello_profile, tls_expect_bytes, tls_has_bytes, tls_read_length,
+        CLIENT_RANDOM_HASH_BITS, DOMAIN_HASH_MOD, MAX_ALLOWED_TIMESTAMP_ERROR,
+        SERVER_HELLO_PROFILE_FIXED, SERVER_HELLO_PROFILE_RANDOM_AVG,
+        SERVER_HELLO_PROFILE_RANDOM_NEAR,
     };
 
     #[test]
@@ -309,5 +407,117 @@ mod tests {
         // Timestamp much newer than first_client_random should be allowed
         assert!(is_allowed_timestamp(504, now, Some(first_random_time)));
         assert!(is_allowed_timestamp(600, now, Some(first_random_time)));
+    }
+
+    #[test]
+    fn test_add_length() {
+        let mut buffer = [0u8; 10];
+        let mut pos = 0;
+        
+        // Test normal case
+        assert!(add_length(&mut buffer, &mut pos, 0x1234));
+        assert_eq!(buffer[0], 0x12);
+        assert_eq!(buffer[1], 0x34);
+        assert_eq!(pos, 2);
+        
+        // Test max value
+        assert!(add_length(&mut buffer, &mut pos, 65535));
+        assert_eq!(buffer[2], 0xff);
+        assert_eq!(buffer[3], 0xff);
+        assert_eq!(pos, 4);
+        
+        // Test buffer overflow
+        let mut pos = 9;
+        assert!(!add_length(&mut buffer, &mut pos, 100));
+        assert_eq!(pos, 9); // Position unchanged on failure
+    }
+
+    #[test]
+    fn test_add_length_invalid_values() {
+        let mut buffer = [0u8; 10];
+        let mut pos = 0;
+        
+        // Test negative value
+        assert!(!add_length(&mut buffer, &mut pos, -1));
+        assert_eq!(pos, 0);
+        
+        // Test value too large
+        assert!(!add_length(&mut buffer, &mut pos, 65536));
+        assert_eq!(pos, 0);
+    }
+
+    #[test]
+    fn test_add_string() {
+        let mut buffer = [0u8; 20];
+        let mut pos = 0;
+        
+        // Test normal case
+        let data = b"hello";
+        assert!(add_string(&mut buffer, &mut pos, data));
+        assert_eq!(&buffer[0..5], b"hello");
+        assert_eq!(pos, 5);
+        
+        // Test another string
+        let data2 = b" world";
+        assert!(add_string(&mut buffer, &mut pos, data2));
+        assert_eq!(&buffer[0..11], b"hello world");
+        assert_eq!(pos, 11);
+        
+        // Test empty string
+        assert!(add_string(&mut buffer, &mut pos, b""));
+        assert_eq!(pos, 11);
+        
+        // Test buffer overflow
+        let large_data = b"too much data here";
+        assert!(!add_string(&mut buffer, &mut pos, large_data));
+        assert_eq!(pos, 11); // Position unchanged on failure
+    }
+
+    #[test]
+    fn test_add_grease() {
+        let mut buffer = [0u8; 10];
+        let greases = [0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x11];
+        let mut pos = 0;
+        
+        // Test first GREASE
+        assert!(add_grease(&mut buffer, &mut pos, &greases, 0));
+        assert_eq!(buffer[0], 0xaa);
+        assert_eq!(buffer[1], 0xaa);
+        assert_eq!(pos, 2);
+        
+        // Test third GREASE
+        assert!(add_grease(&mut buffer, &mut pos, &greases, 2));
+        assert_eq!(buffer[2], 0xcc);
+        assert_eq!(buffer[3], 0xcc);
+        assert_eq!(pos, 4);
+        
+        // Test buffer overflow
+        let mut pos = 9;
+        assert!(!add_grease(&mut buffer, &mut pos, &greases, 0));
+        assert_eq!(pos, 9); // Position unchanged on failure
+        
+        // Test invalid index
+        let mut pos = 0;
+        assert!(!add_grease(&mut buffer, &mut pos, &greases, 10));
+        assert_eq!(pos, 0); // Position unchanged on failure
+    }
+
+    #[test]
+    fn test_have_client_random_check() {
+        let random1 = [1u8; 16];
+        let random2 = [2u8; 16];
+        let random3 = [3u8; 16];
+        
+        let existing = [&random1, &random2];
+        
+        // Test found
+        assert!(have_client_random_check(&random1, &existing));
+        assert!(have_client_random_check(&random2, &existing));
+        
+        // Test not found
+        assert!(!have_client_random_check(&random3, &existing));
+        
+        // Test empty list
+        assert!(!have_client_random_check(&random1, &[]));
     }
 }

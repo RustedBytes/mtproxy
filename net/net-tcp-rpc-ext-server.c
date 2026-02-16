@@ -237,9 +237,9 @@ enum {
 
 static void add_string(unsigned char *str, int *pos, const char *data,
                        int data_len) {
-  assert(*pos + data_len <= tls_request_length);
-  memcpy(str + (*pos), data, data_len);
-  (*pos) += data_len;
+  assert(mtproxy_ffi_net_tcp_rpc_ext_add_string(str, tls_request_length, pos,
+                                                (const unsigned char *)data,
+                                                data_len) == 0);
 }
 
 static void add_random(unsigned char *str, int *pos, int random_len) {
@@ -249,18 +249,14 @@ static void add_random(unsigned char *str, int *pos, int random_len) {
 }
 
 static void add_length(unsigned char *str, int *pos, int length) {
-  assert(*pos + 2 <= tls_request_length);
-  str[*pos + 0] = (unsigned char)(length / 256);
-  str[*pos + 1] = (unsigned char)(length % 256);
-  (*pos) += 2;
+  assert(mtproxy_ffi_net_tcp_rpc_ext_add_length(str, tls_request_length, pos,
+                                                length) == 0);
 }
 
 static void add_grease(unsigned char *str, int *pos,
                        const unsigned char *greases, int num) {
-  assert(*pos + 2 <= tls_request_length);
-  str[*pos + 0] = greases[num];
-  str[*pos + 1] = greases[num];
-  (*pos) += 2;
+  assert(mtproxy_ffi_net_tcp_rpc_ext_add_grease(str, tls_request_length, pos,
+                                                greases, 7, num) == 0);
 }
 
 static void add_public_key(unsigned char *str, int *pos) {

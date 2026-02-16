@@ -441,6 +441,63 @@ pub extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_get_domain_server_hello_encrypted_
     net_tcp_rpc_ext_get_domain_server_hello_encrypted_size_ffi(base_size, use_random, rand_value)
 }
 
+/// Adds a 16-bit big-endian length to a TLS request buffer.
+///
+/// # Safety
+/// - `buffer` must point to `buffer_len` writable bytes
+/// - `pos` must be a writable i32 pointer
+///
+/// Returns 0 on success, -1 on failure.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_add_length(
+    buffer: *mut u8,
+    buffer_len: i32,
+    pos: *mut i32,
+    length: i32,
+) -> i32 {
+    unsafe { net_tcp_rpc_ext_add_length_ffi(buffer, buffer_len, pos, length) }
+}
+
+/// Copies string data to a TLS request buffer.
+///
+/// # Safety
+/// - `buffer` must point to `buffer_len` writable bytes
+/// - `pos` must be a writable i32 pointer
+/// - `data` must point to `data_len` readable bytes
+///
+/// Returns 0 on success, -1 on failure.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_add_string(
+    buffer: *mut u8,
+    buffer_len: i32,
+    pos: *mut i32,
+    data: *const u8,
+    data_len: i32,
+) -> i32 {
+    unsafe { net_tcp_rpc_ext_add_string_ffi(buffer, buffer_len, pos, data, data_len) }
+}
+
+/// Adds GREASE bytes to a TLS request buffer.
+///
+/// # Safety
+/// - `buffer` must point to `buffer_len` writable bytes
+/// - `pos` must be a writable i32 pointer
+/// - `greases` must point to `greases_len` readable bytes
+/// - `num` must be a valid index into greases array
+///
+/// Returns 0 on success, -1 on failure.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_add_grease(
+    buffer: *mut u8,
+    buffer_len: i32,
+    pos: *mut i32,
+    greases: *const u8,
+    greases_len: i32,
+    num: i32,
+) -> i32 {
+    unsafe { net_tcp_rpc_ext_add_grease_ffi(buffer, buffer_len, pos, greases, greases_len, num) }
+}
+
 /// Runs one net-thread notification event via Rust dispatcher.
 ///
 /// # Safety
