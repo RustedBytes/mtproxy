@@ -863,6 +863,165 @@ const fn generate_crc32_table() -> [u32; 256] {
     table
 }
 
+use core::sync::atomic::{AtomicU32, Ordering};
+
+/// Global storage for default RPC flags.
+static DEFAULT_RPC_FLAGS: AtomicU32 = AtomicU32::new(0);
+
+/// Sets default RPC flags using bitwise AND and OR operations.
+///
+/// Returns the new flags value after applying the operations.
+/// This mirrors the C function `tcp_set_default_rpc_flags`.
+#[must_use]
+pub fn set_default_rpc_flags(and_flags: u32, or_flags: u32) -> u32 {
+    // Use fetch_update for atomic read-modify-write
+    // The closure returns the new value, and fetch_update returns the old value
+    // We compute the new value from the old value to avoid race conditions
+    match DEFAULT_RPC_FLAGS.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |old| {
+        Some((old & and_flags) | or_flags)
+    }) {
+        Ok(old) => (old & and_flags) | or_flags, // Return the new value
+        Err(_) => unreachable!(), // fetch_update with Some never fails
+    }
+}
+
+/// Gets the current default RPC flags.
+///
+/// This mirrors the C function `tcp_get_default_rpc_flags`.
+#[must_use]
+pub fn get_default_rpc_flags() -> u32 {
+    DEFAULT_RPC_FLAGS.load(Ordering::Relaxed)
+}
+
+/// Global maximum DH accept rate (shared across threads).
+static MAX_DH_ACCEPT_RATE: AtomicU32 = AtomicU32::new(0);
+
+/// Sets the maximum DH accept rate (rate per second).
+///
+/// This mirrors the C function `tcp_set_max_dh_accept_rate`.
+/// 
+/// NOTE: This Rust implementation provides a simplified version of DH rate limiting.
+/// The C implementation uses thread-local state which cannot be directly replicated
+/// in a no_std environment. The FFI layer should maintain thread-local state if needed.
+pub fn set_max_dh_accept_rate(rate: i32) {
+    #[allow(clippy::cast_sign_loss)]
+    MAX_DH_ACCEPT_RATE.store(rate as u32, Ordering::Relaxed);
+}
+
+/// Gets the current maximum DH accept rate.
+#[must_use]
+#[allow(clippy::cast_possible_wrap)]
+pub fn get_max_dh_accept_rate() -> i32 {
+    MAX_DH_ACCEPT_RATE.load(Ordering::Relaxed) as i32
+}
+
+/// Constructs a ping packet with the given ping ID.
+///
+/// Returns a 12-byte array containing RPC_PING opcode and the ping ID.
+/// This mirrors the logic from `tcp_rpc_send_ping`.
+#[must_use]
+pub fn construct_ping_packet(ping_id: i64) -> [u8; 12] {
+    let mut packet = [0_u8; 12];
+    let rpc_ping = RpcPacketType::Ping.to_i32();
+    packet[0..4].copy_from_slice(&rpc_ping.to_le_bytes());
+    packet[4..12].copy_from_slice(&ping_id.to_le_bytes());
+    packet
+}
+
+/// State for DH accept rate limiting (token bucket algorithm).
+#[derive(Debug, Clone, Copy)]
+pub struct DhAcceptRateState {
+    /// Remaining tokens in the bucket.
+    pub remaining: f64,
+    /// Last time the state was updated.
+    pub last_time: f64,
+}
+
+impl DhAcceptRateState {
+    /// Creates a new initial state.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            remaining: 0.0,
+            last_time: 0.0,
+        }
+    }
+}
+
+impl Default for DhAcceptRateState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Attempts to add a DH accept operation under rate limiting.
+///
+/// This implements a token bucket algorithm with the given max rate.
+/// Returns `Ok(new_state)` if the operation is allowed with updated state,
+/// `Err(new_state)` if rate limit exceeded with updated state.
+///
+/// This mirrors the C function `tcp_add_dh_accept` but takes state as parameter
+/// to make it stateless and suitable for thread-local storage at the FFI layer.
+///
+/// # Arguments
+/// * `state` - Current rate limiting state (remaining tokens and last update time)
+/// * `max_rate` - Maximum operations per second (0 = unlimited, must be >= 0)
+/// * `precise_now` - Current time in seconds (must be >= state.last_time)
+///
+/// # Returns
+/// `Ok(new_state)` if operation allowed, `Err(new_state)` if rate limited.
+/// The new state should be stored for the next call.
+///
+/// # Panics
+/// Panics in debug mode if `max_rate < 0` or `precise_now < state.last_time`.
+pub fn add_dh_accept(
+    state: DhAcceptRateState,
+    max_rate: i32,
+    precise_now: f64,
+) -> Result<DhAcceptRateState, DhAcceptRateState> {
+    // Validate inputs in debug mode
+    debug_assert!(max_rate >= 0, "max_rate must be non-negative");
+    debug_assert!(
+        precise_now >= state.last_time,
+        "precise_now must not go backwards"
+    );
+
+    if max_rate <= 0 {
+        // No rate limiting or invalid rate
+        return Ok(state);
+    }
+
+    let max_rate_f64 = f64::from(max_rate);
+    let mut new_remaining = state.remaining;
+
+    // Calculate time delta, handling clock adjustments gracefully
+    let time_delta = (precise_now - state.last_time).max(0.0);
+
+    // Add tokens based on time elapsed
+    new_remaining += time_delta * max_rate_f64;
+
+    // Cap at max rate
+    if new_remaining > max_rate_f64 {
+        new_remaining = max_rate_f64;
+    }
+
+    let new_state = DhAcceptRateState {
+        remaining: new_remaining,
+        last_time: precise_now,
+    };
+
+    // Check if we have tokens available
+    if new_remaining < 1.0 {
+        return Err(new_state);
+    }
+
+    // Consume one token
+    Ok(DhAcceptRateState {
+        remaining: new_remaining - 1.0,
+        last_time: precise_now,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -1056,5 +1215,160 @@ mod tests {
         // Values >= 0x80 but != 0x7f should be invalid
         assert!(decode_compact_header(0x80, None).is_none());
         assert!(decode_compact_header(0xff, None).is_none());
+    }
+
+    #[test]
+    fn default_rpc_flags_operations() {
+        use super::{get_default_rpc_flags, set_default_rpc_flags};
+
+        // Set flags to 0x05
+        let _ = set_default_rpc_flags(0xFFFF_FFFF, 0x05);
+        assert_eq!(get_default_rpc_flags(), 0x05);
+
+        // Apply AND mask (keep only bits 0,2) and OR with 0x08
+        let result = set_default_rpc_flags(0x05, 0x08);
+        assert_eq!(result, 0x0D); // (0x05 & 0x05) | 0x08 = 0x0D
+        assert_eq!(get_default_rpc_flags(), 0x0D);
+    }
+
+    #[test]
+    fn max_dh_accept_rate_get_set() {
+        use super::{get_max_dh_accept_rate, set_max_dh_accept_rate};
+
+        set_max_dh_accept_rate(100);
+        assert_eq!(get_max_dh_accept_rate(), 100);
+
+        set_max_dh_accept_rate(0);
+        assert_eq!(get_max_dh_accept_rate(), 0);
+    }
+
+    #[test]
+    fn construct_ping_packet_format() {
+        use super::construct_ping_packet;
+
+        let ping_id = 0x0123_4567_89AB_CDEF_i64;
+        let packet = construct_ping_packet(ping_id);
+
+        // First 4 bytes should be RPC_PING (0x7bdef2a4)
+        let op = i32::from_le_bytes([packet[0], packet[1], packet[2], packet[3]]);
+        assert_eq!(op, 0x7bde_f2a4);
+
+        // Next 8 bytes should be the ping_id
+        let id =
+            i64::from_le_bytes([packet[4], packet[5], packet[6], packet[7], packet[8], packet[9], packet[10], packet[11]]);
+        assert_eq!(id, ping_id);
+    }
+
+    #[test]
+    fn dh_accept_rate_no_limit() {
+        use super::{add_dh_accept, DhAcceptRateState};
+
+        let state = DhAcceptRateState::new();
+
+        // When max rate is 0, always allow
+        let result = add_dh_accept(state, 0, 1.0);
+        assert!(result.is_ok());
+        
+        let result = add_dh_accept(state, 0, 2.0);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn dh_accept_rate_with_limit() {
+        use super::{add_dh_accept, DhAcceptRateState};
+
+        let state = DhAcceptRateState::new();
+
+        // Set rate to 2 per second, start at time 0.0
+        // First call: state is (0.0, 0.0), add (0.0-0.0)*2 = 0, cap at 2.0 → 0.0 < 1.0 → FAIL
+        let result = add_dh_accept(state, 2, 0.0);
+        assert!(result.is_err());
+        let state = result.unwrap_err();
+        assert_eq!(state.remaining, 0.0);
+        assert_eq!(state.last_time, 0.0);
+
+        // After 1 second: add (1.0-0.0)*2 = 2.0, cap at 2.0 → 2.0 >= 1.0 → OK
+        let result = add_dh_accept(state, 2, 1.0);
+        assert!(result.is_ok());
+        let state = result.unwrap();
+        assert_eq!(state.remaining, 1.0); // 2.0 - 1.0
+        assert_eq!(state.last_time, 1.0);
+
+        // Immediately after: add (1.0-1.0)*2 = 0, so 1.0 + 0 = 1.0 >= 1.0 → OK
+        let result = add_dh_accept(state, 2, 1.0);
+        assert!(result.is_ok());
+        let state = result.unwrap();
+        assert_eq!(state.remaining, 0.0); // 1.0 - 1.0
+        assert_eq!(state.last_time, 1.0);
+
+        // Immediately after: add (1.0-1.0)*2 = 0, so 0.0 + 0 = 0.0 < 1.0 → FAIL
+        let result = add_dh_accept(state, 2, 1.0);
+        assert!(result.is_err());
+        let state = result.unwrap_err();
+        assert_eq!(state.remaining, 0.0);
+
+        // After 0.5 seconds: add (1.5-1.0)*2 = 1.0, so 0.0 + 1.0 = 1.0 >= 1.0 → OK
+        let result = add_dh_accept(state, 2, 1.5);
+        assert!(result.is_ok());
+        let state = result.unwrap();
+        assert_eq!(state.remaining, 0.0); // 1.0 - 1.0
+        assert_eq!(state.last_time, 1.5);
+    }
+
+    #[test]
+    fn dh_accept_rate_caps_at_max() {
+        use super::{add_dh_accept, DhAcceptRateState};
+
+        let state = DhAcceptRateState::new();
+
+        // After a very long time, tokens should cap at max_rate
+        let result = add_dh_accept(state, 2, 100.0);
+        assert!(result.is_ok());
+        let state = result.unwrap();
+        assert_eq!(state.remaining, 1.0); // capped at 2.0, then consumed 1.0
+        assert_eq!(state.last_time, 100.0);
+    }
+
+    #[test]
+    #[cfg(not(debug_assertions))]
+    fn dh_accept_rate_handles_clock_adjustment() {
+        use super::{add_dh_accept, DhAcceptRateState};
+
+        let state = DhAcceptRateState {
+            remaining: 1.0,
+            last_time: 10.0,
+        };
+
+        // Clock goes backwards - should handle gracefully (time_delta = 0)
+        // Only test in release mode where debug assertions are disabled
+        let result = add_dh_accept(state, 2, 5.0);
+        assert!(result.is_ok());
+        let state = result.unwrap();
+        assert_eq!(state.remaining, 0.0); // 1.0 + 0*2 - 1 = 0
+        assert_eq!(state.last_time, 5.0);
+    }
+
+    #[test]
+    #[cfg(not(debug_assertions))]
+    fn dh_accept_rate_negative_rate_disables_limiting() {
+        use super::{add_dh_accept, DhAcceptRateState};
+
+        let state = DhAcceptRateState::new();
+
+        // Negative rate should disable rate limiting
+        // Only test in release mode where debug assertions are disabled
+        let result = add_dh_accept(state, -1, 0.0);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn dh_accept_rate_zero_rate_disables_limiting() {
+        use super::{add_dh_accept, DhAcceptRateState};
+
+        let state = DhAcceptRateState::new();
+
+        // Zero rate should disable rate limiting
+        let result = add_dh_accept(state, 0, 0.0);
+        assert!(result.is_ok());
     }
 }

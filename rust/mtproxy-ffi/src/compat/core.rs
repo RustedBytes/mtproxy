@@ -320,6 +320,53 @@ pub(super) fn tcp_rpc_decode_compact_header_impl(
     mtproxy_core::runtime::net::tcp_rpc_common::decode_compact_header(first_byte, remaining_bytes)
 }
 
+pub(super) fn tcp_rpc_set_default_rpc_flags_impl(and_flags: u32, or_flags: u32) -> u32 {
+    mtproxy_core::runtime::net::tcp_rpc_common::set_default_rpc_flags(and_flags, or_flags)
+}
+
+pub(super) fn tcp_rpc_get_default_rpc_flags_impl() -> u32 {
+    mtproxy_core::runtime::net::tcp_rpc_common::get_default_rpc_flags()
+}
+
+pub(super) fn tcp_rpc_set_max_dh_accept_rate_impl(rate: i32) {
+    mtproxy_core::runtime::net::tcp_rpc_common::set_max_dh_accept_rate(rate);
+}
+
+pub(super) fn tcp_rpc_get_max_dh_accept_rate_impl() -> i32 {
+    mtproxy_core::runtime::net::tcp_rpc_common::get_max_dh_accept_rate()
+}
+
+pub(super) fn tcp_rpc_construct_ping_packet_impl(ping_id: i64) -> [u8; 12] {
+    mtproxy_core::runtime::net::tcp_rpc_common::construct_ping_packet(ping_id)
+}
+
+pub(super) fn tcp_rpc_add_dh_accept_impl(
+    remaining: f64,
+    last_time: f64,
+    max_rate: i32,
+    precise_now: f64,
+    out_remaining: &mut f64,
+    out_last_time: &mut f64,
+) -> i32 {
+    let state = mtproxy_core::runtime::net::tcp_rpc_common::DhAcceptRateState {
+        remaining,
+        last_time,
+    };
+    
+    match mtproxy_core::runtime::net::tcp_rpc_common::add_dh_accept(state, max_rate, precise_now) {
+        Ok(new_state) => {
+            *out_remaining = new_state.remaining;
+            *out_last_time = new_state.last_time;
+            0 // Success
+        }
+        Err(new_state) => {
+            *out_remaining = new_state.remaining;
+            *out_last_time = new_state.last_time;
+            -1 // Rate limit exceeded
+        }
+    }
+}
+
 pub(super) fn tcp_rpc_client_packet_len_state_impl(packet_len: i32, max_packet_len: i32) -> i32 {
     mtproxy_core::runtime::net::tcp_rpc_client::packet_len_state(packet_len, max_packet_len)
 }

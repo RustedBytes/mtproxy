@@ -35,10 +35,7 @@
 #include "net/net-msg.h"
 #include "net/net-tcp-rpc-common.h"
 #include "vv/vv-io.h"
-
-extern int32_t mtproxy_ffi_tcp_rpc_encode_compact_header(
-    int32_t payload_len, int32_t is_medium, int32_t *out_prefix_word,
-    int32_t *out_prefix_bytes);
+#include "mtproxy_ffi.h"
 
 static void tcp_rpc_compact_encode_header(int payload_len, int is_medium,
                                           int *prefix_word, int *prefix_bytes) {
@@ -261,38 +258,40 @@ int tcp_rpc_flush(connection_job_t C) {
 }
 
 void tcp_rpc_send_ping(connection_job_t C, long long ping_id) {
-  int P[3];
-  P[0] = RPC_PING;
-  *(long long *)(P + 1) = ping_id;
-  tcp_rpc_conn_send_data(JOB_REF_CREATE_PASS(C), 12, P);
+  uint8_t packet[12];
+  mtproxy_ffi_tcp_rpc_construct_ping_packet(ping_id, packet);
+  tcp_rpc_conn_send_data(JOB_REF_CREATE_PASS(C), 12, packet);
 }
-
-static unsigned default_rpc_flags = 0;
 
 unsigned tcp_set_default_rpc_flags(unsigned and_flags, unsigned or_flags) {
-  return (default_rpc_flags = (default_rpc_flags & and_flags) | or_flags);
+  return mtproxy_ffi_tcp_rpc_set_default_rpc_flags(and_flags, or_flags);
 }
 
-unsigned tcp_get_default_rpc_flags(void) { return default_rpc_flags; }
+unsigned tcp_get_default_rpc_flags(void) {
+  return mtproxy_ffi_tcp_rpc_get_default_rpc_flags();
+}
 
 static __thread double cur_dh_accept_rate_remaining;
 static __thread double cur_dh_accept_rate_time;
-static double max_dh_accept_rate;
 
-void tcp_set_max_dh_accept_rate(int rate) { max_dh_accept_rate = rate; }
+void tcp_set_max_dh_accept_rate(int rate) {
+  mtproxy_ffi_tcp_rpc_set_max_dh_accept_rate(rate);
+}
 
 int tcp_add_dh_accept(void) {
-  if (max_dh_accept_rate) {
-    cur_dh_accept_rate_remaining +=
-        (precise_now - cur_dh_accept_rate_time) * max_dh_accept_rate;
-    cur_dh_accept_rate_time = precise_now;
-    if (cur_dh_accept_rate_remaining > max_dh_accept_rate) {
-      cur_dh_accept_rate_remaining = max_dh_accept_rate;
-    }
-    if (cur_dh_accept_rate_remaining < 1) {
-      return -1;
-    }
-    cur_dh_accept_rate_remaining -= 1;
-  }
-  return 0;
+  int max_dh_accept_rate = mtproxy_ffi_tcp_rpc_get_max_dh_accept_rate();
+  double new_remaining, new_last_time;
+  int result = mtproxy_ffi_tcp_rpc_add_dh_accept(
+      cur_dh_accept_rate_remaining,
+      cur_dh_accept_rate_time,
+      max_dh_accept_rate,
+      precise_now,
+      &new_remaining,
+      &new_last_time);
+  
+  // Update thread-local state with new values
+  cur_dh_accept_rate_remaining = new_remaining;
+  cur_dh_accept_rate_time = new_last_time;
+  
+  return result;
 }
