@@ -102,7 +102,6 @@ enum mtproxy_constants {
   MAX_WORKERS = 256,
 };
 
-static const double default_ping_interval = 5.0;
 double ping_interval = 5.0;
 int window_clamp;
 
@@ -179,60 +178,14 @@ static inline int get_ext_connection_by_in_fd(int in_fd,
   return rc > 0;
 }
 
-static inline int
-find_ext_connection_by_out_conn_id(long long out_conn_id, ext_connection_t *Ex) {
-  check_engine_class();
-  int32_t rc = mtproxy_ffi_mtproto_ext_conn_get_by_out_conn_id(out_conn_id, Ex);
-  assert(rc >= 0);
-  return rc > 0;
-}
-
-static int _notify_remote_closed(JOB_REF_ARG(C), long long out_conn_id);
-
 static void notify_ext_connection(const ext_connection_t *Ex,
                                   int send_notifications) {
-  assert(Ex);
-  assert(Ex->out_conn_id);
-  if (Ex->out_fd) {
-    assert((unsigned)Ex->out_fd < MAX_CONNECTIONS);
-    if (send_notifications & 1) {
-      connection_job_t CO =
-          connection_get_by_fd_generation(Ex->out_fd, Ex->out_gen);
-      if (CO) {
-        _notify_remote_closed(JOB_REF_PASS(CO), Ex->out_conn_id);
-      }
-    }
-  }
-  if (Ex->in_fd) {
-    assert((unsigned)Ex->in_fd < MAX_CONNECTIONS);
-    if (send_notifications & 2) {
-      connection_job_t CI =
-          connection_get_by_fd_generation(Ex->in_fd, Ex->in_gen);
-      if (Ex->in_conn_id) {
-        assert(0);
-      } else {
-        if (CI) {
-          fail_connection(CI, -33);
-          job_decref(JOB_REF_PASS(CI));
-        }
-      }
-    }
-  }
+  mtproxy_ffi_mtproto_notify_ext_connection_runtime(Ex, send_notifications);
 }
 
 void remove_ext_connection(const ext_connection_t *Ex, int send_notifications) {
-  assert(Ex);
-  assert(Ex->out_conn_id);
-  ext_connection_t cur;
-  if (!find_ext_connection_by_out_conn_id(Ex->out_conn_id, &cur)) {
-    return;
-  }
-  notify_ext_connection(&cur, send_notifications);
-  ext_connection_t removed = {0};
-  int32_t rc =
-      mtproxy_ffi_mtproto_ext_conn_remove_by_out_conn_id(cur.out_conn_id,
-                                                         &removed);
-  assert(rc >= 0);
+  check_engine_class();
+  mtproxy_ffi_mtproto_remove_ext_connection_runtime(Ex, send_notifications);
 }
 
 /*
@@ -308,31 +261,7 @@ void update_local_stats(void) {
 }
 
 void compute_stats_sum(void) {
-  if (!workers) {
-    return;
-  }
-  memset(&SumStats, 0, sizeof(SumStats));
-  int i;
-  for (i = 0; i < workers; i++) {
-    static struct worker_stats W;
-    struct worker_stats *F;
-    int s_cnt;
-    do {
-      F = WStats + i * 2;
-      do {
-        barrier();
-        s_cnt = (++F)->cnt;
-        if (!(s_cnt & 1)) {
-          break;
-        }
-        s_cnt = (--F)->cnt;
-      } while (s_cnt & 1);
-      barrier();
-      memcpy(&W, F, sizeof(W));
-      barrier();
-    } while (s_cnt != F->cnt);
-    add_stats(&W);
-  }
+  mtproxy_ffi_mtproto_compute_stats_sum();
 }
 
 /*
@@ -413,18 +342,6 @@ struct tcp_rpc_client_functions mtfront_rpc_client = {
 
 int rpcc_exists;
 
-static int _notify_remote_closed(JOB_REF_ARG(C), long long out_conn_id) {
-  {
-    struct tl_out_state *tlio_out = tl_out_state_alloc();
-    tls_init_tcp_raw_msg(tlio_out, JOB_REF_PASS(C), 0);
-    tl_store_int(RPC_CLOSE_CONN);
-    tl_store_long(out_conn_id);
-    tl_store_end_ext(0);
-    tl_out_state_free(tlio_out);
-  }
-  return 1;
-}
-
 void push_rpc_confirmation(JOB_REF_ARG(C), int confirm) {
   mtproxy_ffi_mtproto_push_rpc_confirmation_runtime(C_tag_int, C, confirm);
 }
@@ -447,32 +364,7 @@ int client_packet_job_run(job_t job, int op, struct job_thread *JT) {
 }
 
 int rpcc_execute(connection_job_t C, int op, struct raw_message *msg) {
-  vkprintf(2, "rpcc_execute: fd=%d, op=%08x, len=%d\n", CONN_INFO(C)->fd, op,
-           msg->total_bytes);
-  CONN_INFO(C)->last_response_time = precise_now;
-
-  switch (op) {
-  case RPC_PONG:
-    break;
-  case RPC_PROXY_ANS:
-  case RPC_SIMPLE_ACK:
-  case RPC_CLOSE_EXT: {
-    job_t job = create_async_job(
-        client_packet_job_run,
-        JSP_PARENT_RWE | JSC_ALLOW(JC_ENGINE, JS_RUN) |
-            JSC_ALLOW(JC_ENGINE, JS_ABORT) | JSC_ALLOW(JC_ENGINE, JS_ALARM) |
-            JSC_ALLOW(JC_ENGINE, JS_FINISH),
-        -2, sizeof(struct client_packet_info), JT_HAVE_TIMER, JOB_REF_NULL);
-    struct client_packet_info *D = (struct client_packet_info *)(job->j_custom);
-    D->msg = *msg;
-    D->conn = job_incref(C);
-    schedule_job(JOB_REF_PASS(job));
-    return 1;
-  }
-  default:
-    vkprintf(1, "unknown RPC operation %08x, ignoring\n", op);
-  }
-  return 0;
+  return mtproxy_ffi_mtproto_rpcc_execute(C, op, msg);
 }
 
 static inline int get_conn_tag(connection_job_t C) {
@@ -720,33 +612,7 @@ int do_rpcs_execute(void *_data, int s_len) {
 }
 
 int ext_rpcs_execute(connection_job_t c, int op, struct raw_message *msg) {
-  int len = msg->total_bytes;
-
-  vkprintf(2, "ext_rpcs_execute: fd=%d, op=%08x, len=%d\n", CONN_INFO(c)->fd,
-           op, len);
-
-  if (len > MAX_POST_SIZE) {
-    vkprintf(1, "ext_rpcs_execute: packet too long (%d bytes), skipping\n",
-             len);
-    return SKIP_ALL_BYTES;
-  }
-
-  // lru_insert_conn (c); // dangerous in net-cpu context
-  if (check_conn_buffers(c) < 0) {
-    return SKIP_ALL_BYTES;
-  }
-
-  struct rpcs_exec_data data;
-  rwm_move(&data.msg, msg);
-  data.conn = job_incref(c);
-  data.rpc_flags =
-      TCP_RPC_DATA(c)->flags &
-      (RPC_F_QUICKACK | RPC_F_DROPPED | RPC_F_COMPACT_MEDIUM | RPC_F_EXTMODE3);
-
-  schedule_job_callback(JC_ENGINE, do_rpcs_execute, &data,
-                        sizeof(struct rpcs_exec_data));
-
-  return 1;
+  return mtproxy_ffi_mtproto_ext_rpcs_execute(c, op, msg);
 }
 
 // NET-CPU context
@@ -991,32 +857,7 @@ int f_parse_option(int val) {
 }
 
 void mtfront_prepare_parse_options(void) {
-  parse_option("http-stats", no_argument, 0, 2000,
-               "allow http server to answer on stats queries");
-  parse_option("mtproto-secret", required_argument, 0, 'S',
-               "16-byte secret in hex mode");
-  parse_option("proxy-tag", required_argument, 0, 'P',
-               "16-byte proxy tag in hex mode to be passed along with all "
-               "forwarded queries");
-  parse_option("domain", required_argument, 0, 'D',
-               "adds allowed domain for TLS-transport mode, disables other "
-               "transports; can be specified more than once");
-  parse_option("max-special-connections", required_argument, 0, 'C',
-               "sets maximal number of accepted client connections per worker");
-  parse_option("window-clamp", required_argument, 0, 'W',
-               "sets window clamp for client TCP connections");
-  parse_option("http-ports", required_argument, 0, 'H',
-               "comma-separated list of client (HTTP) ports to listen");
-  // parse_option ("outbound-connections-ps", required_argument, 0, 'o', "limits
-  // creation rate of outbound connections to mtproto-servers (default %d)",
-  // DEFAULT_OUTBOUND_CONNECTION_CREATION_RATE);
-  parse_option("slaves", required_argument, 0, 'M',
-               "spawn several slave workers; not recommended for TLS-transport "
-               "mode for better replay protection");
-  parse_option(
-      "ping-interval", required_argument, 0, 'T',
-      "sets ping interval in second for local TCP connections (default %.3lf)",
-      default_ping_interval);
+  mtproxy_ffi_mtproto_mtfront_prepare_parse_options();
 }
 
 void mtfront_parse_extra_args(int argc, char *argv[]) {

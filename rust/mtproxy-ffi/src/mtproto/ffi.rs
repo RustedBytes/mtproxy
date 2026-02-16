@@ -225,6 +225,11 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_add_stats(w: *mut c_void) {
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_compute_stats_sum() {
+    unsafe { mtproto_compute_stats_sum_ffi() };
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_mtproto_check_all_conn_buffers() {
     unsafe { mtproto_check_all_conn_buffers_ffi() };
 }
@@ -258,8 +263,31 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_hts_execute(
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_rpcc_execute(
+    c: *mut c_void,
+    op: c_int,
+    msg: *mut c_void,
+) -> i32 {
+    unsafe { mtproto_rpcc_execute_ffi(c, op, msg) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_rpcs_execute(
+    c: *mut c_void,
+    op: c_int,
+    msg: *mut c_void,
+) -> i32 {
+    unsafe { mtproto_ext_rpcs_execute_ffi(c, op, msg) }
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_mtproto_f_parse_option(val: c_int) -> i32 {
     unsafe { mtproto_f_parse_option_ffi(val) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_mtfront_prepare_parse_options() {
+    unsafe { mtproto_mtfront_prepare_parse_options_ffi() };
 }
 
 #[no_mangle]
@@ -386,6 +414,22 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_conn_counts(
     out_created: *mut i64,
 ) -> i32 {
     unsafe { mtproto_ext_conn_counts_ffi(out_current, out_created) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_notify_ext_connection_runtime(
+    ex: *const MtproxyMtprotoExtConnection,
+    send_notifications: c_int,
+) {
+    unsafe { mtproto_notify_ext_connection_runtime_ffi(ex, send_notifications) };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_remove_ext_connection_runtime(
+    ex: *const MtproxyMtprotoExtConnection,
+    send_notifications: c_int,
+) {
+    unsafe { mtproto_remove_ext_connection_runtime_ffi(ex, send_notifications) };
 }
 
 #[no_mangle]

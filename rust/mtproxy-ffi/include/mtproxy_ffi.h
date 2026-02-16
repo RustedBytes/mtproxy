@@ -1215,6 +1215,7 @@ int32_t mtproxy_ffi_mtproto_client_send_message_runtime(
   int32_t flags
 );
 void mtproxy_ffi_mtproto_add_stats(void *w);
+void mtproxy_ffi_mtproto_compute_stats_sum(void);
 void mtproxy_ffi_mtproto_check_all_conn_buffers(void);
 void mtproxy_ffi_mtproto_update_local_stats_copy(void *s);
 void mtproxy_ffi_mtproto_mtfront_prepare_stats(void *sb);
@@ -1228,7 +1229,18 @@ int32_t mtproxy_ffi_mtproto_hts_execute(
   void *msg,
   int32_t op
 );
+int32_t mtproxy_ffi_mtproto_rpcc_execute(
+  void *c,
+  int32_t op,
+  void *msg
+);
+int32_t mtproxy_ffi_mtproto_ext_rpcs_execute(
+  void *c,
+  int32_t op,
+  void *msg
+);
 int32_t mtproxy_ffi_mtproto_f_parse_option(int32_t val);
+void mtproxy_ffi_mtproto_mtfront_prepare_parse_options(void);
 void mtproxy_ffi_mtproto_check_children_dead(void);
 void mtproxy_ffi_mtproto_check_children_status(void);
 void mtproxy_ffi_mtproto_mtfront_pre_init(void);
@@ -1281,6 +1293,14 @@ int32_t mtproxy_ffi_mtproto_ext_conn_lru_pop_oldest(
 int32_t mtproxy_ffi_mtproto_ext_conn_counts(
   int64_t *out_current,
   int64_t *out_created
+);
+void mtproxy_ffi_mtproto_notify_ext_connection_runtime(
+  const mtproxy_ffi_mtproto_ext_connection_t *ex,
+  int32_t send_notifications
+);
+void mtproxy_ffi_mtproto_remove_ext_connection_runtime(
+  const mtproxy_ffi_mtproto_ext_connection_t *ex,
+  int32_t send_notifications
 );
 int32_t mtproxy_ffi_mtproto_build_rpc_proxy_req(
   int32_t flags,
