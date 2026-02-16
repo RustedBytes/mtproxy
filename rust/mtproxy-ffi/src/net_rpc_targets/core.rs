@@ -17,6 +17,7 @@ use core::sync::atomic::{fence, Ordering};
 
 pub(super) type Job = *mut c_void;
 pub(super) type ConnectionJob = Job;
+pub(super) type ConnTargetJob = Job;
 pub(super) type RpcTargetJob = Job;
 
 const CONN_CUSTOM_DATA_BYTES: usize = 256;
@@ -30,6 +31,8 @@ const CR_STOPPED: c_int = 2;
 
 const RPC_TARGET_INSERT_LOG_FMT: &[u8] =
     b"rpc_target_insert_conn: ip = %d.%d.%d.%d, port = %d, fd = %d\n\0";
+const RPC_TARGETS_TOTAL_FMT: &[u8] = b"total_rpc_targets\t%lld\n\0";
+const RPC_TARGETS_TOTAL_CONNECTIONS_FMT: &[u8] = b"total_connections_in_rpc_targets\t%lld\n\0";
 
 type ConnFn1 = Option<unsafe extern "C" fn(ConnectionJob) -> c_int>;
 type ConnFn2 = Option<unsafe extern "C" fn(ConnectionJob, c_int) -> c_int>;
@@ -186,6 +189,34 @@ pub(super) struct RpcTargetsModuleStat {
     pub total_connections_in_rpc_targets: i64,
 }
 
+#[repr(C)]
+struct ConnTargetInfo {
+    timer: EventTimer,
+    min_connections: c_int,
+    max_connections: c_int,
+    conn_tree: *mut TreeConnection,
+    type_: *mut ConnType,
+    extra: *mut c_void,
+    target: libc::in_addr,
+    target_ipv6: [u8; 16],
+    port: c_int,
+    active_outbound_connections: c_int,
+    outbound_connections: c_int,
+    ready_outbound_connections: c_int,
+    next_reconnect: c_double,
+    reconnect_timeout: c_double,
+    next_reconnect_timeout: c_double,
+    custom_field: c_int,
+}
+
+#[repr(C)]
+struct StatsBuffer {
+    buff: *mut c_char,
+    pos: c_int,
+    size: c_int,
+    flags: c_int,
+}
+
 #[repr(C, align(64))]
 struct AsyncJob {
     j_flags: c_int,
@@ -221,8 +252,10 @@ unsafe extern "C" {
     fn mtproxy_ffi_rpc_target_is_fast_thread() -> c_int;
     fn lrand48_j() -> c_long;
     fn job_incref(job: Job) -> Job;
+    fn job_decref(job_tag_int: c_int, job: Job);
     fn matches_pid(x: *mut MtproxyProcessId, y: *mut MtproxyProcessId) -> c_int;
     fn kprintf(format: *const c_char, ...);
+    fn sb_printf(sb: *mut StatsBuffer, format: *const c_char, ...);
 }
 
 #[inline]
@@ -265,6 +298,11 @@ unsafe fn rpc_data(c: ConnectionJob) -> *mut TcpRpcData {
 
 #[inline]
 unsafe fn rpc_target_info(target: RpcTargetJob) -> *mut RpcTargetInfo {
+    unsafe { job_custom_ptr(target) }
+}
+
+#[inline]
+unsafe fn conn_target_info(target: ConnTargetJob) -> *mut ConnTargetInfo {
     unsafe { job_custom_ptr(target) }
 }
 
@@ -643,4 +681,118 @@ pub(super) unsafe fn rpc_target_choose_random_connections_runtime_impl(
     }
 
     extra.pos
+}
+
+unsafe fn rpc_targets_stats_totals(
+    module_stat_array: *mut *mut c_void,
+    module_stat_len: c_int,
+) -> (i64, i64) {
+    if module_stat_array.is_null() || module_stat_len <= 0 {
+        return (0, 0);
+    }
+
+    let mut total_rpc_targets = 0_i64;
+    let mut total_connections = 0_i64;
+    let mut i = 0;
+    while i < module_stat_len {
+        let stat_ptr = unsafe { *module_stat_array.add(i as usize) };
+        if !stat_ptr.is_null() {
+            let stat = stat_ptr.cast::<RpcTargetsModuleStat>();
+            total_rpc_targets += unsafe { (*stat).total_rpc_targets };
+            total_connections += unsafe { (*stat).total_connections_in_rpc_targets };
+        }
+        i += 1;
+    }
+
+    (total_rpc_targets, total_connections)
+}
+
+pub(super) unsafe fn rpc_targets_prepare_stat_runtime_impl(
+    sb: *mut c_void,
+    module_stat_array: *mut *mut c_void,
+    module_stat_len: c_int,
+) -> c_int {
+    if sb.is_null() {
+        return -1;
+    }
+
+    let sb = sb.cast::<StatsBuffer>();
+    let (total_rpc_targets, total_connections) =
+        unsafe { rpc_targets_stats_totals(module_stat_array, module_stat_len) };
+    unsafe {
+        sb_printf(sb, RPC_TARGETS_TOTAL_FMT.as_ptr().cast(), total_rpc_targets);
+        sb_printf(
+            sb,
+            RPC_TARGETS_TOTAL_CONNECTIONS_FMT.as_ptr().cast(),
+            total_connections,
+        );
+    }
+    unsafe { (*sb).pos }
+}
+
+pub(super) unsafe fn rpc_target_lookup_impl(
+    tree: *mut mtproxy_ffi_rpc_target_tree,
+    pid: *const MtproxyProcessId,
+    default_ip: u32,
+) -> RpcTargetJob {
+    unsafe { rpc_target_lookup_runtime_impl(tree, pid, default_ip) }
+}
+
+pub(super) unsafe fn rpc_target_lookup_hp_impl(
+    tree: *mut mtproxy_ffi_rpc_target_tree,
+    ip: u32,
+    port: c_int,
+    default_ip: u32,
+) -> RpcTargetJob {
+    let pid = MtproxyProcessId {
+        ip,
+        port: port as i16,
+        pid: 0,
+        utime: 0,
+    };
+    unsafe { rpc_target_lookup_runtime_impl(tree, ptr::addr_of!(pid), default_ip) }
+}
+
+pub(super) unsafe fn rpc_target_lookup_target_runtime_impl(
+    target: ConnTargetJob,
+    tree: *mut mtproxy_ffi_rpc_target_tree,
+    default_ip: u32,
+) -> RpcTargetJob {
+    if target.is_null() {
+        return ptr::null_mut();
+    }
+
+    let info = unsafe { conn_target_info(target) };
+    let ip = unsafe { (*info).custom_field };
+    if ip == -1 {
+        return ptr::null_mut();
+    }
+
+    unsafe { rpc_target_lookup_hp_impl(tree, ip as u32, (*info).port, default_ip) }
+}
+
+pub(super) unsafe fn rpc_target_get_state_runtime_impl(
+    target: RpcTargetJob,
+    pid: *const MtproxyProcessId,
+) -> c_int {
+    let connection = unsafe { rpc_target_choose_connection_runtime_impl(target, pid) };
+    if connection.is_null() {
+        return -1;
+    }
+
+    let conn = unsafe { conn_info(connection) };
+    let type_ = unsafe { (*conn).type_ };
+    assert_or_abort(!type_.is_null());
+
+    let Some(check_ready) = (unsafe { (*type_).check_ready }) else {
+        abort_now();
+    };
+    let ready = unsafe { check_ready(connection) };
+    unsafe { job_decref(1, connection) };
+
+    if ready == CR_OK {
+        1
+    } else {
+        0
+    }
 }

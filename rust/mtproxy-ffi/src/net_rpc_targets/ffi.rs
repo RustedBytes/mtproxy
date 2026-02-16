@@ -51,3 +51,48 @@ pub unsafe extern "C" fn mtproxy_ffi_rpc_target_choose_random_connections_runtim
 ) -> c_int {
     unsafe { rpc_target_choose_random_connections_runtime_impl(target, pid, limit, buf) }
 }
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_rpc_targets_prepare_stat_runtime(
+    sb: *mut c_void,
+    module_stat_array: *mut *mut c_void,
+    module_stat_len: c_int,
+) -> c_int {
+    unsafe { rpc_targets_prepare_stat_runtime_impl(sb, module_stat_array, module_stat_len) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_rpc_target_lookup(
+    tree: *mut mtproxy_ffi_rpc_target_tree,
+    pid: *const MtproxyProcessId,
+    default_ip: u32,
+) -> RpcTargetJob {
+    unsafe { rpc_target_lookup_impl(tree, pid, default_ip) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_rpc_target_lookup_hp(
+    tree: *mut mtproxy_ffi_rpc_target_tree,
+    ip: u32,
+    port: c_int,
+    default_ip: u32,
+) -> RpcTargetJob {
+    unsafe { rpc_target_lookup_hp_impl(tree, ip, port, default_ip) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_rpc_target_lookup_target_runtime(
+    target: ConnTargetJob,
+    tree: *mut mtproxy_ffi_rpc_target_tree,
+    default_ip: u32,
+) -> RpcTargetJob {
+    unsafe { rpc_target_lookup_target_runtime_impl(target, tree, default_ip) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_rpc_target_get_state_runtime(
+    target: RpcTargetJob,
+    pid: *const MtproxyProcessId,
+) -> c_int {
+    unsafe { rpc_target_get_state_runtime_impl(target, pid) }
+}

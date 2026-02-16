@@ -25,7 +25,6 @@
 
 #include "net/net-rpc-targets.h"
 #include <assert.h>
-#include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -69,20 +68,9 @@ __attribute__((constructor)) static void rpc_targets_module_register(void) {
   register_thread_callback(&rpc_targets_module_thread_callback);
 }
 
-static inline long long rpc_targets_stat_sum_ll(size_t field_offset) {
-  return sb_sum_ll((void **)rpc_targets_module_stat_array,
-                   max_job_thread_id + 1, field_offset);
-}
-
 int rpc_targets_prepare_stat(stats_buffer_t *sb) {
-  sb_print_i64_key(sb, "total_rpc_targets",
-                   rpc_targets_stat_sum_ll(offsetof(
-                       struct rpc_targets_module_stat, total_rpc_targets)));
-  sb_print_i64_key(
-      sb, "total_connections_in_rpc_targets",
-      rpc_targets_stat_sum_ll(offsetof(struct rpc_targets_module_stat,
-                                       total_connections_in_rpc_targets)));
-  return sb->pos;
+  return mtproxy_ffi_rpc_targets_prepare_stat_runtime(
+      sb, (void **)rpc_targets_module_stat_array, max_job_thread_id + 1);
 }
 
 void rpc_target_insert_conn(connection_job_t C) {
@@ -98,24 +86,17 @@ void rpc_target_delete_conn(connection_job_t C) {
 }
 
 rpc_target_job_t rpc_target_lookup(struct process_id *pid) {
-  assert(pid);
-  return mtproxy_ffi_rpc_target_lookup_runtime(
+  return mtproxy_ffi_rpc_target_lookup(
       rpc_target_tree, (const mtproxy_ffi_process_id_t *)pid, PID.ip);
 }
 
 rpc_target_job_t rpc_target_lookup_hp(unsigned ip, int port) {
-  struct process_id p;
-  p.ip = ip;
-  p.port = port;
-  return rpc_target_lookup(&p);
+  return mtproxy_ffi_rpc_target_lookup_hp(rpc_target_tree, ip, port, PID.ip);
 }
 
 rpc_target_job_t rpc_target_lookup_target(conn_target_job_t SS) {
-  struct conn_target_info *S = CONN_TARGET_INFO(SS);
-  if (S->custom_field == -1) {
-    return 0;
-  }
-  return rpc_target_lookup_hp(S->custom_field, S->port);
+  return mtproxy_ffi_rpc_target_lookup_target_runtime(SS, rpc_target_tree,
+                                                      PID.ip);
 }
 
 connection_job_t rpc_target_choose_connection(rpc_target_job_t S,
@@ -132,18 +113,6 @@ int rpc_target_choose_random_connections(rpc_target_job_t S,
 }
 
 int rpc_target_get_state(rpc_target_job_t S, struct process_id *pid) {
-  connection_job_t C = rpc_target_choose_connection(S, pid);
-  if (!C) {
-    return -1;
-  }
-
-  struct connection_info *c = CONN_INFO(C);
-  int r = c->type->check_ready(C);
-  job_decref(JOB_REF_PASS(C));
-
-  if (r == cr_ok) {
-    return 1;
-  } else {
-    return 0;
-  }
+  return mtproxy_ffi_rpc_target_get_state_runtime(
+      S, (const mtproxy_ffi_process_id_t *)pid);
 }
