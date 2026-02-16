@@ -948,6 +948,33 @@ void *mtproxy_ffi_rpc_target_tree_lookup(
   mtproxy_ffi_rpc_target_tree_t *tree,
   const mtproxy_ffi_process_id_t *pid
 );
+int32_t mtproxy_ffi_rpc_target_insert_conn(
+  void *conn,
+  mtproxy_ffi_rpc_target_tree_t **tree_slot,
+  void *module_stat_tls,
+  uint32_t default_ip
+);
+int32_t mtproxy_ffi_rpc_target_delete_conn(
+  void *conn,
+  mtproxy_ffi_rpc_target_tree_t **tree_slot,
+  void *module_stat_tls,
+  uint32_t default_ip
+);
+void *mtproxy_ffi_rpc_target_lookup_runtime(
+  mtproxy_ffi_rpc_target_tree_t *tree,
+  const mtproxy_ffi_process_id_t *pid,
+  uint32_t default_ip
+);
+void *mtproxy_ffi_rpc_target_choose_connection_runtime(
+  void *target,
+  const mtproxy_ffi_process_id_t *pid
+);
+int32_t mtproxy_ffi_rpc_target_choose_random_connections_runtime(
+  void *target,
+  const mtproxy_ffi_process_id_t *pid,
+  int32_t limit,
+  void **buf
+);
 
 // net-crypto-aes helper: derives session keys/ivs from handshake material.
 int32_t mtproxy_ffi_crypto_aes_create_keys(
