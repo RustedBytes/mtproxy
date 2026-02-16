@@ -498,6 +498,43 @@ pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_add_grease(
     unsafe { net_tcp_rpc_ext_add_grease_ffi(buffer, buffer_len, pos, greases, greases_len, num) }
 }
 
+/// Adds random bytes to a TLS request buffer.
+///
+/// # Safety
+/// - `buffer` must point to `buffer_len` writable bytes
+/// - `pos` must be a writable i32 pointer
+/// - `rand_bytes` must point to `rand_bytes_len` readable bytes
+///
+/// Returns 0 on success, -1 on failure.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_add_random_bytes(
+    buffer: *mut u8,
+    buffer_len: i32,
+    pos: *mut i32,
+    rand_bytes: *const u8,
+    rand_bytes_len: i32,
+) -> i32 {
+    unsafe { net_tcp_rpc_ext_add_random_bytes_ffi(buffer, buffer_len, pos, rand_bytes, rand_bytes_len) }
+}
+
+/// Adds a 32-byte public key to a TLS request buffer.
+///
+/// # Safety
+/// - `buffer` must point to `buffer_len` writable bytes
+/// - `pos` must be a writable i32 pointer
+/// - `public_key` must point to exactly 32 readable bytes
+///
+/// Returns 0 on success, -1 on failure.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_add_public_key(
+    buffer: *mut u8,
+    buffer_len: i32,
+    pos: *mut i32,
+    public_key: *const u8,
+) -> i32 {
+    unsafe { net_tcp_rpc_ext_add_public_key_ffi(buffer, buffer_len, pos, public_key) }
+}
+
 /// Runs one net-thread notification event via Rust dispatcher.
 ///
 /// # Safety

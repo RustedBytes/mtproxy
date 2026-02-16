@@ -253,10 +253,51 @@ pub fn have_client_random_check(random: &[u8; 16], existing_randoms: &[&[u8; 16]
     existing_randoms.iter().any(|&r| r == random)
 }
 
+/// Adds random bytes to a TLS request buffer.
+///
+/// # Arguments
+/// * `buffer` - The output buffer to write to
+/// * `pos` - Current position in buffer (will be advanced by random_len)
+/// * `rand_bytes` - The random bytes to add
+///
+/// # Returns
+/// `true` if successful, `false` if buffer overflow would occur
+#[must_use]
+pub fn add_random_bytes(buffer: &mut [u8], pos: &mut usize, rand_bytes: &[u8]) -> bool {
+    if *pos + rand_bytes.len() > buffer.len() {
+        return false;
+    }
+    
+    buffer[*pos..*pos + rand_bytes.len()].copy_from_slice(rand_bytes);
+    *pos += rand_bytes.len();
+    true
+}
+
+/// Adds a 32-byte public key to a TLS request buffer.
+///
+/// # Arguments
+/// * `buffer` - The output buffer to write to
+/// * `pos` - Current position in buffer (will be advanced by 32)
+/// * `public_key` - The 32-byte public key to add
+///
+/// # Returns
+/// `true` if successful, `false` if buffer overflow would occur
+#[must_use]
+pub fn add_public_key(buffer: &mut [u8], pos: &mut usize, public_key: &[u8; 32]) -> bool {
+    if *pos + 32 > buffer.len() {
+        return false;
+    }
+    
+    buffer[*pos..*pos + 32].copy_from_slice(public_key);
+    *pos += 32;
+    true
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        add_grease, add_length, add_string, client_random_bucket_index, domain_bucket_index,
+        add_grease, add_length, add_public_key, add_random_bytes, add_string,
+        client_random_bucket_index, domain_bucket_index,
         get_domain_server_hello_encrypted_size, have_client_random_check, is_allowed_timestamp,
         select_server_hello_profile, tls_expect_bytes, tls_has_bytes, tls_read_length,
         CLIENT_RANDOM_HASH_BITS, DOMAIN_HASH_MOD, MAX_ALLOWED_TIMESTAMP_ERROR,
@@ -519,5 +560,51 @@ mod tests {
         
         // Test empty list
         assert!(!have_client_random_check(&random1, &[]));
+    }
+
+    #[test]
+    fn test_add_random_bytes() {
+        let mut buffer = [0u8; 20];
+        let mut pos = 0;
+        
+        // Test normal case
+        let random_data = [0xaa, 0xbb, 0xcc, 0xdd];
+        assert!(add_random_bytes(&mut buffer, &mut pos, &random_data));
+        assert_eq!(&buffer[0..4], &random_data);
+        assert_eq!(pos, 4);
+        
+        // Test another set of random bytes
+        let more_random = [0x11, 0x22, 0x33];
+        assert!(add_random_bytes(&mut buffer, &mut pos, &more_random));
+        assert_eq!(&buffer[4..7], &more_random);
+        assert_eq!(pos, 7);
+        
+        // Test buffer overflow
+        let large_random = [0xff; 20];
+        assert!(!add_random_bytes(&mut buffer, &mut pos, &large_random));
+        assert_eq!(pos, 7); // Position unchanged on failure
+    }
+
+    #[test]
+    fn test_add_public_key() {
+        let mut buffer = [0u8; 64];
+        let mut pos = 0;
+        
+        // Test normal case with 32-byte key
+        let pub_key = [0x42u8; 32];
+        assert!(add_public_key(&mut buffer, &mut pos, &pub_key));
+        assert_eq!(&buffer[0..32], &pub_key);
+        assert_eq!(pos, 32);
+        
+        // Test adding another key
+        let pub_key2 = [0x99u8; 32];
+        assert!(add_public_key(&mut buffer, &mut pos, &pub_key2));
+        assert_eq!(&buffer[32..64], &pub_key2);
+        assert_eq!(pos, 64);
+        
+        // Test buffer overflow
+        let pub_key3 = [0xffu8; 32];
+        assert!(!add_public_key(&mut buffer, &mut pos, &pub_key3));
+        assert_eq!(pos, 64); // Position unchanged on failure
     }
 }

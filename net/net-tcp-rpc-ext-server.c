@@ -243,9 +243,10 @@ static void add_string(unsigned char *str, int *pos, const char *data,
 }
 
 static void add_random(unsigned char *str, int *pos, int random_len) {
-  assert(*pos + random_len <= tls_request_length);
-  assert(mtproxy_ffi_crypto_rand_bytes(str + (*pos), random_len) == 0);
-  (*pos) += random_len;
+  unsigned char rand_buf[random_len]; // VLA
+  assert(mtproxy_ffi_crypto_rand_bytes(rand_buf, random_len) == 0);
+  assert(mtproxy_ffi_net_tcp_rpc_ext_add_random_bytes(str, tls_request_length, pos,
+                                                      rand_buf, random_len) == 0);
 }
 
 static void add_length(unsigned char *str, int *pos, int length) {
@@ -260,9 +261,10 @@ static void add_grease(unsigned char *str, int *pos,
 }
 
 static void add_public_key(unsigned char *str, int *pos) {
-  assert(*pos + 32 <= tls_request_length);
-  assert(mtproxy_ffi_crypto_tls_generate_public_key(str + (*pos)) == 0);
-  (*pos) += 32;
+  unsigned char pub_key[32];
+  assert(mtproxy_ffi_crypto_tls_generate_public_key(pub_key) == 0);
+  assert(mtproxy_ffi_net_tcp_rpc_ext_add_public_key(str, tls_request_length, pos,
+                                                    pub_key) == 0);
 }
 
 static unsigned char *create_request(const char *domain) {
