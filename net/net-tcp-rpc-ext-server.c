@@ -340,6 +340,8 @@ static unsigned char *create_request(const char *domain) {
 }
 
 static int read_length(const unsigned char *response, int *pos) {
+  // Buffer length assumed to be sufficient (up to 65536 bytes)
+  // Caller must ensure response buffer is valid for at least pos+2 bytes
   return mtproxy_ffi_net_tcp_rpc_ext_tls_read_length(response, 65536, pos);
 }
 
@@ -354,6 +356,8 @@ static int tls_has_bytes(int pos, int length, int len) {
 
 static int tls_expect_bytes(const unsigned char *response, int pos,
                             const void *expected, size_t expected_len) {
+  // Buffer length assumed to be sufficient (up to 65536 bytes)
+  // Caller must ensure response buffer is valid for expected range
   return mtproxy_ffi_net_tcp_rpc_ext_tls_expect_bytes(
       response, 65536, pos, (const uint8_t *)expected, (int32_t)expected_len);
 }

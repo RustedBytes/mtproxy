@@ -71,7 +71,12 @@ pub fn tls_has_bytes(pos: i32, length: i32, len: i32) -> bool {
     pos + length <= len
 }
 
-/// TLS parsing helper: reads a 16-bit big-endian length from buffer.
+/// TLS parsing helper: reads a 16-bit big-endian length from buffer and advances position.
+///
+/// # Safety
+/// The caller must ensure that `response` contains at least `pos + 2` bytes.
+/// The FFI layer performs bounds checking, but this function will panic if called directly
+/// with invalid bounds.
 #[must_use]
 pub fn tls_read_length(response: &[u8], pos: &mut i32) -> i32 {
     let idx = *pos as usize;

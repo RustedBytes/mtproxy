@@ -1594,7 +1594,7 @@ pub(super) unsafe fn net_tcp_rpc_ext_tls_read_length_ffi(
     let Some(pos_ref) = (unsafe { mut_ref_from_ptr(pos) }) else {
         return -1;
     };
-    if response_len < 0 {
+    if response_len < 0 || *pos_ref < 0 {
         return -1;
     }
     let Ok(len) = usize::try_from(response_len) else {
@@ -1603,7 +1603,12 @@ pub(super) unsafe fn net_tcp_rpc_ext_tls_read_length_ffi(
     let Some(response_slice) = (unsafe { slice_from_ptr(response, len) }) else {
         return -1;
     };
-    if *pos_ref < 0 || (*pos_ref + 2) as usize > response_slice.len() {
+    // Check for overflow before addition and ensure we have enough bytes
+    if *pos_ref > i32::MAX - 2 {
+        return -1;
+    }
+    let end_pos = (*pos_ref + 2) as usize;
+    if end_pos > response_slice.len() {
         return -1;
     }
     net_tcp_rpc_ext_tls_read_length_impl(response_slice, pos_ref)
