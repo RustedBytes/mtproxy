@@ -29,9 +29,13 @@
 
 #pragma once
 
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+
 // GLIBC DEFINES RTMAX as function
 // engine_init () asserts, that OUT_SIGRTMAX == SIGRTMAX
-#define OUR_SIGRTMAX 64
+static constexpr int OUR_SIGRTMAX = 64;
 
 #include "common/common-stats.h"
 #include "common/tl-parse.h"
@@ -41,11 +45,14 @@
 #include "net/net-http-server.h"
 #include "net/net-tcp-rpc-server.h"
 
-#define DEFAULT_LONG_QUERY_THRES 0.1
+static constexpr double DEFAULT_LONG_QUERY_THRES = 0.1;
 
-#define SIG2INT(sig)                                                           \
-  (((sig) == 64) ? 1ull : (1ull << (unsigned long long)(sig)))
-#define SIG_INTERRUPT_MASK (SIG2INT(SIGTERM) | SIG2INT(SIGINT))
+static inline unsigned long long SIG2INT(const int sig) {
+  return (sig == OUR_SIGRTMAX) ? 1ull : (1ull << (unsigned long long)sig);
+}
+
+static constexpr unsigned long long SIG_INTERRUPT_MASK =
+    (1ull << (unsigned long long)SIGTERM) | (1ull << (unsigned long long)SIGINT);
 
 extern double precise_now_diff;
 
@@ -58,15 +65,16 @@ struct rpc_custom_op {
 
 #pragma pack(pop)
 
-#define ENGINE_NO_AUTO_APPEND 2
-#define ENGINE_NO_PORT 4
+static constexpr unsigned long long ENGINE_NO_AUTO_APPEND = 2ull;
+static constexpr unsigned long long ENGINE_NO_PORT = 4ull;
 
-#define ENGINE_ENABLE_IPV6 0x4ull
-#define ENGINE_ENABLE_TCP 0x10ull
-#define ENGINE_ENABLE_MULTITHREAD 0x1000000ull
-#define ENGINE_ENABLE_SLAVE_MODE 0x2000000ull
+static constexpr unsigned long long ENGINE_ENABLE_IPV6 = 0x4ull;
+static constexpr unsigned long long ENGINE_ENABLE_TCP = 0x10ull;
+static constexpr unsigned long long ENGINE_ENABLE_MULTITHREAD = 0x1000000ull;
+static constexpr unsigned long long ENGINE_ENABLE_SLAVE_MODE = 0x2000000ull;
 
-#define ENGINE_DEFAULT_ENABLED_MODULES (ENGINE_ENABLE_TCP)
+static constexpr unsigned long long ENGINE_DEFAULT_ENABLED_MODULES =
+    ENGINE_ENABLE_TCP;
 
 typedef struct {
   void (*cron)(void);
@@ -156,54 +164,119 @@ int signal_check_pending_and_clear(int sig);
 int signal_check_pending(int sig);
 void signal_set_pending(int sig);
 
-#define ENGINE_FLAG_PARAM(name, flag)                                          \
-  static inline void engine_enable_##name(void) {                              \
-    engine_state->modules |= ENGINE_ENABLE_##flag;                             \
-  }                                                                            \
-  static inline void engine_disable_##name(void) {                             \
-    engine_state->modules &= ~ENGINE_ENABLE_##flag;                            \
-  }                                                                            \
-  static inline int engine_check_##name##_enabled(void) {                      \
-    return (engine_state->modules & ENGINE_ENABLE_##flag) != 0;                \
-  }                                                                            \
-  static inline int engine_check_##name##_disabled(void) {                     \
-    return (engine_state->modules & ENGINE_ENABLE_##flag) == 0;                \
-  }
-
-#define ENGINE_STR_PARAM(name, field)                                          \
-  static inline void engine_set_##name(const char *s) {                        \
-    if (engine_state->field) {                                                 \
-      free(engine_state->field);                                               \
-    }                                                                          \
-    engine_state->field = s ? strdup(s) : nullptr;                             \
-  }                                                                            \
-  static inline const char *engine_get_##name(void) {                          \
-    return engine_state->field;                                                \
-  }
-
-#define ENGINE_T_PARAM(type, name, field)                                      \
-  static inline void engine_set_##name(type s) { engine_state->field = s; }    \
-  static inline type engine_get_##name(void) { return engine_state->field; }
-
-#define ENGINE_INT_PARAM(name, field) ENGINE_T_PARAM(int, name, field)
-#define ENGINE_DOUBLE_PARAM(name, field) ENGINE_T_PARAM(double, name, field)
-#define ENGINE_LONG_PARAM(name, field) ENGINE_T_PARAM(long long, name, field)
-
 extern engine_t *engine_state;
 
-ENGINE_FLAG_PARAM(ipv6, IPV6)
-ENGINE_FLAG_PARAM(tcp, TCP)
+static inline void engine_enable_ipv6(void) {
+  engine_state->modules |= ENGINE_ENABLE_IPV6;
+}
 
-ENGINE_FLAG_PARAM(multithread, MULTITHREAD)
-ENGINE_FLAG_PARAM(slave_mode, SLAVE_MODE)
+static inline void engine_disable_ipv6(void) {
+  engine_state->modules &= ~ENGINE_ENABLE_IPV6;
+}
 
-ENGINE_STR_PARAM(aes_pwd_file, aes_pwd_file)
+static inline int engine_check_ipv6_enabled(void) {
+  return (engine_state->modules & ENGINE_ENABLE_IPV6) != 0;
+}
 
-ENGINE_INT_PARAM(backlog, backlog)
-ENGINE_INT_PARAM(required_io_threads, required_io_threads)
-ENGINE_INT_PARAM(required_cpu_threads, required_cpu_threads)
-ENGINE_INT_PARAM(required_tcp_cpu_threads, required_tcp_cpu_threads)
-ENGINE_INT_PARAM(required_tcp_io_threads, required_tcp_io_threads)
+static inline int engine_check_ipv6_disabled(void) {
+  return (engine_state->modules & ENGINE_ENABLE_IPV6) == 0;
+}
+
+static inline void engine_enable_tcp(void) {
+  engine_state->modules |= ENGINE_ENABLE_TCP;
+}
+
+static inline void engine_disable_tcp(void) {
+  engine_state->modules &= ~ENGINE_ENABLE_TCP;
+}
+
+static inline int engine_check_tcp_enabled(void) {
+  return (engine_state->modules & ENGINE_ENABLE_TCP) != 0;
+}
+
+static inline int engine_check_tcp_disabled(void) {
+  return (engine_state->modules & ENGINE_ENABLE_TCP) == 0;
+}
+
+static inline void engine_enable_multithread(void) {
+  engine_state->modules |= ENGINE_ENABLE_MULTITHREAD;
+}
+
+static inline void engine_disable_multithread(void) {
+  engine_state->modules &= ~ENGINE_ENABLE_MULTITHREAD;
+}
+
+static inline int engine_check_multithread_enabled(void) {
+  return (engine_state->modules & ENGINE_ENABLE_MULTITHREAD) != 0;
+}
+
+static inline int engine_check_multithread_disabled(void) {
+  return (engine_state->modules & ENGINE_ENABLE_MULTITHREAD) == 0;
+}
+
+static inline void engine_enable_slave_mode(void) {
+  engine_state->modules |= ENGINE_ENABLE_SLAVE_MODE;
+}
+
+static inline void engine_disable_slave_mode(void) {
+  engine_state->modules &= ~ENGINE_ENABLE_SLAVE_MODE;
+}
+
+static inline int engine_check_slave_mode_enabled(void) {
+  return (engine_state->modules & ENGINE_ENABLE_SLAVE_MODE) != 0;
+}
+
+static inline int engine_check_slave_mode_disabled(void) {
+  return (engine_state->modules & ENGINE_ENABLE_SLAVE_MODE) == 0;
+}
+
+static inline void engine_set_aes_pwd_file(const char *s) {
+  char *new_value = s ? strdup(s) : nullptr;
+  if (engine_state->aes_pwd_file) {
+    free(engine_state->aes_pwd_file);
+  }
+  engine_state->aes_pwd_file = new_value;
+}
+
+static inline const char *engine_get_aes_pwd_file(void) {
+  return engine_state->aes_pwd_file;
+}
+
+static inline void engine_set_backlog(int s) { engine_state->backlog = s; }
+
+static inline int engine_get_backlog(void) { return engine_state->backlog; }
+
+static inline void engine_set_required_io_threads(int s) {
+  engine_state->required_io_threads = s;
+}
+
+static inline int engine_get_required_io_threads(void) {
+  return engine_state->required_io_threads;
+}
+
+static inline void engine_set_required_cpu_threads(int s) {
+  engine_state->required_cpu_threads = s;
+}
+
+static inline int engine_get_required_cpu_threads(void) {
+  return engine_state->required_cpu_threads;
+}
+
+static inline void engine_set_required_tcp_cpu_threads(int s) {
+  engine_state->required_tcp_cpu_threads = s;
+}
+
+static inline int engine_get_required_tcp_cpu_threads(void) {
+  return engine_state->required_tcp_cpu_threads;
+}
+
+static inline void engine_set_required_tcp_io_threads(int s) {
+  engine_state->required_tcp_io_threads = s;
+}
+
+static inline int engine_get_required_tcp_io_threads(void) {
+  return engine_state->required_tcp_io_threads;
+}
 
 void reopen_logs(void);
 int default_main(server_functions_t *F, int argc, char *argv[]);
@@ -216,5 +289,3 @@ void engine_tl_init(struct tl_act_extra *(*parse)(struct tl_in_state *,
 void server_init(conn_type_t *listen_connection_type,
                  void *listen_connection_extra);
 void usage(void);
-
-extern engine_t *engine_state;

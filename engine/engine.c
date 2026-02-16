@@ -27,9 +27,6 @@
               2015-2016 Vitaliy Valtman
 */
 
-#define _FILE_OFFSET_BITS 64
-#define _GNU_SOURCE 1
-
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -515,16 +512,17 @@ void check_signal_handler(server_functions_t *F, int sig,
   }
 }
 
-unsigned long long default_signal_mask =
-    SIG2INT(SIGHUP) | SIG2INT(SIGUSR1) | SIG2INT(OUR_SIGRTMAX) |
-    SIG2INT(OUR_SIGRTMAX - 1) | SIG2INT(OUR_SIGRTMAX - 4) |
-    SIG2INT(OUR_SIGRTMAX - 8) | SIG2INT(OUR_SIGRTMAX - 9);
+static unsigned long long default_signal_mask(void) {
+  return SIG2INT(SIGHUP) | SIG2INT(SIGUSR1) | SIG2INT(OUR_SIGRTMAX) |
+         SIG2INT(OUR_SIGRTMAX - 1) | SIG2INT(OUR_SIGRTMAX - 4) |
+         SIG2INT(OUR_SIGRTMAX - 8) | SIG2INT(OUR_SIGRTMAX - 9);
+}
 
 static void check_server_functions(void) {
   engine_t *E = engine_state;
   server_functions_t *F = E->F;
   F->allowed_signals =
-      (F->allowed_signals | default_signal_mask) & ~F->forbidden_signals;
+      (F->allowed_signals | default_signal_mask()) & ~F->forbidden_signals;
 
   check_signal_handler(F, SIGHUP, default_sighup);
   check_signal_handler(F, SIGUSR1, default_sigusr1);

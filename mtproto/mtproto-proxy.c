@@ -135,20 +135,6 @@ typedef mtproxy_ffi_mtproto_ext_connection_t ext_connection_t;
 
 static inline void check_engine_class(void) { check_thread_class(JC_ENGINE); }
 
-static inline void ext_conn_fetch_counts(long long *current,
-                                         long long *created) {
-  int64_t cur = 0;
-  int64_t cre = 0;
-  int32_t rc = mtproxy_ffi_mtproto_ext_conn_counts(&cur, &cre);
-  if (rc < 0) {
-    *current = 0;
-    *created = 0;
-    return;
-  }
-  *current = cur;
-  *created = cre;
-}
-
 void remove_ext_connection(const ext_connection_t *Ex, int send_notifications) {
   check_engine_class();
   mtproxy_ffi_mtproto_remove_ext_connection_runtime(Ex, send_notifications);
