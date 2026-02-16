@@ -75,6 +75,7 @@ mod net_http_server;
 mod net_msg;
 #[cfg(not(test))]
 mod net_msg_buffers;
+mod net_tcp_rpc_common;
 mod net_tcp_rpc_client;
 mod net_tcp_rpc_ext_server;
 mod net_tcp_rpc_server;
