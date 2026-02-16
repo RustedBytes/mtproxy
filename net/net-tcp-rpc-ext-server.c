@@ -29,13 +29,8 @@
 
 #include <assert.h>
 #include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <time.h>
 #include <unistd.h>
 
-#include "common/kprintf.h"
 #include "common/precise-time.h"
 #include "net/net-connections.h"
 #include "net/net-crypto-aes.h"
@@ -53,21 +48,33 @@
 
 struct domain_info;
 
-extern int32_t
-mtproxy_ffi_net_tcp_rpc_ext_domain_bucket_index(const uint8_t *domain,
-                                                int32_t len);
-extern int32_t mtproxy_ffi_net_tcp_rpc_ext_get_domain_server_hello_encrypted_size(
-    int32_t base_size, int32_t use_random, int32_t rand_value);
-extern int32_t
-mtproxy_ffi_net_tcp_rpc_ext_server_update_domain_info(struct domain_info *info);
 extern int32_t mtproxy_ffi_net_tcp_rpc_ext_server_compact_parse_execute(
     connection_job_t c);
 extern int32_t mtproxy_ffi_net_tcp_rpc_ext_server_proxy_pass_parse_execute(
     connection_job_t c);
-extern void mtproxy_ffi_net_tcp_rpc_ext_server_init_proxy_domains(
-    struct domain_info **domains, int32_t buckets);
+extern int32_t mtproxy_ffi_net_tcp_rpc_ext_server_proxy_pass_close(
+    connection_job_t c, int32_t who);
+extern int32_t mtproxy_ffi_net_tcp_rpc_ext_server_proxy_pass_write_packet(
+    connection_job_t c, struct raw_message *raw);
+extern int32_t mtproxy_ffi_net_tcp_rpc_ext_server_ext_alarm(connection_job_t c);
+extern void mtproxy_ffi_net_tcp_rpc_ext_server_set_ext_secret(
+    const uint8_t secret[16]);
+extern void
+mtproxy_ffi_net_tcp_rpc_ext_server_add_proxy_domain(const char *domain);
+extern void mtproxy_ffi_net_tcp_rpc_ext_server_init_proxy_domains_state(void);
+extern const struct domain_info *
+mtproxy_ffi_net_tcp_rpc_ext_server_lookup_domain_info(const uint8_t *domain,
+                                                      int32_t len);
+extern const struct domain_info *
+mtproxy_ffi_net_tcp_rpc_ext_server_default_domain_info(void);
+extern int32_t mtproxy_ffi_net_tcp_rpc_ext_server_allow_only_tls(void);
+extern int32_t mtproxy_ffi_net_tcp_rpc_ext_server_ext_secret_count(void);
+extern const uint8_t *
+mtproxy_ffi_net_tcp_rpc_ext_server_ext_secret_at(int32_t index);
 extern int32_t mtproxy_ffi_net_tcp_rpc_ext_server_proxy_connection(
     connection_job_t c, const struct domain_info *info);
+extern int32_t mtproxy_ffi_net_tcp_rpc_ext_server_domain_server_hello_encrypted_size(
+    const struct domain_info *info);
 extern int32_t mtproxy_ffi_net_tcp_rpc_ext_server_have_client_random(
     const uint8_t random[16]);
 extern void mtproxy_ffi_net_tcp_rpc_ext_server_add_client_random(
@@ -126,35 +133,15 @@ int tcp_proxy_pass_parse_execute(connection_job_t C) {
 }
 
 int tcp_proxy_pass_close(connection_job_t C, int who) {
-  struct connection_info *c = CONN_INFO(C);
-  vkprintf(1, "closing proxy pass connection #%d %s:%d -> %s:%d\n", c->fd,
-           show_our_ip(C), c->our_port, show_remote_ip(C), c->remote_port);
-  if (c->extra) {
-    job_t E = PTR_MOVE(c->extra);
-    fail_connection(E, -23);
-    job_decref(JOB_REF_PASS(E));
-  }
-  return cpu_server_close_connection(C, who);
+  return mtproxy_ffi_net_tcp_rpc_ext_server_proxy_pass_close(C, who);
 }
 
 int tcp_proxy_pass_write_packet(connection_job_t C, struct raw_message *raw) {
-  struct connection_info *c = CONN_INFO(C);
-  rwm_union(&c->out, raw);
-  return 0;
+  return mtproxy_ffi_net_tcp_rpc_ext_server_proxy_pass_write_packet(C, raw);
 }
 
 int tcp_rpcs_default_execute(connection_job_t c, int op,
                              struct raw_message *msg);
-
-static unsigned char ext_secret[16][16];
-static int ext_secret_cnt = 0;
-
-void tcp_rpcs_set_ext_secret(unsigned char secret[16]) {
-  assert(ext_secret_cnt < 16);
-  memcpy(ext_secret[ext_secret_cnt++], secret, 16);
-}
-
-static int allow_only_tls;
 
 struct domain_info {
   const char *domain;
@@ -166,87 +153,16 @@ struct domain_info {
   struct domain_info *next;
 };
 
-static struct domain_info *default_domain_info;
-
-enum {
-  domain_hash_mod = 257,
-};
-
-static struct domain_info *domains[domain_hash_mod];
-
-static inline int domain_bucket_index(const char *domain, size_t len) {
-  assert(domain != NULL);
-  assert(len <= (size_t)INT32_MAX);
-  int32_t index = mtproxy_ffi_net_tcp_rpc_ext_domain_bucket_index(
-      (const uint8_t *)domain, (int32_t)len);
-  assert(0 <= index && index < domain_hash_mod);
-  return (int)index;
-}
-
-static struct domain_info **get_domain_info_bucket(const char *domain,
-                                                   size_t len) {
-  return domains + domain_bucket_index(domain, len);
-}
-
-static const struct domain_info *get_domain_info(const char *domain,
-                                                 size_t len) {
-  struct domain_info *info = *get_domain_info_bucket(domain, len);
-  while (info != NULL) {
-    if (strlen(info->domain) == len && memcmp(domain, info->domain, len) == 0) {
-      return info;
-    }
-    info = info->next;
-  }
-  return NULL;
-}
-
-static int
-get_domain_server_hello_encrypted_size(const struct domain_info *info) {
-  return mtproxy_ffi_net_tcp_rpc_ext_get_domain_server_hello_encrypted_size(
-      info->server_hello_encrypted_size, info->use_random_encrypted_size,
-      rand());
+void tcp_rpcs_set_ext_secret(unsigned char secret[16]) {
+  mtproxy_ffi_net_tcp_rpc_ext_server_set_ext_secret(secret);
 }
 
 void tcp_rpc_add_proxy_domain(const char *domain) {
-  assert(domain != NULL);
-
-  struct domain_info *info = calloc(1, sizeof(struct domain_info));
-  assert(info != NULL);
-  info->domain = strdup(domain);
-
-  struct domain_info **bucket = get_domain_info_bucket(domain, strlen(domain));
-  info->next = *bucket;
-  *bucket = info;
-
-  if (!allow_only_tls) {
-    allow_only_tls = 1;
-    default_domain_info = info;
-  }
+  mtproxy_ffi_net_tcp_rpc_ext_server_add_proxy_domain(domain);
 }
 
 void tcp_rpc_init_proxy_domains() {
-  mtproxy_ffi_net_tcp_rpc_ext_server_init_proxy_domains(domains, domain_hash_mod);
-}
-
-static int have_client_random(unsigned char random[16]) {
-  return mtproxy_ffi_net_tcp_rpc_ext_server_have_client_random(random);
-}
-
-static void add_client_random(unsigned char random[16]) {
-  mtproxy_ffi_net_tcp_rpc_ext_server_add_client_random(random, now);
-}
-
-static void delete_old_client_randoms() {
-  mtproxy_ffi_net_tcp_rpc_ext_server_delete_old_client_randoms(now);
-}
-
-static int is_allowed_timestamp(int timestamp) {
-  return mtproxy_ffi_net_tcp_rpc_ext_server_is_allowed_timestamp(timestamp, now);
-}
-
-static int proxy_connection(connection_job_t C,
-                            const struct domain_info *info) {
-  return mtproxy_ffi_net_tcp_rpc_ext_server_proxy_connection(C, info);
+  mtproxy_ffi_net_tcp_rpc_ext_server_init_proxy_domains_state();
 }
 
 struct connection_info *
@@ -271,6 +187,10 @@ int32_t mtproxy_ffi_net_tcp_rpc_ext_unlock_job(connection_job_t c) {
   return unlock_job(JOB_REF_PASS(c));
 }
 
+const char *mtproxy_ffi_net_tcp_rpc_ext_show_our_ip(connection_job_t c) {
+  return show_our_ip(c);
+}
+
 const char *mtproxy_ffi_net_tcp_rpc_ext_show_remote_ip(connection_job_t c) {
   return show_remote_ip(c);
 }
@@ -278,71 +198,56 @@ const char *mtproxy_ffi_net_tcp_rpc_ext_show_remote_ip(connection_job_t c) {
 const struct domain_info *
 mtproxy_ffi_net_tcp_rpc_ext_lookup_domain_info(const uint8_t *domain,
                                                int32_t len) {
-  if (domain == NULL || len < 0) {
-    return NULL;
-  }
-  const struct domain_info *info =
-      get_domain_info((const char *)domain, (size_t)len);
-  if (info == NULL) {
-    vkprintf(1, "Receive request for unknown domain %.*s\n", len, domain);
-  }
-  return info;
+  return mtproxy_ffi_net_tcp_rpc_ext_server_lookup_domain_info(domain, len);
 }
 
 const struct domain_info *mtproxy_ffi_net_tcp_rpc_ext_default_domain_info(void) {
-  return default_domain_info;
+  return mtproxy_ffi_net_tcp_rpc_ext_server_default_domain_info();
 }
 
 int32_t mtproxy_ffi_net_tcp_rpc_ext_allow_only_tls(void) {
-  return allow_only_tls;
+  return mtproxy_ffi_net_tcp_rpc_ext_server_allow_only_tls();
 }
 
 int32_t mtproxy_ffi_net_tcp_rpc_ext_ext_secret_count(void) {
-  return ext_secret_cnt;
+  return mtproxy_ffi_net_tcp_rpc_ext_server_ext_secret_count();
 }
 
 const uint8_t *mtproxy_ffi_net_tcp_rpc_ext_ext_secret_at(int32_t index) {
-  if (index < 0 || index >= ext_secret_cnt) {
-    return NULL;
-  }
-  return ext_secret[index];
+  return mtproxy_ffi_net_tcp_rpc_ext_server_ext_secret_at(index);
 }
 
 int32_t
 mtproxy_ffi_net_tcp_rpc_ext_have_client_random(const uint8_t random[16]) {
-  return have_client_random((unsigned char *)random);
+  return mtproxy_ffi_net_tcp_rpc_ext_server_have_client_random(random);
 }
 
 void mtproxy_ffi_net_tcp_rpc_ext_add_client_random(const uint8_t random[16]) {
-  add_client_random((unsigned char *)random);
+  mtproxy_ffi_net_tcp_rpc_ext_server_add_client_random(random, now);
 }
 
 void mtproxy_ffi_net_tcp_rpc_ext_delete_old_client_randoms(void) {
-  delete_old_client_randoms();
+  mtproxy_ffi_net_tcp_rpc_ext_server_delete_old_client_randoms(now);
 }
 
 int32_t
 mtproxy_ffi_net_tcp_rpc_ext_is_allowed_timestamp_state(int32_t timestamp) {
-  return is_allowed_timestamp(timestamp);
+  return mtproxy_ffi_net_tcp_rpc_ext_server_is_allowed_timestamp(timestamp, now);
 }
 
 int32_t mtproxy_ffi_net_tcp_rpc_ext_proxy_connection(
     connection_job_t C, const struct domain_info *info) {
-  return proxy_connection(C, info);
+  return mtproxy_ffi_net_tcp_rpc_ext_server_proxy_connection(C, info);
 }
 
 int32_t mtproxy_ffi_net_tcp_rpc_ext_domain_server_hello_encrypted_size(
     const struct domain_info *info) {
-  return get_domain_server_hello_encrypted_size(info);
+  return mtproxy_ffi_net_tcp_rpc_ext_server_domain_server_hello_encrypted_size(
+      info);
 }
 
 int tcp_rpcs_ext_alarm(connection_job_t C) {
-  struct tcp_rpc_data *D = TCP_RPC_DATA(C);
-  if (D->in_packet_num == -3 && default_domain_info != NULL) {
-    return proxy_connection(C, default_domain_info);
-  } else {
-    return 0;
-  }
+  return mtproxy_ffi_net_tcp_rpc_ext_server_ext_alarm(C);
 }
 
 int tcp_rpcs_ext_init_accepted(connection_job_t C) {

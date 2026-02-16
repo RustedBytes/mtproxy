@@ -59,6 +59,22 @@ pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_server_proxy_pass_parse_exe
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_server_proxy_pass_close(
+    c: ConnectionJob,
+    who: c_int,
+) -> c_int {
+    unsafe { tcp_proxy_pass_close_impl(c, who) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_server_proxy_pass_write_packet(
+    c: ConnectionJob,
+    raw: *mut RawMessage,
+) -> c_int {
+    unsafe { tcp_proxy_pass_write_packet_impl(c, raw) }
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_server_init_proxy_domains(
     domains: *mut *mut DomainInfo,
     buckets: c_int,
@@ -67,11 +83,68 @@ pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_server_init_proxy_domains(
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_server_init_proxy_domains_state() {
+    unsafe { tcp_rpc_init_proxy_domains_state_impl() }
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_server_proxy_connection(
     c: ConnectionJob,
     info: *const DomainInfo,
 ) -> c_int {
     unsafe { proxy_connection_impl(c, info) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_server_set_ext_secret(secret: *const u8) {
+    unsafe { tcp_rpcs_set_ext_secret_impl(secret) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_server_add_proxy_domain(
+    domain: *const c_char,
+) {
+    unsafe { tcp_rpc_add_proxy_domain_state_impl(domain) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_server_lookup_domain_info(
+    domain: *const u8,
+    len: c_int,
+) -> *const DomainInfo {
+    unsafe { lookup_domain_info_state_impl(domain, len) }
+}
+
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_server_default_domain_info() -> *const DomainInfo {
+    default_domain_info_state_impl()
+}
+
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_server_allow_only_tls() -> c_int {
+    allow_only_tls_state_impl()
+}
+
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_server_ext_secret_count() -> c_int {
+    ext_secret_count_state_impl()
+}
+
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_server_ext_secret_at(index: c_int) -> *const u8 {
+    ext_secret_at_state_impl(index)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_server_domain_server_hello_encrypted_size(
+    info: *const DomainInfo,
+) -> c_int {
+    unsafe { domain_server_hello_encrypted_size_impl(info) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_server_ext_alarm(c: ConnectionJob) -> c_int {
+    unsafe { tcp_rpcs_ext_alarm_impl(c) }
 }
 
 #[no_mangle]
@@ -90,9 +163,7 @@ pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_server_add_client_random(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_server_delete_old_client_randoms(
-    now: c_int,
-) {
+pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_server_delete_old_client_randoms(now: c_int) {
     unsafe { delete_old_client_randoms_state_impl(now) }
 }
 

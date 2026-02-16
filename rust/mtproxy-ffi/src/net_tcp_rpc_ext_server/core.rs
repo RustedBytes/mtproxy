@@ -6,7 +6,7 @@ use core::mem::size_of;
 use core::ptr;
 use core::slice;
 use std::collections::{HashMap, VecDeque};
-use std::ffi::CStr;
+use std::ffi::{CStr, CString};
 use std::sync::{Mutex, OnceLock};
 use std::vec::Vec;
 
@@ -39,6 +39,8 @@ const MAX_GREASE: usize = 7;
 const TLS_PROBE_TRIES: usize = 20;
 const TLS_PROBE_TIMEOUT_SEC: c_double = 5.0;
 const MAX_CLIENT_HELLO_READ: usize = 4096;
+const DOMAIN_HASH_MOD: usize = 257;
+const EXT_SECRET_LIMIT: usize = 16;
 
 const SERVER_HELLO_PROFILE_FIXED: c_int = 0;
 const SERVER_HELLO_PROFILE_RANDOM_NEAR: c_int = 1;
@@ -49,15 +51,12 @@ const ERR_NON_TLS_1: &[u8] = b"Non-TLS response or TLS <= 1.1\0";
 const ERR_SERVER_HELLO_SHORT: &[u8] = b"Receive too short ServerHello\0";
 const ERR_NON_TLS_2: &[u8] = b"Non-TLS response 2\0";
 const ERR_NON_TLS_3: &[u8] = b"Non-TLS response 3\0";
-const ERR_HELLO_RETRY: &[u8] =
-    b"TLS 1.3 servers returning HelloRetryRequest are not supprted\0";
+const ERR_HELLO_RETRY: &[u8] = b"TLS 1.3 servers returning HelloRetryRequest are not supprted\0";
 const ERR_TLS12_EMPTY_SESSION: &[u8] = b"TLS <= 1.2: empty session_id\0";
 const ERR_NON_TLS_4: &[u8] = b"Non-TLS response 4\0";
 const ERR_SERVER_HELLO_SHORT_2: &[u8] = b"Receive too short server hello 2\0";
-const ERR_TLS12_EXPECTED_SESSION: &[u8] =
-    b"TLS <= 1.2: expected mirrored session_id\0";
-const ERR_TLS12_EXPECTED_CIPHER: &[u8] =
-    b"TLS <= 1.2: expected x25519 as a chosen cipher\0";
+const ERR_TLS12_EXPECTED_SESSION: &[u8] = b"TLS <= 1.2: expected mirrored session_id\0";
+const ERR_TLS12_EXPECTED_CIPHER: &[u8] = b"TLS <= 1.2: expected x25519 as a chosen cipher\0";
 const ERR_WRONG_EXT_LEN: &[u8] = b"Receive wrong extensions length\0";
 const ERR_UNEXPECTED_EXT: &[u8] = b"Receive unexpected extension\0";
 const ERR_WRONG_EXT_ITEM_LEN: &[u8] = b"Receive wrong extension length\0";
@@ -81,8 +80,7 @@ const PROBE_NON_TLS_FMT: &[u8] = b"Non-TLS response, or TLS <= 1.1, or unsuccess
 const PROBE_FAIL_READ_FMT: &[u8] = b"Failed to read response from %s: %s\n\0";
 const PROBE_NO_TLS13_FMT: &[u8] = b"Not found TLS 1.3 support on domain %s\n\0";
 const PROBE_FAIL_EXCEPT_FMT: &[u8] = b"Failed to check domain %s: %s\n\0";
-const PROBE_FAIL_WRITE_FMT: &[u8] =
-    b"Failed to write request for checking domain %s: %s\n\0";
+const PROBE_FAIL_WRITE_FMT: &[u8] = b"Failed to write request for checking domain %s: %s\n\0";
 const PROBE_TIMEOUT_FMT: &[u8] = b"Failed to check domain %s in 5 seconds\n\0";
 const PROBE_NON_DETERMINISTIC_EXT_FMT: &[u8] =
     b"Upstream server %s uses non-deterministic extension order\n\0";
@@ -101,17 +99,13 @@ const PARSE_TLS_FIRST_TOO_SHORT_FMT: &[u8] =
     b"error while parsing packet: too short first TLS packet: %d\n\0";
 const PARSE_TLS_FIRST_PACKET_FMT: &[u8] = b"Receive first TLS packet of length %d\n\0";
 const PARSE_TLS_DOMAIN_FMT: &[u8] = b"TLS type with domain %s from %s:%d\n\0";
-const PARSE_TLS_PORT80_FMT: &[u8] =
-    b"Receive TLS request on port %d, proxying to %s\n\0";
+const PARSE_TLS_PORT80_FMT: &[u8] = b"Receive TLS request on port %d, proxying to %s\n\0";
 const PARSE_TLS_TOO_MUCH_DATA_FMT: &[u8] =
     b"Too much data in ClientHello, receive %d instead of %d\n\0";
 const PARSE_TLS_TOO_BIG_FMT: &[u8] = b"Too big ClientHello: receive %d bytes\n\0";
-const PARSE_TLS_DUP_RANDOM_FMT: &[u8] =
-    b"Receive again request with the same client random\n\0";
-const PARSE_TLS_UNMATCHED_RANDOM_FMT: &[u8] =
-    b"Receive request with unmatched client random\n\0";
-const PARSE_TLS_CIPHER_LIST_TOO_LONG_FMT: &[u8] =
-    b"Too long cipher suites list of length %d\n\0";
+const PARSE_TLS_DUP_RANDOM_FMT: &[u8] = b"Receive again request with the same client random\n\0";
+const PARSE_TLS_UNMATCHED_RANDOM_FMT: &[u8] = b"Receive request with unmatched client random\n\0";
+const PARSE_TLS_CIPHER_LIST_TOO_LONG_FMT: &[u8] = b"Too long cipher suites list of length %d\n\0";
 const PARSE_TLS_NO_CIPHER_FMT: &[u8] = b"Can't find supported cipher suite\n\0";
 const PARSE_EXPECT_TLS_FMT: &[u8] = b"Expected TLS-transport\n\0";
 const PARSE_NEED_MORE_RANDOM_HEADER_FMT: &[u8] =
@@ -121,8 +115,7 @@ const PARSE_OPPORTUNISTIC_FMT: &[u8] =
     b"tcp opportunistic encryption mode detected, tag = %08x, target=%d\n\0";
 const PARSE_INVALID_SKIP_FMT: &[u8] =
     b"invalid \"random\" 64-byte header, entering global skip mode\n\0";
-const PARSE_BAD_PACKET_LEN_FMT: &[u8] =
-    b"error while parsing packet: bad packet length %d\n\0";
+const PARSE_BAD_PACKET_LEN_FMT: &[u8] = b"error while parsing packet: bad packet length %d\n\0";
 const PARSE_OVERLONG_LEN_FMT: &[u8] =
     b"error while parsing compact packet: got length %d in overlong encoding\n\0";
 const PARSE_RECEIVED_PACKET_FMT: &[u8] =
@@ -131,8 +124,7 @@ const PROXY_PASS_FORWARD_FMT: &[u8] = b"proxying %d bytes to %s:%d\n\0";
 const INIT_DOMAIN_FAIL_FMT: &[u8] =
     b"Failed to update response data about %s, so default response settings wiil be used\n\0";
 const PROXY_FAIL_DOMAIN_FMT: &[u8] = b"failed to proxy request to %s\n\0";
-const PROXY_FAIL_SOCKET_FMT: &[u8] =
-    b"failed to create proxy pass connection: %d (%s)\n\0";
+const PROXY_FAIL_SOCKET_FMT: &[u8] = b"failed to create proxy pass connection: %d (%s)\n\0";
 const PROXY_FAIL_CONN_FMT: &[u8] = b"failed to create proxy pass connection (2)\n\0";
 
 const TLS_SERVER_HELLO_PREFIX: &[u8] = b"\x16\x03\x03\x00\x7a\x02\x00\x00\x76\x03\x03";
@@ -352,6 +344,36 @@ struct ClientRandomState {
     counts: HashMap<ClientRandomKey, usize>,
 }
 
+struct DomainNode {
+    domain_storage: CString,
+    info: DomainInfo,
+}
+
+struct ExtServerState {
+    allow_only_tls: bool,
+    default_domain_info: *const DomainInfo,
+    buckets: [*mut DomainInfo; DOMAIN_HASH_MOD],
+    domain_nodes: Vec<Box<DomainNode>>,
+    ext_secret: [[u8; 16]; EXT_SECRET_LIMIT],
+    ext_secret_cnt: usize,
+}
+
+unsafe impl Send for DomainNode {}
+unsafe impl Send for ExtServerState {}
+
+impl Default for ExtServerState {
+    fn default() -> Self {
+        Self {
+            allow_only_tls: false,
+            default_domain_info: ptr::null(),
+            buckets: [ptr::null_mut(); DOMAIN_HASH_MOD],
+            domain_nodes: Vec::new(),
+            ext_secret: [[0; 16]; EXT_SECRET_LIMIT],
+            ext_secret_cnt: 0,
+        }
+    }
+}
+
 #[repr(C)]
 #[derive(Clone, Copy)]
 struct AesKeyData {
@@ -372,19 +394,10 @@ unsafe extern "C" {
     fn mtproxy_ffi_net_tcp_rpc_ext_data(c: ConnectionJob) -> *mut TcpRpcData;
     fn mtproxy_ffi_net_tcp_rpc_ext_funcs(c: ConnectionJob) -> *mut TcpRpcServerFunctions;
 
-    fn mtproxy_ffi_net_tcp_rpc_ext_lookup_domain_info(domain: *const u8, len: c_int) -> *const DomainInfo;
-    fn mtproxy_ffi_net_tcp_rpc_ext_default_domain_info() -> *const DomainInfo;
-    fn mtproxy_ffi_net_tcp_rpc_ext_allow_only_tls() -> c_int;
-    fn mtproxy_ffi_net_tcp_rpc_ext_ext_secret_count() -> c_int;
-    fn mtproxy_ffi_net_tcp_rpc_ext_ext_secret_at(index: c_int) -> *const u8;
-
     fn mtproxy_ffi_net_tcp_rpc_ext_have_client_random(random: *const u8) -> c_int;
     fn mtproxy_ffi_net_tcp_rpc_ext_add_client_random(random: *const u8);
     fn mtproxy_ffi_net_tcp_rpc_ext_delete_old_client_randoms();
     fn mtproxy_ffi_net_tcp_rpc_ext_is_allowed_timestamp_state(timestamp: c_int) -> c_int;
-
-    fn mtproxy_ffi_net_tcp_rpc_ext_proxy_connection(c: ConnectionJob, info: *const DomainInfo) -> c_int;
-    fn mtproxy_ffi_net_tcp_rpc_ext_domain_server_hello_encrypted_size(info: *const DomainInfo) -> c_int;
 
     fn mtproxy_ffi_crypto_rand_bytes(out: *mut u8, len: c_int) -> c_int;
     fn mtproxy_ffi_crypto_tls_generate_public_key(out: *mut u8) -> c_int;
@@ -429,12 +442,18 @@ unsafe extern "C" {
     fn tcp_rpcs_default_execute(c: ConnectionJob, op: c_int, msg: *mut RawMessage) -> c_int;
     fn mtproxy_ffi_net_tcp_rpc_server_precise_now() -> c_double;
 
-    fn aes_crypto_ctr128_init(c: ConnectionJob, key_data: *mut c_void, key_data_len: c_int) -> c_int;
+    fn aes_crypto_ctr128_init(
+        c: ConnectionJob,
+        key_data: *mut c_void,
+        key_data_len: c_int,
+    ) -> c_int;
     fn aes_crypto_free(c: ConnectionJob) -> c_int;
     fn aesni_crypt(ctx: *mut c_void, input: *const c_void, out: *mut c_void, size: c_int);
 
     fn get_utime_monotonic() -> c_double;
+    fn mtproxy_ffi_net_tcp_rpc_ext_show_our_ip(c: ConnectionJob) -> *const c_char;
     fn mtproxy_ffi_net_tcp_rpc_ext_show_remote_ip(c: ConnectionJob) -> *const c_char;
+    fn cpu_server_close_connection(c: ConnectionJob, who: c_int) -> c_int;
 
     fn sha256(input: *const u8, ilen: c_int, output: *mut u8);
     fn sha256_hmac(key: *mut u8, keylen: c_int, input: *mut u8, ilen: c_int, output: *mut u8);
@@ -473,22 +492,152 @@ unsafe fn precise_now_value() -> c_double {
 
 #[inline]
 unsafe fn allow_only_tls() -> bool {
-    unsafe { mtproxy_ffi_net_tcp_rpc_ext_allow_only_tls() != 0 }
+    state_allow_only_tls()
 }
 
 #[inline]
 unsafe fn default_domain_info() -> *const DomainInfo {
-    unsafe { mtproxy_ffi_net_tcp_rpc_ext_default_domain_info() }
+    state_default_domain_info()
 }
 
 #[inline]
 unsafe fn ext_secret_count() -> c_int {
-    unsafe { mtproxy_ffi_net_tcp_rpc_ext_ext_secret_count() }
+    state_ext_secret_count()
 }
 
 #[inline]
 unsafe fn ext_secret_at(index: c_int) -> *const u8 {
-    unsafe { mtproxy_ffi_net_tcp_rpc_ext_ext_secret_at(index) }
+    state_ext_secret_at(index)
+}
+
+#[inline]
+fn ext_server_state() -> &'static Mutex<ExtServerState> {
+    static STATE: OnceLock<Mutex<ExtServerState>> = OnceLock::new();
+    STATE.get_or_init(|| Mutex::new(ExtServerState::default()))
+}
+
+#[inline]
+fn domain_bucket_index(domain: &[u8]) -> usize {
+    let index = mtproxy_core::runtime::net::tcp_rpc_ext_server::domain_bucket_index(domain);
+    assert!(index >= 0);
+    usize::try_from(index).unwrap_or(0) % DOMAIN_HASH_MOD
+}
+
+#[inline]
+fn with_ext_server_state<T>(f: impl FnOnce(&ExtServerState) -> T) -> T {
+    let state = ext_server_state();
+    let guard = match state.lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    f(&guard)
+}
+
+#[inline]
+fn with_ext_server_state_mut<T>(f: impl FnOnce(&mut ExtServerState) -> T) -> T {
+    let state = ext_server_state();
+    let mut guard = match state.lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    f(&mut guard)
+}
+
+#[inline]
+fn state_allow_only_tls() -> bool {
+    with_ext_server_state(|state| state.allow_only_tls)
+}
+
+#[inline]
+fn state_default_domain_info() -> *const DomainInfo {
+    with_ext_server_state(|state| state.default_domain_info)
+}
+
+#[inline]
+fn state_ext_secret_count() -> c_int {
+    with_ext_server_state(|state| c_int::try_from(state.ext_secret_cnt).unwrap_or(0))
+}
+
+#[inline]
+fn state_ext_secret_at(index: c_int) -> *const u8 {
+    if index < 0 {
+        return ptr::null();
+    }
+    with_ext_server_state(|state| {
+        let idx = usize::try_from(index).unwrap_or(EXT_SECRET_LIMIT);
+        if idx >= state.ext_secret_cnt {
+            ptr::null()
+        } else {
+            state.ext_secret[idx].as_ptr()
+        }
+    })
+}
+
+#[inline]
+unsafe fn state_lookup_domain_info(domain: *const u8, len: c_int) -> *const DomainInfo {
+    if domain.is_null() || len < 0 {
+        return ptr::null();
+    }
+    let len_usize = usize::try_from(len).unwrap_or(0);
+    let domain_slice = unsafe { slice::from_raw_parts(domain, len_usize) };
+    let bucket = domain_bucket_index(domain_slice);
+    with_ext_server_state(|state| {
+        let mut info = state.buckets[bucket];
+        while !info.is_null() {
+            let info_domain = unsafe { CStr::from_ptr((*info).domain).to_bytes() };
+            if info_domain == domain_slice {
+                return info.cast_const();
+            }
+            info = unsafe { (*info).next };
+        }
+        if unsafe { verbosity } > 0 {
+            unsafe {
+                kprintf(
+                    b"Receive request for unknown domain %.*s\n\0"
+                        .as_ptr()
+                        .cast(),
+                    len,
+                    domain.cast::<c_char>(),
+                );
+            }
+        }
+        ptr::null()
+    })
+}
+
+#[inline]
+unsafe fn state_add_proxy_domain(domain: *const c_char) {
+    if domain.is_null() {
+        return;
+    }
+    let domain_bytes = unsafe { CStr::from_ptr(domain).to_bytes() };
+    let Ok(domain_storage) = CString::new(domain_bytes) else {
+        return;
+    };
+    let bucket = domain_bucket_index(domain_bytes);
+    with_ext_server_state_mut(|state| {
+        let mut node = Box::new(DomainNode {
+            domain_storage,
+            info: DomainInfo {
+                domain: ptr::null(),
+                target: libc::in_addr { s_addr: 0 },
+                target_ipv6: [0; 16],
+                server_hello_encrypted_size: 0,
+                use_random_encrypted_size: 0,
+                is_reversed_extension_order: 0,
+                next: ptr::null_mut(),
+            },
+        });
+        node.info.domain = node.domain_storage.as_ptr();
+        node.info.next = state.buckets[bucket];
+        let info_ptr = ptr::addr_of_mut!(node.info);
+        state.buckets[bucket] = info_ptr;
+        if !state.allow_only_tls {
+            state.allow_only_tls = true;
+            state.default_domain_info = info_ptr.cast_const();
+        }
+        state.domain_nodes.push(node);
+    });
 }
 
 #[inline]
@@ -537,7 +686,10 @@ fn tls_expect_bytes(response: &[u8], pos: c_int, expected: &[u8]) -> bool {
 #[inline]
 unsafe fn tls_fail_response_parse(error: &'static [u8]) -> c_int {
     unsafe {
-        kprintf(TLS_PARSE_FAIL_FMT.as_ptr().cast(), error.as_ptr().cast::<c_char>());
+        kprintf(
+            TLS_PARSE_FAIL_FMT.as_ptr().cast(),
+            error.as_ptr().cast::<c_char>(),
+        );
     }
     0
 }
@@ -628,7 +780,11 @@ fn create_request_bytes(domain: &[u8]) -> Option<Vec<u8>> {
 
     let domain_length = domain.len();
 
-    if !add_string(&mut result, &mut pos, b"\x16\x03\x01\x02\x00\x01\x00\x01\xfc\x03\x03") {
+    if !add_string(
+        &mut result,
+        &mut pos,
+        b"\x16\x03\x01\x02\x00\x01\x00\x01\xfc\x03\x03",
+    ) {
         return None;
     }
     if !unsafe { add_random(&mut result, &mut pos, 32) } {
@@ -705,7 +861,11 @@ fn create_request_bytes(domain: &[u8]) -> Option<Vec<u8>> {
     if !unsafe { add_public_key(&mut result, &mut pos) } {
         return None;
     }
-    if !add_string(&mut result, &mut pos, b"\x00\x2d\x00\x02\x01\x01\x00\x2b\x00\x0b\x0a") {
+    if !add_string(
+        &mut result,
+        &mut pos,
+        b"\x00\x2d\x00\x02\x01\x01\x00\x2b\x00\x0b\x0a",
+    ) {
         return None;
     }
     if !add_grease(&mut result, &mut pos, &greases, 6) {
@@ -794,7 +954,10 @@ unsafe fn check_response_inner(
     if server_hello_length <= 75 {
         return unsafe { tls_fail_response_parse(ERR_SERVER_HELLO_SHORT_2) };
     }
-    if request_session_id.len() < 32 || response.len() < 76 || response[44..76] != request_session_id[..32] {
+    if request_session_id.len() < 32
+        || response.len() < 76
+        || response[44..76] != request_session_id[..32]
+    {
         return unsafe { tls_fail_response_parse(ERR_TLS12_EXPECTED_SESSION) };
     }
     if !tls_expect_bytes(response, 76, b"\x13\x01\x00") {
@@ -953,10 +1116,7 @@ unsafe fn get_sni_domain_info_inner(request: &[u8]) -> *const DomainInfo {
             }
 
             return unsafe {
-                mtproxy_ffi_net_tcp_rpc_ext_lookup_domain_info(
-                    request[start..end].as_ptr(),
-                    domain_length,
-                )
+                state_lookup_domain_info(request[start..end].as_ptr(), domain_length)
             };
         }
 
@@ -1001,7 +1161,11 @@ unsafe fn update_domain_info_inner(info: *mut DomainInfo) -> c_int {
     } else {
         unsafe {
             let list = (*host).h_addr_list;
-            if list.is_null() { ptr::null_mut() } else { *list }
+            if list.is_null() {
+                ptr::null_mut()
+            } else {
+                *list
+            }
         }
     };
     if host.is_null() || h_addr.is_null() {
@@ -1056,8 +1220,7 @@ unsafe fn update_domain_info_inner(info: *mut DomainInfo) -> c_int {
                 libc::connect(
                     fd,
                     (&mut addr as *mut libc::sockaddr_in).cast::<libc::sockaddr>(),
-                    c_int::try_from(size_of::<libc::sockaddr_in>()).unwrap_or(0)
-                        as libc::socklen_t,
+                    c_int::try_from(size_of::<libc::sockaddr_in>()).unwrap_or(0) as libc::socklen_t,
                 )
             }
         } else {
@@ -1270,7 +1433,8 @@ unsafe fn update_domain_info_inner(info: *mut DomainInfo) -> c_int {
                         if !is_encrypted_data_len_read[i] {
                             let cur_len = usize::try_from(response_len[i]).unwrap_or(0);
                             if cur_len < 11
-                                || responses[i][cur_len - 11..cur_len - 2] != TLS_CLIENT_CCS_PREFIX[..9]
+                                || responses[i][cur_len - 11..cur_len - 2]
+                                    != TLS_CLIENT_CCS_PREFIX[..9]
                             {
                                 unsafe {
                                     kprintf(PROBE_NO_TLS13_FMT.as_ptr().cast(), domain_ptr);
@@ -1280,8 +1444,8 @@ unsafe fn update_domain_info_inner(info: *mut DomainInfo) -> c_int {
                             }
 
                             is_encrypted_data_len_read[i] = true;
-                            let encrypted_len =
-                                i32::from(responses[i][cur_len - 2]) * 256 + i32::from(responses[i][cur_len - 1]);
+                            let encrypted_len = i32::from(responses[i][cur_len - 2]) * 256
+                                + i32::from(responses[i][cur_len - 1]);
                             response_len[i] += encrypted_len;
                             let new_len = usize::try_from(response_len[i]).unwrap_or(0);
                             responses[i].resize(new_len, 0);
@@ -1418,12 +1582,11 @@ unsafe fn update_domain_info_inner(info: *mut DomainInfo) -> c_int {
 
     unsafe {
         (*info).server_hello_encrypted_size = selected_size as c_short;
-        (*info).use_random_encrypted_size =
-            if selected_profile == SERVER_HELLO_PROFILE_FIXED {
-                0
-            } else {
-                1
-            };
+        (*info).use_random_encrypted_size = if selected_profile == SERVER_HELLO_PROFILE_FIXED {
+            0
+        } else {
+            1
+        };
 
         kprintf(
             PROBE_SUCCESS_FMT.as_ptr().cast(),
@@ -1437,7 +1600,10 @@ unsafe fn update_domain_info_inner(info: *mut DomainInfo) -> c_int {
         if (*info).is_reversed_extension_order != 0
             && c_int::from((*info).server_hello_encrypted_size) <= 1250
         {
-            kprintf(PROBE_UNSUPPORTED_MULTI_PACKET_FMT.as_ptr().cast(), domain_ptr);
+            kprintf(
+                PROBE_UNSUPPORTED_MULTI_PACKET_FMT.as_ptr().cast(),
+                domain_ptr,
+            );
         }
     }
 
@@ -1445,7 +1611,11 @@ unsafe fn update_domain_info_inner(info: *mut DomainInfo) -> c_int {
 }
 
 #[inline]
-unsafe fn should_try_fake_tls_client_hello(packet_len: c_int, len: c_int, secret_cnt: c_int) -> bool {
+unsafe fn should_try_fake_tls_client_hello(
+    packet_len: c_int,
+    len: c_int,
+    secret_cnt: c_int,
+) -> bool {
     if len <= 0 || secret_cnt <= 0 || !unsafe { allow_only_tls() } {
         return false;
     }
@@ -1508,7 +1678,8 @@ unsafe fn parse_execute_inner(c: ConnectionJob) -> c_int {
 
         if unsafe { (*d).in_packet_num } == -3 {
             unsafe {
-                kprintf(PARSE_TRY_TYPE_FMT.as_ptr().cast(),
+                kprintf(
+                    PARSE_TRY_TYPE_FMT.as_ptr().cast(),
                     mtproxy_ffi_net_tcp_rpc_ext_show_remote_ip(c),
                     (*conn).remote_port,
                 );
@@ -1520,7 +1691,8 @@ unsafe fn parse_execute_inner(c: ConnectionJob) -> c_int {
                 }
 
                 unsafe {
-                    kprintf(PARSE_TLS_ESTABLISHED_FMT.as_ptr().cast(),
+                    kprintf(
+                        PARSE_TLS_ESTABLISHED_FMT.as_ptr().cast(),
                         mtproxy_ffi_net_tcp_rpc_ext_show_remote_ip(c),
                         (*conn).remote_port,
                     );
@@ -1552,15 +1724,18 @@ unsafe fn parse_execute_inner(c: ConnectionJob) -> c_int {
                 assert!(unsafe { rwm_skip_data(&mut (*conn).in_data, 11) } == 11);
                 len -= 11;
                 unsafe {
-                    (*conn).left_tls_packet_length = i32::from(header[9]) * 256 + i32::from(header[10]);
-                    kprintf(PARSE_TLS_FIRST_PACKET_FMT.as_ptr().cast(),
+                    (*conn).left_tls_packet_length =
+                        i32::from(header[9]) * 256 + i32::from(header[10]);
+                    kprintf(
+                        PARSE_TLS_FIRST_PACKET_FMT.as_ptr().cast(),
                         (*conn).left_tls_packet_length,
                     );
                 }
 
                 if unsafe { (*conn).left_tls_packet_length } < 64 {
                     unsafe {
-                        kprintf(PARSE_TLS_FIRST_TOO_SHORT_FMT.as_ptr().cast(),
+                        kprintf(
+                            PARSE_TLS_FIRST_TOO_SHORT_FMT.as_ptr().cast(),
                             (*conn).left_tls_packet_length,
                         );
                         fail_connection(c, -1);
@@ -1581,7 +1756,9 @@ unsafe fn parse_execute_inner(c: ConnectionJob) -> c_int {
                 unsafe {
                     (*conn).left_tls_packet_length -= 64;
                 }
-            } else if unsafe { should_try_fake_tls_client_hello(packet_len, len, ext_secret_count()) } {
+            } else if unsafe {
+                should_try_fake_tls_client_hello(packet_len, len, ext_secret_count())
+            } {
                 let mut header = [0u8; 5];
                 assert!(
                     unsafe {
@@ -1611,11 +1788,12 @@ unsafe fn parse_execute_inner(c: ConnectionJob) -> c_int {
 
                 let info = unsafe { get_sni_domain_info_inner(&client_hello) };
                 if info.is_null() {
-                    return unsafe { mtproxy_ffi_net_tcp_rpc_ext_proxy_connection(c, default_domain_info()) };
+                    return unsafe { proxy_connection_impl(c, default_domain_info()) };
                 }
 
                 unsafe {
-                    kprintf(PARSE_TLS_DOMAIN_FMT.as_ptr().cast(),
+                    kprintf(
+                        PARSE_TLS_DOMAIN_FMT.as_ptr().cast(),
                         (*info).domain,
                         mtproxy_ffi_net_tcp_rpc_ext_show_remote_ip(c),
                         (*conn).remote_port,
@@ -1624,40 +1802,43 @@ unsafe fn parse_execute_inner(c: ConnectionJob) -> c_int {
 
                 if unsafe { (*conn).our_port } == 80 {
                     unsafe {
-                        kprintf(PARSE_TLS_PORT80_FMT.as_ptr().cast(),
+                        kprintf(
+                            PARSE_TLS_PORT80_FMT.as_ptr().cast(),
                             (*conn).our_port,
                             (*info).domain,
                         );
                     }
-                    return unsafe { mtproxy_ffi_net_tcp_rpc_ext_proxy_connection(c, info) };
+                    return unsafe { proxy_connection_impl(c, info) };
                 }
 
                 if len > min_len {
                     unsafe {
                         kprintf(PARSE_TLS_TOO_MUCH_DATA_FMT.as_ptr().cast(), len, min_len);
                     }
-                    return unsafe { mtproxy_ffi_net_tcp_rpc_ext_proxy_connection(c, info) };
+                    return unsafe { proxy_connection_impl(c, info) };
                 }
                 if c_int::try_from(read_len).unwrap_or(-1) != len {
                     unsafe {
                         kprintf(PARSE_TLS_TOO_BIG_FMT.as_ptr().cast(), len);
                     }
-                    return unsafe { mtproxy_ffi_net_tcp_rpc_ext_proxy_connection(c, info) };
+                    return unsafe { proxy_connection_impl(c, info) };
                 }
 
                 if client_hello.len() < 43 {
-                    return unsafe { mtproxy_ffi_net_tcp_rpc_ext_proxy_connection(c, info) };
+                    return unsafe { proxy_connection_impl(c, info) };
                 }
 
                 let mut client_random = [0u8; 32];
                 client_random.copy_from_slice(&client_hello[11..43]);
                 client_hello[11..43].fill(0);
 
-                if unsafe { mtproxy_ffi_net_tcp_rpc_ext_have_client_random(client_random.as_ptr()) } != 0 {
+                if unsafe { mtproxy_ffi_net_tcp_rpc_ext_have_client_random(client_random.as_ptr()) }
+                    != 0
+                {
                     unsafe {
                         kprintf(PARSE_TLS_DUP_RANDOM_FMT.as_ptr().cast());
                     }
-                    return unsafe { mtproxy_ffi_net_tcp_rpc_ext_proxy_connection(c, info) };
+                    return unsafe { proxy_connection_impl(c, info) };
                 }
                 unsafe {
                     mtproxy_ffi_net_tcp_rpc_ext_add_client_random(client_random.as_ptr());
@@ -1694,31 +1875,33 @@ unsafe fn parse_execute_inner(c: ConnectionJob) -> c_int {
                     unsafe {
                         kprintf(PARSE_TLS_UNMATCHED_RANDOM_FMT.as_ptr().cast());
                     }
-                    return unsafe { mtproxy_ffi_net_tcp_rpc_ext_proxy_connection(c, info) };
+                    return unsafe { proxy_connection_impl(c, info) };
                 }
 
-                let timestamp = i32::from_ne_bytes(
-                    expected_random[28..32].try_into().unwrap_or([0u8; 4]),
-                ) ^ i32::from_ne_bytes(client_random[28..32].try_into().unwrap_or([0u8; 4]));
+                let timestamp =
+                    i32::from_ne_bytes(expected_random[28..32].try_into().unwrap_or([0u8; 4]))
+                        ^ i32::from_ne_bytes(client_random[28..32].try_into().unwrap_or([0u8; 4]));
 
-                if unsafe { mtproxy_ffi_net_tcp_rpc_ext_is_allowed_timestamp_state(timestamp) } == 0 {
-                    return unsafe { mtproxy_ffi_net_tcp_rpc_ext_proxy_connection(c, info) };
+                if unsafe { mtproxy_ffi_net_tcp_rpc_ext_is_allowed_timestamp_state(timestamp) } == 0
+                {
+                    return unsafe { proxy_connection_impl(c, info) };
                 }
 
                 let mut pos = 76usize;
                 let Some(mut cipher_suites_length) =
                     (unsafe { read_length_buf(&client_hello, &mut pos) })
                 else {
-                    return unsafe { mtproxy_ffi_net_tcp_rpc_ext_proxy_connection(c, info) };
+                    return unsafe { proxy_connection_impl(c, info) };
                 };
 
                 if pos + usize::try_from(cipher_suites_length).unwrap_or(usize::MAX) > read_len {
                     unsafe {
-                        kprintf(PARSE_TLS_CIPHER_LIST_TOO_LONG_FMT.as_ptr().cast(),
+                        kprintf(
+                            PARSE_TLS_CIPHER_LIST_TOO_LONG_FMT.as_ptr().cast(),
                             cipher_suites_length,
                         );
                     }
-                    return unsafe { mtproxy_ffi_net_tcp_rpc_ext_proxy_connection(c, info) };
+                    return unsafe { proxy_connection_impl(c, info) };
                 }
 
                 while cipher_suites_length >= 2
@@ -1736,7 +1919,7 @@ unsafe fn parse_execute_inner(c: ConnectionJob) -> c_int {
                     unsafe {
                         kprintf(PARSE_TLS_NO_CIPHER_FMT.as_ptr().cast());
                     }
-                    return unsafe { mtproxy_ffi_net_tcp_rpc_ext_proxy_connection(c, info) };
+                    return unsafe { proxy_connection_impl(c, info) };
                 }
                 let cipher_suite_id = client_hello[pos + 1];
 
@@ -1746,7 +1929,7 @@ unsafe fn parse_execute_inner(c: ConnectionJob) -> c_int {
                     (*conn).left_tls_packet_length = -1;
                 }
 
-                let encrypted_size = unsafe { mtproxy_ffi_net_tcp_rpc_ext_domain_server_hello_encrypted_size(info) };
+                let encrypted_size = unsafe { domain_server_hello_encrypted_size_impl(info) };
                 let response_size = 127 + 6 + 5 + encrypted_size;
                 let response_size_usize = usize::try_from(response_size).unwrap_or(0);
                 let mut buffer = vec![0u8; 32 + response_size_usize];
@@ -1770,16 +1953,17 @@ unsafe fn parse_execute_inner(c: ConnectionJob) -> c_int {
                             assert!(pos + 40 <= response_size_usize);
                             response_buffer[pos..pos + 8]
                                 .copy_from_slice(TLS_SERVER_EXT_KEY_SHARE_PREFIX);
-                            assert!(unsafe {
-                                mtproxy_ffi_crypto_tls_generate_public_key(
-                                    response_buffer[pos + 8..pos + 40].as_mut_ptr(),
-                                )
-                            } == 0);
+                            assert!(
+                                unsafe {
+                                    mtproxy_ffi_crypto_tls_generate_public_key(
+                                        response_buffer[pos + 8..pos + 40].as_mut_ptr(),
+                                    )
+                                } == 0
+                            );
                             pos += 40;
                         } else if ext == 0x2b {
                             assert!(pos + 6 <= response_size_usize);
-                            response_buffer[pos..pos + 6]
-                                .copy_from_slice(TLS_SERVER_EXT_VERSIONS);
+                            response_buffer[pos..pos + 6].copy_from_slice(TLS_SERVER_EXT_VERSIONS);
                             pos += 6;
                         } else {
                             unreachable!();
@@ -1793,17 +1977,19 @@ unsafe fn parse_execute_inner(c: ConnectionJob) -> c_int {
                     pos += 2;
                     let encrypted_size_usize = usize::try_from(encrypted_size).unwrap_or(0);
                     assert!(pos + encrypted_size_usize == response_size_usize);
-                    assert!(unsafe {
-                        mtproxy_ffi_crypto_rand_bytes(
-                            response_buffer[pos..pos + encrypted_size_usize].as_mut_ptr(),
-                            encrypted_size,
-                        )
-                    } == 0);
+                    assert!(
+                        unsafe {
+                            mtproxy_ffi_crypto_rand_bytes(
+                                response_buffer[pos..pos + encrypted_size_usize].as_mut_ptr(),
+                                encrypted_size,
+                            )
+                        } == 0
+                    );
                 }
 
                 let secret_ptr = unsafe { ext_secret_at(secret_id) };
                 if secret_ptr.is_null() {
-                    return unsafe { mtproxy_ffi_net_tcp_rpc_ext_proxy_connection(c, info) };
+                    return unsafe { proxy_connection_impl(c, info) };
                 }
                 let mut secret = [0u8; 16];
                 unsafe {
@@ -1826,11 +2012,7 @@ unsafe fn parse_execute_inner(c: ConnectionJob) -> c_int {
                 assert!(!msg.is_null());
                 assert!(
                     unsafe {
-                        rwm_create(
-                            msg,
-                            buffer[32..].as_ptr().cast::<c_void>(),
-                            response_size,
-                        )
+                        rwm_create(msg, buffer[32..].as_ptr().cast::<c_void>(), response_size)
                     } == response_size
                 );
                 unsafe {
@@ -1845,12 +2027,13 @@ unsafe fn parse_execute_inner(c: ConnectionJob) -> c_int {
                 unsafe {
                     kprintf(PARSE_EXPECT_TLS_FMT.as_ptr().cast());
                 }
-                return unsafe { mtproxy_ffi_net_tcp_rpc_ext_proxy_connection(c, default_domain_info()) };
+                return unsafe { proxy_connection_impl(c, default_domain_info()) };
             }
 
             if len < 64 {
                 unsafe {
-                    kprintf(PARSE_NEED_MORE_RANDOM_HEADER_FMT.as_ptr().cast(),
+                    kprintf(
+                        PARSE_NEED_MORE_RANDOM_HEADER_FMT.as_ptr().cast(),
                         len,
                         64 - len,
                     );
@@ -1939,9 +2122,7 @@ unsafe fn parse_execute_inner(c: ConnectionJob) -> c_int {
                         unsafe {
                             kprintf(PARSE_EXPECT_PAD_MODE_FMT.as_ptr().cast());
                         }
-                        return unsafe {
-                            mtproxy_ffi_net_tcp_rpc_ext_proxy_connection(c, default_domain_info())
-                        };
+                        return unsafe { proxy_connection_impl(c, default_domain_info()) };
                     }
 
                     assert!(unsafe { rwm_skip_data(&mut (*conn).in_data, 64) } == 64);
@@ -1971,10 +2152,12 @@ unsafe fn parse_execute_inner(c: ConnectionJob) -> c_int {
                         return 0;
                     }
 
-                    let target = i16::from_ne_bytes(random_header[60..62].try_into().unwrap_or([0u8; 2]));
+                    let target =
+                        i16::from_ne_bytes(random_header[60..62].try_into().unwrap_or([0u8; 2]));
                     unsafe {
                         (*d).extra_int4 = c_int::from(target);
-                        kprintf(PARSE_OPPORTUNISTIC_FMT.as_ptr().cast(),
+                        kprintf(
+                            PARSE_OPPORTUNISTIC_FMT.as_ptr().cast(),
                             tag,
                             (*d).extra_int4,
                         );
@@ -2073,7 +2256,9 @@ unsafe fn parse_execute_inner(c: ConnectionJob) -> c_int {
             return packet_len + packet_len_bytes - len;
         }
 
-        assert!(unsafe { rwm_skip_data(&mut (*conn).in_data, packet_len_bytes) } == packet_len_bytes);
+        assert!(
+            unsafe { rwm_skip_data(&mut (*conn).in_data, packet_len_bytes) } == packet_len_bytes
+        );
 
         let mut msg = RawMessage::default();
         unsafe {
@@ -2186,6 +2371,61 @@ pub(super) unsafe fn tcp_proxy_pass_parse_execute_impl(c: ConnectionJob) -> c_in
     0
 }
 
+pub(super) unsafe fn tcp_proxy_pass_close_impl(c: ConnectionJob, who: c_int) -> c_int {
+    let conn = unsafe { conn_info(c) };
+    if unsafe { verbosity } > 0 {
+        unsafe {
+            kprintf(
+                b"closing proxy pass connection #%d %s:%d -> %s:%d\n\0"
+                    .as_ptr()
+                    .cast(),
+                (*conn).fd,
+                mtproxy_ffi_net_tcp_rpc_ext_show_our_ip(c),
+                (*conn).our_port,
+                mtproxy_ffi_net_tcp_rpc_ext_show_remote_ip(c),
+                (*conn).remote_port,
+            );
+        }
+    }
+    let e = unsafe { (*conn).extra.cast::<c_void>() };
+    if !e.is_null() {
+        unsafe {
+            (*conn).extra = ptr::null_mut();
+            fail_connection(e, -23);
+            mtproxy_ffi_net_tcp_rpc_ext_job_decref(e);
+        }
+    }
+    unsafe { cpu_server_close_connection(c, who) }
+}
+
+pub(super) unsafe fn tcp_proxy_pass_write_packet_impl(
+    c: ConnectionJob,
+    raw: *mut RawMessage,
+) -> c_int {
+    if raw.is_null() {
+        return -1;
+    }
+    let conn = unsafe { conn_info(c) };
+    unsafe {
+        rwm_union(&mut (*conn).out, raw);
+    }
+    0
+}
+
+unsafe fn update_domain_info_chain(mut info: *mut DomainInfo) {
+    while !info.is_null() {
+        if unsafe { update_domain_info_inner(info) } == 0 {
+            unsafe {
+                kprintf(INIT_DOMAIN_FAIL_FMT.as_ptr().cast(), (*info).domain);
+                (*info).is_reversed_extension_order = 0;
+                (*info).use_random_encrypted_size = 1;
+                (*info).server_hello_encrypted_size = (2500 + libc::rand() % 1120) as c_short;
+            }
+        }
+        info = unsafe { (*info).next };
+    }
+}
+
 pub(super) unsafe fn tcp_rpc_init_proxy_domains_impl(
     domains: *mut *mut DomainInfo,
     buckets: c_int,
@@ -2195,20 +2435,21 @@ pub(super) unsafe fn tcp_rpc_init_proxy_domains_impl(
     }
 
     for i in 0..buckets {
-        let mut info = unsafe { *domains.add(usize::try_from(i).unwrap_or(0)) };
-        while !info.is_null() {
-            if unsafe { update_domain_info_inner(info) } == 0 {
-                unsafe {
-                    kprintf(INIT_DOMAIN_FAIL_FMT.as_ptr().cast(), (*info).domain);
-                    (*info).is_reversed_extension_order = 0;
-                    (*info).use_random_encrypted_size = 1;
-                    (*info).server_hello_encrypted_size =
-                        (2500 + libc::rand() % 1120) as c_short;
-                }
-            }
-            info = unsafe { (*info).next };
+        let info = unsafe { *domains.add(usize::try_from(i).unwrap_or(0)) };
+        unsafe {
+            update_domain_info_chain(info);
         }
     }
+}
+
+pub(super) unsafe fn tcp_rpc_init_proxy_domains_state_impl() {
+    with_ext_server_state(|state| {
+        for &head in &state.buckets {
+            unsafe {
+                update_domain_info_chain(head);
+            }
+        }
+    });
 }
 
 pub(super) unsafe fn proxy_connection_impl(c: ConnectionJob, info: *const DomainInfo) -> c_int {
@@ -2315,7 +2556,11 @@ pub(super) unsafe fn have_client_random_state_impl(random: *const u8) -> c_int {
         Ok(g) => g,
         Err(poisoned) => poisoned.into_inner(),
     };
-    if guard.counts.contains_key(&key) { 1 } else { 0 }
+    if guard.counts.contains_key(&key) {
+        1
+    } else {
+        0
+    }
 }
 
 pub(super) unsafe fn add_client_random_state_impl(random: *const u8, now: c_int) {
@@ -2327,7 +2572,10 @@ pub(super) unsafe fn add_client_random_state_impl(random: *const u8, now: c_int)
         Ok(g) => g,
         Err(poisoned) => poisoned.into_inner(),
     };
-    guard.entries.push_back(ClientRandomEntry { random: key, time: now });
+    guard.entries.push_back(ClientRandomEntry {
+        random: key,
+        time: now,
+    });
     let count = guard.counts.entry(key).or_insert(0);
     *count += 1;
 }
@@ -2368,14 +2616,78 @@ pub(super) unsafe fn is_allowed_timestamp_state_impl(timestamp: c_int, now: c_in
     };
     let first_time = guard.entries.front().map(|entry| entry.time);
     if mtproxy_core::runtime::net::tcp_rpc_ext_server::is_allowed_timestamp(
-        timestamp,
-        now,
-        first_time,
+        timestamp, now, first_time,
     ) {
         1
     } else {
         0
     }
+}
+
+pub(super) unsafe fn tcp_rpcs_set_ext_secret_impl(secret: *const u8) {
+    if secret.is_null() {
+        return;
+    }
+    let secret_slice = unsafe { slice::from_raw_parts(secret, 16) };
+    with_ext_server_state_mut(|state| {
+        assert!(state.ext_secret_cnt < EXT_SECRET_LIMIT);
+        state.ext_secret[state.ext_secret_cnt].copy_from_slice(secret_slice);
+        state.ext_secret_cnt += 1;
+    });
+}
+
+pub(super) unsafe fn tcp_rpc_add_proxy_domain_state_impl(domain: *const c_char) {
+    unsafe { state_add_proxy_domain(domain) }
+}
+
+pub(super) unsafe fn lookup_domain_info_state_impl(
+    domain: *const u8,
+    len: c_int,
+) -> *const DomainInfo {
+    unsafe { state_lookup_domain_info(domain, len) }
+}
+
+pub(super) fn default_domain_info_state_impl() -> *const DomainInfo {
+    state_default_domain_info()
+}
+
+pub(super) fn allow_only_tls_state_impl() -> c_int {
+    if state_allow_only_tls() {
+        1
+    } else {
+        0
+    }
+}
+
+pub(super) fn ext_secret_count_state_impl() -> c_int {
+    state_ext_secret_count()
+}
+
+pub(super) fn ext_secret_at_state_impl(index: c_int) -> *const u8 {
+    state_ext_secret_at(index)
+}
+
+pub(super) unsafe fn domain_server_hello_encrypted_size_impl(info: *const DomainInfo) -> c_int {
+    if info.is_null() {
+        return 0;
+    }
+    mtproxy_core::runtime::net::tcp_rpc_ext_server::get_domain_server_hello_encrypted_size(
+        i32::from(unsafe { (*info).server_hello_encrypted_size }),
+        unsafe { (*info).use_random_encrypted_size != 0 },
+        unsafe { libc::rand() },
+    )
+}
+
+pub(super) unsafe fn tcp_rpcs_ext_alarm_impl(c: ConnectionJob) -> c_int {
+    let data = unsafe { rpc_data(c) };
+    if unsafe { (*data).in_packet_num } != -3 {
+        return 0;
+    }
+    let info = state_default_domain_info();
+    if info.is_null() {
+        return 0;
+    }
+    unsafe { proxy_connection_impl(c, info) }
 }
 
 pub(super) unsafe fn create_request_impl(domain: *const c_char) -> *mut u8 {
@@ -2413,7 +2725,8 @@ pub(super) unsafe fn check_response_impl(
         return 0;
     }
 
-    let response_slice = unsafe { slice::from_raw_parts(response, usize::try_from(len).unwrap_or(0)) };
+    let response_slice =
+        unsafe { slice::from_raw_parts(response, usize::try_from(len).unwrap_or(0)) };
     let request_session_id_slice = unsafe { slice::from_raw_parts(request_session_id, 32) };
     unsafe {
         check_response_inner(
@@ -2433,7 +2746,8 @@ pub(super) unsafe fn get_sni_domain_info_impl(request: *const u8, len: c_int) ->
     if request.is_null() || len < 0 {
         return ptr::null();
     }
-    let request_slice = unsafe { slice::from_raw_parts(request, usize::try_from(len).unwrap_or(0)) };
+    let request_slice =
+        unsafe { slice::from_raw_parts(request, usize::try_from(len).unwrap_or(0)) };
     unsafe { get_sni_domain_info_inner(request_slice) }
 }
 
