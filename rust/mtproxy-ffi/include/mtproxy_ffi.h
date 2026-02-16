@@ -713,6 +713,9 @@ int32_t mtproxy_ffi_net_tcp_rpc_ext_tls_read_length(const uint8_t *response, int
 int32_t mtproxy_ffi_net_tcp_rpc_ext_tls_expect_bytes(
   const uint8_t *response, int32_t response_len, int32_t pos, const uint8_t *expected, int32_t expected_len
 );
+int32_t mtproxy_ffi_net_tcp_rpc_ext_get_domain_server_hello_encrypted_size(
+  int32_t base_size, int32_t use_random, int32_t rand_value
+);
 
 // net-tcp-rpc-common helper: computes compact/medium packet length prefix.
 int32_t mtproxy_ffi_tcp_rpc_encode_compact_header(

@@ -90,6 +90,30 @@ pub fn tls_expect_bytes(response: &[u8], pos: i32, expected: &[u8]) -> bool {
     &response[start..end] == expected
 }
 
+/// Computes the encrypted size for ServerHello response with optional randomization.
+///
+/// # Arguments
+/// * `base_size` - The base encrypted size from domain info
+/// * `use_random` - Whether to add random jitter (-1, 0, or +1)
+/// * `rand_value` - Random value to use for jitter (should be from system RNG)
+///
+/// # Returns
+/// The final encrypted size with optional random adjustment
+#[must_use]
+pub fn get_domain_server_hello_encrypted_size(
+    base_size: i32,
+    use_random: bool,
+    rand_value: i32,
+) -> i32 {
+    if use_random {
+        // Add random jitter of -1, 0, or +1
+        // Original C: base_size + ((r >> 1) & 1) - (r & 1)
+        base_size + ((rand_value >> 1) & 1) - (rand_value & 1)
+    } else {
+        base_size
+    }
+}
+
 /// Check if a timestamp is allowed based on current time and cache state.
 ///
 /// # Arguments
@@ -130,11 +154,11 @@ pub fn is_allowed_timestamp(timestamp: i32, now: i32, first_client_random_time: 
 #[cfg(test)]
 mod tests {
     use super::{
-        client_random_bucket_index, domain_bucket_index, is_allowed_timestamp,
-        select_server_hello_profile, tls_expect_bytes, tls_has_bytes, tls_read_length,
-        CLIENT_RANDOM_HASH_BITS, DOMAIN_HASH_MOD, MAX_ALLOWED_TIMESTAMP_ERROR,
-        SERVER_HELLO_PROFILE_FIXED, SERVER_HELLO_PROFILE_RANDOM_AVG,
-        SERVER_HELLO_PROFILE_RANDOM_NEAR,
+        client_random_bucket_index, domain_bucket_index,
+        get_domain_server_hello_encrypted_size, is_allowed_timestamp, select_server_hello_profile,
+        tls_expect_bytes, tls_has_bytes, tls_read_length, CLIENT_RANDOM_HASH_BITS,
+        DOMAIN_HASH_MOD, MAX_ALLOWED_TIMESTAMP_ERROR, SERVER_HELLO_PROFILE_FIXED,
+        SERVER_HELLO_PROFILE_RANDOM_AVG, SERVER_HELLO_PROFILE_RANDOM_NEAR,
     };
 
     #[test]
@@ -225,6 +249,29 @@ mod tests {
         assert!(!tls_expect_bytes(buffer, 0, b"\x16\x03\x04"));
         assert!(!tls_expect_bytes(buffer, 0, b"too long expected"));
         assert!(tls_expect_bytes(buffer, 8, b"")); // Empty match at end
+    }
+
+    #[test]
+    fn test_get_domain_server_hello_encrypted_size_no_random() {
+        // Without randomization, should return base size
+        assert_eq!(get_domain_server_hello_encrypted_size(1000, false, 123), 1000);
+        assert_eq!(get_domain_server_hello_encrypted_size(2500, false, 999), 2500);
+    }
+
+    #[test]
+    fn test_get_domain_server_hello_encrypted_size_with_random() {
+        // With randomization, should add -1, 0, or +1
+        // Test case where rand & 1 == 0 and (rand >> 1) & 1 == 0: result = base + 0 - 0 = base
+        assert_eq!(get_domain_server_hello_encrypted_size(1000, true, 0b00), 1000);
+        
+        // Test case where rand & 1 == 1 and (rand >> 1) & 1 == 0: result = base + 0 - 1 = base - 1
+        assert_eq!(get_domain_server_hello_encrypted_size(1000, true, 0b01), 999);
+        
+        // Test case where rand & 1 == 0 and (rand >> 1) & 1 == 1: result = base + 1 - 0 = base + 1
+        assert_eq!(get_domain_server_hello_encrypted_size(1000, true, 0b10), 1001);
+        
+        // Test case where rand & 1 == 1 and (rand >> 1) & 1 == 1: result = base + 1 - 1 = base
+        assert_eq!(get_domain_server_hello_encrypted_size(1000, true, 0b11), 1000);
     }
 
     #[test]

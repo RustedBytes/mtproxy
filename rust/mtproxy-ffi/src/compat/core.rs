@@ -237,6 +237,18 @@ pub(super) fn net_tcp_rpc_ext_tls_expect_bytes_impl(
     }
 }
 
+pub(super) fn net_tcp_rpc_ext_get_domain_server_hello_encrypted_size_impl(
+    base_size: i32,
+    use_random: i32,
+    rand_value: i32,
+) -> i32 {
+    mtproxy_core::runtime::net::tcp_rpc_ext_server::get_domain_server_hello_encrypted_size(
+        base_size,
+        use_random != 0,
+        rand_value,
+    )
+}
+
 pub(super) fn net_stats_recent_idle_percent_impl(a_idle_time: f64, a_idle_quotient: f64) -> f64 {
     mtproxy_core::runtime::net::stats::recent_idle_percent(a_idle_time, a_idle_quotient)
 }
@@ -1620,6 +1632,14 @@ pub(super) unsafe fn net_tcp_rpc_ext_tls_expect_bytes_ffi(
         return 0;
     };
     net_tcp_rpc_ext_tls_expect_bytes_impl(response_slice, pos, expected_slice)
+}
+
+pub(super) fn net_tcp_rpc_ext_get_domain_server_hello_encrypted_size_ffi(
+    base_size: i32,
+    use_random: i32,
+    rand_value: i32,
+) -> i32 {
+    net_tcp_rpc_ext_get_domain_server_hello_encrypted_size_impl(base_size, use_random, rand_value)
 }
 
 pub(super) unsafe fn net_thread_run_notification_event_ffi(

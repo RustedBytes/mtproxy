@@ -429,6 +429,18 @@ pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_tls_expect_bytes(
     }
 }
 
+/// Computes ServerHello encrypted size with optional random jitter.
+///
+/// Returns the base size with optional -1, 0, or +1 adjustment based on rand_value.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_get_domain_server_hello_encrypted_size(
+    base_size: i32,
+    use_random: i32,
+    rand_value: i32,
+) -> i32 {
+    net_tcp_rpc_ext_get_domain_server_hello_encrypted_size_ffi(base_size, use_random, rand_value)
+}
+
 /// Runs one net-thread notification event via Rust dispatcher.
 ///
 /// # Safety

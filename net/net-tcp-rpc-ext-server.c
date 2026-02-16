@@ -77,6 +77,8 @@ extern int32_t mtproxy_ffi_net_tcp_rpc_ext_tls_read_length(
 extern int32_t mtproxy_ffi_net_tcp_rpc_ext_tls_expect_bytes(
     const uint8_t *response, int32_t response_len, int32_t pos,
     const uint8_t *expected, int32_t expected_len);
+extern int32_t mtproxy_ffi_net_tcp_rpc_ext_get_domain_server_hello_encrypted_size(
+    int32_t base_size, int32_t use_random, int32_t rand_value);
 
 /*
  *
@@ -224,12 +226,9 @@ static const struct domain_info *get_domain_info(const char *domain,
 
 static int
 get_domain_server_hello_encrypted_size(const struct domain_info *info) {
-  if (info->use_random_encrypted_size) {
-    int r = rand();
-    return info->server_hello_encrypted_size + ((r >> 1) & 1) - (r & 1);
-  } else {
-    return info->server_hello_encrypted_size;
-  }
+  return mtproxy_ffi_net_tcp_rpc_ext_get_domain_server_hello_encrypted_size(
+      info->server_hello_encrypted_size, info->use_random_encrypted_size,
+      rand());
 }
 
 enum {
