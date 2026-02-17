@@ -63,6 +63,7 @@ static DOUBLE_TIME_NEXT_RDTSC: AtomicI64 = AtomicI64::new(0);
 mod compat;
 mod crypto;
 mod engine;
+mod engine_rpc;
 mod ffi_consts;
 mod ffi_types;
 mod ffi_util;
