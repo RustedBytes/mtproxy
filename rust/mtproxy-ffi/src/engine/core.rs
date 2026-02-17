@@ -576,6 +576,232 @@ unsafe fn engine_slave_mode_enabled() -> bool {
         && (unsafe { (*engine_state).modules & ENGINE_ENABLE_SLAVE_MODE }) != 0
 }
 
+#[inline]
+unsafe fn engine_modules_enable_impl(mask: u64) {
+    let e = unsafe { engine_state };
+    if e.is_null() {
+        return;
+    }
+    unsafe {
+        (*e).modules |= mask;
+    }
+}
+
+#[inline]
+unsafe fn engine_modules_disable_impl(mask: u64) {
+    let e = unsafe { engine_state };
+    if e.is_null() {
+        return;
+    }
+    unsafe {
+        (*e).modules &= !mask;
+    }
+}
+
+#[inline]
+unsafe fn engine_modules_check_enabled_impl(mask: u64) -> c_int {
+    let e = unsafe { engine_state };
+    if e.is_null() {
+        return 0;
+    }
+    if (unsafe { (*e).modules } & mask) != 0 {
+        1
+    } else {
+        0
+    }
+}
+
+#[inline]
+unsafe fn engine_modules_check_disabled_impl(mask: u64) -> c_int {
+    if unsafe { engine_modules_check_enabled_impl(mask) } != 0 {
+        0
+    } else {
+        1
+    }
+}
+
+pub(super) unsafe extern "C" fn engine_set_aes_pwd_file_impl(s: *const c_char) {
+    let e = unsafe { engine_state };
+    if e.is_null() {
+        return;
+    }
+
+    let new_value = if s.is_null() {
+        ptr::null_mut()
+    } else {
+        unsafe { libc::strdup(s) }
+    };
+
+    unsafe {
+        if !(*e).aes_pwd_file.is_null() {
+            libc::free((*e).aes_pwd_file.cast());
+        }
+        (*e).aes_pwd_file = new_value;
+    }
+}
+
+pub(super) unsafe extern "C" fn engine_get_aes_pwd_file_impl() -> *const c_char {
+    let e = unsafe { engine_state };
+    if e.is_null() {
+        return ptr::null();
+    }
+    unsafe { (*e).aes_pwd_file.cast_const() }
+}
+
+pub(super) unsafe extern "C" fn engine_set_backlog_impl(s: c_int) {
+    let e = unsafe { engine_state };
+    if e.is_null() {
+        return;
+    }
+    unsafe {
+        (*e).backlog = s;
+    }
+}
+
+pub(super) unsafe extern "C" fn engine_get_backlog_impl() -> c_int {
+    let e = unsafe { engine_state };
+    if e.is_null() {
+        return 0;
+    }
+    unsafe { (*e).backlog }
+}
+
+pub(super) unsafe extern "C" fn engine_set_required_io_threads_impl(s: c_int) {
+    let e = unsafe { engine_state };
+    if e.is_null() {
+        return;
+    }
+    unsafe {
+        (*e).required_io_threads = s;
+    }
+}
+
+pub(super) unsafe extern "C" fn engine_get_required_io_threads_impl() -> c_int {
+    let e = unsafe { engine_state };
+    if e.is_null() {
+        return 0;
+    }
+    unsafe { (*e).required_io_threads }
+}
+
+pub(super) unsafe extern "C" fn engine_set_required_cpu_threads_impl(s: c_int) {
+    let e = unsafe { engine_state };
+    if e.is_null() {
+        return;
+    }
+    unsafe {
+        (*e).required_cpu_threads = s;
+    }
+}
+
+pub(super) unsafe extern "C" fn engine_get_required_cpu_threads_impl() -> c_int {
+    let e = unsafe { engine_state };
+    if e.is_null() {
+        return 0;
+    }
+    unsafe { (*e).required_cpu_threads }
+}
+
+pub(super) unsafe extern "C" fn engine_set_required_tcp_cpu_threads_impl(s: c_int) {
+    let e = unsafe { engine_state };
+    if e.is_null() {
+        return;
+    }
+    unsafe {
+        (*e).required_tcp_cpu_threads = s;
+    }
+}
+
+pub(super) unsafe extern "C" fn engine_get_required_tcp_cpu_threads_impl() -> c_int {
+    let e = unsafe { engine_state };
+    if e.is_null() {
+        return 0;
+    }
+    unsafe { (*e).required_tcp_cpu_threads }
+}
+
+pub(super) unsafe extern "C" fn engine_set_required_tcp_io_threads_impl(s: c_int) {
+    let e = unsafe { engine_state };
+    if e.is_null() {
+        return;
+    }
+    unsafe {
+        (*e).required_tcp_io_threads = s;
+    }
+}
+
+pub(super) unsafe extern "C" fn engine_get_required_tcp_io_threads_impl() -> c_int {
+    let e = unsafe { engine_state };
+    if e.is_null() {
+        return 0;
+    }
+    unsafe { (*e).required_tcp_io_threads }
+}
+
+pub(super) unsafe extern "C" fn engine_enable_ipv6_impl() {
+    unsafe { engine_modules_enable_impl(ENGINE_ENABLE_IPV6) };
+}
+
+pub(super) unsafe extern "C" fn engine_disable_ipv6_impl() {
+    unsafe { engine_modules_disable_impl(ENGINE_ENABLE_IPV6) };
+}
+
+pub(super) unsafe extern "C" fn engine_check_ipv6_enabled_impl() -> c_int {
+    unsafe { engine_modules_check_enabled_impl(ENGINE_ENABLE_IPV6) }
+}
+
+pub(super) unsafe extern "C" fn engine_check_ipv6_disabled_impl() -> c_int {
+    unsafe { engine_modules_check_disabled_impl(ENGINE_ENABLE_IPV6) }
+}
+
+pub(super) unsafe extern "C" fn engine_enable_tcp_impl() {
+    unsafe { engine_modules_enable_impl(ENGINE_ENABLE_TCP) };
+}
+
+pub(super) unsafe extern "C" fn engine_disable_tcp_impl() {
+    unsafe { engine_modules_disable_impl(ENGINE_ENABLE_TCP) };
+}
+
+pub(super) unsafe extern "C" fn engine_check_tcp_enabled_impl() -> c_int {
+    unsafe { engine_modules_check_enabled_impl(ENGINE_ENABLE_TCP) }
+}
+
+pub(super) unsafe extern "C" fn engine_check_tcp_disabled_impl() -> c_int {
+    unsafe { engine_modules_check_disabled_impl(ENGINE_ENABLE_TCP) }
+}
+
+pub(super) unsafe extern "C" fn engine_enable_multithread_impl() {
+    unsafe { engine_modules_enable_impl(ENGINE_ENABLE_MULTITHREAD) };
+}
+
+pub(super) unsafe extern "C" fn engine_disable_multithread_impl() {
+    unsafe { engine_modules_disable_impl(ENGINE_ENABLE_MULTITHREAD) };
+}
+
+pub(super) unsafe extern "C" fn engine_check_multithread_enabled_impl() -> c_int {
+    unsafe { engine_modules_check_enabled_impl(ENGINE_ENABLE_MULTITHREAD) }
+}
+
+pub(super) unsafe extern "C" fn engine_check_multithread_disabled_impl() -> c_int {
+    unsafe { engine_modules_check_disabled_impl(ENGINE_ENABLE_MULTITHREAD) }
+}
+
+pub(super) unsafe extern "C" fn engine_enable_slave_mode_impl() {
+    unsafe { engine_modules_enable_impl(ENGINE_ENABLE_SLAVE_MODE) };
+}
+
+pub(super) unsafe extern "C" fn engine_disable_slave_mode_impl() {
+    unsafe { engine_modules_disable_impl(ENGINE_ENABLE_SLAVE_MODE) };
+}
+
+pub(super) unsafe extern "C" fn engine_check_slave_mode_enabled_impl() -> c_int {
+    unsafe { engine_modules_check_enabled_impl(ENGINE_ENABLE_SLAVE_MODE) }
+}
+
+pub(super) unsafe extern "C" fn engine_check_slave_mode_disabled_impl() -> c_int {
+    unsafe { engine_modules_check_disabled_impl(ENGINE_ENABLE_SLAVE_MODE) }
+}
+
 unsafe extern "C" fn rust_default_nop() {}
 
 unsafe extern "C" fn rust_default_parse_option(_: c_int) -> c_int {

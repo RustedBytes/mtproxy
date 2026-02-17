@@ -55,7 +55,6 @@ struct tcp_rpc_server_functions {
 };
 
 extern conn_type_t ct_tcp_rpc_server;
-extern struct tcp_rpc_server_functions default_tcp_rpc_server;
 
 int tcp_rpcs_wakeup(connection_job_t c);
 int tcp_rpcs_parse_execute(connection_job_t c);

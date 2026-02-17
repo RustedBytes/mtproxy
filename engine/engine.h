@@ -153,115 +153,111 @@ typedef struct event_precise_cron {
 extern engine_t *engine_state;
 
 static inline void engine_enable_ipv6(void) {
-  engine_state->modules |= ENGINE_ENABLE_IPV6;
+  mtproxy_ffi_engine_enable_ipv6();
 }
 
 static inline void engine_disable_ipv6(void) {
-  engine_state->modules &= ~ENGINE_ENABLE_IPV6;
+  mtproxy_ffi_engine_disable_ipv6();
 }
 
 static inline int engine_check_ipv6_enabled(void) {
-  return (engine_state->modules & ENGINE_ENABLE_IPV6) != 0;
+  return mtproxy_ffi_engine_check_ipv6_enabled();
 }
 
 static inline int engine_check_ipv6_disabled(void) {
-  return (engine_state->modules & ENGINE_ENABLE_IPV6) == 0;
+  return mtproxy_ffi_engine_check_ipv6_disabled();
 }
 
 static inline void engine_enable_tcp(void) {
-  engine_state->modules |= ENGINE_ENABLE_TCP;
+  mtproxy_ffi_engine_enable_tcp();
 }
 
 static inline void engine_disable_tcp(void) {
-  engine_state->modules &= ~ENGINE_ENABLE_TCP;
+  mtproxy_ffi_engine_disable_tcp();
 }
 
 static inline int engine_check_tcp_enabled(void) {
-  return (engine_state->modules & ENGINE_ENABLE_TCP) != 0;
+  return mtproxy_ffi_engine_check_tcp_enabled();
 }
 
 static inline int engine_check_tcp_disabled(void) {
-  return (engine_state->modules & ENGINE_ENABLE_TCP) == 0;
+  return mtproxy_ffi_engine_check_tcp_disabled();
 }
 
 static inline void engine_enable_multithread(void) {
-  engine_state->modules |= ENGINE_ENABLE_MULTITHREAD;
+  mtproxy_ffi_engine_enable_multithread();
 }
 
 static inline void engine_disable_multithread(void) {
-  engine_state->modules &= ~ENGINE_ENABLE_MULTITHREAD;
+  mtproxy_ffi_engine_disable_multithread();
 }
 
 static inline int engine_check_multithread_enabled(void) {
-  return (engine_state->modules & ENGINE_ENABLE_MULTITHREAD) != 0;
+  return mtproxy_ffi_engine_check_multithread_enabled();
 }
 
 static inline int engine_check_multithread_disabled(void) {
-  return (engine_state->modules & ENGINE_ENABLE_MULTITHREAD) == 0;
+  return mtproxy_ffi_engine_check_multithread_disabled();
 }
 
 static inline void engine_enable_slave_mode(void) {
-  engine_state->modules |= ENGINE_ENABLE_SLAVE_MODE;
+  mtproxy_ffi_engine_enable_slave_mode();
 }
 
 static inline void engine_disable_slave_mode(void) {
-  engine_state->modules &= ~ENGINE_ENABLE_SLAVE_MODE;
+  mtproxy_ffi_engine_disable_slave_mode();
 }
 
 static inline int engine_check_slave_mode_enabled(void) {
-  return (engine_state->modules & ENGINE_ENABLE_SLAVE_MODE) != 0;
+  return mtproxy_ffi_engine_check_slave_mode_enabled();
 }
 
 static inline int engine_check_slave_mode_disabled(void) {
-  return (engine_state->modules & ENGINE_ENABLE_SLAVE_MODE) == 0;
+  return mtproxy_ffi_engine_check_slave_mode_disabled();
 }
 
 static inline void engine_set_aes_pwd_file(const char *s) {
-  char *new_value = s ? strdup(s) : nullptr;
-  if (engine_state->aes_pwd_file) {
-    free(engine_state->aes_pwd_file);
-  }
-  engine_state->aes_pwd_file = new_value;
+  mtproxy_ffi_engine_set_aes_pwd_file(s);
 }
 
 static inline const char *engine_get_aes_pwd_file(void) {
-  return engine_state->aes_pwd_file;
+  return mtproxy_ffi_engine_get_aes_pwd_file();
 }
 
-static inline void engine_set_backlog(int s) { engine_state->backlog = s; }
+static inline void engine_set_backlog(int s) { mtproxy_ffi_engine_set_backlog(s); }
 
-static inline int engine_get_backlog(void) { return engine_state->backlog; }
+static inline int engine_get_backlog(void) { return mtproxy_ffi_engine_get_backlog(); }
 
 static inline void engine_set_required_io_threads(int s) {
-  engine_state->required_io_threads = s;
+  mtproxy_ffi_engine_set_required_io_threads(s);
 }
 
 static inline int engine_get_required_io_threads(void) {
-  return engine_state->required_io_threads;
+  return mtproxy_ffi_engine_get_required_io_threads();
 }
 
 static inline void engine_set_required_cpu_threads(int s) {
-  engine_state->required_cpu_threads = s;
+  mtproxy_ffi_engine_set_required_cpu_threads(s);
 }
 
 static inline int engine_get_required_cpu_threads(void) {
-  return engine_state->required_cpu_threads;
+  return mtproxy_ffi_engine_get_required_cpu_threads();
 }
 
 static inline void engine_set_required_tcp_cpu_threads(int s) {
-  engine_state->required_tcp_cpu_threads = s;
+  mtproxy_ffi_engine_set_required_tcp_cpu_threads(s);
 }
 
 static inline int engine_get_required_tcp_cpu_threads(void) {
-  return engine_state->required_tcp_cpu_threads;
+  return mtproxy_ffi_engine_get_required_tcp_cpu_threads();
 }
 
 static inline void engine_set_required_tcp_io_threads(int s) {
-  engine_state->required_tcp_io_threads = s;
+  mtproxy_ffi_engine_set_required_tcp_io_threads(s);
 }
 
 static inline int engine_get_required_tcp_io_threads(void) {
-  return engine_state->required_tcp_io_threads;
+  return mtproxy_ffi_engine_get_required_tcp_io_threads();
 }
 
 int default_main(server_functions_t *F, int argc, char *argv[]);

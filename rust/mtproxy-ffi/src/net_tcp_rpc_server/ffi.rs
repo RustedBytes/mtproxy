@@ -170,13 +170,6 @@ pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_server_close_connection(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_server_init_accepted_nohs(
-    c: ConnectionJob,
-) -> c_int {
-    unsafe { tcp_rpcs_init_accepted_nohs_impl(c) }
-}
-
-#[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_server_default_check_perm(
     c: ConnectionJob,
 ) -> c_int {

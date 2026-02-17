@@ -274,23 +274,6 @@ pub unsafe extern "C" fn mtproxy_ffi_mpq_handle_destroy(handle: *mut c_void) -> 
     0
 }
 
-/// Clears queue contents.
-///
-/// Return values:
-/// - `0`: cleared
-/// - `-1`: invalid arguments
-///
-/// # Safety
-/// `handle` must be a valid queue handle.
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mpq_handle_clear(handle: *mut c_void) -> i32 {
-    let Some(handle_ref) = (unsafe { handle_ref(handle) }) else {
-        return MPQ_FFI_ERR_INVALID_ARGS;
-    };
-    handle_ref.queue.clear();
-    0
-}
-
 /// Pushes one pointer into queue (`mpq_push` equivalent).
 ///
 /// Return values:

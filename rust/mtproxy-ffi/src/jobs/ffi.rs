@@ -422,11 +422,6 @@ pub unsafe extern "C" fn lrand48_j() -> libc::c_long {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mrand48_j() -> libc::c_long {
-    unsafe { mtproxy_ffi_jobs_mrand48_j() }
-}
-
-#[no_mangle]
 pub unsafe extern "C" fn drand48_j() -> f64 {
     unsafe { mtproxy_ffi_jobs_drand48_j() }
 }
@@ -575,11 +570,6 @@ pub unsafe extern "C" fn process_job_list(job: JobT, op: i32, thread: *mut JobTh
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn create_job_list() -> JobT {
-    unsafe { mtproxy_ffi_jobs_create_job_list() }
-}
-
-#[no_mangle]
 pub unsafe extern "C" fn insert_node_into_job_list(list_job: JobT, node: *mut JobListNode) -> i32 {
     unsafe { mtproxy_ffi_jobs_insert_node_into_job_list(list_job, node) }
 }
@@ -649,11 +639,6 @@ pub unsafe extern "C" fn job_timer_active(job: JobT) -> i32 {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn job_timer_wakeup_time(job: JobT) -> f64 {
-    unsafe { mtproxy_ffi_jobs_job_timer_wakeup_time(job) }
-}
-
-#[no_mangle]
 pub unsafe extern "C" fn job_timer_init(job: JobT) {
     unsafe { mtproxy_ffi_jobs_job_timer_init(job) };
 }
@@ -671,11 +656,6 @@ pub unsafe extern "C" fn job_message_queue_get(job: JobT) -> *mut JobMessageQueu
 #[no_mangle]
 pub unsafe extern "C" fn job_message_queue_set(job: JobT, queue: *mut JobMessageQueue) {
     unsafe { mtproxy_ffi_jobs_job_message_queue_set(job, queue) };
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn job_message_queue_free(job: JobT) {
-    unsafe { mtproxy_ffi_jobs_job_message_queue_free(job) };
 }
 
 #[no_mangle]
@@ -1849,17 +1829,6 @@ pub unsafe extern "C" fn run_pending_main_jobs() -> i32 {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn job_change_signals(job: JobT, job_signals: u64) {
-    abort_if(job.is_null());
-    // SAFETY: checked above.
-    let job_ref = unsafe { &mut *job };
-    abort_if((job_ref.j_flags & JF_LOCKED) == 0);
-
-    job_ref.j_status = (job_signals & 0xffff_001f_u64) as i32;
-    job_ref.j_sigclass = (job_signals >> 32) as i32;
-}
-
-#[no_mangle]
 pub unsafe extern "C" fn create_async_job_c_impl(
     run_job: JobExecuteFn,
     job_signals: u64,
@@ -1958,27 +1927,6 @@ pub unsafe extern "C" fn create_async_job(
             job_type,
             parent_job_tag_int,
             parent_job,
-        )
-    }
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn notify_job_create(sig_class: i32) -> JobT {
-    let custom_bytes = unsafe { jobs_notify_job_extra_size_c_impl() };
-    abort_if(custom_bytes < 0);
-    let signals = jsc_allow(sig_class, JS_RUN)
-        | jsc_allow(sig_class, JS_ABORT)
-        | jsc_allow(sig_class, JS_MSG)
-        | jsc_allow(sig_class, JS_FINISH);
-    unsafe {
-        create_async_job(
-            Some(notify_job_run),
-            signals,
-            0,
-            custom_bytes,
-            JT_HAVE_MSG_QUEUE,
-            1,
-            ptr::null_mut(),
         )
     }
 }

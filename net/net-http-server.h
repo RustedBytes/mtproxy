@@ -103,7 +103,6 @@ static inline struct http_server_functions *HTS_FUNC(connection_job_t c) {
 }
 
 extern conn_type_t ct_http_server;
-extern struct http_server_functions default_http_server;
 
 void http_flush(connection_job_t C, struct raw_message *raw);
 
@@ -120,7 +119,6 @@ enum {
   HTTP_DATE_LEN = 29,
 };
 void gen_http_date(char date_buffer[HTTP_DATE_LEN], int time);
-char *cur_http_date(void);
 // int write_basic_http_header (connection_job_t c, int code, int date, int len,
 // const char *add_header, const char *content_type);
 int write_basic_http_header_raw(connection_job_t c, struct raw_message *raw,
@@ -128,6 +126,5 @@ int write_basic_http_header_raw(connection_job_t c, struct raw_message *raw,
                                 const char *add_header,
                                 const char *content_type);
 int write_http_error(connection_job_t c, int code);
-int write_http_error_raw(connection_job_t c, struct raw_message *raw, int code);
 
 /* END */

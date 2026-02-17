@@ -50,10 +50,7 @@ struct tcp_rpc_client_functions {
   int max_packet_len;
   int mode_flags;
 };
-extern struct tcp_rpc_client_functions default_tcp_rpc_client;
-
 extern conn_type_t ct_tcp_rpc_client;
-int tcp_rpcc_init_outbound(connection_job_t c);
 int tcp_rpcc_default_check_perm(connection_job_t c);
 int tcp_rpcc_init_crypto(connection_job_t c);
 int tcp_rpcc_start_crypto(connection_job_t c, char *nonce, int key_select,

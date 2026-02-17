@@ -159,11 +159,6 @@ pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_client_init_outbound(c: Connect
 }
 
 #[no_mangle]
-pub extern "C" fn mtproxy_ffi_net_tcp_rpc_client_force_enable_dh() {
-    tcp_force_enable_dh_impl();
-}
-
-#[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_client_default_check_perm(
     c: ConnectionJob,
 ) -> c_int {
@@ -189,11 +184,6 @@ pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_client_start_crypto(
 #[no_mangle]
 pub unsafe extern "C" fn tcp_rpcc_default_check_ready(c: ConnectionJob) -> c_int {
     unsafe { tcp_rpcc_default_check_ready_impl(c) }
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn tcp_rpcc_init_outbound(c: ConnectionJob) -> c_int {
-    unsafe { tcp_rpcc_init_outbound_impl(c) }
 }
 
 #[no_mangle]

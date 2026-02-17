@@ -169,15 +169,6 @@ pub unsafe extern "C" fn mtproxy_ffi_net_http_server_write_http_error_raw(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn write_http_error_raw(
-    c: ConnectionJob,
-    raw: *mut RawMessage,
-    code: c_int,
-) -> c_int {
-    unsafe { write_http_error_raw_impl(c, raw, code) }
-}
-
-#[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_net_http_server_write_http_error(
     c: ConnectionJob,
     code: c_int,
@@ -258,11 +249,6 @@ pub unsafe extern "C" fn gen_http_date(date_buffer: *mut c_char, time: c_int) {
 
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_net_http_server_cur_http_date() -> *mut c_char {
-    unsafe { cur_http_date_impl() }
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn cur_http_date() -> *mut c_char {
     unsafe { cur_http_date_impl() }
 }
 

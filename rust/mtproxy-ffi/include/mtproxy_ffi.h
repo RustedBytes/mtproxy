@@ -553,8 +553,6 @@ int32_t mtproxy_ffi_mpq_handle_create(int32_t waitable, void **out_handle);
 // mp-queue helper: destroys one Rust-backed queue handle.
 int32_t mtproxy_ffi_mpq_handle_destroy(void *handle);
 
-// mp-queue helper: clears queue contents.
-int32_t mtproxy_ffi_mpq_handle_clear(void *handle);
 
 // mp-queue helper: push (`mpq_push` equivalent), writes enqueue position to `out_pos`.
 int32_t mtproxy_ffi_mpq_handle_push(void *handle, void *value, int32_t flags, int64_t *out_pos);
@@ -691,9 +689,7 @@ int32_t mtproxy_ffi_msg_buffers_pick_size_index(
   int32_t size_hint
 );
 
-// net-msg helpers: TL-string marker/padding and encrypt/decrypt byte clamp.
-int32_t mtproxy_ffi_net_msg_tl_marker_kind(int32_t marker);
-int32_t mtproxy_ffi_net_msg_tl_padding(int32_t total_bytes);
+// net-msg helpers: encrypt/decrypt byte clamp.
 int32_t mtproxy_ffi_net_msg_encrypt_decrypt_effective_bytes(
   int32_t requested_bytes,
   int32_t total_bytes,
@@ -704,8 +700,6 @@ int32_t mtproxy_ffi_net_msg_encrypt_decrypt_effective_bytes(
 enum { MTPROXY_FFI_RESOLVER_LOOKUP_SYSTEM_DNS = 0 };
 enum { MTPROXY_FFI_RESOLVER_LOOKUP_NOT_FOUND = 1 };
 enum { MTPROXY_FFI_RESOLVER_LOOKUP_HOSTS_IPV4 = 2 };
-int32_t mtproxy_ffi_resolver_kdb_load_hosts(void);
-int32_t mtproxy_ffi_resolver_kdb_hosts_loaded(void);
 int32_t mtproxy_ffi_resolver_gethostbyname_plan(
   const char *name,
   int32_t *out_kind,
@@ -717,22 +711,12 @@ double mtproxy_ffi_net_stats_recent_idle_percent(double a_idle_time, double a_id
 double mtproxy_ffi_net_stats_average_idle_percent(double tot_idle_time, int32_t uptime);
 
 // net-tcp-connections helpers: AES/TLS framing length helpers.
-int32_t mtproxy_ffi_net_tcp_aes_aligned_len(int32_t total_bytes);
-int32_t mtproxy_ffi_net_tcp_aes_needed_output_bytes(int32_t total_bytes);
-int32_t mtproxy_ffi_net_tcp_tls_encrypt_chunk_len(int32_t total_bytes, int32_t is_tls);
-int32_t mtproxy_ffi_net_tcp_tls_header_needed_bytes(int32_t available);
-int32_t mtproxy_ffi_net_tcp_tls_parse_header(const uint8_t header[5], int32_t *out_payload_len);
-int32_t mtproxy_ffi_net_tcp_tls_decrypt_chunk_len(int32_t available, int32_t left_tls_packet_length);
-int32_t mtproxy_ffi_net_tcp_reader_negative_skip_take(int32_t skip_bytes, int32_t available_bytes);
-int32_t mtproxy_ffi_net_tcp_reader_negative_skip_next(int32_t skip_bytes, int32_t taken_bytes);
-int32_t mtproxy_ffi_net_tcp_reader_positive_skip_next(int32_t skip_bytes, int32_t available_bytes);
 int32_t mtproxy_ffi_net_tcp_reader_skip_from_parse_result(
   int32_t parse_res,
   int32_t buffered_bytes,
   int32_t need_more_bytes,
   int32_t *out_skip_bytes
 );
-int32_t mtproxy_ffi_net_tcp_reader_precheck_result(int32_t flags);
 int32_t mtproxy_ffi_net_tcp_reader_should_continue(
   int32_t skip_bytes,
   int32_t flags,
@@ -740,8 +724,6 @@ int32_t mtproxy_ffi_net_tcp_reader_should_continue(
 );
 
 // net-tcp-rpc-ext-server helpers: domain/random bucket hashes and hello-size profile.
-int32_t mtproxy_ffi_net_tcp_rpc_ext_domain_bucket_index(const uint8_t *domain, int32_t len);
-int32_t mtproxy_ffi_net_tcp_rpc_ext_client_random_bucket_index(const uint8_t random[16]);
 int32_t mtproxy_ffi_net_tcp_rpc_ext_select_server_hello_profile(
   int32_t min_len,
   int32_t max_len,
@@ -753,8 +735,6 @@ int32_t mtproxy_ffi_net_tcp_rpc_ext_select_server_hello_profile(
 int32_t mtproxy_ffi_net_tcp_rpc_ext_is_allowed_timestamp(
   int32_t timestamp, int32_t now, int32_t first_client_random_time, int32_t has_first_client_random
 );
-int32_t mtproxy_ffi_net_tcp_rpc_ext_tls_has_bytes(int32_t pos, int32_t length, int32_t len);
-int32_t mtproxy_ffi_net_tcp_rpc_ext_tls_read_length(const uint8_t *response, int32_t response_len, int32_t *pos);
 int32_t mtproxy_ffi_net_tcp_rpc_ext_tls_expect_bytes(
   const uint8_t *response, int32_t response_len, int32_t pos, const uint8_t *expected, int32_t expected_len
 );
@@ -801,14 +781,6 @@ uint32_t mtproxy_ffi_tcp_rpc_set_default_rpc_flags(
   uint32_t or_flags
 );
 
-// net-tcp-rpc-common helper: gets default RPC flags.
-uint32_t mtproxy_ffi_tcp_rpc_get_default_rpc_flags(void);
-
-// net-tcp-rpc-common helper: sets maximum DH accept rate.
-void mtproxy_ffi_tcp_rpc_set_max_dh_accept_rate(int32_t rate);
-
-// net-tcp-rpc-common helper: gets maximum DH accept rate.
-int32_t mtproxy_ffi_tcp_rpc_get_max_dh_accept_rate(void);
 
 // net-tcp-rpc-common helper: constructs a ping packet.
 // Returns 0 on success, -1 on error. out_packet must point to a 12-byte buffer.
@@ -878,7 +850,6 @@ int32_t mtproxy_ffi_net_tcp_rpc_client_close_connection(void *c, int32_t who);
 int32_t mtproxy_ffi_net_tcp_rpc_client_check_ready(void *c);
 int32_t mtproxy_ffi_net_tcp_rpc_client_default_check_ready(void *c);
 int32_t mtproxy_ffi_net_tcp_rpc_client_init_outbound(void *c);
-void mtproxy_ffi_net_tcp_rpc_client_force_enable_dh(void);
 int32_t mtproxy_ffi_net_tcp_rpc_client_default_check_perm(void *c);
 int32_t mtproxy_ffi_net_tcp_rpc_client_init_crypto(void *c);
 int32_t mtproxy_ffi_net_tcp_rpc_client_start_crypto(
@@ -897,7 +868,6 @@ int32_t mtproxy_ffi_net_tcp_rpc_server_alarm(void *c);
 int32_t mtproxy_ffi_net_tcp_rpc_server_do_wakeup(void *c);
 int32_t mtproxy_ffi_net_tcp_rpc_server_init_accepted(void *c);
 int32_t mtproxy_ffi_net_tcp_rpc_server_close_connection(void *c, int32_t who);
-int32_t mtproxy_ffi_net_tcp_rpc_server_init_accepted_nohs(void *c);
 int32_t mtproxy_ffi_net_tcp_rpc_server_default_check_perm(void *c);
 int32_t mtproxy_ffi_net_tcp_rpc_server_init_crypto(void *c, void *packet);
 
@@ -1158,6 +1128,34 @@ int32_t mtproxy_ffi_engine_rpc_custom_op_insert(uint32_t op, void *entry);
 void *mtproxy_ffi_engine_rpc_custom_op_lookup(uint32_t op);
 int32_t mtproxy_ffi_engine_rpc_custom_op_has_any(void);
 int32_t mtproxy_ffi_engine_rpc_tcp_should_hold_conn(int32_t op);
+void mtproxy_ffi_engine_enable_ipv6(void);
+void mtproxy_ffi_engine_disable_ipv6(void);
+int32_t mtproxy_ffi_engine_check_ipv6_enabled(void);
+int32_t mtproxy_ffi_engine_check_ipv6_disabled(void);
+void mtproxy_ffi_engine_enable_tcp(void);
+void mtproxy_ffi_engine_disable_tcp(void);
+int32_t mtproxy_ffi_engine_check_tcp_enabled(void);
+int32_t mtproxy_ffi_engine_check_tcp_disabled(void);
+void mtproxy_ffi_engine_enable_multithread(void);
+void mtproxy_ffi_engine_disable_multithread(void);
+int32_t mtproxy_ffi_engine_check_multithread_enabled(void);
+int32_t mtproxy_ffi_engine_check_multithread_disabled(void);
+void mtproxy_ffi_engine_enable_slave_mode(void);
+void mtproxy_ffi_engine_disable_slave_mode(void);
+int32_t mtproxy_ffi_engine_check_slave_mode_enabled(void);
+int32_t mtproxy_ffi_engine_check_slave_mode_disabled(void);
+void mtproxy_ffi_engine_set_aes_pwd_file(const char *s);
+const char *mtproxy_ffi_engine_get_aes_pwd_file(void);
+void mtproxy_ffi_engine_set_backlog(int32_t s);
+int32_t mtproxy_ffi_engine_get_backlog(void);
+void mtproxy_ffi_engine_set_required_io_threads(int32_t s);
+int32_t mtproxy_ffi_engine_get_required_io_threads(void);
+void mtproxy_ffi_engine_set_required_cpu_threads(int32_t s);
+int32_t mtproxy_ffi_engine_get_required_cpu_threads(void);
+void mtproxy_ffi_engine_set_required_tcp_cpu_threads(int32_t s);
+int32_t mtproxy_ffi_engine_get_required_tcp_cpu_threads(void);
+void mtproxy_ffi_engine_set_required_tcp_io_threads(int32_t s);
+int32_t mtproxy_ffi_engine_get_required_tcp_io_threads(void);
 int32_t mtproxy_ffi_engine_net_default_port_mod(void);
 int32_t mtproxy_ffi_engine_net_try_open_port_range(
   int32_t start_port,
@@ -1313,8 +1311,6 @@ int32_t mtproxy_ffi_mtproto_client_send_message_runtime(
 );
 void mtproxy_ffi_mtproto_add_stats(void *w);
 void mtproxy_ffi_mtproto_compute_stats_sum(void);
-void mtproxy_ffi_mtproto_check_all_conn_buffers(void);
-int32_t mtproxy_ffi_mtproto_check_conn_buffers_runtime(void *c);
 void mtproxy_ffi_mtproto_update_local_stats_copy(void *s);
 void mtproxy_ffi_mtproto_mtfront_prepare_stats(void *sb);
 int32_t mtproxy_ffi_mtproto_hts_stats_execute(
@@ -1339,21 +1335,12 @@ int32_t mtproxy_ffi_mtproto_ext_rpcs_execute(
   void *msg
 );
 int32_t mtproxy_ffi_mtproto_mtfront_client_close(void *c, int32_t who);
-int32_t mtproxy_ffi_mtproto_do_close_in_ext_conn(void *data, int32_t s_len);
 int32_t mtproxy_ffi_mtproto_ext_rpc_ready(void *c);
 int32_t mtproxy_ffi_mtproto_ext_rpc_close(void *c, int32_t who);
-int32_t mtproxy_ffi_mtproto_proxy_rpc_ready(void *c);
-int32_t mtproxy_ffi_mtproto_proxy_rpc_close(void *c, int32_t who);
-int32_t mtproxy_ffi_mtproto_do_rpcs_execute(void *data, int32_t s_len);
-int32_t mtproxy_ffi_mtproto_finish_postponed_http_response(void *data, int32_t len);
 int32_t mtproxy_ffi_mtproto_http_alarm(void *c);
 int32_t mtproxy_ffi_mtproto_http_close(void *c, int32_t who);
 int32_t mtproxy_ffi_mtproto_f_parse_option(int32_t val);
 void mtproxy_ffi_mtproto_mtfront_prepare_parse_options(void);
-void mtproxy_ffi_mtproto_check_children_dead(void);
-void mtproxy_ffi_mtproto_check_children_status(void);
-void mtproxy_ffi_mtproto_check_special_connections_overflow(void);
-void mtproxy_ffi_mtproto_kill_children(int32_t signal);
 void mtproxy_ffi_mtproto_cron(void);
 void mtproxy_ffi_mtproto_usage(void);
 void mtproxy_ffi_mtproto_mtfront_parse_extra_args(int32_t argc, char **argv);
@@ -1402,8 +1389,6 @@ int32_t mtproxy_ffi_mtproto_ext_conn_remove_any_by_in_fd(
   int32_t in_fd,
   mtproxy_ffi_mtproto_ext_connection_t *out
 );
-int32_t mtproxy_ffi_mtproto_ext_conn_lru_insert(int32_t in_fd, int32_t in_gen);
-int32_t mtproxy_ffi_mtproto_ext_conn_lru_delete(int32_t in_fd);
 int32_t mtproxy_ffi_mtproto_ext_conn_lru_pop_oldest(
   mtproxy_ffi_mtproto_ext_connection_t *out
 );
@@ -1459,7 +1444,6 @@ int32_t mtproxy_ffi_mtproto_http_send_message(
 );
 
 // mtproto-proxy entrypoint helpers for legacy C wrapper.
-int32_t mtproxy_ffi_mtproto_proxy_usage(const char *program_name);
 int32_t mtproxy_ffi_mtproto_proxy_main(
   int32_t argc,
   const char *const *argv
@@ -1555,7 +1539,6 @@ int32_t mtproxy_ffi_mtproto_cfg_parse_config(
   int32_t flags,
   int32_t config_fd
 );
-int32_t mtproxy_ffi_mtproto_cfg_do_reload_config(int32_t flags);
 
 // CRC32 (IEEE, reflected polynomial 0xEDB88320) partial update.
 // Semantics match C `crc32_partial` function.

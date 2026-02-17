@@ -32,7 +32,6 @@
 #include "net/net-connections.h"
 #include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 
-struct stats_buffer;
 struct tl_act_extra;
 
 struct query_work_params {
@@ -47,7 +46,6 @@ struct query_work_params {
   int wait_coord;
   char *error;
   void *wait_pos;
-  // void *wait_time;
   struct paramed_type *P;
   long long start_rdtsc;
   long long total_work_rdtsc;

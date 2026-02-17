@@ -401,7 +401,6 @@ void fetch_connections_stat(struct connections_stat *st);
 void compute_next_reconnect(conn_target_job_t CT);
 int create_all_outbound_connections(void);
 int clean_unused_target(conn_target_job_t S);
-int create_new_connections(conn_target_job_t S);
 
 int set_connection_timeout(connection_job_t C, double timeout);
 int clear_connection_timeout(connection_job_t C);
@@ -492,9 +491,7 @@ void free_later_act(void);
 void incr_active_dh_connections(void);
 int check_conn_functions(conn_type_t *type, int listening);
 
-void insert_free_later_struct(struct free_later *F);
 int new_conn_generation(void);
-int get_cur_conn_generation(void);
 
 void tcp_set_max_accept_rate(int rate);
 void tcp_set_max_connections(int maxconn);

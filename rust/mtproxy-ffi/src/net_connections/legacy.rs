@@ -358,11 +358,6 @@ pub unsafe extern "C" fn compute_next_reconnect(ct: ConnTargetJob) {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn create_new_connections(ctj: ConnTargetJob) -> c_int {
-    unsafe { create_new_connections_impl(ctj) }
-}
-
-#[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_net_connections_free_target(ctj: ConnTargetJob) -> c_int {
     unsafe { free_target_impl(ctj) }
 }
@@ -400,11 +395,6 @@ pub unsafe extern "C" fn conn_target_get_connection(
     allow_stopped: c_int,
 ) -> ConnectionJob {
     unsafe { conn_target_get_connection_impl(ct, allow_stopped) }
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn insert_free_later_struct(f: *mut FreeLater) {
-    unsafe { insert_free_later_struct_impl(f) };
 }
 
 #[no_mangle]
@@ -504,11 +494,6 @@ pub extern "C" fn tcp_set_max_connections(maxconn: c_int) {
 #[no_mangle]
 pub extern "C" fn new_conn_generation() -> c_int {
     CONN_GENERATION.fetch_add(1, Ordering::SeqCst)
-}
-
-#[no_mangle]
-pub extern "C" fn get_cur_conn_generation() -> c_int {
-    CONN_GENERATION.load(Ordering::SeqCst)
 }
 
 #[no_mangle]

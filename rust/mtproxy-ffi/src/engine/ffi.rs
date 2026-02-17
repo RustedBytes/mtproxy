@@ -111,6 +111,146 @@ pub unsafe extern "C" fn mtproxy_ffi_engine_set_epoll_wait_timeout(epoll_wait_ti
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_engine_enable_ipv6() {
+    unsafe { engine_enable_ipv6_impl() };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_engine_disable_ipv6() {
+    unsafe { engine_disable_ipv6_impl() };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_engine_check_ipv6_enabled() -> c_int {
+    unsafe { engine_check_ipv6_enabled_impl() }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_engine_check_ipv6_disabled() -> c_int {
+    unsafe { engine_check_ipv6_disabled_impl() }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_engine_enable_tcp() {
+    unsafe { engine_enable_tcp_impl() };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_engine_disable_tcp() {
+    unsafe { engine_disable_tcp_impl() };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_engine_check_tcp_enabled() -> c_int {
+    unsafe { engine_check_tcp_enabled_impl() }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_engine_check_tcp_disabled() -> c_int {
+    unsafe { engine_check_tcp_disabled_impl() }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_engine_enable_multithread() {
+    unsafe { engine_enable_multithread_impl() };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_engine_disable_multithread() {
+    unsafe { engine_disable_multithread_impl() };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_engine_check_multithread_enabled() -> c_int {
+    unsafe { engine_check_multithread_enabled_impl() }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_engine_check_multithread_disabled() -> c_int {
+    unsafe { engine_check_multithread_disabled_impl() }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_engine_enable_slave_mode() {
+    unsafe { engine_enable_slave_mode_impl() };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_engine_disable_slave_mode() {
+    unsafe { engine_disable_slave_mode_impl() };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_engine_check_slave_mode_enabled() -> c_int {
+    unsafe { engine_check_slave_mode_enabled_impl() }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_engine_check_slave_mode_disabled() -> c_int {
+    unsafe { engine_check_slave_mode_disabled_impl() }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_engine_set_aes_pwd_file(s: *const c_char) {
+    unsafe { engine_set_aes_pwd_file_impl(s) };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_engine_get_aes_pwd_file() -> *const c_char {
+    unsafe { engine_get_aes_pwd_file_impl() }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_engine_set_backlog(s: c_int) {
+    unsafe { engine_set_backlog_impl(s) };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_engine_get_backlog() -> c_int {
+    unsafe { engine_get_backlog_impl() }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_engine_set_required_io_threads(s: c_int) {
+    unsafe { engine_set_required_io_threads_impl(s) };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_engine_get_required_io_threads() -> c_int {
+    unsafe { engine_get_required_io_threads_impl() }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_engine_set_required_cpu_threads(s: c_int) {
+    unsafe { engine_set_required_cpu_threads_impl(s) };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_engine_get_required_cpu_threads() -> c_int {
+    unsafe { engine_get_required_cpu_threads_impl() }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_engine_set_required_tcp_cpu_threads(s: c_int) {
+    unsafe { engine_set_required_tcp_cpu_threads_impl(s) };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_engine_get_required_tcp_cpu_threads() -> c_int {
+    unsafe { engine_get_required_tcp_cpu_threads_impl() }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_engine_set_required_tcp_io_threads(s: c_int) {
+    unsafe { engine_set_required_tcp_io_threads_impl(s) };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_engine_get_required_tcp_io_threads() -> c_int {
+    unsafe { engine_get_required_tcp_io_threads_impl() }
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_engine_precise_cron_function_insert(
     ev: *mut EventPreciseCron,
 ) {

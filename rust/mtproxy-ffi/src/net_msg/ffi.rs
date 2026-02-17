@@ -614,11 +614,6 @@ pub unsafe extern "C" fn rwm_process_and_advance(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn rwm_sha1(raw: *mut RawMessage, bytes: c_int, output: *mut u8) -> c_int {
-    unsafe { mtproxy_ffi_net_msg_rwm_sha1(raw, bytes, output) }
-}
-
-#[no_mangle]
 pub unsafe extern "C" fn rwm_encrypt_decrypt_to(
     raw: *mut RawMessage,
     res: *mut RawMessage,

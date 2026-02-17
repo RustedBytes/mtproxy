@@ -87,16 +87,6 @@ pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_common_write_packet_compact(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_common_flush(c: ConnectionJob) -> c_int {
-    unsafe { tcp_rpc_flush_impl(c) }
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_common_flush_packet(c: ConnectionJob) -> c_int {
-    unsafe { tcp_rpc_flush_packet_impl(c) }
-}
-
-#[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_common_send_ping(c: ConnectionJob, ping_id: i64) {
     unsafe { tcp_rpc_send_ping_impl(c, ping_id) }
 }
@@ -107,21 +97,6 @@ pub extern "C" fn mtproxy_ffi_net_tcp_rpc_common_set_default_rpc_flags(
     or_flags: u32,
 ) -> u32 {
     tcp_set_default_rpc_flags_impl(and_flags, or_flags)
-}
-
-#[no_mangle]
-pub extern "C" fn mtproxy_ffi_net_tcp_rpc_common_get_default_rpc_flags() -> u32 {
-    tcp_get_default_rpc_flags_impl()
-}
-
-#[no_mangle]
-pub extern "C" fn mtproxy_ffi_net_tcp_rpc_common_set_max_dh_accept_rate(rate: c_int) {
-    tcp_set_max_dh_accept_rate_impl(rate)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_common_add_dh_accept() -> c_int {
-    unsafe { tcp_add_dh_accept_impl() }
 }
 
 #[no_mangle]

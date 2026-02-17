@@ -160,7 +160,6 @@ int rwm_process_and_advance(struct raw_message *raw, int bytes,
                             int (*process_block)(void *extra, const void *data,
                                                  int len),
                             void *extra);
-int rwm_sha1(struct raw_message *raw, int bytes, unsigned char output[20]);
 int rwm_encrypt_decrypt_to(struct raw_message *raw, struct raw_message *res,
                            int bytes, void *ctx, int block_size);
 

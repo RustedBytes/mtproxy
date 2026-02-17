@@ -278,14 +278,12 @@ enum {
 };
 
 long int lrand48_j(void);
-long int mrand48_j(void);
 double drand48_j(void);
 
 int init_async_jobs(void);
 int create_job_class(int job_class, int min_threads, int max_threads, int excl);
 int create_job_class_sub(int job_class, int min_threads, int max_threads,
                          int excl, int subclass_cnt);
-job_t notify_job_create(int sig_class);
 int create_job_thread_ex(int thread_class, void *(*thread_work)(void *));
 int create_new_job_class(int job_class, int min_threads, int max_threads);
 int create_new_job_class_sub(int job_class, int min_threads, int max_threads,
@@ -297,7 +295,6 @@ int jobs_enable_tokio_bridge(void);
 job_t create_async_job(job_function_t run_job, unsigned long long job_signals,
                        int job_subclass, int custom_bytes,
                        unsigned long long job_type, JOB_REF_ARG(parent_job));
-void job_change_signals(job_t job, unsigned long long job_signals);
 /* puts job into execution queue according to its priority class (actually,
  * unlocks it and sends signal 0) */
 int schedule_job(JOB_REF_ARG(job));
@@ -360,7 +357,6 @@ struct job_list_node {
   int jl_custom[0];
 };
 
-job_t create_job_list(void);
 int insert_job_into_job_list(job_t list_job, JOB_REF_ARG(job), int mode);
 void update_all_thread_stats(void);
 
@@ -375,7 +371,6 @@ void job_timer_insert(job_t job, double timeout);
 void job_timer_remove(job_t job);
 int job_timer_active(job_t job);
 void job_timer_init(job_t job);
-double job_timer_wakeup_time(job_t job);
 void jobs_check_all_timers(void);
 
 static inline void check_thread_class(int class) {
@@ -421,7 +416,6 @@ static inline int job_message_continuation(job_t job, struct job_message *M,
   return 1;
 }
 
-void job_message_queue_free(job_t job);
 void job_message_queue_init(job_t job);
 void job_message_queue_work(job_t job,
                             int (*receive_message)(job_t job,

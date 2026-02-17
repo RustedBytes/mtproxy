@@ -90,7 +90,6 @@ extern double tot_idle_time, a_idle_time, a_idle_quotient;
 int init_epoll(void);
 
 int remove_event_from_heap(event_t *ev, int allow_hole);
-int put_event_into_heap(event_t *ev);
 
 int epoll_sethandler(int fd, int prio, event_handler_t handler, void *data);
 int epoll_work(int timeout);

@@ -47,7 +47,6 @@ enum {
 
 struct tl_query_header;
 struct tl_query_header *tl_query_header_dup(struct tl_query_header *h);
-struct tl_query_header *tl_query_header_clone(struct tl_query_header *h_old);
 void tl_query_header_delete(struct tl_query_header *h);
 
 enum {
@@ -149,9 +148,6 @@ struct tl_query_header {
   struct query_work_params *qw_params;
 };
 
-extern const struct tl_in_methods tl_in_raw_msg_methods;
-extern const struct tl_out_methods tl_out_raw_msg_methods;
-
 #define TL_IN (tlio_in->in)
 #define TL_IN_CONN ((connection_job_t)(tlio_in->in))
 #define TL_IN_NBIT ((nb_iterator_t *)(tlio_in->in))
@@ -208,57 +204,21 @@ int tlf_query_header(struct tl_in_state *tlio_in,
                      struct tl_query_header *header);
 
 int tls_end_ext(struct tl_out_state *tlio_out, int op);
-int tlf_check_rust(struct tl_in_state *tlio_in, int nbytes);
 int tlf_lookup_int_rust(struct tl_in_state *tlio_in);
-int tlf_lookup_second_int_rust(struct tl_in_state *tlio_in);
-long long tlf_lookup_long_rust(struct tl_in_state *tlio_in);
-int tlf_lookup_data_rust(struct tl_in_state *tlio_in, void *data, int len);
 int tlf_int_rust(struct tl_in_state *tlio_in);
-double tlf_double_rust(struct tl_in_state *tlio_in);
-long long tlf_long_rust(struct tl_in_state *tlio_in);
-void tlf_mark_rust(struct tl_in_state *tlio_in);
-void tlf_mark_restore_rust(struct tl_in_state *tlio_in);
-void tlf_mark_delete_rust(struct tl_in_state *tlio_in);
-int tlf_string_len_rust(struct tl_in_state *tlio_in, int max_len);
-int tlf_pad_rust(struct tl_in_state *tlio_in);
-int tlf_raw_data_rust(struct tl_in_state *tlio_in, void *buf, int len);
-int tlf_string_data_rust(struct tl_in_state *tlio_in, char *buf, int len);
-int tlf_skip_string_data_rust(struct tl_in_state *tlio_in, int len);
-int tlf_string_rust(struct tl_in_state *tlio_in, char *buf, int max_len);
-int tlf_skip_string_rust(struct tl_in_state *tlio_in, int max_len);
-int tlf_string0_rust(struct tl_in_state *tlio_in, char *buf, int max_len);
-int tlf_check_str_end_rust(struct tl_in_state *tlio_in, int size);
-int tlf_unread_rust(struct tl_in_state *tlio_in);
-int tlf_skip_rust(struct tl_in_state *tlio_in, int len);
 int tlf_end_rust(struct tl_in_state *tlio_in);
 int tlf_error_rust(struct tl_in_state *tlio_in);
-int tlf_int_range_rust(struct tl_in_state *tlio_in, int min, int max);
-int tlf_positive_int_rust(struct tl_in_state *tlio_in);
-int tlf_nonnegative_int_rust(struct tl_in_state *tlio_in);
-int tlf_int_subset_rust(struct tl_in_state *tlio_in, int set);
 long long tlf_long_range_rust(struct tl_in_state *tlio_in, long long min,
                               long long max);
-long long tlf_positive_long_rust(struct tl_in_state *tlio_in);
-long long tlf_nonnegative_long_rust(struct tl_in_state *tlio_in);
 int tlf_raw_message_rust(struct tl_in_state *tlio_in, struct raw_message *raw,
                          int bytes);
 int tlf_lookup_raw_message_rust(struct tl_in_state *tlio_in,
                                 struct raw_message *raw, int bytes);
 void *tls_get_ptr_rust(struct tl_out_state *tlio_out, int size);
-void *tls_get_prepend_ptr_rust(struct tl_out_state *tlio_out, int size);
 int tls_int_rust(struct tl_out_state *tlio_out, int value);
-int tls_long_rust(struct tl_out_state *tlio_out, long long value);
-int tls_double_rust(struct tl_out_state *tlio_out, double value);
-int tls_string_len_rust(struct tl_out_state *tlio_out, int len);
-int tls_raw_data_rust(struct tl_out_state *tlio_out, const void *data, int len);
 int tls_raw_msg_rust(struct tl_out_state *tlio_out, struct raw_message *raw,
                      int dup);
-int tls_pad_rust(struct tl_out_state *tlio_out);
-int tls_string_data_rust(struct tl_out_state *tlio_out, const char *s, int len);
 int tls_string_rust(struct tl_out_state *tlio_out, const char *s, int len);
-int tls_clear_rust(struct tl_out_state *tlio_out);
-int tls_clean_rust(struct tl_out_state *tlio_out);
-int tls_pos_rust(struct tl_out_state *tlio_out);
 int tl_copy_through_rust(struct tl_in_state *tlio_in,
                          struct tl_out_state *tlio_out, int len, int advance);
 

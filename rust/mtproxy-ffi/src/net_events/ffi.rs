@@ -109,11 +109,6 @@ pub unsafe extern "C" fn mtproxy_ffi_net_events_put_event_into_heap(ev: *mut Eve
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn put_event_into_heap(ev: *mut EventDescr) -> c_int {
-    unsafe { put_event_into_heap_ffi(ev) }
-}
-
-#[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_net_events_put_event_into_heap_tail(
     ev: *mut EventDescr,
     ts_delta: c_int,
