@@ -100,7 +100,7 @@ ${EXE}/mtproto-proxy: ${RUST_OBJECTS} ${LIB}/libkdb.a ${RUST_FFI_STATICLIB}
 	${CC} -o $@ ${RUST_OBJECTS} ${LIB}/libkdb.a ${RUST_FFI_STATICLIB} ${LIB}/libkdb.a ${RUST_FFI_STATICLIB} ${LDFLAGS} -ldl
 
 ${RUST_FFI_STATICLIB}: Cargo.toml Cargo.lock rust/mtproxy-core/Cargo.toml rust/mtproxy-ffi/Cargo.toml ${RUST_RS_SOURCES}
-	cargo build --release -p mtproxy-ffi
+	cargo build  -p mtproxy-ffi
 
 ${RUST_FFI_STATICLIB_RELEASE}: Cargo.toml Cargo.lock rust/mtproxy-core/Cargo.toml rust/mtproxy-ffi/Cargo.toml ${RUST_RS_SOURCES}
 	cargo build --release -p mtproxy-ffi
