@@ -163,8 +163,6 @@ enum {
   JMC_CONTINUATION = 8,
 };
 
-#define JMC_EXTRACT_ANSWER(__type) (((__type) >> 8) & 255)
-
 /* all fields here, with the exception of bits 24..31 and JF_LOCKED of j_flags,
    j_error, j_refcnt, j_children, may be changed only by somebody who already
    owns a lock to this job, or has the only pointer to it. */
@@ -300,46 +298,14 @@ job_t create_async_job(job_function_t run_job, unsigned long long job_signals,
 int schedule_job(JOB_REF_ARG(job));
 
 job_t job_incref(job_t job);
-static inline job_t job_incref_f(job_t job) {
-  if (job) {
-    job_incref(job);
-  }
-  return job;
-}
 void job_decref(JOB_REF_ARG(
     job)); // if job->j_refcnt becomes 0, invokes j_execute with op = JS_FREE
-static inline void job_decref_f(job_t job) { job_decref(JOB_REF_PASS(job)); }
 
 int unlock_job(JOB_REF_ARG(job));
 int try_lock_job(job_t job, int set_flags, int clear_flags);
 
 void complete_job(job_t job); // if JF_COMPLETED is not set, sets it and acts
                               // according to JFS_PARENT_*
-
-
-static inline int check_job_completion(job_t job) {
-  return job->j_flags & JF_COMPLETED;
-}
-static inline int check_job_validity(job_t job) {
-  return job && !check_job_completion(job);
-}
-static inline int check_parent_job_validity(job_t job) {
-  return check_job_validity(job->j_parent);
-}
-static inline int parent_job_aborted(job_t job) {
-  return (job->j_status & JSP_PARENT_INCOMPLETE) && job->j_parent &&
-         check_job_completion(job->j_parent);
-}
-static inline int job_parent_ptr_valid(job_t job) {
-  return (!(job->j_status & JSP_PARENT_RESPTR) ||
-          check_parent_job_validity(job));
-}
-static inline int job_fatal(job_t job, int error) {
-  if (!job->j_error) {
-    job->j_error = error;
-  }
-  return JOB_COMPLETED;
-}
 
 /* runs all pending jobs of class JF_CLASS_MAIN, then returns */
 int run_pending_main_jobs(void);
@@ -371,48 +337,10 @@ int job_timer_active(job_t job);
 void job_timer_init(job_t job);
 void jobs_check_all_timers(void);
 
-static inline void check_thread_class(int class) {
-  struct job_thread *JT = jobs_get_this_job_thread();
-  assert(JT && (JT->job_class_mask & (1 << class)));
-}
-
 void job_message_send(JOB_REF_ARG(job), JOB_REF_ARG(src), unsigned int type,
                       struct raw_message *raw, int dup, int payload_ints,
                       const unsigned int *payload, unsigned int flags,
                       void (*destructor)(struct job_message *M));
-
-static inline void job_message_send_empty(JOB_REF_ARG(job), JOB_REF_ARG(src),
-                                          unsigned int type,
-                                          unsigned int flags) {
-  job_message_send(JOB_REF_PASS(job), JOB_REF_PASS(src), type, &empty_rwm, 1, 0,
-                   NULL, flags, NULL);
-}
-
-enum {
-  TL_TRUE = 0x3fedd339,
-};
-static inline int job_message_answer_true(struct job_message *M) {
-  if (M->src) {
-    job_message_send(JOB_REF_PASS(M->src), JOB_REF_NULL, TL_TRUE, &empty_rwm, 1,
-                     M->payload_ints, M->payload, JMC_EXTRACT_ANSWER(M->flags),
-                     NULL);
-  }
-  return 1;
-}
-
-static inline int job_message_continuation(job_t job, struct job_message *M,
-                                           unsigned int payload_magic) {
-  if (M->payload_ints >= 1) {
-    assert(M->payload[0] == payload_magic);
-    assert(M->payload_ints == 5);
-    int (*func)(job_t, struct job_message *, void *) =
-        *(void **)(M->payload + 1);
-    void *extra = *(void **)(M->payload + 3);
-    assert(func);
-    return func(job, M, extra);
-  }
-  return 1;
-}
 
 void job_message_queue_init(job_t job);
 void job_message_queue_work(job_t job,

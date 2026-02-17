@@ -133,10 +133,3 @@ extern double mtproxy_ffi_net_msg_buffers_usage(void);
 #define free_msg_buffer mtproxy_ffi_net_msg_buffers_free
 #define msg_buffer_reach_limit mtproxy_ffi_net_msg_buffers_reach_limit
 #define msg_buffer_usage mtproxy_ffi_net_msg_buffers_usage
-
-static inline void msg_buffer_decref(struct msg_buffer *buffer) {
-  if (buffer->refcnt == 1 || __sync_fetch_and_add(&buffer->refcnt, -1) == 1) {
-    buffer->refcnt = 0;
-    free_msg_buffer(buffer);
-  }
-}

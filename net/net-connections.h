@@ -413,13 +413,6 @@ int destroy_target(JOB_REF_ARG(CTJ));
 conn_target_job_t create_target(struct conn_target_info *source,
                                 int *was_created);
 
-static inline connection_job_t connection_incref(connection_job_t C) {
-  return job_incref(C);
-}
-static inline void connection_decref(connection_job_t C) {
-  job_decref(JOB_REF_PASS(C));
-}
-
 connection_job_t connection_get_by_fd(int fd);
 connection_job_t connection_get_by_fd_generation(int fd, int generation);
 
@@ -439,22 +432,6 @@ int server_noop(connection_job_t C);
 int server_failed(connection_job_t C);
 
 void connection_write_close(connection_job_t C);
-static inline void write_out_chk(connection_job_t c, const void *data,
-                                 int len) {
-  assert(rwm_push_data(&CONN_INFO(c)->out, data, len) == len);
-}
-
-static inline int write_out_old(connection_job_t c, const void *data, int len) {
-  return rwm_push_data(&CONN_INFO(c)->out, data, len);
-}
-
-static inline int read_in_old(connection_job_t c, void *data, int len) {
-  return rwm_fetch_data(&CONN_INFO(c)->in, data, len);
-}
-
-static inline int is_ipv6_localhost(unsigned char ipv6[16]) {
-  return !*(long long *)ipv6 && ((long long *)ipv6)[1] == 1LL << 56;
-}
 
 void assert_net_cpu_thread(void);
 void assert_engine_thread(void);

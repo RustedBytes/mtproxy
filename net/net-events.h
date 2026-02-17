@@ -135,18 +135,6 @@ union sockaddr_in46 {
   struct sockaddr_in6 a6;
 };
 
-static inline int is_4in6(const unsigned char ipv6[16]) {
-  return !*((long long *)ipv6) && ((int *)ipv6)[2] == -0x10000;
-}
-static inline unsigned extract_4in6(const unsigned char ipv6[16]) {
-  return (((unsigned *)ipv6)[3]);
-}
-static inline void set_4in6(unsigned char ipv6[16], unsigned ip) {
-  *(long long *)ipv6 = 0;
-  ((int *)ipv6)[2] = -0x10000;
-  ((unsigned *)ipv6)[3] = ip;
-}
-
 const char *show_ip(unsigned ip);
 const char *show_ipv6(const unsigned char ipv6[16]);
 
