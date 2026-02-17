@@ -5,7 +5,7 @@ use core::ffi::{c_char, c_double, c_int, c_long, c_longlong, c_uint, c_ulonglong
 use core::mem::size_of;
 use core::ptr;
 use core::sync::atomic::{AtomicU32, Ordering};
-use std::ffi::CStr;
+use std::ffi::{CStr, CString};
 
 const JS_RUN: c_int = 0;
 const JS_ALARM: c_int = 4;
@@ -40,7 +40,6 @@ const MTPROXY_FFI_ENGINE_RPC_QR_DISPATCH: c_int = 1;
 const MTPROXY_FFI_ENGINE_RPC_QR_SKIP_UNKNOWN: c_int = 2;
 const CONN_CUSTOM_DATA_BYTES: usize = 256;
 
-const UNKNOWN_OP_FMT: &[u8] = b"Unknown op 0x%08x\0";
 const UNKNOWN_QUERY_TYPE_FMT: &[u8] =
     b"Unknown query type %d (qid = 0x%016llx). Skipping query result.\n\0";
 const ERR_MAX_RETRIES: &[u8] = b"Maximum number of retries exceeded\0";
@@ -344,8 +343,8 @@ unsafe extern "C" {
     static mut verbosity: c_int;
 
     fn tlf_error_rust(tlio_in: *mut c_void) -> c_int;
+    fn tlf_set_error(tlio_in: *mut c_void, errnum: c_int, s: *const c_char) -> c_int;
     fn tlf_lookup_int_rust(tlio_in: *mut c_void) -> c_int;
-    fn tlf_set_error_format(tlio_in: *mut c_void, errnum: c_int, format: *const c_char, ...);
     #[link_name = "tlf_query_answer_header"]
     fn c_tlf_query_answer_header(tlio_in: *mut c_void, header: *mut TlQueryHeader) -> c_int;
 
@@ -1149,13 +1148,11 @@ pub(super) unsafe fn fetch_query_impl(
         }
     }
     if extra.is_null() {
+        let unknown_op = unsafe { tlf_lookup_int_rust(tlio_in.cast()) };
+        let msg =
+            CString::new(format!("Unknown op 0x{unknown_op:08x}")).expect("NUL-free format string");
         unsafe {
-            tlf_set_error_format(
-                tlio_in.cast(),
-                TL_ERROR_UNKNOWN_FUNCTION_ID,
-                UNKNOWN_OP_FMT.as_ptr().cast(),
-                tlf_lookup_int_rust(tlio_in.cast()),
-            );
+            tlf_set_error(tlio_in.cast(), TL_ERROR_UNKNOWN_FUNCTION_ID, msg.as_ptr());
             *error = dup_error_or_null((*tlio_in).error);
             *error_code = (*tlio_in).errnum;
         }

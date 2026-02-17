@@ -187,11 +187,6 @@ extern const struct tl_out_methods tl_out_raw_msg_methods;
 #define TL_ERROR (tlio_in->error)
 #define TL_ERRNUM (tlio_in->errnum)
 
-int tlf_set_error_format(struct tl_in_state *tlio_in, int errnum,
-                         const char *format, ...)
-    __attribute__((format(printf, 3, 4)));
-#define tl_fetch_set_error_format(...)                                         \
-  tlf_set_error_format(tlio_in, ##__VA_ARGS__)
 int tlf_set_error(struct tl_in_state *tlio_in, int errnum, const char *s);
 #define tl_fetch_set_error(...) tlf_set_error(tlio_in, ##__VA_ARGS__)
 

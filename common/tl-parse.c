@@ -33,23 +33,6 @@
 
 // Legacy TL entrypoints are implemented in Rust; C keeps only varargs helpers.
 
-int tlf_set_error_format(struct tl_in_state *tlio_in, int errnum,
-                         const char *format, ...) {
-  if (TL_ERROR) {
-    return 0;
-  }
-  assert(format);
-  char s[1000];
-  va_list l;
-  va_start(l, format);
-  vsnprintf(s, sizeof(s), format, l);
-  va_end(l);
-  vkprintf(2, "Error %s\n", s);
-  TL_ERRNUM = errnum;
-  TL_ERROR = strdup(s);
-  return 0;
-}
-
 int tls_set_error_format(struct tl_out_state *tlio_out, int errnum,
                          const char *format, ...) {
   if (tlio_out->error) {
