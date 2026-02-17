@@ -42,17 +42,10 @@
 #include "common/common-stats.h"
 #include "common/proc-stat.h"
 #include "jobs/jobs.h"
-#include "kprintf.h"
 #include "mp-queue.h"
 #include "net/net-connections.h"
-#include "net/net-events.h"
 #include "precise-time.h"
 #include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
-#include "server-functions.h"
-
-static inline double max_double(const double lhs, const double rhs) {
-  return lhs > rhs ? lhs : rhs;
-}
 
 static void set_job_interrupt_signal_handler(void);
 int mtproxy_ffi_jobs_prepare_stat(stats_buffer_t *sb);
@@ -146,11 +139,6 @@ static struct thread_callback jobs_module_thread_callback = {
 
 __attribute__((constructor)) static void jobs_module_register(void) {
   register_thread_callback(&jobs_module_thread_callback);
-}
-
-static inline int jobs_stat_sum_i(size_t field_offset) {
-  return sb_sum_i((void **)jobs_module_stat_array, max_job_thread_id + 1,
-                  field_offset);
 }
 
 static inline long long jobs_stat_sum_ll(size_t field_offset) {
