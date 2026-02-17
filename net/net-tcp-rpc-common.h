@@ -186,3 +186,8 @@ unsigned tcp_set_default_rpc_flags(unsigned and_flags, unsigned or_flags);
 unsigned tcp_get_default_rpc_flags(void);
 void tcp_set_max_dh_accept_rate(int rate);
 int tcp_add_dh_accept(void);
+
+// Copies TCP RPC remote pid from connection custom data into `out_pid`.
+// Returns 0 on success, -1 on null args.
+int mtproxy_ffi_net_tcp_rpc_common_copy_remote_pid(connection_job_t c,
+                                                   struct process_id *out_pid);

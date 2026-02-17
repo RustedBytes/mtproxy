@@ -63,7 +63,6 @@ void sb_prepare(stats_buffer_t *sb);
 void sb_printf(stats_buffer_t *sb, const char *format, ...)
     __attribute__((format(printf, 2, 3)));
 void sb_memory(stats_buffer_t *sb, int flags);
-void sb_print_queries(stats_buffer_t *sb, const char *const desc, long long q);
 void sbp_print_date(stats_buffer_t *sb, const char *key, time_t unix_time);
 
 static inline void sb_print_i32_key(stats_buffer_t *sb, const char *key,

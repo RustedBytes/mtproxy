@@ -31,17 +31,9 @@
 
 // Remaining C glue:
 // - variadic sb_printf() keeps C ABI/va_list handling at call site.
-// - sb_print_queries() reads C globals now/start_time.
 void sb_printf(stats_buffer_t *sb, const char *format, ...) {
   va_list args;
   va_start(args, format);
   mtproxy_ffi_sb_vprintf((mtproxy_ffi_stats_buffer_t *)sb, format, args);
   va_end(args);
-}
-
-void sb_print_queries(stats_buffer_t *sb, const char *const desc, long long q) {
-  extern __thread int now;
-  extern int start_time;
-  mtproxy_ffi_sb_print_queries((mtproxy_ffi_stats_buffer_t *)sb, desc, q, now,
-                               start_time);
 }

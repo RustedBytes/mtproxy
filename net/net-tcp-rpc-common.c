@@ -155,3 +155,12 @@ void tcp_set_max_dh_accept_rate(int rate) {
 int tcp_add_dh_accept(void) {
   return mtproxy_ffi_net_tcp_rpc_common_add_dh_accept();
 }
+
+int mtproxy_ffi_net_tcp_rpc_common_copy_remote_pid(connection_job_t c,
+                                                   struct process_id *out_pid) {
+  if (!c || !out_pid) {
+    return -1;
+  }
+  *out_pid = TCP_RPC_DATA(c)->remote_pid;
+  return 0;
+}

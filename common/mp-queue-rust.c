@@ -12,7 +12,6 @@
 static constexpr int MQ_MAGIC_RUST = 0x53ed7b41;
 static constexpr int MQ_MAGIC_RUST_SEM = 0x53ed7b42;
 
-static volatile int mpq_rust_bridge_state;
 volatile int mpq_rust_attached_queues;
 
 static inline int is_rust_magic(const int magic) {
@@ -44,12 +43,7 @@ static inline void bind_queue_handle(struct mp_queue *MQ, void *handle,
 }
 
 int mpq_rust_bridge_enable(void) {
-  __atomic_store_n(&mpq_rust_bridge_state, 1, __ATOMIC_RELEASE);
   return 0;
-}
-
-int mpq_rust_bridge_enabled(void) {
-  return __atomic_load_n(&mpq_rust_bridge_state, __ATOMIC_ACQUIRE) != 0;
 }
 
 int mpq_rust_queue_attached(struct mp_queue *MQ) {
@@ -93,21 +87,6 @@ void mpq_rust_clear_queue(struct mp_queue *MQ) {
   __sync_fetch_and_add(&mpq_rust_attached_queues, -1);
 }
 
-long mpq_rust_push(struct mp_queue *MQ, mqn_value_t val, int flags) {
-  int64_t pos = -1;
-  const int32_t rc =
-      mtproxy_ffi_mpq_handle_push(queue_handle(MQ), val, flags, &pos);
-  assert(rc == 0);
-  return (long)pos;
-}
-
-mqn_value_t mpq_rust_pop(struct mp_queue *MQ, int flags) {
-  void *out = NULL;
-  const int32_t rc = mtproxy_ffi_mpq_handle_pop(queue_handle(MQ), flags, &out);
-  assert(rc == 0 || rc == 1);
-  return rc == 1 ? out : NULL;
-}
-
 int mpq_rust_is_empty(struct mp_queue *MQ) {
   const int32_t rc = mtproxy_ffi_mpq_handle_is_empty(queue_handle(MQ));
   assert(rc == 0 || rc == 1);
@@ -121,15 +100,6 @@ long mpq_rust_push_w(struct mp_queue *MQ, mqn_value_t val, int flags) {
       mtproxy_ffi_mpq_handle_push_w(queue_handle(MQ), val, flags, &pos);
   assert(rc == 0);
   return (long)pos;
-}
-
-mqn_value_t mpq_rust_pop_w(struct mp_queue *MQ, int flags) {
-  assert(queue_is_waitable(MQ));
-  void *out = NULL;
-  const int32_t rc =
-      mtproxy_ffi_mpq_handle_pop_w(queue_handle(MQ), flags, &out);
-  assert(rc == 1);
-  return out;
 }
 
 mqn_value_t mpq_rust_pop_nw(struct mp_queue *MQ, int flags) {

@@ -108,6 +108,15 @@ connection_job_t rpc_target_choose_connection(rpc_target_job_t S,
       S, (const mtproxy_ffi_process_id_t *)pid);
 }
 
+connection_job_t
+mtproxy_ffi_rpc_target_choose_connection_by_pid(struct process_id *pid) {
+  if (!pid) {
+    return NULL;
+  }
+  rpc_target_job_t target = rpc_target_lookup(pid);
+  return rpc_target_choose_connection(target, pid);
+}
+
 int rpc_target_choose_random_connections(rpc_target_job_t S,
                                          struct process_id *pid, int limit,
                                          connection_job_t buf[]) {

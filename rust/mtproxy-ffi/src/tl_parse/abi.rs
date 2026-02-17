@@ -1710,6 +1710,53 @@ pub(crate) unsafe fn mtproxy_ffi_tl_query_answer_header_parse(
     tl_query_header_parse_impl(tlio_in, header, true)
 }
 
+pub(crate) unsafe fn mtproxy_ffi_tl_query_answer_is_error(header: *const TlQueryHeader) -> c_int {
+    let Some(header_ref) = ptr_ref(header) else {
+        return 0;
+    };
+    if header_ref.op == RPC_REQ_ERROR || header_ref.op == RPC_REQ_ERROR_WRAPPED {
+        1
+    } else {
+        0
+    }
+}
+
+pub(crate) unsafe fn mtproxy_ffi_tl_in_state_alloc_zeroed() -> *mut TlInState {
+    libc::calloc(1, size_of::<TlInState>()).cast::<TlInState>()
+}
+
+pub(crate) unsafe fn mtproxy_ffi_tl_in_state_free_legacy(tlio_in: *mut TlInState) {
+    let Some(tlio_in_ref) = in_state_mut(tlio_in) else {
+        return;
+    };
+    if let Some(fetch_clear) = in_methods_ref(tlio_in_ref).and_then(|m| m.fetch_clear) {
+        fetch_clear(tlio_in);
+    }
+    if !tlio_in_ref.error.is_null() {
+        libc::free(tlio_in_ref.error.cast::<c_void>());
+        tlio_in_ref.error = ptr::null_mut();
+    }
+    libc::free(tlio_in.cast::<c_void>());
+}
+
+pub(crate) unsafe fn mtproxy_ffi_tl_out_state_alloc_zeroed() -> *mut TlOutState {
+    libc::calloc(1, size_of::<TlOutState>()).cast::<TlOutState>()
+}
+
+pub(crate) unsafe fn mtproxy_ffi_tl_out_state_free_legacy(tlio_out: *mut TlOutState) {
+    let Some(tlio_out_ref) = out_state_mut(tlio_out) else {
+        return;
+    };
+    if let Some(store_clear) = out_methods_ref(tlio_out_ref).and_then(|m| m.store_clear) {
+        store_clear(tlio_out);
+    }
+    if !tlio_out_ref.error.is_null() {
+        libc::free(tlio_out_ref.error.cast::<c_void>());
+        tlio_out_ref.error = ptr::null_mut();
+    }
+    libc::free(tlio_out.cast::<c_void>());
+}
+
 pub(crate) unsafe fn mtproxy_ffi_tl_fetch_check(tlio_in: *mut TlInState, nbytes: c_int) -> c_int {
     abi_i32(fetch_check_impl(tlio_in, nbytes))
 }

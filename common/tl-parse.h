@@ -188,10 +188,6 @@ extern const struct tl_out_methods tl_out_raw_msg_methods;
 #define TL_ERROR (tlio_in->error)
 #define TL_ERRNUM (tlio_in->errnum)
 
-// #define TL_COPY_THROUGH (tlio->copy_through)
-
-// #define TL_ATTEMPT_NUM (tlio)->attempt_num
-
 int tlf_set_error_format(struct tl_in_state *tlio_in, int errnum,
                          const char *format, ...)
     __attribute__((format(printf, 3, 4)));
@@ -206,10 +202,6 @@ int tls_set_error_format(struct tl_out_state *tlio_out, int errnum,
 #define tl_store_set_error_format(...)                                         \
   tls_set_error_format(tlio_out, ##__VA_ARGS__)
 
-// int tlf_init_connection (struct tl_in_state *tlio_in, connection_job_t c, int
-// size); int tlf_init_iterator (struct tl_in_state *tlio_in, nb_iterator_t *it,
-// int size); int tlf_init_iterator_noskip (struct tl_in_state *tlio_in,
-// nb_iterator_t *it, int size);
 //  dup = 0 - delete reference
 //  dup = 1 - make msg valid raw message of size 0
 //  dup = 2 - clone message
@@ -218,38 +210,14 @@ int tlf_init_raw_message(struct tl_in_state *tlio_in, struct raw_message *msg,
 
 int tlf_init_str(struct tl_in_state *tlio_in, const char *s, int size);
 
-// int tls_init_connection (struct tl_out_state *tlio_out, connection_job_t c,
-// long long qid); int tls_init_connection_keep_error (struct tl_out_state
-// *tlio_out, connection_job_t c, long long qid);
 int tls_init_raw_msg(struct tl_out_state *tlio_out, struct process_id *pid,
                      long long qid);
-// int tls_init_raw_msg_keep_error (struct tl_out_state *tlio_out, struct
-// process_id *pid, long long qid);
 int tls_init_tcp_raw_msg(struct tl_out_state *tlio_out, JOB_REF_ARG(c),
                          long long qid);
-int tls_init_tcp_raw_msg_unaligned(struct tl_out_state *tlio_out,
-                                   JOB_REF_ARG(c), long long qid);
-// int tls_init_tcp_raw_msg_keep_error (struct tl_out_state *tlio_out,
-// connection_job_t c, long long qid); int tls_init_simple (struct tl_out_state
-// *tlio_out, connection_job_t c);
-int tls_init_str(struct tl_out_state *tlio_out, char *s, long long qid,
-                 int size);
-// int tls_init_str_keep_error (struct tl_out_state *tlio_out, char *s, long
-// long qid, int size); int tls_init_any_keep_error (struct tl_out_state
-// *tlio_out, enum tl_type type, void *out, long long qid);
 int tls_init_raw_msg_nosend(struct tl_out_state *tlio_out);
-// int tls_init_any (struct tl_out_state *tlio, enum tl_type type, void *out,
-// long long qid);
-int tls_init(struct tl_out_state *tlio_out, enum tl_type type,
-             struct process_id *pid, long long qid);
-// int tls_init_keep_error (struct tl_out_state *tlio_out, enum tl_type type,
-// struct process_id *pid, long long qid);
 
 int tlf_query_header(struct tl_in_state *tlio_in,
                      struct tl_query_header *header);
-int tlf_query_answer_header(struct tl_in_state *tlio_in,
-                            struct tl_query_header *header);
-int tls_header(struct tl_out_state *tlio_out, struct tl_query_header *header);
 
 int tls_end_ext(struct tl_out_state *tlio_out, int op);
 int tlf_check_rust(struct tl_in_state *tlio_in, int nbytes);
