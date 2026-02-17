@@ -55,8 +55,6 @@ enum {
   RPC_REQ_ERROR_WRAPPED = RPC_REQ_ERROR + 1,
 };
 
-extern long long rpc_queries_received, rpc_queries_ok, rpc_queries_error;
-
 struct tl_in_state;
 struct tl_out_state;
 struct tl_in_methods {
@@ -247,12 +245,8 @@ int tls_init(struct tl_out_state *tlio_out, enum tl_type type,
 // int tls_init_keep_error (struct tl_out_state *tlio_out, enum tl_type type,
 // struct process_id *pid, long long qid);
 
-int tlf_query_flags(struct tl_in_state *tlio_in,
-                    struct tl_query_header *header);
 int tlf_query_header(struct tl_in_state *tlio_in,
                      struct tl_query_header *header);
-int tlf_query_answer_flags(struct tl_in_state *tlio_in,
-                           struct tl_query_header *header);
 int tlf_query_answer_header(struct tl_in_state *tlio_in,
                             struct tl_query_header *header);
 int tls_header(struct tl_out_state *tlio_out, struct tl_query_header *header);

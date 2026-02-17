@@ -156,6 +156,15 @@ pub unsafe extern "C" fn mtproxy_ffi_am_get_memory_usage(
     }
 }
 
+/// Legacy C ABI wrapper for `am_get_memory_usage()`.
+///
+/// # Safety
+/// `a` must point to at least `m` writable 64-bit values.
+#[export_name = "am_get_memory_usage"]
+pub unsafe extern "C" fn c_am_get_memory_usage(pid: c_int, a: *mut i64, m: c_int) -> c_int {
+    unsafe { mtproxy_ffi_am_get_memory_usage(pid, a, m) }
+}
+
 /// Get memory stats from system
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_am_get_memory_stats(
@@ -210,6 +219,15 @@ pub unsafe extern "C" fn mtproxy_ffi_am_get_memory_stats(
     0
 }
 
+/// Legacy C ABI wrapper for `am_get_memory_stats()`.
+///
+/// # Safety
+/// `s` must be a valid writable pointer.
+#[export_name = "am_get_memory_stats"]
+pub unsafe extern "C" fn c_am_get_memory_stats(s: *mut AmMemoryStat, flags: c_int) -> c_int {
+    unsafe { mtproxy_ffi_am_get_memory_stats(s, flags) }
+}
+
 /// Register a stats callback function
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_sb_register_stat_fun(func: StatFunT) -> c_int {
@@ -252,6 +270,12 @@ pub unsafe extern "C" fn mtproxy_ffi_sb_register_stat_fun(func: StatFunT) -> c_i
     1
 }
 
+/// Legacy C ABI wrapper for `sb_register_stat_fun()`.
+#[export_name = "sb_register_stat_fun"]
+pub unsafe extern "C" fn c_sb_register_stat_fun(func: StatFunT) -> c_int {
+    unsafe { mtproxy_ffi_sb_register_stat_fun(func) }
+}
+
 /// Initialize stats buffer
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_sb_init(sb: *mut StatsBuffer, buff: *mut c_char, size: c_int) {
@@ -264,6 +288,15 @@ pub unsafe extern "C" fn mtproxy_ffi_sb_init(sb: *mut StatsBuffer, buff: *mut c_
     sb_ref.pos = 0;
     sb_ref.size = size;
     sb_ref.flags = 0;
+}
+
+/// Legacy C ABI wrapper for `sb_init()`.
+///
+/// # Safety
+/// `sb` must be writable.
+#[export_name = "sb_init"]
+pub unsafe extern "C" fn c_sb_init(sb: *mut StatsBuffer, buff: *mut c_char, size: c_int) {
+    unsafe { mtproxy_ffi_sb_init(sb, buff, size) }
 }
 
 /// Allocate stats buffer
@@ -287,6 +320,15 @@ pub unsafe extern "C" fn mtproxy_ffi_sb_alloc(sb: *mut StatsBuffer, size: c_int)
     sb_ref.flags = 1;
 }
 
+/// Legacy C ABI wrapper for `sb_alloc()`.
+///
+/// # Safety
+/// `sb` must be writable.
+#[export_name = "sb_alloc"]
+pub unsafe extern "C" fn c_sb_alloc(sb: *mut StatsBuffer, size: c_int) {
+    unsafe { mtproxy_ffi_sb_alloc(sb, size) }
+}
+
 /// Release stats buffer
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_sb_release(sb: *mut StatsBuffer) {
@@ -299,6 +341,15 @@ pub unsafe extern "C" fn mtproxy_ffi_sb_release(sb: *mut StatsBuffer) {
         unsafe { free(sb_ref.buff as *mut c_void) };
     }
     sb_ref.buff = core::ptr::null_mut();
+}
+
+/// Legacy C ABI wrapper for `sb_release()`.
+///
+/// # Safety
+/// `sb` must be writable.
+#[export_name = "sb_release"]
+pub unsafe extern "C" fn c_sb_release(sb: *mut StatsBuffer) {
+    unsafe { mtproxy_ffi_sb_release(sb) }
 }
 
 /// Truncate stats buffer when full
@@ -385,6 +436,15 @@ pub unsafe extern "C" fn mtproxy_ffi_sb_prepare(sb: *mut StatsBuffer) {
         }
         p = p_ref.next;
     }
+}
+
+/// Legacy C ABI wrapper for `sb_prepare()`.
+///
+/// # Safety
+/// `sb` must be writable.
+#[export_name = "sb_prepare"]
+pub unsafe extern "C" fn c_sb_prepare(sb: *mut StatsBuffer) {
+    unsafe { mtproxy_ffi_sb_prepare(sb) }
 }
 
 /// Printf to stats buffer with va_list (internal helper)
@@ -476,6 +536,15 @@ pub unsafe extern "C" fn mtproxy_ffi_sb_memory(sb: *mut StatsBuffer, flags: c_in
     }
 }
 
+/// Legacy C ABI wrapper for `sb_memory()`.
+///
+/// # Safety
+/// `sb` must be writable.
+#[export_name = "sb_memory"]
+pub unsafe extern "C" fn c_sb_memory(sb: *mut StatsBuffer, flags: c_int) {
+    unsafe { mtproxy_ffi_sb_memory(sb, flags) }
+}
+
 /// Helper to append string to stats buffer
 unsafe fn append_to_sb(sb: *mut StatsBuffer, text: &str) {
     if sb.is_null() {
@@ -551,6 +620,15 @@ pub unsafe extern "C" fn mtproxy_ffi_sb_sum_i(
     res
 }
 
+/// Legacy C ABI wrapper for `sb_sum_i()`.
+///
+/// # Safety
+/// `base` must point to `len` readable entries when `len > 0`.
+#[export_name = "sb_sum_i"]
+pub unsafe extern "C" fn c_sb_sum_i(base: *mut *mut c_void, len: c_int, offset: c_int) -> c_int {
+    unsafe { mtproxy_ffi_sb_sum_i(base, len, offset) }
+}
+
 /// Sum long longs from array
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_sb_sum_ll(
@@ -571,6 +649,15 @@ pub unsafe extern "C" fn mtproxy_ffi_sb_sum_ll(
         }
     }
     res
+}
+
+/// Legacy C ABI wrapper for `sb_sum_ll()`.
+///
+/// # Safety
+/// `base` must point to `len` readable entries when `len > 0`.
+#[export_name = "sb_sum_ll"]
+pub unsafe extern "C" fn c_sb_sum_ll(base: *mut *mut c_void, len: c_int, offset: c_int) -> i64 {
+    unsafe { mtproxy_ffi_sb_sum_ll(base, len, offset) }
 }
 
 /// Sum doubles from array
@@ -594,6 +681,19 @@ pub unsafe extern "C" fn mtproxy_ffi_sb_sum_f(
         }
     }
     res
+}
+
+/// Legacy C ABI wrapper for `sb_sum_f()`.
+///
+/// # Safety
+/// `base` must point to `len` readable entries when `len > 0`.
+#[export_name = "sb_sum_f"]
+pub unsafe extern "C" fn c_sb_sum_f(
+    base: *mut *mut c_void,
+    len: c_int,
+    offset: c_int,
+) -> c_double {
+    unsafe { mtproxy_ffi_sb_sum_f(base, len, offset) }
 }
 
 /// Print date to stats buffer
@@ -652,4 +752,17 @@ pub unsafe extern "C" fn mtproxy_ffi_sbp_print_date(
             unsafe { append_to_sb(sb, &formatted) };
         }
     }
+}
+
+/// Legacy C ABI wrapper for `sbp_print_date()`.
+///
+/// # Safety
+/// `sb` must be writable and `key` must be a valid C string.
+#[export_name = "sbp_print_date"]
+pub unsafe extern "C" fn c_sbp_print_date(
+    sb: *mut StatsBuffer,
+    key: *const c_char,
+    unix_time: c_long,
+) {
+    unsafe { mtproxy_ffi_sbp_print_date(sb, key, unix_time) }
 }

@@ -2,6 +2,34 @@
 
 use super::core::*;
 use crate::*;
+use core::ffi::CStr;
+use core::ptr::null_mut;
+
+unsafe extern "C" {
+    fn gethostbyname(name: *const c_char) -> *mut libc::hostent;
+    fn gethostbyname2(name: *const c_char, af: c_int) -> *mut libc::hostent;
+}
+
+#[no_mangle]
+pub static mut kdb_hosts_loaded: c_int = 0;
+
+static mut RESOLVER_HOST_IPV4: u32 = 0;
+static mut RESOLVER_HOST_ADDR_LIST: [*mut c_char; 2] = [null_mut(), null_mut()];
+static mut RESOLVER_HOST_RET: libc::hostent = libc::hostent {
+    h_name: null_mut(),
+    h_aliases: null_mut(),
+    h_addrtype: libc::AF_INET,
+    h_length: 4,
+    h_addr_list: null_mut(),
+};
+
+unsafe fn resolver_fallback_gethostbyname(name: *const c_char) -> *mut libc::hostent {
+    let host = unsafe { gethostbyname(name) };
+    if !host.is_null() {
+        return host;
+    }
+    unsafe { gethostbyname2(name, libc::AF_INET6) }
+}
 
 /// Returns FFI API version to C callers.
 #[no_mangle]
@@ -80,6 +108,16 @@ pub extern "C" fn mtproxy_ffi_resolver_kdb_load_hosts() -> i32 {
     resolver_kdb_load_hosts_impl()
 }
 
+/// Legacy C ABI wrapper for `kdb_load_hosts()`.
+#[export_name = "kdb_load_hosts"]
+pub extern "C" fn c_kdb_load_hosts() -> c_int {
+    let rc = resolver_kdb_load_hosts_impl();
+    unsafe {
+        kdb_hosts_loaded = resolver_kdb_hosts_loaded_impl();
+    }
+    rc
+}
+
 /// Returns current resolver cache load state (`kdb_hosts_loaded`).
 #[no_mangle]
 pub extern "C" fn mtproxy_ffi_resolver_kdb_hosts_loaded() -> i32 {
@@ -98,6 +136,61 @@ pub unsafe extern "C" fn mtproxy_ffi_resolver_gethostbyname_plan(
     out_ipv4: *mut u32,
 ) -> i32 {
     unsafe { resolver_gethostbyname_plan_ffi(name, out_kind, out_ipv4) }
+}
+
+/// Legacy C ABI wrapper for `kdb_gethostbyname()`.
+///
+/// # Safety
+/// `name` must be a valid NUL-terminated C string.
+#[export_name = "kdb_gethostbyname"]
+pub unsafe extern "C" fn c_kdb_gethostbyname(name: *const c_char) -> *mut libc::hostent {
+    if name.is_null() {
+        return null_mut();
+    }
+    let name_bytes = unsafe { CStr::from_ptr(name) }.to_bytes();
+    if name_bytes.is_empty() {
+        return null_mut();
+    }
+    if unsafe { kdb_hosts_loaded } == 0 {
+        c_kdb_load_hosts();
+    }
+
+    if name_bytes.len() >= 2
+        && name_bytes.len() <= 64
+        && name_bytes[0] == b'['
+        && name_bytes[name_bytes.len() - 1] == b']'
+    {
+        let inner_len = name_bytes.len() - 2;
+        let mut buf = [0u8; 64];
+        buf[..inner_len].copy_from_slice(&name_bytes[1..(name_bytes.len() - 1)]);
+        buf[inner_len] = 0;
+        return unsafe { gethostbyname2(buf.as_ptr().cast(), libc::AF_INET6) };
+    }
+
+    let mut kind = RESOLVER_LOOKUP_SYSTEM_DNS;
+    let mut hosts_ip = 0u32;
+    let rc = unsafe { resolver_gethostbyname_plan_ffi(name, &raw mut kind, &raw mut hosts_ip) };
+    if rc < 0 {
+        return unsafe { resolver_fallback_gethostbyname(name) };
+    }
+
+    match kind {
+        RESOLVER_LOOKUP_HOSTS_IPV4 => {
+            unsafe {
+                RESOLVER_HOST_IPV4 = hosts_ip.to_be();
+                RESOLVER_HOST_ADDR_LIST[0] = (&raw mut RESOLVER_HOST_IPV4).cast();
+                RESOLVER_HOST_ADDR_LIST[1] = null_mut();
+                RESOLVER_HOST_RET.h_name = name.cast_mut();
+                RESOLVER_HOST_RET.h_aliases = null_mut::<*mut c_char>();
+                RESOLVER_HOST_RET.h_addrtype = libc::AF_INET;
+                RESOLVER_HOST_RET.h_length = 4;
+                RESOLVER_HOST_RET.h_addr_list = (&raw mut RESOLVER_HOST_ADDR_LIST).cast();
+                &raw mut RESOLVER_HOST_RET
+            }
+        }
+        RESOLVER_LOOKUP_NOT_FOUND => null_mut(),
+        _ => unsafe { resolver_fallback_gethostbyname(name) },
+    }
 }
 
 /// Converts Linux epoll flags into net event flags.

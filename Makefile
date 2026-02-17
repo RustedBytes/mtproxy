@@ -46,7 +46,6 @@ DEPENDENCE_STRANGE	:=	$(subst ${OBJ}/,${DEP}/,$(patsubst %.o,%.d,${OBJECTS_STRAN
 DEPENDENCE_RUST	:=	$(subst ${OBJ}/,${DEP}/,$(patsubst %.o,%.d,${RUST_OBJECTS}))
 
 LIB_OBJS_NORMAL := \
-	${OBJ}/common/resolver.o \
 	${OBJ}/common/parse-config.o \
 	${OBJ}/jobs/jobs.o \
 	${OBJ}/common/mp-queue-rust.o \
