@@ -35,9 +35,9 @@ EXELIST	:= ${EXE}/mtproto-proxy
 # Legacy C-wrapper build path remains transitional.
 # Canonical runtime entrypoint is rust/mtproxy-bin (mtproxy-rust).
 RUST_OBJECTS	=	\
-  ${OBJ}/mtproto/mtproto-proxy.rust.o ${OBJ}/mtproto/mtproto-config.o ${OBJ}/net/net-tcp-rpc-ext-server.o
+  ${OBJ}/mtproto/mtproto-proxy.rust.o ${OBJ}/mtproto/mtproto-config.o
 RUST_OBJECTS_COMMON	=	\
-  ${OBJ}/mtproto/mtproto-config.o ${OBJ}/net/net-tcp-rpc-ext-server.o
+  ${OBJ}/mtproto/mtproto-config.o
 RUST_RS_SOURCES := $(shell find rust/mtproxy-core/src rust/mtproxy-ffi/src -type f -name '*.rs')
 RUST_RUNTIME_RELEASE = target/release/mtproxy-rust
 

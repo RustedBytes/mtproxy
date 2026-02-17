@@ -21,10 +21,6 @@
 
 #pragma once
 
-enum {
-  TCP_RPCS_ALLOW_UNOBFS = 0,
-};
-
 #include "net/net-connections.h"
 
 extern conn_type_t ct_tcp_rpc_ext_server;
