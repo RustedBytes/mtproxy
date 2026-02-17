@@ -43,8 +43,10 @@
 
 #include "server-functions.h"
 
-long long max_allocated_buffer_bytes __attribute__((weak));
 int default_parse_option_func(int a);
+void usage(void);
+void engine_add_net_parse_options(void);
+void engine_add_engine_parse_options(void);
 
 int engine_options_num;
 char *engine_options[MAX_ENGINE_OPTIONS];
@@ -57,17 +59,6 @@ const char *username, *progname, *groupname;
 void engine_set_terminal_attributes(void) __attribute__((weak));
 void engine_set_terminal_attributes(void) {}
 
-void usage(void) __attribute__((weak));
-void usage(void) {
-  printf("usage: %s <args>\n", progname ? progname : "SOMETHING");
-  exit(2);
-}
-
-void engine_add_net_parse_options(void) __attribute__((weak));
-void engine_add_net_parse_options(void) {}
-void engine_add_engine_parse_options(void) __attribute__((weak));
-void engine_add_engine_parse_options(void) {}
-
 int change_user_group(const char *new_username, const char *new_groupname) {
   return rust_change_user_group(new_username, new_groupname);
 }
@@ -77,11 +68,6 @@ int change_user(const char *new_username) {
 }
 
 int raise_file_rlimit(int maxfiles) { return rust_raise_file_rlimit(maxfiles); }
-
-const char *get_version_string(void) __attribute__((weak));
-const char *get_version_string(void) {
-  return "unknown compiled at " __DATE__ " " __TIME__ " by gcc " __VERSION__;
-}
 
 void print_backtrace(void) { rust_print_backtrace(); }
 

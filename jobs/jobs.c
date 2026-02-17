@@ -381,8 +381,7 @@ void update_all_thread_stats(void) {
   }
 }
 
-void wakeup_main_thread(void) __attribute__((weak));
-void wakeup_main_thread(void) {}
+void wakeup_main_thread(void);
 
 static constexpr size_t JOB_THREAD_STACK_SIZE = 4u << 20;
 

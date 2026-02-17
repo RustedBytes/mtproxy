@@ -38,8 +38,7 @@
 #include "engine/engine.h"
 #include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 
-void engine_set_terminal_attributes(void) __attribute__((weak));
-void engine_set_terminal_attributes(void) {}
+void engine_set_terminal_attributes(void);
 
 void signal_set_pending(int sig) { mtproxy_ffi_engine_signal_set_pending(sig); }
 
