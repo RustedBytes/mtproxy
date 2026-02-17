@@ -418,9 +418,6 @@ unsafe extern "C" {
     #[link_name = "tls_end_ext"]
     fn c_tls_end_ext(tlio_out: *mut c_void, op: c_int) -> c_int;
 
-    #[link_name = "tl_aio_init_store"]
-    fn c_tl_aio_init_store(type_: c_int, pid: *mut ProcessId, qid: c_longlong) -> *mut c_void;
-
     fn rwm_clone(dest_raw: *mut RawMessage, src_raw: *mut RawMessage);
     fn rwm_free(raw: *mut RawMessage) -> c_int;
 
@@ -438,26 +435,6 @@ unsafe extern "C" {
     #[link_name = "tlf_query_header"]
     fn c_tlf_query_header(tlio_in: *mut c_void, header: *mut TlQueryHeader) -> c_int;
     fn tl_query_header_delete(h: *mut TlQueryHeader);
-
-    #[link_name = "create_query_custom_job"]
-    fn c_create_query_custom_job(
-        job: OpaqueJob,
-        raw: *mut RawMessage,
-        timeout: c_double,
-        fd: c_int,
-        generation: c_int,
-    ) -> c_int;
-    #[link_name = "create_query_job"]
-    fn c_create_query_job(
-        job: OpaqueJob,
-        raw: *mut RawMessage,
-        h: *mut TlQueryHeader,
-        timeout: c_double,
-        remote_pid: *mut ProcessId,
-        out_type: c_int,
-        fd: c_int,
-        generation: c_int,
-    ) -> c_int;
 
     fn mtproxy_ffi_engine_rpc_custom_op_has_any() -> c_int;
 
@@ -1435,7 +1412,7 @@ pub(super) unsafe fn process_query_job_impl(job: Job, op: c_int, _jt: *mut c_voi
                 }
                 if io.is_null() {
                     io = unsafe {
-                        c_tl_aio_init_store((*p).type_, &raw mut (*p).pid, (*(*p).h).qid)
+                        tl_aio_init_store_impl((*p).type_, &raw mut (*p).pid, (*(*p).h).qid)
                     }
                     .cast::<TlOutState>();
                 }
@@ -1484,7 +1461,8 @@ pub(super) unsafe fn process_query_job_impl(job: Job, op: c_int, _jt: *mut c_voi
                 return 0;
             }
             if unsafe { (*p).answer_sent } == 0 {
-                io = unsafe { c_tl_aio_init_store((*p).type_, &raw mut (*p).pid, (*(*p).h).qid) }
+                io =
+                    unsafe { tl_aio_init_store_impl((*p).type_, &raw mut (*p).pid, (*(*p).h).qid) }
                     .cast::<TlOutState>();
             }
             if !io.is_null() {
@@ -1537,7 +1515,8 @@ pub(super) unsafe fn process_query_job_impl(job: Job, op: c_int, _jt: *mut c_voi
         }
         JS_ABORT => {
             if unsafe { (*p).answer_sent } == 0 {
-                io = unsafe { c_tl_aio_init_store((*p).type_, &raw mut (*p).pid, (*(*p).h).qid) }
+                io =
+                    unsafe { tl_aio_init_store_impl((*p).type_, &raw mut (*p).pid, (*(*p).h).qid) }
                     .cast::<TlOutState>();
             }
             if !io.is_null() {
@@ -1645,7 +1624,7 @@ pub(super) unsafe fn query_job_run_impl(job: Job, fd: c_int, generation: c_int) 
         };
         unsafe {
             rwm_clone(&raw mut r, (*io).in_.cast::<RawMessage>());
-            res = c_create_query_custom_job(job.cast(), &raw mut r, 0.0, fd, generation);
+            res = create_query_custom_job_impl(job.cast(), &raw mut r, 0.0, fd, generation);
             rwm_free(&raw mut r);
         }
     } else if dispatch_decision == MTPROXY_FFI_ENGINE_RPC_QJ_IGNORE {
@@ -1660,7 +1639,7 @@ pub(super) unsafe fn query_job_run_impl(job: Job, fd: c_int, generation: c_int) 
 
         if unsafe { tlf_error_rust(io.cast()) } != 0 {
             let out =
-                unsafe { c_tl_aio_init_store((*q).src_type, &raw mut (*q).src_pid, (*h).qid) }
+                unsafe { tl_aio_init_store_impl((*q).src_type, &raw mut (*q).src_pid, (*h).qid) }
                     .cast::<TlOutState>();
             if !out.is_null() {
                 unsafe {
@@ -1686,7 +1665,7 @@ pub(super) unsafe fn query_job_run_impl(job: Job, fd: c_int, generation: c_int) 
             };
             unsafe {
                 rwm_clone(&raw mut r, (*io).in_.cast::<RawMessage>());
-                res = c_create_query_job(
+                res = create_query_job_impl(
                     job.cast(),
                     &raw mut r,
                     h,

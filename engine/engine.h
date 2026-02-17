@@ -155,12 +155,6 @@ typedef struct event_precise_cron {
   void (*wakeup)(struct event_precise_cron *arg);
 } event_precise_cron_t;
 
-void set_signals_handlers(void);
-void engine_init(const char *const pwd_filename, int do_not_open_port);
-int signal_check_pending_and_clear(int sig);
-int signal_check_pending(int sig);
-void signal_set_pending(int sig);
-
 extern engine_t *engine_state;
 
 static inline void engine_enable_ipv6(void) {
@@ -275,14 +269,4 @@ static inline int engine_get_required_tcp_io_threads(void) {
   return engine_state->required_tcp_io_threads;
 }
 
-void reopen_logs(void);
 int default_main(server_functions_t *F, int argc, char *argv[]);
-void default_parse_extra_args(int argc, char *argv[]);
-void engine_tl_init(struct tl_act_extra *(*parse)(struct tl_in_state *,
-                                                  long long),
-                    void (*stat)(struct tl_out_state *),
-                    int (*get_op)(struct tl_in_state *), double timeout,
-                    const char *name);
-void server_init(conn_type_t *listen_connection_type,
-                 void *listen_connection_extra);
-void usage(void);

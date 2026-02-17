@@ -36,6 +36,7 @@
 #include <unistd.h>
 
 #include "common/precise-time.h"
+#include "common/server-functions.h"
 #include "common/tl-parse.h"
 
 #include "engine/engine.h"
@@ -55,9 +56,6 @@ extern void mtproxy_ffi_engine_server_init(void *listen_connection_type,
                                            void *listen_connection_extra,
                                            int32_t pipe_read_end);
 extern void mtproxy_ffi_engine_rpc_stats(struct tl_out_state *tlio_out);
-extern void mtproxy_ffi_engine_default_parse_extra_args(int32_t argc,
-                                                        char **argv);
-extern void mtproxy_ffi_engine_set_signals_handlers(void);
 extern void
 mtproxy_ffi_engine_set_epoll_wait_timeout(int32_t epoll_wait_timeout);
 
@@ -78,8 +76,6 @@ double precise_now_diff;
 engine_t *engine_state;
 
 unsigned char server_ipv6[16];
-
-void set_signals_handlers(void) { mtproxy_ffi_engine_set_signals_handlers(); }
 
 static int pipe_read_end;
 static int pipe_write_end;
@@ -128,10 +124,6 @@ int default_main(server_functions_t *F, int argc, char *argv[]) {
 
 void engine_add_engine_parse_options(void) {
   mtproxy_ffi_engine_add_engine_parse_options();
-}
-
-void default_parse_extra_args(int argc, [[maybe_unused]] char *argv[]) {
-  mtproxy_ffi_engine_default_parse_extra_args(argc, argv);
 }
 
 int default_parse_option_func(int a) {

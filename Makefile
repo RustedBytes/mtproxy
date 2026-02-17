@@ -55,9 +55,7 @@ LIB_OBJS_NORMAL := \
 	${OBJ}/net/net-tcp-connections.o ${OBJ}/net/net-tcp-rpc-common.o ${OBJ}/net/net-tcp-rpc-client.o ${OBJ}/net/net-tcp-rpc-server.o \
 	${OBJ}/net/net-http-server.o \
 	${OBJ}/common/tl-parse.o ${OBJ}/common/common-stats.o \
-	${OBJ}/engine/engine.o ${OBJ}/engine/engine-signals.o \
-	${OBJ}/engine/engine-net.o \
-	${OBJ}/engine/engine-rpc.o \
+	${OBJ}/engine/engine.o \
 	${OBJ}/engine/engine-rpc-common.o \
 	${OBJ}/net/net-thread.o ${OBJ}/net/net-stats.o \
 	${OBJ}/common/kprintf.o \

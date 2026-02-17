@@ -487,8 +487,15 @@ struct async_job;
 struct raw_message;
 struct job_message;
 struct event_timer;
+struct process_id;
+struct tl_act_extra;
 typedef int32_t (*mtproxy_ffi_engine_net_try_open_port_fn)(int32_t port, void *ctx);
 typedef void (*mtproxy_ffi_engine_signal_dispatch_fn)(int32_t sig, void *ctx);
+typedef void (*mtproxy_ffi_engine_rpc_custom_op_fn)(void *tlio_in, void *params);
+typedef void (*mtproxy_ffi_engine_rpc_query_result_fn)(void *tlio_in, void *query_header);
+typedef void *(*mtproxy_ffi_engine_rpc_parse_fn)(void *tlio_in, int64_t actor_id);
+typedef void (*mtproxy_ffi_engine_rpc_stat_fn)(void *tlio_out);
+typedef int32_t (*mtproxy_ffi_engine_rpc_get_op_fn)(void *tlio_in);
 
 enum { MTPROXY_FFI_ENGINE_RPC_COMMON_PARSE_NONE = 0 };
 enum { MTPROXY_FFI_ENGINE_RPC_COMMON_PARSE_STAT = 1 };
@@ -1198,6 +1205,53 @@ int32_t mtproxy_ffi_engine_process_signals_allowed(
 );
 int32_t mtproxy_ffi_engine_rpc_result_new_flags(int32_t old_flags);
 int32_t mtproxy_ffi_engine_rpc_result_header_len(int32_t flags);
+void *mtproxy_ffi_engine_rpc_tl_aio_init_store(int32_t type, struct process_id *pid, int64_t qid);
+void mtproxy_ffi_engine_rpc_register_custom_op_cb(
+  uint32_t op,
+  mtproxy_ffi_engine_rpc_custom_op_fn func
+);
+void mtproxy_ffi_engine_rpc_engine_work_rpc_req_result(void *tlio_in, void *params);
+void mtproxy_ffi_engine_rpc_tl_default_act_free(struct tl_act_extra *extra);
+void mtproxy_ffi_engine_rpc_tl_query_result_fun_set(
+  mtproxy_ffi_engine_rpc_query_result_fn func,
+  int32_t query_type_id
+);
+void mtproxy_ffi_engine_rpc_engine_tl_init(
+  mtproxy_ffi_engine_rpc_parse_fn parse,
+  mtproxy_ffi_engine_rpc_stat_fn stat,
+  mtproxy_ffi_engine_rpc_get_op_fn get_op,
+  double timeout
+);
+void mtproxy_ffi_engine_rpc_tl_engine_store_stats(void *tlio_out);
+int32_t mtproxy_ffi_engine_rpc_create_query_job(
+  void *job,
+  struct raw_message *raw,
+  void *query_header,
+  double timeout,
+  struct process_id *remote_pid,
+  int32_t out_type,
+  int32_t fd,
+  int32_t generation
+);
+int64_t mtproxy_ffi_engine_rpc_tl_generate_next_qid(int32_t query_type_id);
+int32_t mtproxy_ffi_engine_rpc_create_query_custom_job(
+  void *job,
+  struct raw_message *raw,
+  double timeout,
+  int32_t fd,
+  int32_t generation
+);
+int32_t mtproxy_ffi_engine_rpc_default_tl_close_conn(void *c, int32_t who);
+int32_t mtproxy_ffi_engine_rpc_default_tl_tcp_rpcs_execute(
+  void *c,
+  int32_t op,
+  struct raw_message *raw
+);
+int32_t mtproxy_ffi_engine_rpc_tl_store_stats(
+  void *tlio_out,
+  const char *s,
+  int32_t raw
+);
 
 // mtproto-proxy helpers for external-connection hashing/tagging.
 int32_t mtproxy_ffi_mtproto_ext_conn_hash(int32_t in_fd, int64_t in_conn_id, int32_t hash_shift);

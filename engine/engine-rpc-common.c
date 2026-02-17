@@ -29,8 +29,6 @@
 #include <stdlib.h>
 #include <sys/time.h>
 
-#include "engine/engine-rpc-common.h"
-
 #include "common/precise-time.h"
 #include "common/tl-parse.h"
 #include "engine/engine-rpc.h"
@@ -85,3 +83,12 @@ struct tl_act_extra *tl_default_parse_function(struct tl_in_state *tlio_in,
   }
   return nullptr;
 }
+
+struct tl_act_extra *
+mtproxy_ffi_engine_rpc_call_default_parse_function(struct tl_in_state *tlio_in,
+                                                   long long actor_id) {
+  return tl_default_parse_function(tlio_in, actor_id);
+}
+
+void paramed_type_free(struct paramed_type *P) __attribute__((weak));
+void paramed_type_free([[maybe_unused]] struct paramed_type *P) {}

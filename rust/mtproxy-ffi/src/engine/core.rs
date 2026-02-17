@@ -42,6 +42,8 @@ const EPOLL_TIMEOUT_DEFAULT: c_int = 1;
 const DEFAULT_BACKLOG: c_int = 8192;
 const MAX_CONNECTIONS: c_int = 65536;
 const RPCF_USE_CRC32C: c_int = 2048;
+const RPCF_ALLOW_SKIP_DH: c_int = 8;
+const PRIVILEGED_TCP_PORTS: c_int = 1024;
 
 const PORT_RANGE_MOD: c_int = 100;
 const RAISE_FILE_GAP: c_int = 16;
@@ -49,7 +51,10 @@ const AES_LOAD_PWD_FILE_OPTIONAL_ERROR: c_int = i32::MIN;
 
 const REQUIRED_ARGUMENT: c_int = 1;
 const OPTIONAL_ARGUMENT: c_int = 2;
+const NO_ARGUMENT: c_int = 0;
 const LONGOPT_JOBS_SET: c_uint = 0x0000_0400;
+const LONGOPT_TCP_SET: c_uint = 0x0000_2000;
+const LONGOPT_NET_SET: c_uint = LONGOPT_TCP_SET;
 const EVT_READ: c_int = 4;
 const EVT_LEVEL: c_int = 8;
 const SM_IPV6: c_int = 2;
@@ -88,6 +93,48 @@ const OPTION_TCP_IO_THREADS_NAME: &[u8] = b"tcp-iothreads\0";
 const OPTION_TCP_IO_THREADS_HELP: &[u8] = b"number of tcp-io threads\0";
 const FATAL_PORT_UNDEFINED_FMT: &[u8] = b"fatal: port isn't defined\n\0";
 const EXTRA_ARGS_FMT: &[u8] = b"Extra args\n\0";
+const OPENED_TCP_SOCKET_FMT: &[u8] = b"opened tcp socket\n\0";
+const CANNOT_OPEN_SERVER_SOCKET_FMT: &[u8] = b"cannot open server socket at port %d: %m\n\0";
+const CANNOT_OPEN_SERVER_SOCKET_RANGE_FMT: &[u8] =
+    b"cannot open server socket at port %d-%d\n\0";
+const CANNOT_CONVERT_IP_FMT: &[u8] = b"Can not convert '%s' to ip addr: %m\n\0";
+
+const NET_OPT_BACKLOG_NAME: &[u8] = b"backlog\0";
+const NET_OPT_BACKLOG_HELP: &[u8] = b"sets backlog size\0";
+const NET_OPT_CONNECTIONS_NAME: &[u8] = b"connections\0";
+const NET_OPT_CONNECTIONS_HELP: &[u8] = b"sets maximal connections number\0";
+const NET_OPT_PORT_NAME: &[u8] = b"port\0";
+const NET_OPT_PORT_HELP: &[u8] =
+    b"<port> or <sport>:<eport> sets listening port number or port range\0";
+const NET_OPT_AES_PWD_NAME: &[u8] = b"aes-pwd\0";
+const NET_OPT_AES_PWD_HELP: &[u8] = b"sets custom secret.conf file\0";
+const NET_OPT_IPV6_NAME: &[u8] = b"ipv6\0";
+const NET_OPT_IPV6_HELP: &[u8] = b"enables ipv6 TCP/UDP support\0";
+const NET_OPT_DISABLE_TCP_NAME: &[u8] = b"disable-tcp\0";
+const NET_OPT_DISABLE_TCP_HELP: &[u8] = b"do not open listening tcp socket\0";
+const NET_OPT_CRC32C_NAME: &[u8] = b"crc32c\0";
+const NET_OPT_CRC32C_HELP: &[u8] = b"Try to use crc32c instead of crc32 in tcp rpc\0";
+const NET_OPT_ALLOW_SKIP_DH_NAME: &[u8] = b"allow-skip-dh\0";
+const NET_OPT_ALLOW_SKIP_DH_HELP: &[u8] = b"Allow skipping DH during RPC handshake\0";
+const NET_OPT_FORCE_DH_NAME: &[u8] = b"force-dh\0";
+const NET_OPT_FORCE_DH_HELP: &[u8] = b"Force using DH for all outbound RPC connections\0";
+const NET_OPT_MAX_ACCEPT_RATE_NAME: &[u8] = b"max-accept-rate\0";
+const NET_OPT_MAX_ACCEPT_RATE_HELP: &[u8] =
+    b"max number of connections per second that is allowed to accept\0";
+const NET_OPT_MAX_DH_ACCEPT_RATE_NAME: &[u8] = b"max-dh-accept-rate\0";
+const NET_OPT_MAX_DH_ACCEPT_RATE_HELP: &[u8] =
+    b"max number of DH connections per second that is allowed to accept\0";
+const NET_OPT_NAT_INFO_NAME: &[u8] = b"nat-info\0";
+const NET_OPT_NAT_INFO_HELP: &[u8] =
+    b"<local-addr>:<global-addr>\tsets network address translation for RPC protocol handshake\0";
+const NET_OPT_ADDRESS_NAME: &[u8] = b"address\0";
+const NET_OPT_ADDRESS_HELP: &[u8] = b"tries to bind socket only to specified address\0";
+
+const SIGINT_IMMEDIATE_MSG: &[u8] = b"SIGINT handled immediately.\n";
+const SIGTERM_IMMEDIATE_MSG: &[u8] = b"SIGTERM handled immediately.\n";
+const SIGINT_MSG: &[u8] = b"SIGINT handled.\n";
+const SIGTERM_MSG: &[u8] = b"SIGTERM handled.\n";
+const RECEIVED_SIGNAL_TEMPLATE: [u8; 19] = *b"received signal ??\n";
 
 type Job = *mut c_void;
 
@@ -102,6 +149,11 @@ type CustomOpFn = Option<unsafe extern "C" fn(*mut c_void, *mut c_void)>;
 type JobExecuteFn = Option<unsafe extern "C" fn(Job, c_int, *mut c_void) -> c_int>;
 type JobTimerWakeupFn = Option<unsafe extern "C" fn(*mut c_void) -> c_double>;
 type KsignalHandler = Option<unsafe extern "C" fn(c_int)>;
+type EngineNetTryOpenPortFn = Option<unsafe extern "C" fn(c_int, *mut c_void) -> c_int>;
+type ConnExecuteFn = Option<unsafe extern "C" fn(*mut c_void, c_int, *mut c_void) -> c_int>;
+type ConnReadyFn = Option<unsafe extern "C" fn(*mut c_void) -> c_int>;
+type ConnCryptoInitFn = Option<unsafe extern "C" fn(*mut c_void, *mut c_void) -> c_int>;
+type ConnCloseFn = Option<unsafe extern "C" fn(*mut c_void, c_int) -> c_int>;
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -140,6 +192,29 @@ struct StatsBuffer {
 struct RpcCustomOp {
     op: c_uint,
     func: CustomOpFn,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct TcpRpcServerFunctions {
+    info: *mut c_void,
+    rpc_extra: *mut c_void,
+    execute: ConnExecuteFn,
+    check_ready: ConnReadyFn,
+    flush_packet: ConnReadyFn,
+    rpc_check_perm: ConnReadyFn,
+    rpc_init_crypto: ConnCryptoInitFn,
+    nop: *mut c_void,
+    rpc_wakeup: ConnReadyFn,
+    rpc_alarm: ConnReadyFn,
+    rpc_ready: ConnReadyFn,
+    rpc_close: ConnCloseFn,
+    max_packet_len: c_int,
+    mode_flags: c_int,
+    memcache_fallback_type: *mut c_void,
+    memcache_fallback_extra: *mut c_void,
+    http_fallback_type: *mut c_void,
+    http_fallback_extra: *mut c_void,
 }
 
 #[repr(C)]
@@ -237,18 +312,19 @@ unsafe extern "C" {
     static mut epoll_sleep_ns: c_int;
     static mut daemonize: c_int;
     static mut ct_http_server: u8;
+    static mut ct_tcp_rpc_server: u8;
     static mut PID: ProcessId;
 
     static mut precise_cron_events: EventPreciseCron;
 
     fn kprintf(format: *const c_char, ...);
+    fn kwrite(fd: c_int, buf: *const c_void, count: c_int) -> c_int;
+    fn inet_pton(af: c_int, src: *const c_char, dst: *mut c_void) -> c_int;
     fn mtproxy_ffi_engine_now_value() -> c_int;
     fn mtproxy_ffi_engine_precise_now_value() -> c_double;
     static mut verbosity: c_int;
 
-    fn engine_set_tcp_methods(f: *mut c_void);
     fn mtproxy_ffi_engine_check_conn_functions_bridge(conn_type: *mut c_void) -> c_int;
-    fn engine_set_http_fallback(http_type: *mut c_void, http_functions: *mut c_void);
     fn add_builtin_parse_options();
     fn parse_engine_options_long(argc: c_int, argv: *mut *mut c_char) -> c_int;
     fn rust_sf_register_parse_option_ex_or_die(
@@ -260,42 +336,56 @@ unsafe extern "C" {
         help: *const c_char,
     );
     fn mtproxy_ffi_engine_usage_bridge();
-    fn engine_tl_init(
+    fn server_init(listen_connection_type: *mut c_void, listen_connection_extra: *mut c_void);
+    fn server_socket(port: c_int, in_addr: libc::in_addr, backlog: c_int, mode: c_int) -> c_int;
+    fn mtproxy_ffi_engine_rpc_engine_tl_init(
         parse: ParseFn,
         stat: Option<unsafe extern "C" fn(*mut c_void)>,
         get_op: GetOpFn,
         timeout: c_double,
-        name: *const c_char,
     );
     fn init_epoll();
     fn engine_rpc_stats(tlio_out: *mut c_void);
 
-    fn default_parse_extra_args(argc: c_int, argv: *mut *mut c_char);
-    fn default_close_network_sockets();
-    fn sigint_handler(sig: c_int);
-    fn sigterm_handler(sig: c_int);
-    fn empty_signal_handler(sig: c_int);
-    fn sigint_immediate_handler(sig: c_int);
-    fn sigterm_immediate_handler(sig: c_int);
     fn set_debug_handlers();
-    fn signal_check_pending(sig: c_int) -> c_int;
-    fn quiet_signal_handler(sig: c_int);
-    fn default_signal_handler(sig: c_int);
+    fn mtproxy_ffi_engine_signal_set_pending(sig: c_int);
+    fn mtproxy_ffi_engine_signal_check_pending(sig: c_int) -> c_int;
+    fn mtproxy_ffi_engine_signal_check_pending_and_clear(sig: c_int) -> c_int;
+    fn mtproxy_ffi_engine_interrupt_signal_raised() -> c_int;
+    fn mtproxy_ffi_engine_process_signals_allowed(
+        allowed_signals: u64,
+        dispatch: Option<unsafe extern "C" fn(c_int, *mut c_void)>,
+        dispatch_ctx: *mut c_void,
+    ) -> c_int;
+    fn engine_set_terminal_attributes();
     fn reopen_logs_ext(is_slave_mode: c_int);
 
-    fn engine_do_open_port();
     fn raise_file_rlimit(maxfiles: c_int) -> c_int;
     fn tcp_set_max_connections(maxconn: c_int);
     fn aes_load_pwd_file(pathname: *const c_char) -> c_int;
     fn change_user_group(new_username: *const c_char, new_groupname: *const c_char) -> c_int;
-    fn try_open_port_range(
+    fn mtproxy_ffi_engine_net_default_port_mod() -> c_int;
+    fn mtproxy_ffi_engine_net_try_open_port_range(
         start_port: c_int,
         end_port: c_int,
         mod_port: c_int,
         rem_port: c_int,
         quit_on_fail: c_int,
+        try_open: EngineNetTryOpenPortFn,
+        try_open_ctx: *mut c_void,
+        out_selected_port: *mut c_int,
     ) -> c_int;
-    fn get_port_mod() -> c_int;
+    fn mtproxy_ffi_engine_net_open_privileged_port(
+        port: c_int,
+        start_port: c_int,
+        end_port: c_int,
+        port_mod: c_int,
+        tcp_enabled: c_int,
+        quit_on_fail: c_int,
+        try_open: EngineNetTryOpenPortFn,
+        try_open_ctx: *mut c_void,
+        out_selected_port: *mut c_int,
+    ) -> c_int;
     fn init_server_PID(ip: c_uint, port: c_int);
     fn get_my_ipv4() -> c_uint;
     fn get_my_ipv6(ipv6: *mut u8) -> c_int;
@@ -306,6 +396,20 @@ unsafe extern "C" {
     fn alloc_timer_manager(thread_class: c_int) -> Job;
     fn notification_event_job_create();
     fn tcp_set_default_rpc_flags(mask: c_uint, flags: c_int);
+    fn tcp_force_enable_dh();
+    fn tcp_set_max_accept_rate(rate: c_int);
+    fn tcp_set_max_dh_accept_rate(rate: c_int);
+    fn net_add_nat_info(str: *mut c_char) -> c_int;
+    fn server_check_ready(c: *mut c_void) -> c_int;
+    fn tcp_rpc_flush_packet(c: *mut c_void) -> c_int;
+    fn tcp_rpcs_default_check_perm(c: *mut c_void) -> c_int;
+    fn tcp_rpcs_init_crypto(c: *mut c_void, p: *mut c_void) -> c_int;
+    fn mtproxy_ffi_engine_rpc_default_tl_tcp_rpcs_execute(
+        c: *mut c_void,
+        op: c_int,
+        raw: *mut c_void,
+    ) -> c_int;
+    fn mtproxy_ffi_engine_rpc_default_tl_close_conn(c: *mut c_void, who: c_int) -> c_int;
     fn get_utime_monotonic() -> c_double;
     fn get_double_time() -> c_double;
     fn drand48_j() -> c_double;
@@ -325,17 +429,20 @@ unsafe extern "C" {
         data: *mut c_void,
     ) -> c_int;
     fn epoll_insert(fd: c_int, flags: c_int) -> c_int;
-    fn try_open_port(port: c_int, quit_on_fail: c_int) -> c_int;
     fn sb_init(sb: *mut StatsBuffer, buff: *mut c_char, size: c_int);
-    fn tl_store_stats(tlio_out: *mut c_void, s: *const c_char, raw: c_int) -> c_int;
+    fn mtproxy_ffi_engine_rpc_tl_store_stats(
+        tlio_out: *mut c_void,
+        s: *const c_char,
+        raw: c_int,
+    ) -> c_int;
 
-    fn engine_process_signals() -> c_int;
     fn free_later_act();
-
-    fn engine_server_init();
-    fn register_custom_op_cb(op: c_uint, func: CustomOpFn);
+    fn mtproxy_ffi_engine_rpc_register_custom_op_cb(op: c_uint, func: CustomOpFn);
     fn mtproxy_ffi_engine_rpc_custom_op_clear();
-    fn engine_work_rpc_req_result(tlio_in: *mut c_void, params: *mut c_void);
+    fn mtproxy_ffi_engine_rpc_engine_work_rpc_req_result(
+        tlio_in: *mut c_void,
+        params: *mut c_void,
+    );
     #[allow(clashing_extern_declarations)]
     fn create_async_job(
         run_job: JobExecuteFn,
@@ -354,7 +461,6 @@ unsafe extern "C" {
     #[allow(clashing_extern_declarations)]
     fn unlock_job(job_tag_int: c_int, job: *mut crate::AsyncJob) -> c_int;
     fn epoll_work(timeout: c_int) -> c_int;
-    fn interrupt_signal_raised() -> c_int;
     fn run_pending_main_jobs() -> c_int;
     fn job_signal(job_tag_int: c_int, job: Job, signo: c_int);
 
@@ -363,6 +469,35 @@ unsafe extern "C" {
 
 static mut LAST_CRON_TIME: c_int = 0;
 static mut ENGINE_STATS_DATA_BUF: [c_char; DATA_BUF_SIZE + 1] = [0; DATA_BUF_SIZE + 1];
+
+unsafe extern "C" fn default_tcp_execute_bridge(c: *mut c_void, op: c_int, raw: *mut c_void) -> c_int {
+    unsafe { mtproxy_ffi_engine_rpc_default_tl_tcp_rpcs_execute(c, op, raw) }
+}
+
+unsafe extern "C" fn default_tcp_close_bridge(c: *mut c_void, who: c_int) -> c_int {
+    unsafe { mtproxy_ffi_engine_rpc_default_tl_close_conn(c, who) }
+}
+
+static mut DEFAULT_ENGINE_TCP_RPC_METHODS: TcpRpcServerFunctions = TcpRpcServerFunctions {
+    info: ptr::null_mut(),
+    rpc_extra: ptr::null_mut(),
+    execute: Some(default_tcp_execute_bridge),
+    check_ready: Some(server_check_ready),
+    flush_packet: Some(tcp_rpc_flush_packet),
+    rpc_check_perm: Some(tcp_rpcs_default_check_perm),
+    rpc_init_crypto: Some(tcp_rpcs_init_crypto),
+    nop: ptr::null_mut(),
+    rpc_wakeup: None,
+    rpc_alarm: None,
+    rpc_ready: None,
+    rpc_close: Some(default_tcp_close_bridge),
+    max_packet_len: 0,
+    mode_flags: 0,
+    memcache_fallback_type: ptr::null_mut(),
+    memcache_fallback_extra: ptr::null_mut(),
+    http_fallback_type: ptr::null_mut(),
+    http_fallback_extra: ptr::null_mut(),
+};
 
 #[inline]
 const fn sig2int(sig: c_int) -> u64 {
@@ -560,6 +695,534 @@ unsafe fn check_signal_handler(
     }
 }
 
+#[inline]
+unsafe fn set_maxconn_impl(mut val: c_int) {
+    if val <= 0 {
+        val = MAX_CONNECTIONS;
+    }
+    if !unsafe { engine_state }.is_null() {
+        unsafe {
+            (*engine_state).maxconn = val;
+        }
+    }
+    unsafe { tcp_set_max_connections(val) };
+}
+
+pub(super) unsafe extern "C" fn default_close_network_sockets_impl() {
+    let e = unsafe { engine_state };
+    if e.is_null() {
+        return;
+    }
+    if unsafe { (*e).sfd } > 0 {
+        unsafe {
+            libc::close((*e).sfd);
+            (*e).sfd = -1;
+        }
+    }
+}
+
+pub(super) unsafe extern "C" fn get_port_mod_impl() -> c_int {
+    unsafe { mtproxy_ffi_engine_net_default_port_mod() }
+}
+
+pub(super) unsafe extern "C" fn try_open_port_impl(port: c_int, quit_on_fail: c_int) -> c_int {
+    let e = unsafe { engine_state };
+    if e.is_null() {
+        return -1;
+    }
+    if (unsafe { (*e).modules } & ENGINE_ENABLE_TCP) != 0 {
+        let loopback = libc::in_addr {
+            s_addr: (0x7f00_0001_u32).to_be(),
+        };
+        unsafe {
+            (*e).sfd = server_socket(port, loopback, (*e).backlog, 0);
+            vkprintf_no_args(1, OPENED_TCP_SOCKET_FMT.as_ptr().cast());
+        }
+        if unsafe { (*e).sfd } < 0 {
+            if quit_on_fail != 0 {
+                unsafe {
+                    kprintf(CANNOT_OPEN_SERVER_SOCKET_FMT.as_ptr().cast(), port);
+                    libc::exit(1);
+                }
+            }
+            return -1;
+        }
+    }
+    0
+}
+
+unsafe extern "C" fn engine_net_try_open_port_callback(port: c_int, _ctx: *mut c_void) -> c_int {
+    if unsafe { try_open_port_impl(port, 0) } >= 0 {
+        1
+    } else {
+        0
+    }
+}
+
+pub(super) unsafe extern "C" fn try_open_port_range_impl(
+    start_port: c_int,
+    end_port: c_int,
+    mod_port: c_int,
+    rem_port: c_int,
+    quit_on_fail: c_int,
+) -> c_int {
+    let mut selected_port = -1;
+    let rc = unsafe {
+        mtproxy_ffi_engine_net_try_open_port_range(
+            start_port,
+            end_port,
+            mod_port,
+            rem_port,
+            quit_on_fail,
+            Some(engine_net_try_open_port_callback),
+            ptr::null_mut(),
+            &mut selected_port,
+        )
+    };
+    if rc == 0 {
+        return selected_port;
+    }
+    if quit_on_fail != 0 {
+        unsafe {
+            kprintf(
+                CANNOT_OPEN_SERVER_SOCKET_RANGE_FMT.as_ptr().cast(),
+                start_port,
+                end_port,
+            );
+            libc::exit(2);
+        }
+    }
+    -1
+}
+
+pub(super) unsafe extern "C" fn engine_do_open_port_impl() {
+    let e = unsafe { engine_state };
+    if e.is_null() {
+        return;
+    }
+
+    let mut selected_port = -1;
+    let rc = unsafe {
+        mtproxy_ffi_engine_net_open_privileged_port(
+            (*e).port,
+            (*e).start_port,
+            (*e).end_port,
+            get_port_mod_impl(),
+            if ((*e).modules & ENGINE_ENABLE_TCP) != 0 {
+                1
+            } else {
+                0
+            },
+            1,
+            Some(engine_net_try_open_port_callback),
+            ptr::null_mut(),
+            &mut selected_port,
+        )
+    };
+    if rc == 0 {
+        if unsafe { (*e).port } <= 0 {
+            unsafe {
+                (*e).port = selected_port;
+            }
+        }
+        return;
+    }
+    if rc == 1 {
+        return;
+    }
+
+    if unsafe { (*e).port } > 0 && unsafe { (*e).port } < PRIVILEGED_TCP_PORTS {
+        unsafe {
+            kprintf(CANNOT_OPEN_SERVER_SOCKET_FMT.as_ptr().cast(), (*e).port);
+            libc::exit(1);
+        }
+    }
+    if unsafe { (*e).port } <= 0
+        && unsafe { (*e).start_port } <= unsafe { (*e).end_port }
+        && unsafe { (*e).start_port } < PRIVILEGED_TCP_PORTS
+    {
+        unsafe {
+            kprintf(
+                CANNOT_OPEN_SERVER_SOCKET_RANGE_FMT.as_ptr().cast(),
+                (*e).start_port,
+                (*e).end_port,
+            );
+            libc::exit(2);
+        }
+    }
+}
+
+pub(super) unsafe extern "C" fn engine_set_tcp_methods_impl(f: *mut c_void) {
+    if f.is_null() {
+        return;
+    }
+    unsafe {
+        DEFAULT_ENGINE_TCP_RPC_METHODS = *(f.cast::<TcpRpcServerFunctions>());
+    }
+}
+
+pub(super) unsafe extern "C" fn engine_set_http_fallback_impl(
+    http_type: *mut c_void,
+    http_functions: *mut c_void,
+) {
+    unsafe {
+        DEFAULT_ENGINE_TCP_RPC_METHODS.http_fallback_type = http_type;
+        DEFAULT_ENGINE_TCP_RPC_METHODS.http_fallback_extra = http_functions;
+    }
+}
+
+pub(super) unsafe extern "C" fn engine_server_init_impl() {
+    unsafe {
+        server_init(
+            ptr::addr_of_mut!(ct_tcp_rpc_server).cast::<c_void>(),
+            ptr::addr_of_mut!(DEFAULT_ENGINE_TCP_RPC_METHODS).cast::<c_void>(),
+        );
+    }
+}
+
+unsafe extern "C" fn parse_option_net_impl(val: c_int) -> c_int {
+    let e = unsafe { engine_state };
+    if e.is_null() {
+        return -1;
+    }
+
+    match val {
+        x if x == c_int::from(b'b') => unsafe {
+            (*e).backlog = libc::atoi(optarg.cast_const());
+        },
+        x if x == c_int::from(b'c') => unsafe {
+            set_maxconn_impl(libc::atoi(optarg.cast_const()));
+        },
+        x if x == c_int::from(b'p') => unsafe {
+            let mut start_port = 0;
+            let mut end_port = 0;
+            let parsed = libc::sscanf(
+                optarg.cast_const(),
+                c"%d:%d".as_ptr(),
+                &mut start_port,
+                &mut end_port,
+            );
+            if parsed == 0 {
+                mtproxy_ffi_engine_usage_bridge();
+            } else if parsed == 1 {
+                if start_port <= 0 {
+                    mtproxy_ffi_engine_usage_bridge();
+                }
+                (*e).port = start_port;
+            } else {
+                if start_port <= 0 || start_port > end_port {
+                    mtproxy_ffi_engine_usage_bridge();
+                }
+                (*e).start_port = start_port;
+                (*e).end_port = end_port;
+            }
+        },
+        x if x == c_int::from(b'6') => unsafe {
+            (*e).modules |= ENGINE_ENABLE_IPV6;
+        },
+        200 => unsafe {
+            let src = optarg;
+            let new_value = if src.is_null() {
+                ptr::null_mut()
+            } else {
+                libc::strdup(src.cast_const())
+            };
+            if !(*e).aes_pwd_file.is_null() {
+                libc::free((*e).aes_pwd_file.cast());
+            }
+            (*e).aes_pwd_file = new_value;
+        },
+        214 => unsafe {
+            (*e).modules &= !ENGINE_ENABLE_TCP;
+        },
+        224 => unsafe {
+            tcp_set_default_rpc_flags(0xffff_ffff_u32, RPCF_USE_CRC32C);
+        },
+        229 => unsafe {
+            tcp_set_default_rpc_flags(0xffff_ffff_u32, RPCF_ALLOW_SKIP_DH);
+        },
+        230 => unsafe {
+            tcp_force_enable_dh();
+        },
+        249 => unsafe {
+            tcp_set_max_accept_rate(libc::atoi(optarg.cast_const()));
+        },
+        250 => unsafe {
+            tcp_set_max_dh_accept_rate(libc::atoi(optarg.cast_const()));
+        },
+        372 => unsafe {
+            if net_add_nat_info(optarg) < 0 {
+                mtproxy_ffi_engine_usage_bridge();
+                libc::exit(2);
+            }
+        },
+        373 => unsafe {
+            if inet_pton(
+                libc::AF_INET,
+                optarg.cast_const(),
+                ptr::addr_of_mut!((*e).settings_addr).cast(),
+            ) != 1
+            {
+                kprintf(CANNOT_CONVERT_IP_FMT.as_ptr().cast(), optarg.cast_const());
+                libc::exit(4);
+            }
+        },
+        _ => return -1,
+    }
+    0
+}
+
+#[inline]
+unsafe fn parse_option_net_builtin(
+    name: *const c_char,
+    arg: c_int,
+    val: c_int,
+    flags: c_uint,
+    help: *const c_char,
+) {
+    unsafe {
+        rust_sf_register_parse_option_ex_or_die(
+            name,
+            arg,
+            val,
+            flags,
+            Some(parse_option_net_impl),
+            help,
+        );
+    }
+}
+
+pub(super) unsafe extern "C" fn engine_add_net_parse_options_impl() {
+    unsafe {
+        parse_option_net_builtin(
+            NET_OPT_BACKLOG_NAME.as_ptr().cast(),
+            REQUIRED_ARGUMENT,
+            c_int::from(b'b'),
+            LONGOPT_TCP_SET,
+            NET_OPT_BACKLOG_HELP.as_ptr().cast(),
+        );
+        parse_option_net_builtin(
+            NET_OPT_CONNECTIONS_NAME.as_ptr().cast(),
+            REQUIRED_ARGUMENT,
+            c_int::from(b'c'),
+            LONGOPT_TCP_SET,
+            NET_OPT_CONNECTIONS_HELP.as_ptr().cast(),
+        );
+        parse_option_net_builtin(
+            NET_OPT_PORT_NAME.as_ptr().cast(),
+            REQUIRED_ARGUMENT,
+            c_int::from(b'p'),
+            LONGOPT_NET_SET,
+            NET_OPT_PORT_HELP.as_ptr().cast(),
+        );
+        parse_option_net_builtin(
+            NET_OPT_AES_PWD_NAME.as_ptr().cast(),
+            REQUIRED_ARGUMENT,
+            200,
+            LONGOPT_NET_SET,
+            NET_OPT_AES_PWD_HELP.as_ptr().cast(),
+        );
+        parse_option_net_builtin(
+            NET_OPT_IPV6_NAME.as_ptr().cast(),
+            NO_ARGUMENT,
+            c_int::from(b'6'),
+            LONGOPT_NET_SET,
+            NET_OPT_IPV6_HELP.as_ptr().cast(),
+        );
+        parse_option_net_builtin(
+            NET_OPT_DISABLE_TCP_NAME.as_ptr().cast(),
+            NO_ARGUMENT,
+            214,
+            LONGOPT_TCP_SET,
+            NET_OPT_DISABLE_TCP_HELP.as_ptr().cast(),
+        );
+        parse_option_net_builtin(
+            NET_OPT_CRC32C_NAME.as_ptr().cast(),
+            NO_ARGUMENT,
+            224,
+            LONGOPT_TCP_SET,
+            NET_OPT_CRC32C_HELP.as_ptr().cast(),
+        );
+        parse_option_net_builtin(
+            NET_OPT_ALLOW_SKIP_DH_NAME.as_ptr().cast(),
+            NO_ARGUMENT,
+            229,
+            LONGOPT_TCP_SET,
+            NET_OPT_ALLOW_SKIP_DH_HELP.as_ptr().cast(),
+        );
+        parse_option_net_builtin(
+            NET_OPT_FORCE_DH_NAME.as_ptr().cast(),
+            NO_ARGUMENT,
+            230,
+            LONGOPT_TCP_SET,
+            NET_OPT_FORCE_DH_HELP.as_ptr().cast(),
+        );
+        parse_option_net_builtin(
+            NET_OPT_MAX_ACCEPT_RATE_NAME.as_ptr().cast(),
+            REQUIRED_ARGUMENT,
+            249,
+            LONGOPT_TCP_SET,
+            NET_OPT_MAX_ACCEPT_RATE_HELP.as_ptr().cast(),
+        );
+        parse_option_net_builtin(
+            NET_OPT_MAX_DH_ACCEPT_RATE_NAME.as_ptr().cast(),
+            REQUIRED_ARGUMENT,
+            250,
+            LONGOPT_TCP_SET,
+            NET_OPT_MAX_DH_ACCEPT_RATE_HELP.as_ptr().cast(),
+        );
+        parse_option_net_builtin(
+            NET_OPT_NAT_INFO_NAME.as_ptr().cast(),
+            REQUIRED_ARGUMENT,
+            372,
+            LONGOPT_NET_SET,
+            NET_OPT_NAT_INFO_HELP.as_ptr().cast(),
+        );
+        parse_option_net_builtin(
+            NET_OPT_ADDRESS_NAME.as_ptr().cast(),
+            REQUIRED_ARGUMENT,
+            373,
+            LONGOPT_NET_SET,
+            NET_OPT_ADDRESS_HELP.as_ptr().cast(),
+        );
+    }
+}
+
+pub(super) unsafe extern "C" fn signal_set_pending_impl(sig: c_int) {
+    unsafe { mtproxy_ffi_engine_signal_set_pending(sig) };
+}
+
+pub(super) unsafe extern "C" fn signal_check_pending_impl(sig: c_int) -> c_int {
+    unsafe { mtproxy_ffi_engine_signal_check_pending(sig) }
+}
+
+pub(super) unsafe extern "C" fn signal_check_pending_and_clear_impl(sig: c_int) -> c_int {
+    unsafe { mtproxy_ffi_engine_signal_check_pending_and_clear(sig) }
+}
+
+pub(super) unsafe extern "C" fn sigint_immediate_handler_impl(_sig: c_int) {
+    unsafe {
+        kwrite(
+            2,
+            SIGINT_IMMEDIATE_MSG.as_ptr().cast(),
+            SIGINT_IMMEDIATE_MSG.len() as c_int,
+        );
+        engine_set_terminal_attributes();
+        libc::_exit(1);
+    }
+}
+
+pub(super) unsafe extern "C" fn sigterm_immediate_handler_impl(_sig: c_int) {
+    unsafe {
+        kwrite(
+            2,
+            SIGTERM_IMMEDIATE_MSG.as_ptr().cast(),
+            SIGTERM_IMMEDIATE_MSG.len() as c_int,
+        );
+        engine_set_terminal_attributes();
+        libc::_exit(1);
+    }
+}
+
+pub(super) unsafe extern "C" fn sigint_handler_impl(sig: c_int) {
+    unsafe {
+        kwrite(2, SIGINT_MSG.as_ptr().cast(), SIGINT_MSG.len() as c_int);
+        signal_set_pending_impl(libc::SIGINT);
+        ksignal(sig, Some(sigint_immediate_handler_impl));
+    }
+}
+
+pub(super) unsafe extern "C" fn sigterm_handler_impl(sig: c_int) {
+    unsafe {
+        kwrite(2, SIGTERM_MSG.as_ptr().cast(), SIGTERM_MSG.len() as c_int);
+        signal_set_pending_impl(libc::SIGTERM);
+        ksignal(sig, Some(sigterm_immediate_handler_impl));
+    }
+}
+
+unsafe fn write_received_signal(sig: c_int) {
+    let mut msg = RECEIVED_SIGNAL_TEMPLATE;
+    msg[msg.len() - 3] = b'0'.wrapping_add((sig / 10) as u8);
+    msg[msg.len() - 2] = b'0'.wrapping_add((sig % 10) as u8);
+    unsafe {
+        kwrite(2, msg.as_ptr().cast(), msg.len() as c_int);
+    }
+}
+
+pub(super) unsafe extern "C" fn default_signal_handler_impl(sig: c_int) {
+    unsafe {
+        write_received_signal(sig);
+        signal_set_pending_impl(sig);
+    }
+}
+
+pub(super) unsafe extern "C" fn quiet_signal_handler_impl(sig: c_int) {
+    if unsafe { verbosity } >= 1 {
+        unsafe {
+            write_received_signal(sig);
+        }
+    }
+    unsafe {
+        signal_set_pending_impl(sig);
+    }
+}
+
+pub(super) unsafe extern "C" fn empty_signal_handler_impl(_sig: c_int) {}
+
+pub(super) unsafe extern "C" fn interrupt_signal_raised_impl() -> c_int {
+    unsafe { mtproxy_ffi_engine_interrupt_signal_raised() }
+}
+
+#[repr(C)]
+struct EngineSignalDispatchCtx {
+    f: *mut ServerFunctions,
+    allowed_signals: u64,
+}
+
+unsafe extern "C" fn engine_signal_dispatch_from_rust(sig: c_int, ctx: *mut c_void) {
+    let dispatch_ctx = ctx.cast::<EngineSignalDispatchCtx>();
+    if dispatch_ctx.is_null() || unsafe { (*dispatch_ctx).f }.is_null() || sig <= 0 || sig > OUR_SIGRTMAX {
+        return;
+    }
+    if (unsafe { (*dispatch_ctx).allowed_signals } & sig2int(sig)) == 0 {
+        return;
+    }
+    let sig_u = usize::try_from(sig).unwrap_or(usize::MAX);
+    if sig_u >= SIGNAL_HANDLERS_LEN {
+        return;
+    }
+    let handler = unsafe { (*(*dispatch_ctx).f).signal_handlers[sig_u] };
+    assert!(handler.is_some());
+    if let Some(h) = handler {
+        unsafe { h() };
+    }
+}
+
+pub(super) unsafe extern "C" fn engine_process_signals_impl() -> c_int {
+    let e = unsafe { engine_state };
+    if e.is_null() {
+        return 1;
+    }
+    let f = unsafe { (*e).f };
+    if f.is_null() {
+        return 1;
+    }
+
+    let mut ctx = EngineSignalDispatchCtx {
+        f,
+        allowed_signals: unsafe { (*f).allowed_signals },
+    };
+    let processed = unsafe {
+        mtproxy_ffi_engine_process_signals_allowed(
+            (*f).allowed_signals,
+            Some(engine_signal_dispatch_from_rust),
+            (&mut ctx as *mut EngineSignalDispatchCtx).cast(),
+        )
+    };
+    assert!(processed >= 0);
+    1
+}
+
 pub(super) unsafe extern "C" fn default_cron_impl() {
     let new_precise_now_diff = unsafe { get_utime_monotonic() - get_double_time() };
     unsafe {
@@ -569,8 +1232,8 @@ pub(super) unsafe extern "C" fn default_cron_impl() {
 
 pub(super) unsafe fn set_signals_handlers_impl() {
     unsafe {
-        ksignal(libc::SIGINT, Some(sigint_immediate_handler));
-        ksignal(libc::SIGTERM, Some(sigterm_immediate_handler));
+        ksignal(libc::SIGINT, Some(sigint_immediate_handler_impl));
+        ksignal(libc::SIGTERM, Some(sigterm_immediate_handler_impl));
         set_debug_handlers();
     }
 }
@@ -810,7 +1473,7 @@ pub(super) unsafe fn server_init_impl(
             ipv6_listener,
         } => {
             if open_socket {
-                assert!(unsafe { try_open_port((*e).port, 1) } >= 0);
+                assert!(unsafe { try_open_port_impl((*e).port, 1) } >= 0);
             }
             if init_listener {
                 if ipv6_listener {
@@ -840,15 +1503,15 @@ pub(super) unsafe fn server_init_impl(
     }
 
     unsafe {
-        ksignal(libc::SIGINT, Some(sigint_handler));
-        ksignal(libc::SIGTERM, Some(sigterm_handler));
-        ksignal(libc::SIGPIPE, Some(empty_signal_handler));
-        ksignal(libc::SIGPOLL, Some(empty_signal_handler));
+        ksignal(libc::SIGINT, Some(sigint_handler_impl));
+        ksignal(libc::SIGTERM, Some(sigterm_handler_impl));
+        ksignal(libc::SIGPIPE, Some(empty_signal_handler_impl));
+        ksignal(libc::SIGPOLL, Some(empty_signal_handler_impl));
     }
 
     if unsafe { daemonize } != 0 {
         unsafe {
-            ksignal(libc::SIGHUP, Some(default_signal_handler));
+            ksignal(libc::SIGHUP, Some(default_signal_handler_impl));
         }
     }
 }
@@ -864,9 +1527,9 @@ pub(super) unsafe fn server_exit_impl() {
             close_net_sockets();
         }
 
-        if signal_check_pending(libc::SIGTERM) != 0 {
+        if signal_check_pending_impl(libc::SIGTERM) != 0 {
             kprintf(TERMINATED_BY_SIGTERM_FMT.as_ptr().cast());
-        } else if signal_check_pending(libc::SIGINT) != 0 {
+        } else if signal_check_pending_impl(libc::SIGINT) != 0 {
             kprintf(TERMINATED_BY_SIGINT_FMT.as_ptr().cast());
         }
     }
@@ -901,7 +1564,7 @@ pub(super) unsafe fn engine_prepare_stats_impl() -> c_int {
 pub(super) unsafe fn engine_rpc_stats_impl(tlio_out: *mut c_void) {
     unsafe {
         engine_prepare_stats_impl();
-        tl_store_stats(
+        mtproxy_ffi_engine_rpc_tl_store_stats(
             tlio_out,
             ptr::addr_of!(ENGINE_STATS_DATA_BUF).cast::<c_char>(),
             0,
@@ -1005,7 +1668,10 @@ pub(super) unsafe fn default_parse_option_func_impl(a: c_int) -> c_int {
     }
 }
 
-pub(super) unsafe fn default_parse_extra_args_impl(argc: c_int, _argv: *mut *mut c_char) {
+pub(super) unsafe extern "C" fn default_parse_extra_args_impl(
+    argc: c_int,
+    _argv: *mut *mut c_char,
+) {
     if argc != 0 {
         unsafe {
             vkprintf_no_args(0, EXTRA_ARGS_FMT.as_ptr().cast());
@@ -1021,7 +1687,7 @@ pub(super) unsafe fn engine_init_impl(pwd_filename: *const c_char, do_not_open_p
     if mtproxy_core::runtime::engine::engine_init_open_plan(do_not_open_port != 0)
         == mtproxy_core::runtime::engine::EngineInitOpenPlan::RunPreOpen
     {
-        unsafe { engine_do_open_port() };
+        unsafe { engine_do_open_port_impl() };
     }
 
     unsafe {
@@ -1058,11 +1724,11 @@ pub(super) unsafe fn engine_init_impl(pwd_filename: *const c_char, do_not_open_p
     ) == mtproxy_core::runtime::engine::EngineInitPortRangePlan::TryRange
     {
         unsafe {
-            (*e).port = try_open_port_range(
+            (*e).port = try_open_port_range_impl(
                 (*e).start_port,
                 (*e).end_port,
                 PORT_RANGE_MOD,
-                get_port_mod(),
+                get_port_mod_impl(),
                 1,
             );
             assert!((*e).port >= 0);
@@ -1162,7 +1828,7 @@ pub(super) unsafe fn check_server_functions_impl() {
         check_signal_handler(f, OUR_SIGRTMAX, rust_default_sigrtmax);
 
         if (*f).close_net_sockets.is_none() {
-            (*f).close_net_sockets = Some(default_close_network_sockets);
+            (*f).close_net_sockets = Some(default_close_network_sockets_impl);
         }
         if (*f).cron.is_none() {
             (*f).cron = Some(default_cron_impl);
@@ -1180,7 +1846,7 @@ pub(super) unsafe fn check_server_functions_impl() {
             (*f).pre_start = Some(rust_default_nop);
         }
         if (*f).parse_extra_args.is_none() {
-            (*f).parse_extra_args = Some(default_parse_extra_args);
+            (*f).parse_extra_args = Some(default_parse_extra_args_impl);
         }
         if (*f).pre_loop.is_none() {
             (*f).pre_loop = Some(rust_default_nop);
@@ -1199,9 +1865,9 @@ pub(super) unsafe fn check_server_functions_impl() {
         for sig in 1..=OUR_SIGRTMAX {
             if ((*f).allowed_signals & sig2int(sig)) != 0 {
                 let handler: KsignalHandler = if sig == libc::SIGCHLD {
-                    Some(quiet_signal_handler as unsafe extern "C" fn(c_int))
+                    Some(quiet_signal_handler_impl as unsafe extern "C" fn(c_int))
                 } else {
-                    Some(default_signal_handler as unsafe extern "C" fn(c_int))
+                    Some(default_signal_handler_impl as unsafe extern "C" fn(c_int))
                 };
                 ksignal(sig, handler);
             }
@@ -1216,7 +1882,7 @@ pub(super) unsafe fn do_precise_cron_impl() {
     assert!(!f.is_null());
 
     unsafe {
-        engine_process_signals();
+        engine_process_signals_impl();
 
         let now_value = mtproxy_ffi_engine_now_value();
 
@@ -1265,7 +1931,7 @@ unsafe fn register_custom_ops(f: *mut ServerFunctions) {
             break;
         }
         unsafe {
-            register_custom_op_cb(op.op, op.func);
+            mtproxy_ffi_engine_rpc_register_custom_op_cb(op.op, op.func);
             current = current.add(1);
         }
     }
@@ -1278,12 +1944,15 @@ pub(super) unsafe fn default_engine_server_start_impl() {
     assert!(!f.is_null());
 
     unsafe {
-        engine_server_init();
+        engine_server_init_impl();
 
         vkprintf_no_args(1, SERVER_STARTED_FMT.as_ptr().cast());
 
         mtproxy_ffi_engine_rpc_custom_op_clear();
-        register_custom_op_cb(RPC_REQ_RESULT, Some(engine_work_rpc_req_result));
+        mtproxy_ffi_engine_rpc_register_custom_op_cb(
+            RPC_REQ_RESULT,
+            Some(mtproxy_ffi_engine_rpc_engine_work_rpc_req_result),
+        );
         register_custom_ops(f);
 
         let precise_cron_job = create_async_job(
@@ -1331,7 +2000,7 @@ pub(super) unsafe fn default_engine_server_start_impl() {
                 1
             };
             epoll_work(timeout);
-            if interrupt_signal_raised() != 0 {
+            if interrupt_signal_raised_impl() != 0 {
                 if let Some(on_waiting_exit) = (*f).on_waiting_exit {
                     loop {
                         let t = on_waiting_exit() as libc::useconds_t;
@@ -1382,7 +2051,7 @@ pub(super) unsafe fn default_main_impl(
 
     if unsafe { !(*f).tcp_methods.is_null() } {
         unsafe {
-            engine_set_tcp_methods((*f).tcp_methods);
+            engine_set_tcp_methods_impl((*f).tcp_methods);
         }
     }
 
@@ -1393,7 +2062,7 @@ pub(super) unsafe fn default_main_impl(
         }
         unsafe {
             assert!(mtproxy_ffi_engine_check_conn_functions_bridge(http_type) >= 0);
-            engine_set_http_fallback(http_type, (*f).http_functions);
+            engine_set_http_fallback_impl(http_type, (*f).http_functions);
         }
     }
 
@@ -1474,12 +2143,11 @@ pub(super) unsafe fn default_main_impl(
     }
 
     unsafe {
-        engine_tl_init(
+        mtproxy_ffi_engine_rpc_engine_tl_init(
             (*f).parse_function,
             Some(engine_rpc_stats),
             (*f).get_op,
             (*f).aio_timeout,
-            (*f).short_version_str,
         );
         init_epoll();
         default_engine_server_start_impl();
