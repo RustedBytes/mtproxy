@@ -1463,7 +1463,7 @@ pub(super) unsafe fn process_query_job_impl(job: Job, op: c_int, _jt: *mut c_voi
             if unsafe { (*p).answer_sent } == 0 {
                 io =
                     unsafe { tl_aio_init_store_impl((*p).type_, &raw mut (*p).pid, (*(*p).h).qid) }
-                    .cast::<TlOutState>();
+                        .cast::<TlOutState>();
             }
             if !io.is_null() {
                 if unsafe { (*p).error_code } != 0 {
@@ -1517,7 +1517,7 @@ pub(super) unsafe fn process_query_job_impl(job: Job, op: c_int, _jt: *mut c_voi
             if unsafe { (*p).answer_sent } == 0 {
                 io =
                     unsafe { tl_aio_init_store_impl((*p).type_, &raw mut (*p).pid, (*(*p).h).qid) }
-                    .cast::<TlOutState>();
+                        .cast::<TlOutState>();
             }
             if !io.is_null() {
                 if unsafe { (*p).error_code } != 0 {

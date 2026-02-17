@@ -83,7 +83,11 @@ unsafe fn append_to_sb(sb: *mut TlParseStatsBuffer, text: &str) {
 
 #[inline]
 fn safe_div(x: f64, y: f64) -> f64 {
-    if y > 0.0 { x / y } else { 0.0 }
+    if y > 0.0 {
+        x / y
+    } else {
+        0.0
+    }
 }
 
 #[no_mangle]
@@ -663,10 +667,7 @@ pub unsafe extern "C" fn c_tlf_string_data_rust(
 }
 
 #[export_name = "tlf_skip_string_data_rust"]
-pub unsafe extern "C" fn c_tlf_skip_string_data_rust(
-    tlio_in: *mut TlInState,
-    len: c_int,
-) -> c_int {
+pub unsafe extern "C" fn c_tlf_skip_string_data_rust(tlio_in: *mut TlInState, len: c_int) -> c_int {
     mtproxy_ffi_tl_fetch_skip_string_data(tlio_in, len)
 }
 
@@ -743,11 +744,7 @@ pub unsafe extern "C" fn c_tlf_int_subset_rust(tlio_in: *mut TlInState, set: c_i
 }
 
 #[export_name = "tlf_long_range_rust"]
-pub unsafe extern "C" fn c_tlf_long_range_rust(
-    tlio_in: *mut TlInState,
-    min: i64,
-    max: i64,
-) -> i64 {
+pub unsafe extern "C" fn c_tlf_long_range_rust(tlio_in: *mut TlInState, min: i64, max: i64) -> i64 {
     mtproxy_ffi_tl_fetch_long_range(tlio_in, min, max)
 }
 
@@ -927,9 +924,7 @@ pub unsafe extern "C" fn c_tls_init_tcp_raw_msg(
 ) -> c_int {
     let mut remote_pid = MtproxyProcessId::default();
     let pid_ptr = if !c.is_null()
-        && unsafe {
-            mtproxy_ffi_net_tcp_rpc_common_copy_remote_pid(c, &raw mut remote_pid)
-        } == 0
+        && unsafe { mtproxy_ffi_net_tcp_rpc_common_copy_remote_pid(c, &raw mut remote_pid) } == 0
     {
         &raw const remote_pid
     } else {
@@ -947,9 +942,7 @@ pub unsafe extern "C" fn c_tls_init_tcp_raw_msg_unaligned(
 ) -> c_int {
     let mut remote_pid = MtproxyProcessId::default();
     let pid_ptr = if !c.is_null()
-        && unsafe {
-            mtproxy_ffi_net_tcp_rpc_common_copy_remote_pid(c, &raw mut remote_pid)
-        } == 0
+        && unsafe { mtproxy_ffi_net_tcp_rpc_common_copy_remote_pid(c, &raw mut remote_pid) } == 0
     {
         &raw const remote_pid
     } else {
@@ -1120,9 +1113,7 @@ pub extern "C" fn mtproxy_ffi_tl_parse_note_tl_out_alloc_delta(delta: c_int) {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_tl_parse_prepare_stat(
-    sb: *mut TlParseStatsBuffer,
-) -> c_int {
+pub unsafe extern "C" fn mtproxy_ffi_tl_parse_prepare_stat(sb: *mut TlParseStatsBuffer) -> c_int {
     if sb.is_null() {
         return -1;
     }

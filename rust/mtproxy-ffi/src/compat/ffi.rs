@@ -86,13 +86,19 @@ pub unsafe extern "C" fn mtproxy_ffi_rust_bridge_check_concurrency_boundary() ->
         return -2;
     }
 
-    const EXPECTED_MPQ: u32 = (1u32 << 0) | (1u32 << 1) | (1u32 << 2) | (1u32 << 3) | (1u32 << 4) | (1u32 << 5);
+    const EXPECTED_MPQ: u32 =
+        (1u32 << 0) | (1u32 << 1) | (1u32 << 2) | (1u32 << 3) | (1u32 << 4) | (1u32 << 5);
     if !has_required_ops(boundary.mpq_contract_ops, EXPECTED_MPQ) {
         return -3;
     }
 
-    const EXPECTED_JOBS: u32 =
-        (1u32 << 0) | (1u32 << 1) | (1u32 << 2) | (1u32 << 3) | (1u32 << 4) | (1u32 << 5) | (1u32 << 6);
+    const EXPECTED_JOBS: u32 = (1u32 << 0)
+        | (1u32 << 1)
+        | (1u32 << 2)
+        | (1u32 << 3)
+        | (1u32 << 4)
+        | (1u32 << 5)
+        | (1u32 << 6);
     if !has_required_ops(boundary.jobs_contract_ops, EXPECTED_JOBS) {
         return -4;
     }
@@ -172,7 +178,8 @@ pub unsafe extern "C" fn mtproxy_ffi_rust_bridge_check_rpc_boundary() -> i32 {
         return -4;
     }
 
-    const EXPECTED_SERVER: u32 = (1u32 << 0) | (1u32 << 1) | (1u32 << 2) | (1u32 << 3) | (1u32 << 4);
+    const EXPECTED_SERVER: u32 =
+        (1u32 << 0) | (1u32 << 1) | (1u32 << 2) | (1u32 << 3) | (1u32 << 4);
     if !has_required_ops(boundary.tcp_rpc_server_contract_ops, EXPECTED_SERVER) {
         return -5;
     }
@@ -334,7 +341,8 @@ unsafe fn rust_bridge_crc32_selfcheck() -> i32 {
         (&[], 0xffff_ffff),
     ];
     for (case, seed) in cases {
-        let c_crc = unsafe { crc32_partial_generic(case.as_ptr().cast(), case.len() as c_long, seed) };
+        let c_crc =
+            unsafe { crc32_partial_generic(case.as_ptr().cast(), case.len() as c_long, seed) };
         let r_crc = unsafe { rust_crc32_partial_adapter(case.as_ptr(), case.len(), seed) };
         if c_crc != r_crc {
             return -1;
@@ -348,7 +356,9 @@ unsafe fn rust_bridge_crc32_selfcheck() -> i32 {
     }
 
     let split = 73usize;
-    let mut c_split = unsafe { crc32_partial_generic(k_case_bytes.as_ptr().cast(), split as c_long, 0x89ab_cdef) };
+    let mut c_split = unsafe {
+        crc32_partial_generic(k_case_bytes.as_ptr().cast(), split as c_long, 0x89ab_cdef)
+    };
     c_split = unsafe {
         crc32_partial_generic(
             k_case_bytes.as_ptr().add(split).cast(),
@@ -356,9 +366,15 @@ unsafe fn rust_bridge_crc32_selfcheck() -> i32 {
             c_split,
         )
     };
-    let mut r_split = unsafe { rust_crc32_partial_adapter(k_case_bytes.as_ptr(), split, 0x89ab_cdef) };
-    r_split =
-        unsafe { rust_crc32_partial_adapter(k_case_bytes.as_ptr().add(split), k_case_bytes.len() - split, r_split) };
+    let mut r_split =
+        unsafe { rust_crc32_partial_adapter(k_case_bytes.as_ptr(), split, 0x89ab_cdef) };
+    r_split = unsafe {
+        rust_crc32_partial_adapter(
+            k_case_bytes.as_ptr().add(split),
+            k_case_bytes.len() - split,
+            r_split,
+        )
+    };
     if c_split != r_split {
         return -3;
     }
@@ -380,22 +396,25 @@ unsafe fn rust_bridge_crc32c_selfcheck() -> i32 {
         (&[], 0xffff_ffff),
     ];
     for (case, seed) in cases {
-        let c_crc = unsafe { crc32c_partial_four_tables(case.as_ptr().cast(), case.len() as c_long, seed) };
+        let c_crc =
+            unsafe { crc32c_partial_four_tables(case.as_ptr().cast(), case.len() as c_long, seed) };
         let r_crc = unsafe { rust_crc32c_partial_adapter(case.as_ptr(), case.len(), seed) };
         if c_crc != r_crc {
             return -1;
         }
     }
 
-    let c_crc = unsafe { crc32c_partial_four_tables(k_case_bytes.as_ptr().cast(), 256, 0x1234_5678) };
+    let c_crc =
+        unsafe { crc32c_partial_four_tables(k_case_bytes.as_ptr().cast(), 256, 0x1234_5678) };
     let r_crc = unsafe { rust_crc32c_partial_adapter(k_case_bytes.as_ptr(), 256, 0x1234_5678) };
     if c_crc != r_crc {
         return -2;
     }
 
     let split = 73usize;
-    let mut c_split =
-        unsafe { crc32c_partial_four_tables(k_case_bytes.as_ptr().cast(), split as c_long, 0x89ab_cdef) };
+    let mut c_split = unsafe {
+        crc32c_partial_four_tables(k_case_bytes.as_ptr().cast(), split as c_long, 0x89ab_cdef)
+    };
     c_split = unsafe {
         crc32c_partial_four_tables(
             k_case_bytes.as_ptr().add(split).cast(),
@@ -403,9 +422,14 @@ unsafe fn rust_bridge_crc32c_selfcheck() -> i32 {
             c_split,
         )
     };
-    let mut r_split = unsafe { rust_crc32c_partial_adapter(k_case_bytes.as_ptr(), split, 0x89ab_cdef) };
+    let mut r_split =
+        unsafe { rust_crc32c_partial_adapter(k_case_bytes.as_ptr(), split, 0x89ab_cdef) };
     r_split = unsafe {
-        rust_crc32c_partial_adapter(k_case_bytes.as_ptr().add(split), k_case_bytes.len() - split, r_split)
+        rust_crc32c_partial_adapter(
+            k_case_bytes.as_ptr().add(split),
+            k_case_bytes.len() - split,
+            r_split,
+        )
     };
     if c_split != r_split {
         return -3;
@@ -557,19 +581,17 @@ pub unsafe extern "C" fn c_kdb_gethostbyname(name: *const c_char) -> *mut libc::
     }
 
     match kind {
-        RESOLVER_LOOKUP_HOSTS_IPV4 => {
-            unsafe {
-                RESOLVER_HOST_IPV4 = hosts_ip.to_be();
-                RESOLVER_HOST_ADDR_LIST[0] = (&raw mut RESOLVER_HOST_IPV4).cast();
-                RESOLVER_HOST_ADDR_LIST[1] = null_mut();
-                RESOLVER_HOST_RET.h_name = name.cast_mut();
-                RESOLVER_HOST_RET.h_aliases = null_mut::<*mut c_char>();
-                RESOLVER_HOST_RET.h_addrtype = libc::AF_INET;
-                RESOLVER_HOST_RET.h_length = 4;
-                RESOLVER_HOST_RET.h_addr_list = (&raw mut RESOLVER_HOST_ADDR_LIST).cast();
-                &raw mut RESOLVER_HOST_RET
-            }
-        }
+        RESOLVER_LOOKUP_HOSTS_IPV4 => unsafe {
+            RESOLVER_HOST_IPV4 = hosts_ip.to_be();
+            RESOLVER_HOST_ADDR_LIST[0] = (&raw mut RESOLVER_HOST_IPV4).cast();
+            RESOLVER_HOST_ADDR_LIST[1] = null_mut();
+            RESOLVER_HOST_RET.h_name = name.cast_mut();
+            RESOLVER_HOST_RET.h_aliases = null_mut::<*mut c_char>();
+            RESOLVER_HOST_RET.h_addrtype = libc::AF_INET;
+            RESOLVER_HOST_RET.h_length = 4;
+            RESOLVER_HOST_RET.h_addr_list = (&raw mut RESOLVER_HOST_ADDR_LIST).cast();
+            &raw mut RESOLVER_HOST_RET
+        },
         RESOLVER_LOOKUP_NOT_FOUND => null_mut(),
         _ => unsafe { resolver_fallback_gethostbyname(name) },
     }

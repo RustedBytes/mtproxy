@@ -4050,8 +4050,8 @@ pub(super) unsafe fn mtproto_mtfront_prepare_parse_options_ffi() {
             "sets ping interval in second for local TCP connections (default {:.3})",
             DEFAULT_PING_INTERVAL
         );
-        let ping_help_c = CString::new(ping_help)
-            .expect("ping option help must not contain interior NUL bytes");
+        let ping_help_c =
+            CString::new(ping_help).expect("ping option help must not contain interior NUL bytes");
         rust_sf_register_parse_option_or_die(
             b"ping-interval\0".as_ptr().cast(),
             REQUIRED_ARGUMENT,

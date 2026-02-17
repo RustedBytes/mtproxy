@@ -195,7 +195,10 @@ pub unsafe extern "C" fn engine_set_tcp_methods(f: *mut c_void) {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn engine_set_http_fallback(http_type: *mut c_void, http_functions: *mut c_void) {
+pub unsafe extern "C" fn engine_set_http_fallback(
+    http_type: *mut c_void,
+    http_functions: *mut c_void,
+) {
     unsafe { engine_set_http_fallback_impl(http_type, http_functions) };
 }
 

@@ -95,8 +95,7 @@ const FATAL_PORT_UNDEFINED_FMT: &[u8] = b"fatal: port isn't defined\n\0";
 const EXTRA_ARGS_FMT: &[u8] = b"Extra args\n\0";
 const OPENED_TCP_SOCKET_FMT: &[u8] = b"opened tcp socket\n\0";
 const CANNOT_OPEN_SERVER_SOCKET_FMT: &[u8] = b"cannot open server socket at port %d: %m\n\0";
-const CANNOT_OPEN_SERVER_SOCKET_RANGE_FMT: &[u8] =
-    b"cannot open server socket at port %d-%d\n\0";
+const CANNOT_OPEN_SERVER_SOCKET_RANGE_FMT: &[u8] = b"cannot open server socket at port %d-%d\n\0";
 const CANNOT_CONVERT_IP_FMT: &[u8] = b"Can not convert '%s' to ip addr: %m\n\0";
 
 const NET_OPT_BACKLOG_NAME: &[u8] = b"backlog\0";
@@ -439,10 +438,7 @@ unsafe extern "C" {
     fn free_later_act();
     fn mtproxy_ffi_engine_rpc_register_custom_op_cb(op: c_uint, func: CustomOpFn);
     fn mtproxy_ffi_engine_rpc_custom_op_clear();
-    fn mtproxy_ffi_engine_rpc_engine_work_rpc_req_result(
-        tlio_in: *mut c_void,
-        params: *mut c_void,
-    );
+    fn mtproxy_ffi_engine_rpc_engine_work_rpc_req_result(tlio_in: *mut c_void, params: *mut c_void);
     #[allow(clashing_extern_declarations)]
     fn create_async_job(
         run_job: JobExecuteFn,
@@ -470,7 +466,11 @@ unsafe extern "C" {
 static mut LAST_CRON_TIME: c_int = 0;
 static mut ENGINE_STATS_DATA_BUF: [c_char; DATA_BUF_SIZE + 1] = [0; DATA_BUF_SIZE + 1];
 
-unsafe extern "C" fn default_tcp_execute_bridge(c: *mut c_void, op: c_int, raw: *mut c_void) -> c_int {
+unsafe extern "C" fn default_tcp_execute_bridge(
+    c: *mut c_void,
+    op: c_int,
+    raw: *mut c_void,
+) -> c_int {
     unsafe { mtproxy_ffi_engine_rpc_default_tl_tcp_rpcs_execute(c, op, raw) }
 }
 
@@ -1181,7 +1181,11 @@ struct EngineSignalDispatchCtx {
 
 unsafe extern "C" fn engine_signal_dispatch_from_rust(sig: c_int, ctx: *mut c_void) {
     let dispatch_ctx = ctx.cast::<EngineSignalDispatchCtx>();
-    if dispatch_ctx.is_null() || unsafe { (*dispatch_ctx).f }.is_null() || sig <= 0 || sig > OUR_SIGRTMAX {
+    if dispatch_ctx.is_null()
+        || unsafe { (*dispatch_ctx).f }.is_null()
+        || sig <= 0
+        || sig > OUR_SIGRTMAX
+    {
         return;
     }
     if (unsafe { (*dispatch_ctx).allowed_signals } & sig2int(sig)) == 0 {

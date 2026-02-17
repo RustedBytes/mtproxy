@@ -74,7 +74,11 @@ pub unsafe extern "C" fn rust_sf_register_parse_option_ex_or_die(
         unsafe {
             kprintf(
                 c"failed to register parse option %s (%d)\n".as_ptr(),
-                if name.is_null() { c"(null)".as_ptr() } else { name },
+                if name.is_null() {
+                    c"(null)".as_ptr()
+                } else {
+                    name
+                },
                 val,
             );
             usage();
@@ -103,7 +107,11 @@ pub unsafe extern "C" fn rust_sf_register_parse_option_or_die(
         unsafe {
             kprintf(
                 c"failed to register custom parse option %s (%d)\n".as_ptr(),
-                if name.is_null() { c"(null)".as_ptr() } else { name },
+                if name.is_null() {
+                    c"(null)".as_ptr()
+                } else {
+                    name
+                },
                 val,
             );
             usage();

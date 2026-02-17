@@ -543,15 +543,9 @@ mod tests {
             assert!(!entry1.is_null());
             assert!(!entry2.is_null());
 
-            assert_eq!(
-                mtproxy_ffi_engine_rpc_custom_op_insert(op, entry1),
-                0
-            );
+            assert_eq!(mtproxy_ffi_engine_rpc_custom_op_insert(op, entry1), 0);
             assert_eq!(mtproxy_ffi_engine_rpc_custom_op_lookup(op), entry1);
-            assert_eq!(
-                mtproxy_ffi_engine_rpc_custom_op_insert(op, entry2),
-                0
-            );
+            assert_eq!(mtproxy_ffi_engine_rpc_custom_op_insert(op, entry2), 0);
             assert_eq!(mtproxy_ffi_engine_rpc_custom_op_lookup(op), entry2);
             assert_eq!(mtproxy_ffi_engine_rpc_custom_op_has_any(), 1);
             mtproxy_ffi_engine_rpc_custom_op_clear();

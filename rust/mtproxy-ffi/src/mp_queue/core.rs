@@ -104,7 +104,11 @@ pub unsafe extern "C" fn mtproxy_ffi_mpq_rust_queue_attached(mq: *mut c_void) ->
     let Some(mq_ref) = (unsafe { mut_ref_from_ptr(mq.cast::<MpQueueC>()) }) else {
         return 0;
     };
-    if is_rust_magic(mq_ref.mq_magic) { 1 } else { 0 }
+    if is_rust_magic(mq_ref.mq_magic) {
+        1
+    } else {
+        0
+    }
 }
 
 /// Rust implementation of `common/mp-queue-rust.c:mpq_rust_queue_waitable`.
@@ -122,7 +126,10 @@ pub unsafe extern "C" fn mtproxy_ffi_mpq_rust_queue_waitable(mq: *mut c_void) ->
 
 /// Rust implementation of `common/mp-queue-rust.c:mpq_rust_init_queue`.
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mpq_rust_init_queue(mq: *mut c_void, waitable: c_int) -> c_int {
+pub unsafe extern "C" fn mtproxy_ffi_mpq_rust_init_queue(
+    mq: *mut c_void,
+    waitable: c_int,
+) -> c_int {
     let Some(mq_ref) = (unsafe { mut_ref_from_ptr(mq.cast::<MpQueueC>()) }) else {
         return MPQ_FFI_ERR_INVALID_ARGS;
     };
@@ -134,7 +141,13 @@ pub unsafe extern "C" fn mtproxy_ffi_mpq_rust_init_queue(mq: *mut c_void, waitab
         return MPQ_RUST_INIT_ERR_CREATE_FAILED;
     }
 
-    unsafe { ptr::write_bytes(mq_ref as *mut MpQueueC as *mut u8, 0, core::mem::size_of::<MpQueueC>()) };
+    unsafe {
+        ptr::write_bytes(
+            mq_ref as *mut MpQueueC as *mut u8,
+            0,
+            core::mem::size_of::<MpQueueC>(),
+        )
+    };
     mq_ref.mq_head = handle;
     mq_ref.mq_tail = handle;
     mq_ref.mq_magic = if waitable != 0 {
@@ -186,24 +199,26 @@ pub unsafe extern "C" fn mtproxy_ffi_mpq_rust_push_w(
     unsafe { abort_if(!queue_is_waitable(mq_ref)) };
 
     let mut pos: i64 = -1;
-    let rc = unsafe { mtproxy_ffi_mpq_handle_push_w(queue_handle(mq_ref), value, flags, &raw mut pos) };
+    let rc =
+        unsafe { mtproxy_ffi_mpq_handle_push_w(queue_handle(mq_ref), value, flags, &raw mut pos) };
     unsafe { abort_if(rc != 0) };
     pos as c_long
 }
 
 /// Rust implementation of `common/mp-queue-rust.c:mpq_rust_pop_nw`.
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mpq_rust_pop_nw(
-    mq: *mut c_void,
-    flags: c_int,
-) -> *mut c_void {
+pub unsafe extern "C" fn mtproxy_ffi_mpq_rust_pop_nw(mq: *mut c_void, flags: c_int) -> *mut c_void {
     let mq_ref = unsafe { queue_ref(mq) };
     unsafe { abort_if(!queue_is_waitable(mq_ref)) };
 
     let mut out: *mut c_void = ptr::null_mut();
     let rc = unsafe { mtproxy_ffi_mpq_handle_pop_nw(queue_handle(mq_ref), flags, &raw mut out) };
     unsafe { abort_if(rc != 0 && rc != 1) };
-    if rc == 1 { out } else { ptr::null_mut() }
+    if rc == 1 {
+        out
+    } else {
+        ptr::null_mut()
+    }
 }
 
 #[no_mangle]
@@ -542,13 +557,7 @@ pub unsafe extern "C" fn init_mp_queue_w(mq: *mut c_void) {
 pub unsafe extern "C" fn alloc_mp_queue_w() -> *mut c_void {
     let mut out: *mut c_void = ptr::null_mut();
     // SAFETY: writes allocated pointer to `out`.
-    let alloc_rc = unsafe {
-        posix_memalign(
-            &raw mut out,
-            64,
-            core::mem::size_of::<MpQueueC>(),
-        )
-    };
+    let alloc_rc = unsafe { posix_memalign(&raw mut out, 64, core::mem::size_of::<MpQueueC>()) };
     unsafe { abort_if(alloc_rc != 0 || out.is_null()) };
     // SAFETY: newly allocated memory is writable for full object size.
     unsafe {

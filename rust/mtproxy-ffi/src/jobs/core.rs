@@ -48,7 +48,8 @@ pub(super) type JobExecuteFn = Option<unsafe extern "C" fn(JobT, i32, *mut JobTh
 pub(super) type JobMessageDestructorFn = Option<unsafe extern "C" fn(*mut JobMessage)>;
 pub(super) type JobMessageReceiveFn =
     Option<unsafe extern "C" fn(JobT, *mut JobMessage, *mut c_void) -> i32>;
-pub(super) type JobListNodeTypeFn = Option<unsafe extern "C" fn(JobT, i32, *mut JobListNode) -> i32>;
+pub(super) type JobListNodeTypeFn =
+    Option<unsafe extern "C" fn(JobT, i32, *mut JobListNode) -> i32>;
 
 #[repr(C, align(128))]
 pub struct JobThread {
@@ -286,7 +287,12 @@ unsafe extern "C" {
     pub(super) fn jobs_sem_post_subclass_list_c_impl(list: *mut JobSubclassList, count: i32);
     pub(super) fn job_thread(arg: *mut c_void) -> *mut c_void;
     pub(super) fn job_thread_sub(arg: *mut c_void) -> *mut c_void;
-    pub(super) fn create_job_class(job_class: i32, min_threads: i32, max_threads: i32, excl: i32) -> i32;
+    pub(super) fn create_job_class(
+        job_class: i32,
+        min_threads: i32,
+        max_threads: i32,
+        excl: i32,
+    ) -> i32;
     pub(super) fn insert_event_timer(et: *mut EventTimer) -> i32;
     pub(super) fn remove_event_timer(et: *mut EventTimer) -> i32;
     pub(super) fn thread_run_timers() -> i32;
@@ -302,7 +308,10 @@ unsafe extern "C" {
         arg: *mut c_void,
     ) -> i32;
     pub(super) fn pthread_attr_init(attr: *mut libc::pthread_attr_t) -> i32;
-    pub(super) fn pthread_attr_setstacksize(attr: *mut libc::pthread_attr_t, stacksize: usize) -> i32;
+    pub(super) fn pthread_attr_setstacksize(
+        attr: *mut libc::pthread_attr_t,
+        stacksize: usize,
+    ) -> i32;
     pub(super) fn pthread_attr_destroy(attr: *mut libc::pthread_attr_t) -> i32;
     pub(super) fn strerror(errnum: i32) -> *const c_char;
     pub(super) fn kprintf(fmt: *const c_char, ...);

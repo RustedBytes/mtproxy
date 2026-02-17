@@ -688,11 +688,7 @@ pub unsafe extern "C" fn mtproxy_ffi_sb_sum_f(
 /// # Safety
 /// `base` must point to `len` readable entries when `len > 0`.
 #[export_name = "sb_sum_f"]
-pub unsafe extern "C" fn c_sb_sum_f(
-    base: *mut *mut c_void,
-    len: c_int,
-    offset: c_int,
-) -> c_double {
+pub unsafe extern "C" fn c_sb_sum_f(base: *mut *mut c_void, len: c_int, offset: c_int) -> c_double {
     unsafe { mtproxy_ffi_sb_sum_f(base, len, offset) }
 }
 

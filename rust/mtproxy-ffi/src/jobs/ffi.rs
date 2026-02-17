@@ -13,7 +13,11 @@ const NOTIFY_SUBSCRIBE_TYPE: u32 = 0x8934_a894;
 
 #[inline]
 fn safe_div(x: f64, y: f64) -> f64 {
-    if y > 0.0 { x / y } else { 0.0 }
+    if y > 0.0 {
+        x / y
+    } else {
+        0.0
+    }
 }
 
 #[inline]
@@ -28,7 +32,11 @@ const fn jf_queued_class(class: i32) -> i32 {
 
 #[inline]
 fn max_double(lhs: f64, rhs: f64) -> f64 {
-    if lhs > rhs { lhs } else { rhs }
+    if lhs > rhs {
+        lhs
+    } else {
+        rhs
+    }
 }
 
 #[inline]
@@ -169,12 +177,7 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_notify_job_run(
                 if (*notify).first.is_null() {
                     (*notify).last = ptr::null_mut();
                 }
-                complete_subjob(
-                    nj,
-                    1,
-                    (*subscriber).job,
-                    7,
-                );
+                complete_subjob(nj, 1, (*subscriber).job, 7);
                 free(subscriber.cast::<c_void>());
             }
         }
@@ -194,7 +197,11 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_job_interrupt_signal_handler(_sig: i32
         return;
     }
     let thread = unsafe { jobs_get_this_job_thread_c_impl() };
-    let thread_id = if thread.is_null() { -1 } else { unsafe { (*thread).id } };
+    let thread_id = if thread.is_null() {
+        -1
+    } else {
+        unsafe { (*thread).id }
+    };
     let current_job = if thread.is_null() {
         ptr::null_mut::<c_void>()
     } else {
@@ -268,12 +275,15 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_drand48_j() -> f64 {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_jobs_prepare_async_create(custom_bytes: i32) -> *mut JobThread {
+pub unsafe extern "C" fn mtproxy_ffi_jobs_prepare_async_create(
+    custom_bytes: i32,
+) -> *mut JobThread {
     abort_if(custom_bytes < 0);
     let module_stat_tls = unsafe { jobs_get_module_stat_tls_c_impl() };
     abort_if(module_stat_tls.is_null());
     unsafe {
-        (*module_stat_tls).jobs_allocated_memory += mem::size_of::<AsyncJob>() as i64 + i64::from(custom_bytes);
+        (*module_stat_tls).jobs_allocated_memory +=
+            mem::size_of::<AsyncJob>() as i64 + i64::from(custom_bytes);
     }
     let thread = unsafe { jobs_get_this_job_thread_c_impl() };
     abort_if(thread.is_null());
@@ -329,11 +339,12 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_update_all_thread_stats() {
 pub unsafe extern "C" fn mtproxy_ffi_jobs_create_job_thread(thread_class: i32) -> i32 {
     abort_if(thread_class < 0 || thread_class > JC_MAX as i32);
     let class = unsafe { &mut JobClasses[thread_class as usize] };
-    let thread_work: Option<unsafe extern "C" fn(*mut c_void) -> *mut c_void> = if class.subclasses.is_null() {
-        Some(job_thread as unsafe extern "C" fn(*mut c_void) -> *mut c_void)
-    } else {
-        Some(job_thread_sub as unsafe extern "C" fn(*mut c_void) -> *mut c_void)
-    };
+    let thread_work: Option<unsafe extern "C" fn(*mut c_void) -> *mut c_void> =
+        if class.subclasses.is_null() {
+            Some(job_thread as unsafe extern "C" fn(*mut c_void) -> *mut c_void)
+        } else {
+            Some(job_thread_sub as unsafe extern "C" fn(*mut c_void) -> *mut c_void)
+        };
     unsafe { mtproxy_ffi_jobs_create_job_thread_ex(thread_class, thread_work) }
 }
 
@@ -431,7 +442,9 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_create_job_class_threads(job_class: i3
     unsafe { check_main_thread() };
 
     let mut created = 0_i32;
-    while unsafe { class.cur_threads < class.min_threads && cur_job_threads < MAX_JOB_THREADS as i32 } {
+    while unsafe {
+        class.cur_threads < class.min_threads && cur_job_threads < MAX_JOB_THREADS as i32
+    } {
         abort_if(unsafe { mtproxy_ffi_jobs_create_job_thread(job_class) } < 0);
         created += 1;
     }
@@ -456,9 +469,8 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_create_job_class_sub(
         (*list).subclass_cnt = subclass_cnt;
     }
 
-    let subclasses =
-        unsafe { calloc((subclass_cnt as usize) + 2, mem::size_of::<JobSubclass>()) }
-            .cast::<JobSubclass>();
+    let subclasses = unsafe { calloc((subclass_cnt as usize) + 2, mem::size_of::<JobSubclass>()) }
+        .cast::<JobSubclass>();
     abort_if(subclasses.is_null());
     unsafe {
         (*list).subclasses = subclasses.add(2);
@@ -688,7 +700,12 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_alloc_timer_manager(thread_class: i32)
     unsafe {
         (*timer_manager).j_refcnt = 1;
     }
-    let extra = unsafe { (*timer_manager).j_custom.as_mut_ptr().cast::<JobTimerManagerExtra>() };
+    let extra = unsafe {
+        (*timer_manager)
+            .j_custom
+            .as_mut_ptr()
+            .cast::<JobTimerManagerExtra>()
+    };
     abort_if(extra.is_null());
 
     let queue_id = mtproxy_ffi_jobs_tokio_timer_queue_create();
@@ -725,7 +742,9 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_job_timer_alloc(
     let timer_job = unsafe {
         create_async_job(
             Some(mtproxy_ffi_jobs_do_timer_job),
-            jsc_allow(thread_class, JS_ABORT) | jsc_allow(thread_class, JS_ALARM) | jss_fast(JS_FINISH) as u64,
+            jsc_allow(thread_class, JS_ABORT)
+                | jsc_allow(thread_class, JS_ALARM)
+                | jss_fast(JS_FINISH) as u64,
             0,
             mem::size_of::<JobTimerInfo>() as i32,
             JT_HAVE_TIMER,
@@ -781,7 +800,11 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_job_timer_active(job: JobT) -> i32 {
     abort_if(job.is_null());
     abort_if((unsafe { (*job).j_type as u64 } & JT_HAVE_TIMER) == 0);
     let ev = unsafe { (*job).j_custom.as_mut_ptr().cast::<EventTimer>() };
-    if unsafe { (*ev).real_wakeup_time > 0.0 } { 1 } else { 0 }
+    if unsafe { (*ev).real_wakeup_time > 0.0 } {
+        1
+    } else {
+        0
+    }
 }
 
 #[no_mangle]
@@ -870,7 +893,10 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_check_all_timers() {
     let mut i = 1_i32;
     while i <= max_id {
         let thread = unsafe { &mut JobThreads[i as usize] };
-        if !thread.timer_manager.is_null() && thread.wakeup_time > 0.0 && thread.wakeup_time <= precise_now {
+        if !thread.timer_manager.is_null()
+            && thread.wakeup_time > 0.0
+            && thread.wakeup_time <= precise_now
+        {
             unsafe {
                 let manager = job_incref(thread.timer_manager);
                 job_signal(1, manager, JS_AUX);
@@ -1105,7 +1131,8 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_job_thread_ex(
                 while prev_now < current_now {
                     unsafe {
                         (*module_stat_tls).a_idle_time *= 100.0 / 101.0;
-                        (*module_stat_tls).a_idle_quotient = a_idle_quotient * (100.0 / 101.0) + 1.0;
+                        (*module_stat_tls).a_idle_quotient =
+                            a_idle_quotient * (100.0 / 101.0) + 1.0;
                     }
                     prev_now += 1;
                 }
@@ -1524,9 +1551,21 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_prepare_stat(sb: *mut StatsBuffer) -> 
     let mut j = 0_i32;
     while j < 6 {
         let (title, b, d): (*const i8, &[f64; JOB_CLASS_COUNT], f64) = match j {
-            0 => (c"thread_load_average_user\t".as_ptr(), &jb_cpu_load_u, f64::from(uptime)),
-            1 => (c"thread_load_average_sys\t".as_ptr(), &jb_cpu_load_s, f64::from(uptime)),
-            2 => (c"thread_load_average\t".as_ptr(), &jb_cpu_load_t, f64::from(uptime)),
+            0 => (
+                c"thread_load_average_user\t".as_ptr(),
+                &jb_cpu_load_u,
+                f64::from(uptime),
+            ),
+            1 => (
+                c"thread_load_average_sys\t".as_ptr(),
+                &jb_cpu_load_s,
+                f64::from(uptime),
+            ),
+            2 => (
+                c"thread_load_average\t".as_ptr(),
+                &jb_cpu_load_t,
+                f64::from(uptime),
+            ),
             3 => (c"thread_load_recent_user\t".as_ptr(), &jb_cpu_load_ru, 10.0),
             4 => (c"thread_load_recent_sys\t".as_ptr(), &jb_cpu_load_rs, 10.0),
             _ => (c"thread_load_recent\t".as_ptr(), &jb_cpu_load_rt, 10.0),
@@ -1695,7 +1734,11 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_create_job_thread_ex(
         ptr::write_bytes(jt_ptr.cast::<u8>(), 0, mem::size_of::<JobThread>());
         (*jt_ptr).status = JTS_CREATED;
         (*jt_ptr).thread_class = thread_class;
-        (*jt_ptr).job_class_mask = 1 | if thread_class == JC_MAIN { 0xffff } else { 1 << thread_class };
+        (*jt_ptr).job_class_mask = 1 | if thread_class == JC_MAIN {
+            0xffff
+        } else {
+            1 << thread_class
+        };
         (*jt_ptr).job_queue = jc.job_queue;
         (*jt_ptr).job_class = jc as *mut JobClass;
         (*jt_ptr).id = idx as i32;
@@ -1888,7 +1931,8 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_unlock_job(job_tag_int: i32, job: JobT
                 if rc < 0 {
                     unsafe {
                         kprintf(
-                            c"fatal: rust tokio class enqueue failed (class=%d rc=%d job=%p)\n".as_ptr(),
+                            c"fatal: rust tokio class enqueue failed (class=%d rc=%d job=%p)\n"
+                                .as_ptr(),
                             tokio_class,
                             rc,
                             queued_job,
@@ -1908,7 +1952,8 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_unlock_job(job_tag_int: i32, job: JobT
                 abort_if(unsafe { (*job).j_subclass } != cur_subclass);
                 let subclass_cnt = unsafe { (*jc.subclasses).subclass_cnt };
                 abort_if(cur_subclass < -2 || cur_subclass >= subclass_cnt);
-                let jsc = unsafe { &mut *(*jc.subclasses).subclasses.offset(cur_subclass as isize) };
+                let jsc =
+                    unsafe { &mut *(*jc.subclasses).subclasses.offset(cur_subclass as isize) };
                 unsafe {
                     jobs_atomic_fetch_add_c_impl(&raw mut jsc.total_jobs, 1);
                 }
@@ -1975,11 +2020,7 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_complete_subjob(
     if unsafe { (*job).j_error } != 0 && (status & JSP_PARENT_ERROR) != 0 {
         if unsafe { (*parent).j_error } == 0 {
             unsafe {
-                jobs_atomic_cas_c_impl(
-                    &raw mut (*parent).j_error,
-                    0,
-                    (*job).j_error,
-                );
+                jobs_atomic_cas_c_impl(&raw mut (*parent).j_error, 0, (*job).j_error);
             }
         }
         if (status & JSP_PARENT_WAKEUP as i32) != 0 {
@@ -2069,7 +2110,12 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_job_timer_insert(job: JobT, timeout: f
     }
     abort_if(manager.is_null());
 
-    let extra = unsafe { (*manager).j_custom.as_mut_ptr().cast::<JobTimerManagerExtra>() };
+    let extra = unsafe {
+        (*manager)
+            .j_custom
+            .as_mut_ptr()
+            .cast::<JobTimerManagerExtra>()
+    };
     let rc = mtproxy_ffi_jobs_tokio_timer_queue_push(
         unsafe { (*extra).tokio_queue_id },
         unsafe { job_incref(job) }.cast::<c_void>(),
@@ -2090,7 +2136,12 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_job_timer_insert(job: JobT, timeout: f
 #[inline]
 unsafe fn job_message_payload_ptr(message: *mut JobMessage) -> *mut u32 {
     // SAFETY: payload starts immediately after fixed-size header.
-    unsafe { message.cast::<u8>().add(mem::size_of::<JobMessage>()).cast::<u32>() }
+    unsafe {
+        message
+            .cast::<u8>()
+            .add(mem::size_of::<JobMessage>())
+            .cast::<u32>()
+    }
 }
 
 #[inline]
@@ -2115,7 +2166,11 @@ unsafe fn job_message_receive_or_continuation(
 
         // payload[1..=2] stores function pointer, payload[3..=4] stores opaque extra pointer.
         let func_ptr_slot = unsafe { job_message_payload_ptr(message).add(1).cast::<*const ()>() };
-        let extra_ptr_slot = unsafe { job_message_payload_ptr(message).add(3).cast::<*mut c_void>() };
+        let extra_ptr_slot = unsafe {
+            job_message_payload_ptr(message)
+                .add(3)
+                .cast::<*mut c_void>()
+        };
         let continuation_fn_addr = unsafe { *func_ptr_slot };
         let continuation_extra = unsafe { *extra_ptr_slot };
         abort_if(continuation_fn_addr.is_null());
@@ -2133,7 +2188,10 @@ unsafe fn job_message_receive_or_continuation(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_jobs_process_one_sublist(subclass_token_id: usize, class: i32) {
+pub unsafe extern "C" fn mtproxy_ffi_jobs_process_one_sublist(
+    subclass_token_id: usize,
+    class: i32,
+) {
     let _ = class;
     let thread_class = unsafe { jobs_get_current_thread_class_c_impl() };
     abort_if(thread_class <= 0);
@@ -2163,12 +2221,7 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_process_one_sublist(subclass_token_id:
 
             let mut job: *mut c_void = ptr::null_mut();
             let rc = unsafe {
-                mtproxy_ffi_jobs_tokio_dequeue_subclass(
-                    thread_class,
-                    subclass_id,
-                    1,
-                    &raw mut job,
-                )
+                mtproxy_ffi_jobs_tokio_dequeue_subclass(thread_class, subclass_id, 1, &raw mut job)
             };
             abort_if(rc < 0 || job.is_null());
             unsafe {
@@ -2239,7 +2292,10 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_job_message_send(
 
     let queue = unsafe { job_message_queue_get(job) };
     abort_if(queue.is_null());
-    let rc = mtproxy_ffi_jobs_tokio_message_queue_push(unsafe { (*queue).tokio_queue_id }, message.cast());
+    let rc = mtproxy_ffi_jobs_tokio_message_queue_push(
+        unsafe { (*queue).tokio_queue_id },
+        message.cast(),
+    );
     abort_if(rc < 0);
 
     unsafe {
@@ -2261,8 +2317,9 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_job_message_queue_work(
 
     loop {
         let mut msg: *mut c_void = ptr::null_mut();
-        let rc =
-            unsafe { mtproxy_ffi_jobs_tokio_message_queue_pop((*queue).tokio_queue_id, &raw mut msg) };
+        let rc = unsafe {
+            mtproxy_ffi_jobs_tokio_message_queue_pop((*queue).tokio_queue_id, &raw mut msg)
+        };
         abort_if(rc < 0);
         if rc == 0 || msg.is_null() {
             break;
@@ -2365,7 +2422,8 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_job_message_queue_free(job: JobT) {
         unsafe { mtproxy_ffi_jobs_job_message_free_default(message.cast::<JobMessage>()) };
     }
 
-    let destroy_rc = mtproxy_ffi_jobs_tokio_message_queue_destroy(unsafe { (*queue).tokio_queue_id });
+    let destroy_rc =
+        mtproxy_ffi_jobs_tokio_message_queue_destroy(unsafe { (*queue).tokio_queue_id });
     abort_if(destroy_rc < 0);
     unsafe {
         free(queue.cast::<c_void>());
@@ -2414,9 +2472,7 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_job_free(job_tag_int: i32, job: JobT) 
 pub unsafe extern "C" fn mtproxy_ffi_jobs_job_timer_wakeup_gateway(et: *mut EventTimer) -> i32 {
     abort_if(et.is_null());
     let header_size = unsafe { jobs_async_job_header_size_c_impl() };
-    let job = unsafe {
-        (et.cast::<u8>().sub(header_size)).cast::<AsyncJob>()
-    };
+    let job = unsafe { (et.cast::<u8>().sub(header_size)).cast::<AsyncJob>() };
     abort_if(job.is_null());
     if unsafe { (*et).wakeup_time == (*et).real_wakeup_time } {
         unsafe {
