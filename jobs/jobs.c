@@ -50,11 +50,18 @@
 #include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 #include "server-functions.h"
 
-static constexpr int JOB_SUBCLASS_OFFSET = 3;
-
 static inline double max_double(const double lhs, const double rhs) {
   return lhs > rhs ? lhs : rhs;
 }
+
+static void set_job_interrupt_signal_handler(void);
+int mtproxy_ffi_jobs_prepare_stat(stats_buffer_t *sb);
+int mtproxy_ffi_jobs_create_job_thread_ex(int thread_class,
+                                          void *(*thread_work)(void *));
+int mtproxy_ffi_jobs_unlock_job(int job_tag_int, job_t job);
+void mtproxy_ffi_jobs_complete_subjob(job_t job, int parent_tag_int,
+                                      job_t parent, int status);
+void mtproxy_ffi_jobs_job_timer_insert(job_t job, double timeout);
 
 struct job_thread JobThreads[MAX_JOB_THREADS] __attribute__((aligned(128)));
 
@@ -77,8 +84,8 @@ struct jobs_module_stat {
   long long timer_ops_scheduler;
 };
 
-static struct jobs_module_stat *jobs_module_stat_array[MAX_JOB_THREADS];
-static __thread struct jobs_module_stat *jobs_module_stat_tls;
+struct jobs_module_stat *jobs_module_stat_array[MAX_JOB_THREADS];
+__thread struct jobs_module_stat *jobs_module_stat_tls;
 
 static void jobs_module_thread_init(void) {
   int id = get_this_thread_id();
@@ -107,251 +114,7 @@ static inline long long jobs_stat_sum_ll(size_t field_offset) {
 }
 
 int jobs_prepare_stat(stats_buffer_t *sb) {
-  int uptime = time(0) - start_time;
-  double tm = get_utime_monotonic();
-  double tot_recent_idle[16];
-  double tot_recent_q[16];
-  double tot_idle[16];
-  int tot_threads[16];
-  memset(tot_recent_idle, 0, sizeof(tot_recent_idle));
-  memset(tot_recent_q, 0, sizeof(tot_recent_q));
-  memset(tot_idle, 0, sizeof(tot_idle));
-  memset(tot_threads, 0, sizeof(tot_threads));
-
-  tot_recent_idle[JC_MAIN] = a_idle_time;
-  tot_recent_q[JC_MAIN] = a_idle_quotient;
-  tot_idle[JC_MAIN] = tot_idle_time;
-
-  int i, j;
-  for (i = 0; i < max_job_thread_id + 1; i++) {
-    if (jobs_module_stat_array[i]) {
-      assert(JobThreads[i].id == i);
-      int class = JobThreads[i].thread_class & JC_MASK;
-      tot_recent_idle[class] += jobs_module_stat_array[i]->a_idle_time;
-      tot_recent_q[class] += jobs_module_stat_array[i]->a_idle_quotient;
-      tot_idle[class] += jobs_module_stat_array[i]->tot_idle_time;
-      if (jobs_module_stat_array[i]->locked_since) {
-        double lt = jobs_module_stat_array[i]->locked_since;
-        tot_recent_idle[class] += (tm - lt);
-        tot_recent_q[class] += (tm - lt);
-        tot_idle[class] += (tm - lt);
-      }
-      tot_threads[class]++;
-    }
-  }
-
-  sb_printf(sb, "thread_average_idle_percent\t");
-  for (i = 0; i < 16; i++) {
-    if (i != 0) {
-      sb_printf(sb, " ");
-      if (!(i & 3)) {
-        sb_printf(sb, " ");
-      }
-    }
-    sb_printf(sb, "%.3f", safe_div(tot_idle[i], uptime * tot_threads[i]) * 100);
-  }
-  sb_printf(sb, "\n");
-
-  sb_printf(sb, "thread_recent_idle_percent\t");
-  for (i = 0; i < 16; i++) {
-    if (i != 0) {
-      sb_printf(sb, " ");
-      if (!(i & 3)) {
-        sb_printf(sb, " ");
-      }
-    }
-    sb_printf(sb, "%.3f", safe_div(tot_recent_idle[i], tot_recent_q[i]) * 100);
-  }
-  sb_printf(sb, "\n");
-
-  sb_printf(sb, "tot_threads\t");
-  for (i = 0; i < 16; i++) {
-    if (i != 0) {
-      sb_printf(sb, " ");
-      if (!(i & 3)) {
-        sb_printf(sb, " ");
-      }
-    }
-    sb_printf(sb, "%d", tot_threads[i]);
-  }
-  sb_printf(sb, "\n");
-
-  double jb_cpu_load_u[16];
-  double jb_cpu_load_s[16];
-  double jb_cpu_load_t[16];
-  double jb_cpu_load_ru[16];
-  double jb_cpu_load_rs[16];
-  double jb_cpu_load_rt[16];
-  memset(jb_cpu_load_u, 0, sizeof(jb_cpu_load_u));
-  memset(jb_cpu_load_s, 0, sizeof(jb_cpu_load_u));
-  memset(jb_cpu_load_t, 0, sizeof(jb_cpu_load_u));
-  memset(jb_cpu_load_ru, 0, sizeof(jb_cpu_load_u));
-  memset(jb_cpu_load_rs, 0, sizeof(jb_cpu_load_u));
-  memset(jb_cpu_load_rt, 0, sizeof(jb_cpu_load_u));
-  double tot_cpu_load_u = 0;
-  double tot_cpu_load_s = 0;
-  double tot_cpu_load_t = 0;
-  double tot_cpu_load_ru = 0;
-  double tot_cpu_load_rs = 0;
-  double tot_cpu_load_rt = 0;
-  double max_cpu_load_u = 0;
-  double max_cpu_load_s = 0;
-  double max_cpu_load_t = 0;
-  double max_cpu_load_ru = 0;
-  double max_cpu_load_rs = 0;
-  double max_cpu_load_rt = 0;
-  for (i = 0; i < max_job_thread_id + 1; i++) {
-    if (jobs_module_stat_array[i]) {
-      assert(JobThreads[i].id == i);
-      int class = JobThreads[i].thread_class & JC_MASK;
-      jb_cpu_load_u[class] += JobThreadsStats[i].tot_user;
-      jb_cpu_load_s[class] += JobThreadsStats[i].tot_sys;
-      jb_cpu_load_t[class] +=
-          JobThreadsStats[i].tot_user + JobThreadsStats[i].tot_sys;
-
-      jb_cpu_load_ru[class] += JobThreadsStats[i].recent_user;
-      jb_cpu_load_rs[class] += JobThreadsStats[i].recent_sys;
-      jb_cpu_load_rt[class] +=
-          JobThreadsStats[i].recent_user + JobThreadsStats[i].recent_sys;
-    }
-  }
-  for (i = 0; i < 16; i++) {
-    tot_cpu_load_u += jb_cpu_load_u[i];
-    tot_cpu_load_s += jb_cpu_load_s[i];
-    tot_cpu_load_t += jb_cpu_load_t[i];
-    tot_cpu_load_ru += jb_cpu_load_ru[i];
-    tot_cpu_load_rs += jb_cpu_load_rs[i];
-    tot_cpu_load_rt += jb_cpu_load_rt[i];
-
-    max_cpu_load_u = max_double(max_cpu_load_u, jb_cpu_load_u[i]);
-    max_cpu_load_s = max_double(max_cpu_load_s, jb_cpu_load_s[i]);
-    max_cpu_load_t = max_double(max_cpu_load_t, jb_cpu_load_t[i]);
-    max_cpu_load_ru = max_double(max_cpu_load_ru, jb_cpu_load_ru[i]);
-    max_cpu_load_rs = max_double(max_cpu_load_rs, jb_cpu_load_rs[i]);
-    max_cpu_load_rt = max_double(max_cpu_load_rt, jb_cpu_load_rt[i]);
-  }
-
-  const double m_clk_to_hs =
-      100.0 / sysconf(_SC_CLK_TCK);             /* hundredth of a second */
-  const double m_clk_to_ts = 0.1 * m_clk_to_hs; /* tenth of a second */
-
-  for (j = 0; j < 6; j++) {
-    double *b = NULL;
-    double d = 0;
-    switch (j) {
-    case 0:
-      sb_printf(sb, "thread_load_average_user\t");
-      b = jb_cpu_load_u;
-      d = uptime;
-      break;
-    case 1:
-      sb_printf(sb, "thread_load_average_sys\t");
-      b = jb_cpu_load_s;
-      d = uptime;
-      break;
-    case 2:
-      sb_printf(sb, "thread_load_average\t");
-      b = jb_cpu_load_t;
-      d = uptime;
-      break;
-    case 3:
-      sb_printf(sb, "thread_load_recent_user\t");
-      b = jb_cpu_load_ru;
-      d = 10;
-      break;
-    case 4:
-      sb_printf(sb, "thread_load_recent_sys\t");
-      b = jb_cpu_load_rs;
-      d = 10;
-      break;
-    case 5:
-      sb_printf(sb, "thread_load_recent\t");
-      b = jb_cpu_load_rt;
-      d = 10;
-      break;
-    default:
-      assert(0);
-    }
-    for (i = 0; i < 16; i++) {
-      if (i != 0) {
-        sb_printf(sb, " ");
-        if (!(i & 3)) {
-          sb_printf(sb, " ");
-        }
-      }
-      sb_printf(sb, "%.3f", safe_div(m_clk_to_hs * b[i], d * tot_threads[i]));
-    }
-    sb_printf(sb, "\n");
-  }
-
-  sb_printf(sb,
-            "load_average_user\t%.3f\n"
-            "load_average_sys\t%.3f\n"
-            "load_average_total\t%.3f\n"
-            "load_recent_user\t%.3f\n"
-            "load_recent_sys\t%.3f\n"
-            "load_recent_total\t%.3f\n"
-            "max_average_user\t%.3f\n"
-            "max_average_sys\t%.3f\n"
-            "max_average_total\t%.3f\n"
-            "max_recent_user\t%.3f\n"
-            "max_recent_sys\t%.3f\n"
-            "max_recent_total\t%.3f\n",
-            safe_div(m_clk_to_hs * tot_cpu_load_u, uptime),
-            safe_div(m_clk_to_hs * tot_cpu_load_s, uptime),
-            safe_div(m_clk_to_hs * tot_cpu_load_t, uptime),
-            m_clk_to_ts * tot_cpu_load_ru, m_clk_to_ts * tot_cpu_load_rs,
-            m_clk_to_ts * tot_cpu_load_rt,
-            safe_div(m_clk_to_hs * max_cpu_load_u, uptime),
-            safe_div(m_clk_to_hs * max_cpu_load_s, uptime),
-            safe_div(m_clk_to_hs * max_cpu_load_t, uptime),
-            m_clk_to_ts * max_cpu_load_ru, m_clk_to_ts * max_cpu_load_rs,
-            m_clk_to_ts * max_cpu_load_rt);
-
-  sb_print_i32_key(
-      sb, "job_timers_allocated",
-      jobs_stat_sum_i(offsetof(struct jobs_module_stat, job_timers_allocated)));
-
-  int jb_running[16], jb_active = 0;
-  long long jb_created = 0;
-  memset(jb_running, 0, sizeof(jb_running));
-  for (i = 1; i <= max_job_thread_id; i++) {
-    struct job_thread *JT = &JobThreads[i];
-    if (JT->status) {
-      jb_active += JT->jobs_active;
-      jb_created += JT->jobs_created;
-      for (j = 0; j <= JC_MAX; j++) {
-        jb_running[j] += JT->jobs_running[j];
-      }
-    }
-  }
-  sb_printf(sb,
-            "jobs_created\t%lld\n"
-            "jobs_active\t%d\n",
-            jb_created, jb_active);
-
-  sb_printf(sb, "jobs_running\t");
-  for (i = 0; i < 16; i++) {
-    if (i != 0) {
-      sb_printf(sb, " ");
-      if (!(i & 3)) {
-        sb_printf(sb, " ");
-      }
-    }
-    sb_printf(sb, "%d", jb_running[i]);
-  }
-  sb_printf(sb, "\n");
-
-  sb_print_i64_key(sb, "jobs_allocated_memory",
-                   jobs_stat_sum_ll(offsetof(struct jobs_module_stat,
-                                             jobs_allocated_memory)));
-  sb_print_i64_key(
-      sb, "timer_ops",
-      jobs_stat_sum_ll(offsetof(struct jobs_module_stat, timer_ops)));
-  sb_print_i64_key(
-      sb, "timer_ops_scheduler",
-      jobs_stat_sum_ll(offsetof(struct jobs_module_stat, timer_ops_scheduler)));
-  return sb->pos;
+  return mtproxy_ffi_jobs_prepare_stat(sb);
 }
 
 long long jobs_get_allocated_memoty(void) {
@@ -384,8 +147,6 @@ void update_all_thread_stats(void) {
 
 void wakeup_main_thread(void);
 
-static constexpr size_t JOB_THREAD_STACK_SIZE = 4u << 20;
-
 enum {
   JTS_CREATED = 1 << 0,
   JTS_RUNNING = 1 << 1,
@@ -406,6 +167,14 @@ __thread job_t this_job;
 
 struct job_thread *jobs_get_this_job_thread_c_impl(void) {
   return this_job_thread;
+}
+
+void jobs_set_this_job_thread_c_impl(struct job_thread *JT) {
+  this_job_thread = JT;
+}
+
+struct jobs_module_stat *jobs_get_module_stat_tls_c_impl(void) {
+  return jobs_module_stat_tls;
 }
 
 size_t jobs_async_job_header_size_c_impl(void) {
@@ -435,12 +204,29 @@ int jobs_atomic_fetch_or_c_impl(int *ptr, int mask) {
   return __sync_fetch_and_or(ptr, mask);
 }
 
+int jobs_atomic_fetch_and_c_impl(int *ptr, int mask) {
+  return __sync_fetch_and_and(ptr, mask);
+}
+
+int jobs_atomic_cas_c_impl(int *ptr, int expect, int value) {
+  return __sync_bool_compare_and_swap(ptr, expect, value);
+}
+
 int jobs_atomic_load_c_impl(const int *ptr) {
   return __atomic_load_n(ptr, __ATOMIC_SEQ_CST);
 }
 
 void jobs_atomic_store_c_impl(int *ptr, int value) {
   __atomic_store_n(ptr, value, __ATOMIC_SEQ_CST);
+}
+
+void jobs_set_job_interrupt_signal_handler_c_impl(void) {
+  set_job_interrupt_signal_handler();
+}
+
+void jobs_seed_thread_rand_c_impl(struct job_thread *JT) {
+  assert(JT);
+  srand48_r(rdtsc() ^ lrand48(), &JT->rand_data);
 }
 
 int jobs_get_current_thread_class_c_impl(void) {
@@ -508,8 +294,6 @@ void check_main_thread(void) {
   assert(main_pthread_id_initialized && pthread_equal(main_pthread_id, self));
 }
 
-static void set_job_interrupt_signal_handler(void);
-
 job_t create_async_job_c_impl(job_function_t run_job,
                               unsigned long long job_signals, int job_subclass,
                               int custom_bytes, unsigned long long job_type,
@@ -522,78 +306,7 @@ void *job_thread(void *arg);
 void *job_thread_sub(void *arg);
 
 int create_job_thread_ex(int thread_class, void *(*thread_work)(void *)) {
-  assert(!(thread_class & ~JC_MASK));
-  assert(thread_class);
-  assert((thread_class != JC_MAIN) ^ !cur_job_threads);
-  if (cur_job_threads >= MAX_JOB_THREADS) {
-    return -1;
-  }
-  check_main_thread();
-
-  struct job_class *JC = &JobClasses[thread_class];
-
-  if (thread_class != JC_MAIN && JC->job_queue == &MainJobQueue) {
-    assert(main_job_thread);
-    JC->job_queue = alloc_mp_queue_w();
-    main_job_thread->job_class_mask &= ~(1 << thread_class);
-  }
-  assert(JC->job_queue);
-
-  int i;
-  struct job_thread *JT = 0;
-  for (i = 1; i < MAX_JOB_THREADS; i++) {
-    if (!JobThreads[i].status && !JobThreads[i].pthread_id) {
-      JT = &JobThreads[i];
-      break;
-    }
-  }
-  if (!JT) {
-    return -1;
-  }
-  memset(JT, 0, sizeof(struct job_thread));
-  JT->status = JTS_CREATED;
-  JT->thread_class = thread_class;
-  JT->job_class_mask =
-      1 | (thread_class == JC_MAIN ? 0xffff : (1 << thread_class));
-  JT->job_queue = JC->job_queue;
-  JT->job_class = JC;
-  JT->id = i;
-  assert(JT->job_queue);
-
-  srand48_r(rdtsc() ^ lrand48(), &JT->rand_data);
-
-  if (thread_class != JC_MAIN) {
-    pthread_attr_t attr;
-    pthread_attr_init(&attr);
-    pthread_attr_setstacksize(&attr, JOB_THREAD_STACK_SIZE);
-
-    int r = pthread_create(&JT->pthread_id, &attr, thread_work, (void *)JT);
-
-    pthread_attr_destroy(&attr);
-
-    if (r) {
-      vkprintf(0, "create_job_thread: pthread_create() failed: %s\n",
-               strerror(r));
-      JT->status = 0;
-      return -1;
-    }
-  } else {
-    assert(!main_job_thread);
-    get_this_thread_id();
-    JT->pthread_id = main_pthread_id;
-    this_job_thread = main_job_thread = JT;
-    set_job_interrupt_signal_handler();
-    assert(JT->id == 1);
-  }
-
-  if (i > max_job_thread_id) {
-    max_job_thread_id = i;
-  }
-
-  cur_job_threads++;
-  JC->cur_threads++;
-
-  return i;
+  return mtproxy_ffi_jobs_create_job_thread_ex(thread_class, thread_work);
 }
 
 int create_job_thread(int thread_class) {
@@ -710,179 +423,7 @@ int try_lock_job(job_t job, int set_flags, int clear_flags) {
 }
 
 int unlock_job(JOB_REF_ARG(job)) {
-  assert(job->j_thread == this_job_thread);
-  struct job_thread *JT = job->j_thread;
-  int thread_class = JT->thread_class;
-  int save_subclass = job->j_subclass;
-  vkprintf(JOBS_DEBUG,
-           "UNLOCK JOB %p, type %p, flags %08x, status %08x, sigclass %08x, "
-           "refcnt %d\n",
-           job, job->j_execute, job->j_flags, job->j_status, job->j_sigclass,
-           job->j_refcnt);
-  while (1) {
-    barrier();
-    assert(job->j_flags & JF_LOCKED);
-    int flags = job->j_flags;
-    unsigned int todo =
-        (unsigned int)flags & (unsigned int)job->j_status & (~0u << 24);
-    if (!todo) {
-      int new_flags = flags & ~JF_LOCKED;
-      if (!__sync_bool_compare_and_swap(&job->j_flags, flags, new_flags)) {
-        continue;
-      }
-      if (job->j_refcnt >= 2) {
-        if (__sync_fetch_and_add(&job->j_refcnt, -1) != 1) {
-          return 0;
-        }
-        job->j_refcnt = 1;
-      }
-      assert(job->j_refcnt == 1);
-      vkprintf(JOBS_DEBUG, "DESTROYING JOB %p, type %p, flags %08x\n", job,
-               job->j_execute, job->j_flags);
-      if (job->j_status & JSS_ALLOW(JS_FINISH)) {
-        // send signal 7 (JS_FINISH) if it is allowed
-        job->j_flags |= JFS_SET(JS_FINISH) | JF_LOCKED;
-        continue;
-      } else {
-        assert(0 && "unhandled JS_FINISH\n");
-        jobs_module_stat_tls->jobs_allocated_memory -=
-            sizeof(struct async_job) + job->j_custom_bytes;
-        job_free(JOB_REF_PASS(job));
-        JT->jobs_active--;
-        return -1;
-      }
-    }
-    int signo = 7 - __builtin_clz(todo);
-    int req_class = (job->j_sigclass >> (signo * 4)) & 15;
-    int is_fast = job->j_status & JSS_FAST(signo);
-    int cur_subclass = job->j_subclass;
-
-    if (((JT->job_class_mask >> req_class) & 1) &&
-        (is_fast || !JT->current_job) && (cur_subclass == save_subclass)) {
-      job_t current_job = JT->current_job;
-      __sync_fetch_and_and(&job->j_flags, ~JFS_SET(signo));
-      JT->jobs_running[req_class]++;
-      JT->current_job = job;
-      JT->status |= JTS_PERFORMING;
-      vkprintf(JOBS_DEBUG,
-               "BEGIN JOB %p, type %p, flags %08x, status %08x, sigclass %08x "
-               "(signal %d of class %d), refcnt %d\n",
-               job, job->j_execute, job->j_flags, job->j_status,
-               job->j_sigclass, signo, req_class, job->j_refcnt);
-      int custom = job->j_custom_bytes;
-      int res = job->j_execute(job, signo, JT);
-      JT->current_job = current_job;
-      if (!current_job) {
-        JT->status &= ~JTS_PERFORMING;
-      }
-      JT->jobs_running[req_class]--;
-      if (res == JOB_DESTROYED) {
-        jobs_module_stat_tls->jobs_allocated_memory -=
-            sizeof(struct async_job) + custom;
-        vkprintf(JOBS_DEBUG, "JOB %p DESTROYED: RES = %d\n", job, res);
-        JT->jobs_active--;
-        return res;
-      }
-      vkprintf(JOBS_DEBUG,
-               "END JOB %p, type %p, flags %08x, status %08x, sigclass %08x "
-               "(signal %d of class %d), refcnt %d, %d children: RES = %d\n",
-               job, job->j_execute, job->j_flags, job->j_status,
-               job->j_sigclass, signo, req_class, job->j_refcnt,
-               job->j_children, res);
-      if (res == JOB_ERROR) {
-        kprintf("fatal: thread %p of class %d: error while invoking method %d "
-                "of job %p (type %p)\n",
-                JT, thread_class, signo, job, job->j_execute);
-        assert(0 && "unknown job signal");
-      }
-      if (!(res & ~0x1ff)) {
-        if (res & 0xff) {
-          __sync_fetch_and_or(&job->j_flags, res << 24);
-        }
-        if (res & JOB_COMPLETED) {
-          complete_job(job);
-        }
-      }
-      continue;
-    }
-    if (!req_class) {
-      // have a "fast" signal with *-class, put it into MAIN queue
-      req_class = JC_MAIN;
-    }
-    // have to insert job into queue of req_class
-    int queued_flag = JF_QUEUED_CLASS(req_class);
-    int new_flags = (flags | queued_flag) & ~JF_LOCKED;
-    if (!__sync_bool_compare_and_swap(&job->j_flags, flags, new_flags)) {
-      continue;
-    }
-    if (!(flags & queued_flag)) {
-      struct job_class *JC = &JobClasses[req_class];
-      if (!JC->subclasses) {
-        struct mp_queue *JQ = JC->job_queue;
-        assert(JQ);
-        int tokio_class = (JQ == &MainJobQueue) ? JC_MAIN : req_class;
-        vkprintf(
-            JOBS_DEBUG,
-            "RESCHEDULED JOB %p, type %p, flags %08x, refcnt %d -> Queue %d\n",
-            job, job->j_execute, job->j_flags, job->j_refcnt, req_class);
-        vkprintf(JOBS_DEBUG, "sub=%p\n", JT->job_class->subclasses);
-        job_t queued_job = PTR_MOVE(job);
-        int32_t rc = mtproxy_ffi_jobs_tokio_enqueue_class(tokio_class,
-                                                          (void *)queued_job);
-        if (rc < 0) {
-          kprintf("fatal: rust tokio class enqueue failed (class=%d rc=%d "
-                  "job=%p)\n",
-                  tokio_class, (int)rc, queued_job);
-          assert(0);
-        }
-        if (JQ == &MainJobQueue && main_thread_interrupt_status == 1 &&
-            __sync_fetch_and_add(&main_thread_interrupt_status, 1) == 1) {
-          vkprintf(JOBS_DEBUG, "WAKING UP MAIN THREAD\n");
-          wakeup_main_thread();
-        }
-      } else {
-        assert(job->j_subclass == cur_subclass);
-
-        assert(cur_subclass >= -2);
-        assert(cur_subclass < JC->subclasses->subclass_cnt);
-
-        struct job_subclass *JSC = &JC->subclasses->subclasses[cur_subclass];
-        __sync_fetch_and_add(&JSC->total_jobs, 1);
-
-        vkprintf(JOBS_DEBUG,
-                 "RESCHEDULED JOB %p, type %p, flags %08x, refcnt %d -> Queue "
-                 "%d subclass %d\n",
-                 job, job->j_execute, job->j_flags, job->j_refcnt, req_class,
-                 cur_subclass);
-        job_t subclass_job = PTR_MOVE(job);
-        int32_t rc = mtproxy_ffi_jobs_tokio_enqueue_subclass(
-            req_class, cur_subclass, (void *)subclass_job);
-        if (rc < 0) {
-          kprintf("fatal: rust tokio subclass enqueue failed (class=%d "
-                  "subclass=%d rc=%d job=%p)\n",
-                  req_class, cur_subclass, (int)rc, subclass_job);
-          assert(0);
-        }
-
-        struct mp_queue *JQ = JC->job_queue;
-        assert(JQ);
-        int tokio_class = (JQ == &MainJobQueue) ? JC_MAIN : req_class;
-        void *subclass_token =
-            (void *)(long)(cur_subclass + JOB_SUBCLASS_OFFSET);
-        rc = mtproxy_ffi_jobs_tokio_enqueue_class(tokio_class, subclass_token);
-        if (rc < 0) {
-          kprintf("fatal: rust tokio subclass token enqueue failed "
-                  "(class=%d rc=%d token=%p)\n",
-                  tokio_class, (int)rc, subclass_token);
-          assert(0);
-        }
-      }
-      return 1;
-    } else {
-      job_decref(JOB_REF_PASS(job));
-      return 0;
-    }
-  }
+  return mtproxy_ffi_jobs_unlock_job(job_tag_int, job);
 }
 
 void process_one_job(JOB_REF_ARG(job), [[maybe_unused]] int thread_class) {
@@ -903,44 +444,7 @@ void process_one_job(JOB_REF_ARG(job), [[maybe_unused]] int thread_class) {
 }
 
 void complete_subjob(job_t job, JOB_REF_ARG(parent), int status) {
-  if (!parent) {
-    return;
-  }
-  if (parent->j_flags & JF_COMPLETED) {
-    job_decref(JOB_REF_PASS(parent));
-    return;
-  }
-  if (job->j_error && (status & JSP_PARENT_ERROR)) {
-    if (!parent->j_error) {
-      __sync_bool_compare_and_swap(&parent->j_error, 0, job->j_error);
-    }
-    if (status & JSP_PARENT_WAKEUP) {
-      __sync_fetch_and_add(&parent->j_children, -1);
-    }
-    vkprintf(JOBS_DEBUG,
-             "waking up parent %p with JS_ABORT (%d children remaining)\n",
-             parent, parent->j_children);
-    job_signal(JOB_REF_PASS(parent), JS_ABORT);
-    return;
-  }
-  if (status & JSP_PARENT_WAKEUP) {
-    if (__sync_fetch_and_add(&parent->j_children, -1) == 1 &&
-        (status & JSP_PARENT_RUN)) {
-      vkprintf(JOBS_DEBUG, "waking up parent %p with JS_RUN\n", parent);
-      job_signal(JOB_REF_PASS(parent), JS_RUN);
-    } else {
-      vkprintf(JOBS_DEBUG, "parent %p: %d children remaining\n", parent,
-               parent->j_children);
-      job_decref(JOB_REF_PASS(parent));
-    }
-    return;
-  }
-  if (status & JSP_PARENT_RUN) {
-    job_signal(JOB_REF_PASS(parent), JS_RUN);
-    return;
-  }
-
-  job_decref(JOB_REF_PASS(parent));
+  mtproxy_ffi_jobs_complete_subjob(job, parent_tag_int, parent, status);
 }
 
 void complete_job(job_t job) {
@@ -1358,53 +862,7 @@ int job_timer_check(job_t job) {
 }
 
 void job_timer_insert(job_t job, double timeout) {
-  assert(job->j_type & JT_HAVE_TIMER);
-  struct event_timer *ev = (void *)job->j_custom;
-  if (ev->real_wakeup_time == timeout) {
-    return;
-  }
-  ev->real_wakeup_time = timeout;
-  if (!ev->wakeup) {
-    ev->wakeup = job_timer_wakeup_gateway;
-  }
-  if (ev->flags & 255) {
-    if ((this_job_thread && (this_job_thread->id == (ev->flags & 255))) ||
-        (!this_job_thread && (ev->flags & 255) == 1)) {
-      do_immediate_timer_insert(job);
-      return;
-    }
-  } else {
-    if (!this_job_thread || this_job_thread->id == 1) {
-      ev->flags |= 1;
-      do_immediate_timer_insert(job);
-      return;
-    } else if (this_job_thread->timer_manager) {
-      ev->flags |= this_job_thread->id;
-      do_immediate_timer_insert(job);
-      return;
-    } else {
-      ev->flags |= 1;
-    }
-  }
-
-  assert(ev->flags & 255);
-  job_t m = NULL;
-  if ((ev->flags & 255) == 1) {
-    m = timer_manager_job;
-  } else {
-    m = JobThreads[ev->flags & 255].timer_manager;
-  }
-  jobs_module_stat_tls->timer_ops_scheduler++;
-  assert(m);
-  struct job_timer_manager_extra *e = (void *)m->j_custom;
-  int32_t rc = mtproxy_ffi_jobs_tokio_timer_queue_push(e->tokio_queue_id,
-                                                       job_incref(job));
-  if (rc < 0) {
-    kprintf("fatal: rust tokio timer queue push failed (qid=%d rc=%d)\n",
-            e->tokio_queue_id, (int)rc);
-    assert(0);
-  }
-  job_signal(JOB_REF_CREATE_PASS(m), JS_RUN);
+  mtproxy_ffi_jobs_job_timer_insert(job, timeout);
 }
 
 void job_timer_remove(job_t job) {

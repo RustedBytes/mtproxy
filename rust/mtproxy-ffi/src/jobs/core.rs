@@ -1,4 +1,4 @@
-use core::ffi::c_void;
+use core::ffi::{c_char, c_void};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
@@ -14,14 +14,27 @@ pub(super) const JOB_CLASS_COUNT: usize = 16;
 pub(super) const MAX_SUBCLASS_THREADS: i32 = 16;
 pub(super) const JF_LOCKED: i32 = 0x1_0000;
 pub(super) const JF_SIGINT: i32 = 0x2_0000;
+pub(super) const JF_COMPLETED: i32 = 0x4_0000;
 pub(super) const JFS_SET_RUN: i32 = 0x0100_0000;
 pub(super) const JTS_RUNNING: i32 = 2;
+pub(super) const JTS_CREATED: i32 = 1;
+pub(super) const JTS_PERFORMING: i32 = 4;
+pub(super) const JC_MAIN: i32 = 3;
+pub(super) const JC_MASK: i32 = 0x0f;
+pub(super) const JC_MAX: usize = 0x0f;
+pub(super) const MAX_JOB_THREADS: usize = 256;
 pub(super) const JS_RUN: i32 = 0;
+pub(super) const JS_AUX: i32 = 1;
 pub(super) const JS_MSG: i32 = 2;
 pub(super) const JS_ABORT: i32 = 5;
 pub(super) const JS_FINISH: i32 = 7;
 pub(super) const JS_ALARM: i32 = 4;
+pub(super) const JOB_DESTROYED: i32 = i32::MIN;
+pub(super) const JOB_COMPLETED: i32 = 0x100;
+pub(super) const JOB_ERROR: i32 = -1;
 pub(super) const JSP_PARENT_WAKEUP: u64 = 4;
+pub(super) const JSP_PARENT_ERROR: i32 = 1;
+pub(super) const JSP_PARENT_RUN: i32 = 2;
 pub(super) const JT_HAVE_TIMER: u64 = 1;
 pub(super) const JT_HAVE_MSG_QUEUE: u64 = 2;
 pub(super) const JMC_TYPE_MASK: u32 = 31;
@@ -35,13 +48,27 @@ pub(super) type JobMessageDestructorFn = Option<unsafe extern "C" fn(*mut JobMes
 pub(super) type JobMessageReceiveFn =
     Option<unsafe extern "C" fn(JobT, *mut JobMessage, *mut c_void) -> i32>;
 
-#[repr(C)]
+#[repr(C, align(128))]
 pub struct JobThread {
     pub(super) pthread_id: usize,
     pub(super) id: i32,
     pub(super) thread_class: i32,
     pub(super) job_class_mask: i32,
     pub(super) status: i32,
+    pub(super) jobs_performed: i64,
+    pub(super) job_queue: *mut MpQueue,
+    pub(super) current_job: JobT,
+    pub(super) current_job_start_time: f64,
+    pub(super) last_job_time: f64,
+    pub(super) tot_jobs_time: f64,
+    pub(super) jobs_running: [i32; JC_MAX + 1],
+    pub(super) jobs_created: i64,
+    pub(super) jobs_active: i64,
+    pub(super) thread_system_id: i32,
+    pub(super) rand_data: [u8; 24],
+    pub(super) timer_manager: JobT,
+    pub(super) wakeup_time: f64,
+    pub(super) job_class: *mut JobClass,
 }
 
 #[repr(C, align(64))]
@@ -59,6 +86,89 @@ pub struct AsyncJob {
     pub(super) j_thread: *mut JobThread,
     pub(super) j_execute: JobExecuteFn,
     pub(super) j_parent: JobT,
+    pub(super) j_custom: [i64; 0],
+}
+
+#[repr(C)]
+pub struct JobClass {
+    pub(super) thread_class: i32,
+    pub(super) min_threads: i32,
+    pub(super) max_threads: i32,
+    pub(super) cur_threads: i32,
+    pub(super) job_queue: *mut MpQueue,
+    pub(super) subclasses: *mut JobSubclassList,
+}
+
+#[repr(C)]
+pub struct JobSubclassList {
+    pub(super) subclass_cnt: i32,
+    pub(super) sem_raw: [u8; 32],
+    pub(super) subclasses: *mut JobSubclass,
+}
+
+#[repr(C)]
+pub struct JobSubclass {
+    pub(super) subclass_id: i32,
+    pub(super) total_jobs: i32,
+    pub(super) allowed_to_run_jobs: i32,
+    pub(super) processed_jobs: i32,
+    pub(super) locked: i32,
+    pub(super) job_queue: *mut MpQueue,
+}
+
+#[repr(C)]
+pub struct JobsModuleStat {
+    pub(super) tot_idle_time: f64,
+    pub(super) a_idle_time: f64,
+    pub(super) a_idle_quotient: f64,
+    pub(super) jobs_allocated_memory: i64,
+    pub(super) jobs_ran: i32,
+    pub(super) job_timers_allocated: i32,
+    pub(super) locked_since: f64,
+    pub(super) timer_ops: i64,
+    pub(super) timer_ops_scheduler: i64,
+}
+
+#[repr(C)]
+pub struct JobThreadStat {
+    pub(super) tot_sys: libc::c_ulong,
+    pub(super) tot_user: libc::c_ulong,
+    pub(super) recent_sys: libc::c_ulong,
+    pub(super) recent_user: libc::c_ulong,
+}
+
+#[repr(C)]
+pub struct StatsBuffer {
+    pub(super) buff: *mut c_char,
+    pub(super) pos: i32,
+    pub(super) size: i32,
+    pub(super) flags: i32,
+}
+
+#[repr(C)]
+pub struct EventTimer {
+    pub h_idx: i32,
+    pub flags: i32,
+    pub wakeup: Option<unsafe extern "C" fn(*mut EventTimer) -> i32>,
+    pub wakeup_time: f64,
+    pub real_wakeup_time: f64,
+}
+
+#[repr(C)]
+pub struct JobTimerInfo {
+    pub(super) ev: EventTimer,
+    pub(super) extra: *mut c_void,
+    pub(super) wakeup: Option<unsafe extern "C" fn(*mut c_void) -> f64>,
+}
+
+#[repr(C)]
+pub struct JobTimerManagerExtra {
+    pub(super) tokio_queue_id: i32,
+}
+
+#[repr(C)]
+pub struct MpQueue {
+    _private: [u8; 0],
 }
 
 #[repr(C)]
@@ -99,11 +209,17 @@ unsafe extern "C" {
 
     pub(super) fn jobs_atomic_fetch_add_c_impl(ptr: *mut i32, delta: i32) -> i32;
     pub(super) fn jobs_atomic_fetch_or_c_impl(ptr: *mut i32, mask: i32) -> i32;
+    pub(super) fn jobs_atomic_fetch_and_c_impl(ptr: *mut i32, mask: i32) -> i32;
+    pub(super) fn jobs_atomic_cas_c_impl(ptr: *mut i32, expect: i32, value: i32) -> i32;
     pub(super) fn jobs_atomic_load_c_impl(ptr: *const i32) -> i32;
     pub(super) fn jobs_atomic_store_c_impl(ptr: *mut i32, value: i32);
     pub(super) fn jobs_notify_job_extra_size_c_impl() -> i32;
     pub(super) fn jobs_get_current_thread_class_c_impl() -> i32;
     pub(super) fn jobs_get_current_thread_subclass_count_c_impl() -> i32;
+    pub(super) fn jobs_set_this_job_thread_c_impl(thread: *mut JobThread);
+    pub(super) fn jobs_get_module_stat_tls_c_impl() -> *mut JobsModuleStat;
+    pub(super) fn jobs_set_job_interrupt_signal_handler_c_impl();
+    pub(super) fn jobs_seed_thread_rand_c_impl(thread: *mut JobThread);
 
     pub(super) fn malloc(size: usize) -> *mut c_void;
     pub(super) fn free(ptr: *mut c_void);
@@ -119,6 +235,51 @@ unsafe extern "C" {
     pub(super) fn notify_job_run(job: JobT, op: i32, thread: *mut JobThread) -> i32;
     pub(super) fn process_one_job(job_tag_int: i32, job: JobT, thread_class: i32);
     pub(super) fn job_message_queue_get(job: JobT) -> *mut JobMessageQueue;
+    pub(super) fn complete_job(job: JobT);
+    pub(super) fn job_decref(job_tag_int: i32, job: JobT);
+    pub(super) fn job_signal(job_tag_int: i32, job: JobT, signo: i32);
+    pub(super) fn job_free(job_tag_int: i32, job: JobT) -> i32;
+    pub(super) fn job_incref(job: JobT) -> JobT;
+
+    pub(super) fn do_immediate_timer_insert(job: JobT);
+    pub(super) fn job_timer_wakeup_gateway(et: *mut EventTimer) -> i32;
+    pub(super) fn wakeup_main_thread();
+    pub(super) fn alloc_mp_queue_w() -> *mut MpQueue;
+    pub(super) fn check_main_thread();
+    pub(super) fn get_this_thread_id() -> i32;
+    pub(super) fn rdtsc() -> i64;
+    pub(super) fn lrand48() -> libc::c_long;
+    pub(super) fn pthread_create(
+        thread: *mut usize,
+        attr: *const libc::pthread_attr_t,
+        start_routine: Option<unsafe extern "C" fn(*mut c_void) -> *mut c_void>,
+        arg: *mut c_void,
+    ) -> i32;
+    pub(super) fn pthread_attr_init(attr: *mut libc::pthread_attr_t) -> i32;
+    pub(super) fn pthread_attr_setstacksize(attr: *mut libc::pthread_attr_t, stacksize: usize) -> i32;
+    pub(super) fn pthread_attr_destroy(attr: *mut libc::pthread_attr_t) -> i32;
+    pub(super) fn strerror(errnum: i32) -> *const c_char;
+    pub(super) fn kprintf(fmt: *const c_char, ...);
+    pub(super) fn sb_printf(sb: *mut StatsBuffer, fmt: *const c_char, ...);
+    pub(super) fn get_utime_monotonic() -> f64;
+    pub(super) fn sysconf(name: i32) -> libc::c_long;
+    pub(super) fn time(tloc: *mut libc::time_t) -> libc::time_t;
+
+    pub(super) static mut main_thread_interrupt_status: i32;
+    pub(super) static mut a_idle_time: f64;
+    pub(super) static mut a_idle_quotient: f64;
+    pub(super) static mut tot_idle_time: f64;
+    pub(super) static mut start_time: i32;
+    pub(super) static mut max_job_thread_id: i32;
+    pub(super) static mut cur_job_threads: i32;
+    pub(super) static mut main_pthread_id: usize;
+    pub(super) static mut main_job_thread: *mut JobThread;
+    pub(super) static mut JobThreads: [JobThread; MAX_JOB_THREADS];
+    pub(super) static mut JobThreadsStats: [JobThreadStat; MAX_JOB_THREADS];
+    pub(super) static mut JobClasses: [JobClass; JC_MAX + 1];
+    pub(super) static mut MainJobQueue: MpQueue;
+    pub(super) static mut timer_manager_job: JobT;
+    pub(super) static mut jobs_module_stat_array: [*mut JobsModuleStat; MAX_JOB_THREADS];
 }
 
 #[inline]
