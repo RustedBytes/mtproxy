@@ -1,7 +1,7 @@
 //! Rust runtime implementation for selected large functions in
 //! `engine/engine-rpc.c`.
 
-use core::ffi::{c_char, c_double, c_int, c_long, c_longlong, c_uint, c_void};
+use core::ffi::{c_char, c_double, c_int, c_long, c_longlong, c_uint, c_ulonglong, c_void};
 use core::mem::size_of;
 use core::ptr;
 use core::sync::atomic::{AtomicU32, Ordering};
@@ -38,8 +38,11 @@ const MTPROXY_FFI_ENGINE_RPC_QJ_CUSTOM: c_int = 1;
 const MTPROXY_FFI_ENGINE_RPC_QJ_IGNORE: c_int = 2;
 const MTPROXY_FFI_ENGINE_RPC_QR_DISPATCH: c_int = 1;
 const MTPROXY_FFI_ENGINE_RPC_QR_SKIP_UNKNOWN: c_int = 2;
+const CONN_CUSTOM_DATA_BYTES: usize = 256;
 
 const UNKNOWN_OP_FMT: &[u8] = b"Unknown op 0x%08x\0";
+const UNKNOWN_QUERY_TYPE_FMT: &[u8] =
+    b"Unknown query type %d (qid = 0x%016llx). Skipping query result.\n\0";
 const ERR_MAX_RETRIES: &[u8] = b"Maximum number of retries exceeded\0";
 const ERR_BAD_METAFILE: &[u8] = b"Error loading metafile\0";
 const ERR_UNKNOWN: &[u8] = b"Unknown error\0";
@@ -49,6 +52,7 @@ const ERR_BINLOG_WAIT: &[u8] = b"Binlog wait error\0";
 const ERR_AIO_WAIT: &[u8] = b"Aio wait error\0";
 const PERCENT_S_FMT: &[u8] = b"%s\0";
 const TL_STAT: c_int = 0x9d56e6b2_u32 as c_int;
+const RPC_REQ_RESULT_FLAGS: c_int = 0x8cc84ce1_u32 as c_int;
 
 static LAST_QID: AtomicU32 = AtomicU32::new(0);
 const QUERY_RESULT_TYPES: usize = 16;
@@ -67,7 +71,7 @@ pub(super) type TlParseFn =
 pub(super) type TlGetOpFn = Option<unsafe extern "C" fn(*mut TlInState) -> c_int>;
 pub(super) type TlStatFn = Option<unsafe extern "C" fn(*mut c_void)>;
 pub(super) type TlQueryResultFn = Option<unsafe extern "C" fn(*mut TlInState, *mut TlQueryHeader)>;
-type CustomOpFn = Option<unsafe extern "C" fn(*mut TlInState, *mut QueryWorkParams)>;
+pub(super) type CustomOpFn = Option<unsafe extern "C" fn(*mut TlInState, *mut QueryWorkParams)>;
 
 static mut TL_PARSE_FUNCTION: TlParseFn = None;
 static mut TL_GET_OP_FUNCTION: TlGetOpFn = None;
@@ -202,6 +206,78 @@ struct QueryInfo {
     conn: *mut c_void,
 }
 
+type Crc32PartialFn = Option<unsafe extern "C" fn(*const c_void, c_long, c_uint) -> c_uint>;
+
+#[repr(C)]
+struct ConnectionInfo {
+    timer: EventTimer,
+    fd: c_int,
+    generation: c_int,
+    flags: c_int,
+    type_: *mut c_void,
+    extra: *mut c_void,
+    target: ConnectionJob,
+    io_conn: ConnectionJob,
+    basic_type: c_int,
+    status: c_int,
+    error: c_int,
+    unread_res_bytes: c_int,
+    skip_bytes: c_int,
+    pending_queries: c_int,
+    queries_ok: c_int,
+    custom_data: [u8; CONN_CUSTOM_DATA_BYTES],
+    our_ip: u32,
+    remote_ip: u32,
+    our_port: u32,
+    remote_port: u32,
+    our_ipv6: [u8; 16],
+    remote_ipv6: [u8; 16],
+    query_start_time: c_double,
+    last_query_time: c_double,
+    last_query_sent_time: c_double,
+    last_response_time: c_double,
+    last_query_timeout: c_double,
+    limit_per_write: c_int,
+    limit_per_sec: c_int,
+    last_write_time: c_int,
+    written_per_sec: c_int,
+    unreliability: c_int,
+    ready: c_int,
+    write_low_watermark: c_int,
+    crypto: *mut c_void,
+    crypto_temp: *mut c_void,
+    listening: c_int,
+    listening_generation: c_int,
+    window_clamp: c_int,
+    left_tls_packet_length: c_int,
+    in_u: RawMessage,
+    in_data: RawMessage,
+    out: RawMessage,
+    out_p: RawMessage,
+    in_queue: *mut c_void,
+    out_queue: *mut c_void,
+}
+
+#[repr(C)]
+struct TcpRpcData {
+    flags: c_int,
+    in_packet_num: c_int,
+    out_packet_num: c_int,
+    crypto_flags: c_int,
+    remote_pid: ProcessId,
+    nonce: [u8; 16],
+    nonce_time: c_int,
+    in_rpc_target: c_int,
+    user_data: *mut c_void,
+    extra_int: c_int,
+    extra_int2: c_int,
+    extra_int3: c_int,
+    extra_int4: c_int,
+    extra_double: c_double,
+    extra_double2: c_double,
+    custom_crc_partial: Crc32PartialFn,
+}
+
 #[repr(C, packed(4))]
 struct RpcCustomOp {
     op: c_uint,
@@ -244,8 +320,6 @@ pub(super) struct AsyncJob {
 }
 
 unsafe extern "C" {
-    fn mtproxy_ffi_engine_rpc_conn_fd(conn: *mut c_void) -> c_int;
-    fn mtproxy_ffi_engine_rpc_conn_generation(conn: *mut c_void) -> c_int;
     fn mtproxy_ffi_engine_rpc_query_job_dispatch_decision(op: c_int, has_custom_tree: c_int)
     -> c_int;
     fn mtproxy_ffi_engine_rpc_query_result_type_id_from_qid(qid: c_longlong) -> c_int;
@@ -253,21 +327,18 @@ unsafe extern "C" {
         has_table: c_int,
         has_handler: c_int,
     ) -> c_int;
-    fn mtproxy_ffi_engine_rpc_log_unknown_query_type(query_type_id: c_int, qid: c_longlong);
-    fn mtproxy_ffi_engine_rpc_precise_now() -> c_double;
     fn mtproxy_ffi_engine_rpc_tcp_should_hold_conn(op: c_int) -> c_int;
-    fn mtproxy_ffi_engine_rpc_touch_conn_last_response_time(conn: *mut c_void);
-    fn mtproxy_ffi_engine_rpc_copy_tcp_remote_pid(conn: *mut c_void, pid: *mut ProcessId);
+    fn mtproxy_ffi_engine_rpc_custom_op_insert(op: c_uint, entry: *mut c_void) -> c_int;
     fn mtproxy_ffi_engine_rpc_custom_op_lookup(op: c_uint) -> *mut c_void;
     fn mtproxy_ffi_engine_rpc_call_default_parse_function(
         tlio_in: *mut TlInState,
         actor_id: c_longlong,
     ) -> *mut TlActExtra;
 
-    fn tl_default_act_free(extra: *mut TlActExtra);
-    fn tl_default_act_dup(extra: *mut TlActExtra) -> *mut TlActExtra;
     fn tl_query_header_dup(h: *mut TlQueryHeader) -> *mut TlQueryHeader;
     fn prepare_stats(buff: *mut c_char, buff_size: c_int) -> c_int;
+    fn kprintf(format: *const c_char, ...);
+    static mut verbosity: c_int;
 
     fn tlf_error_rust(tlio_in: *mut c_void) -> c_int;
     fn tlf_lookup_int_rust(tlio_in: *mut c_void) -> c_int;
@@ -346,8 +417,6 @@ unsafe extern "C" {
 
     #[link_name = "tl_aio_init_store"]
     fn c_tl_aio_init_store(type_: c_int, pid: *mut ProcessId, qid: c_longlong) -> *mut c_void;
-    fn tl_result_get_header_len(h: *mut TlQueryHeader) -> c_int;
-    fn tl_result_make_header(ptr: *mut c_int, h: *mut TlQueryHeader) -> c_int;
 
     fn rwm_clone(dest_raw: *mut RawMessage, src_raw: *mut RawMessage);
     fn rwm_free(raw: *mut RawMessage) -> c_int;
@@ -393,6 +462,7 @@ unsafe extern "C" {
     fn rpc_target_lookup(pid: *mut ProcessId) -> *mut c_void;
     fn rpc_target_choose_connection(s: *mut c_void, pid: *mut ProcessId) -> ConnectionJob;
     fn rpc_target_insert_conn(conn: *mut c_void);
+    fn rpc_target_delete_conn(conn: *mut c_void);
 
     fn paramed_type_free(p: *mut c_void);
     fn lrand48_j() -> c_long;
@@ -446,6 +516,73 @@ unsafe fn query_info(job: Job) -> *mut QueryInfo {
 }
 
 #[inline]
+unsafe fn conn_info(conn: *mut c_void) -> *mut ConnectionInfo {
+    assert!(!conn.is_null());
+    let info = unsafe { job_custom_ptr::<ConnectionInfo>(conn.cast::<AsyncJob>()) };
+    assert!(!info.is_null());
+    info
+}
+
+#[inline]
+unsafe fn conn_fd(conn: *mut c_void) -> c_int {
+    unsafe { (*conn_info(conn)).fd }
+}
+
+#[inline]
+unsafe fn conn_generation(conn: *mut c_void) -> c_int {
+    unsafe { (*conn_info(conn)).generation }
+}
+
+#[inline]
+unsafe fn precise_now_value() -> c_double {
+    crate::mtproxy_ffi_precise_now_value()
+}
+
+#[inline]
+unsafe fn touch_conn_last_response_time(conn: *mut c_void) {
+    unsafe {
+        (*conn_info(conn)).last_response_time = precise_now_value();
+    }
+}
+
+#[inline]
+unsafe fn tcp_rpc_data(conn: *mut c_void) -> *mut TcpRpcData {
+    let info = unsafe { conn_info(conn) };
+    let base = ptr::addr_of!((*info).custom_data).cast::<u8>() as usize;
+    let align = core::mem::align_of::<TcpRpcData>();
+    let aligned = (base + align - 1) & !(align - 1);
+    assert!(aligned + size_of::<TcpRpcData>() <= base + CONN_CUSTOM_DATA_BYTES);
+    aligned as *mut TcpRpcData
+}
+
+#[inline]
+unsafe fn copy_tcp_remote_pid(conn: *mut c_void, pid: *mut ProcessId) {
+    assert!(!pid.is_null());
+    let remote = unsafe { ptr::read_unaligned(ptr::addr_of!((*tcp_rpc_data(conn)).remote_pid)) };
+    unsafe {
+        ptr::write_unaligned(pid, remote);
+    }
+}
+
+#[inline]
+unsafe fn call_default_parse_function(tlio_in: *mut TlInState, actor_id: c_longlong) -> *mut TlActExtra {
+    unsafe { mtproxy_ffi_engine_rpc_call_default_parse_function(tlio_in, actor_id) }
+}
+
+#[inline]
+unsafe fn log_unknown_query_type(query_type_id: c_int, qid: c_longlong) {
+    if unsafe { verbosity } >= 1 {
+        unsafe {
+            kprintf(
+                UNKNOWN_QUERY_TYPE_FMT.as_ptr().cast(),
+                query_type_id,
+                qid as c_ulonglong,
+            );
+        }
+    }
+}
+
+#[inline]
 unsafe fn dup_error_or_null(s: *const c_char) -> *mut c_char {
     if s.is_null() {
         ptr::null_mut()
@@ -482,6 +619,79 @@ pub(super) unsafe fn tl_aio_init_store_impl(
 
     assert!(false, "invalid tl_type value in tl_aio_init_store");
     ptr::null_mut()
+}
+
+pub(super) unsafe fn register_custom_op_cb_impl(op: c_uint, func: CustomOpFn) {
+    let entry = unsafe { libc::malloc(size_of::<RpcCustomOp>()) }.cast::<RpcCustomOp>();
+    assert!(!entry.is_null());
+
+    unsafe {
+        ptr::addr_of_mut!((*entry).op).write_unaligned(op);
+        ptr::addr_of_mut!((*entry).func).write_unaligned(func);
+    }
+
+    let rc = unsafe { mtproxy_ffi_engine_rpc_custom_op_insert(op, entry.cast()) };
+    assert_eq!(rc, 0);
+}
+
+pub(super) unsafe fn tl_result_new_flags_impl(old_flags: c_int) -> c_int {
+    let new_flags = old_flags & 0xffff;
+    assert!((new_flags & !0xffff) == 0);
+    new_flags
+}
+
+pub(super) unsafe fn tl_result_get_header_len_impl(h: *mut TlQueryHeader) -> c_int {
+    assert!(!h.is_null());
+    let len = if unsafe { (*h).flags } == 0 { 0 } else { 8 };
+    assert!(len == 0 || len == 8);
+    len
+}
+
+pub(super) unsafe fn tl_result_make_header_impl(ptr: *mut c_int, h: *mut TlQueryHeader) -> c_int {
+    assert!(!ptr.is_null());
+    assert!(!h.is_null());
+    if unsafe { (*h).flags } == 0 {
+        return 0;
+    }
+
+    let mut p = ptr;
+    let new_flags = unsafe { tl_result_new_flags_impl((*h).flags) };
+    unsafe {
+        *p = RPC_REQ_RESULT_FLAGS;
+        p = p.add(1);
+        *p = new_flags;
+        p = p.add(1);
+    }
+    ((p as usize) - (ptr as usize)) as c_int
+}
+
+pub(super) unsafe extern "C" fn tl_default_act_free_impl(extra: *mut TlActExtra) {
+    assert!(!extra.is_null());
+    if !unsafe { (*extra).header }.is_null() {
+        unsafe {
+            tl_query_header_delete((*extra).header);
+        }
+    }
+    if (unsafe { (*extra).flags } & 1) == 0 {
+        return;
+    }
+    unsafe {
+        libc::free(extra.cast());
+    }
+}
+
+pub(super) unsafe extern "C" fn tl_default_act_dup_impl(extra: *mut TlActExtra) -> *mut TlActExtra {
+    assert!(!extra.is_null());
+    let size = unsafe { (*extra).size };
+    assert!(size >= size_of::<TlActExtra>() as c_int);
+
+    let new_extra = unsafe { libc::malloc(size as usize) }.cast::<TlActExtra>();
+    assert!(!new_extra.is_null());
+    unsafe {
+        ptr::copy_nonoverlapping(extra.cast::<u8>(), new_extra.cast::<u8>(), size as usize);
+        (*new_extra).flags |= 3;
+    }
+    new_extra
 }
 
 pub(super) unsafe fn engine_work_rpc_req_result_impl(
@@ -524,9 +734,7 @@ pub(super) unsafe fn engine_work_rpc_req_result_impl(
             }
         }
     } else if dispatch_decision == MTPROXY_FFI_ENGINE_RPC_QR_SKIP_UNKNOWN {
-        unsafe {
-            mtproxy_ffi_engine_rpc_log_unknown_query_type(query_type_id, (*h).qid);
-        }
+        unsafe { log_unknown_query_type(query_type_id, (*h).qid) };
     }
 
     unsafe {
@@ -679,7 +887,7 @@ pub(super) unsafe fn create_query_job_impl(
         (*p).generation = generation;
         (*p).pid = pd;
         (*p).type_ = out_type;
-        c_job_timer_insert(job.cast(), mtproxy_ffi_engine_rpc_precise_now() + timeout);
+        c_job_timer_insert(job.cast(), precise_now_value() + timeout);
         rwm_clone(&raw mut (*p).src, raw);
     }
 
@@ -709,7 +917,7 @@ pub(super) unsafe fn create_query_custom_job_impl(
         (*p).fd = fd;
         (*p).generation = generation;
         if timeout > 0.0 {
-            c_job_timer_insert(job.cast(), mtproxy_ffi_engine_rpc_precise_now() + timeout);
+            c_job_timer_insert(job.cast(), precise_now_value() + timeout);
         }
         rwm_clone(&raw mut (*p).src, raw);
     }
@@ -755,19 +963,22 @@ pub(super) unsafe fn do_create_query_job_impl(
     0
 }
 
+pub(super) unsafe fn default_tl_close_conn_impl(c: *mut c_void) -> c_int {
+    unsafe {
+        rpc_target_delete_conn(c);
+    }
+    0
+}
+
 pub(super) unsafe fn default_tl_tcp_rpcs_execute_impl(
     c: *mut c_void,
     op: c_int,
     raw: *mut RawMessage,
 ) -> c_int {
-    unsafe {
-        mtproxy_ffi_engine_rpc_touch_conn_last_response_time(c);
-    }
+    unsafe { touch_conn_last_response_time(c) };
 
     let mut remote_pid: ProcessId = unsafe { core::mem::zeroed() };
-    unsafe {
-        mtproxy_ffi_engine_rpc_copy_tcp_remote_pid(c, &raw mut remote_pid);
-    }
+    unsafe { copy_tcp_remote_pid(c, &raw mut remote_pid) };
     let conn_ref = if unsafe { mtproxy_ffi_engine_rpc_tcp_should_hold_conn(op) } != 0 {
         unsafe { c_job_incref(c) }
     } else {
@@ -935,8 +1146,7 @@ pub(super) unsafe fn fetch_query_impl(
     let get_op = unsafe { TL_GET_OP_FUNCTION }.expect("tl_get_op_function must be initialized");
     let fop = unsafe { get_op(tlio_in) };
 
-    let mut extra =
-        unsafe { mtproxy_ffi_engine_rpc_call_default_parse_function(tlio_in, actor_id) };
+    let mut extra = unsafe { call_default_parse_function(tlio_in, actor_id) };
     if extra.is_null() && unsafe { tlf_error_rust(tlio_in.cast()) } != 0 {
         unsafe {
             *error = dup_error_or_null((*tlio_in).error);
@@ -965,10 +1175,10 @@ pub(super) unsafe fn fetch_query_impl(
 
     unsafe {
         if (*extra).free.is_none() {
-            (*extra).free = Some(tl_default_act_free);
+            (*extra).free = Some(tl_default_act_free_impl);
         }
         if (*extra).dup.is_none() {
-            (*extra).dup = Some(tl_default_act_dup);
+            (*extra).dup = Some(tl_default_act_dup_impl);
         }
         (*extra).op = fop;
         assert!((*extra).act.is_some());
@@ -1198,9 +1408,7 @@ pub(super) unsafe fn process_query_job_impl(job: Job, op: c_int, _jt: *mut c_voi
             if unsafe { (*p).answer_sent } == 0 {
                 if unsafe { (*p).fd } != 0 && unsafe { (*p).type_ } == TL_TYPE_RAW_MSG {
                     let c = unsafe { connection_get_by_fd((*p).fd) };
-                    if !c.is_null()
-                        && unsafe { mtproxy_ffi_engine_rpc_conn_generation(c) }
-                            != unsafe { (*p).generation }
+                    if !c.is_null() && unsafe { conn_generation(c) } != unsafe { (*p).generation }
                     {
                         unsafe {
                             c_job_decref(1, c);
@@ -1236,9 +1444,9 @@ pub(super) unsafe fn process_query_job_impl(job: Job, op: c_int, _jt: *mut c_voi
                         (*p).error = ptr::null_mut();
                     }
                 } else {
-                    let z = unsafe { tl_result_get_header_len((*p).h) };
+                    let z = unsafe { tl_result_get_header_len_impl((*p).h) };
                     let hptr = unsafe { c_tls_get_ptr_rust(io.cast(), z) }.cast::<c_int>();
-                    assert_eq!(z, unsafe { tl_result_make_header(hptr, (*p).h) });
+                    assert_eq!(z, unsafe { tl_result_make_header_impl(hptr, (*p).h) });
                     unsafe {
                         c_tls_raw_msg_rust(io.cast(), (*p).result, 0);
                         libc::free((*p).result.cast());
@@ -1502,8 +1710,8 @@ pub(super) unsafe fn do_query_job_run_impl(job: Job, op: c_int, _jt: *mut c_void
     if !unsafe { (*q).conn }.is_null() {
         unsafe {
             rpc_target_insert_conn((*q).conn);
-            fd = mtproxy_ffi_engine_rpc_conn_fd((*q).conn);
-            generation = mtproxy_ffi_engine_rpc_conn_generation((*q).conn);
+            fd = conn_fd((*q).conn);
+            generation = conn_generation((*q).conn);
             c_job_decref(1, (*q).conn);
         }
     }

@@ -1,7 +1,15 @@
 //! FFI export surface for migrated large functions in `engine/engine-rpc.c`.
 
 use super::core::*;
-use core::ffi::{c_char, c_double, c_int, c_longlong, c_void};
+use core::ffi::{c_char, c_double, c_int, c_longlong, c_uint, c_void};
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_engine_rpc_register_custom_op_cb(
+    op: c_uint,
+    func: CustomOpFn,
+) {
+    unsafe { register_custom_op_cb_impl(op, func) };
+}
 
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_engine_rpc_fetch_query(
@@ -64,6 +72,38 @@ pub unsafe extern "C" fn mtproxy_ffi_engine_rpc_engine_work_rpc_req_result(
     params: *mut QueryWorkParams,
 ) {
     unsafe { engine_work_rpc_req_result_impl(tlio_in, params) };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_engine_rpc_tl_result_new_flags(old_flags: c_int) -> c_int {
+    unsafe { tl_result_new_flags_impl(old_flags) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_engine_rpc_tl_result_get_header_len(
+    h: *mut TlQueryHeader,
+) -> c_int {
+    unsafe { tl_result_get_header_len_impl(h) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_engine_rpc_tl_result_make_header(
+    ptr: *mut c_int,
+    h: *mut TlQueryHeader,
+) -> c_int {
+    unsafe { tl_result_make_header_impl(ptr, h) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_engine_rpc_tl_default_act_free(extra: *mut TlActExtra) {
+    unsafe { tl_default_act_free_impl(extra) };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_engine_rpc_tl_default_act_dup(
+    extra: *mut TlActExtra,
+) -> *mut TlActExtra {
+    unsafe { tl_default_act_dup_impl(extra) }
 }
 
 #[no_mangle]
@@ -142,6 +182,14 @@ pub unsafe extern "C" fn mtproxy_ffi_engine_rpc_do_create_query_job(
     conn: *mut c_void,
 ) -> c_int {
     unsafe { do_create_query_job_impl(raw, type_, pid, conn) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_engine_rpc_default_tl_close_conn(
+    c: *mut c_void,
+    _who: c_int,
+) -> c_int {
+    unsafe { default_tl_close_conn_impl(c) }
 }
 
 #[no_mangle]

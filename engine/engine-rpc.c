@@ -27,30 +27,24 @@
               2015-2016 Vitaliy Valtman
 */
 #include "engine/engine-rpc.h"
-#include "common/tl-parse.h"
-
-#include <asm-generic/errno.h>
-#include <assert.h>
-#include <stdarg.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/time.h>
-
-#include "net/net-msg.h"
-#include "net/net-rpc-targets.h"
-#include "net/net-tcp-rpc-common.h"
-
-#include "common/kprintf.h"
-
 #include "engine/engine-rpc-common.h"
-#include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
-
-#include "engine/engine.h"
 
 extern struct tl_out_state *mtproxy_ffi_engine_rpc_tl_aio_init_store(
     int32_t type, struct process_id *pid, int64_t qid);
+extern void mtproxy_ffi_engine_rpc_register_custom_op_cb(
+    uint32_t op,
+    void (*func)(struct tl_in_state *tlio_in, struct query_work_params *params));
 extern void mtproxy_ffi_engine_rpc_engine_work_rpc_req_result(
     struct tl_in_state *tlio_in, struct query_work_params *params);
+extern int32_t mtproxy_ffi_engine_rpc_tl_result_new_flags(int32_t old_flags);
+extern int32_t mtproxy_ffi_engine_rpc_tl_result_get_header_len(
+    struct tl_query_header *h);
+extern int32_t mtproxy_ffi_engine_rpc_tl_result_make_header(
+    int32_t *ptr, struct tl_query_header *h);
+extern void mtproxy_ffi_engine_rpc_tl_default_act_free(
+    struct tl_act_extra *extra);
+extern struct tl_act_extra *mtproxy_ffi_engine_rpc_tl_default_act_dup(
+    struct tl_act_extra *extra);
 extern void mtproxy_ffi_engine_rpc_tl_query_result_fun_set(
     void (*func)(struct tl_in_state *tlio_in, struct tl_query_header *h),
     int32_t query_type_id);
@@ -72,6 +66,8 @@ extern int32_t mtproxy_ffi_engine_rpc_create_query_custom_job(
     int32_t generation);
 extern int32_t mtproxy_ffi_engine_rpc_do_create_query_job(
     struct raw_message *raw, int32_t type, struct process_id *pid, void *conn);
+extern int32_t mtproxy_ffi_engine_rpc_default_tl_close_conn(void *c,
+                                                             int32_t who);
 extern int32_t mtproxy_ffi_engine_rpc_default_tl_tcp_rpcs_execute(
     void *c, int32_t op, struct raw_message *raw);
 extern int32_t mtproxy_ffi_engine_rpc_tl_store_stats(
@@ -87,34 +83,7 @@ struct tl_out_state *tl_aio_init_store(enum tl_type type,
 void register_custom_op_cb(unsigned op,
                            void (*func)(struct tl_in_state *tlio_in,
                                         struct query_work_params *params)) {
-  struct rpc_custom_op *O = malloc(sizeof(*O));
-  assert(O);
-  O->op = op;
-  O->func = func;
-  int32_t rc = mtproxy_ffi_engine_rpc_custom_op_insert(op, O);
-  assert(rc == 0);
-}
-
-int32_t mtproxy_ffi_engine_rpc_conn_fd(void *conn) {
-  assert(conn);
-  return CONN_INFO((job_t)conn)->fd;
-}
-
-int32_t mtproxy_ffi_engine_rpc_conn_generation(void *conn) {
-  assert(conn);
-  return CONN_INFO((job_t)conn)->generation;
-}
-
-void mtproxy_ffi_engine_rpc_touch_conn_last_response_time(void *conn) {
-  assert(conn);
-  CONN_INFO((job_t)conn)->last_response_time = precise_now;
-}
-
-void mtproxy_ffi_engine_rpc_copy_tcp_remote_pid(void *conn,
-                                                struct process_id *pid) {
-  assert(conn);
-  assert(pid);
-  *pid = TCP_RPC_DATA((job_t)conn)->remote_pid;
+  mtproxy_ffi_engine_rpc_register_custom_op_cb(op, func);
 }
 
 struct tl_act_extra *mtproxy_ffi_engine_rpc_call_default_parse_function(
@@ -123,51 +92,23 @@ struct tl_act_extra *mtproxy_ffi_engine_rpc_call_default_parse_function(
 }
 
 int tl_result_new_flags(int old_flags) {
-  int new_flags = mtproxy_ffi_engine_rpc_result_new_flags(old_flags);
-  assert((new_flags & ~0xffff) == 0);
-  return new_flags;
+  return mtproxy_ffi_engine_rpc_tl_result_new_flags(old_flags);
 }
 
 int tl_result_get_header_len(struct tl_query_header *h) {
-  int len = mtproxy_ffi_engine_rpc_result_header_len(h->flags);
-  assert(len == 0 || len == 8);
-  return len;
+  return mtproxy_ffi_engine_rpc_tl_result_get_header_len(h);
 }
 
 int tl_result_make_header(int *ptr, struct tl_query_header *h) {
-  int *p = ptr;
-  if (!h->flags) {
-    return 0;
-  }
-  int new_flags = tl_result_new_flags(h->flags);
-  *p = RPC_REQ_RESULT_FLAGS;
-  p++;
-  *p = new_flags;
-  p++;
-  return (p - ptr) * 4;
+  return mtproxy_ffi_engine_rpc_tl_result_make_header(ptr, h);
 }
 
 void tl_default_act_free(struct tl_act_extra *extra) {
-  if (extra->header) {
-    tl_query_header_delete(extra->header);
-  }
-  if (!(extra->flags & 1)) {
-    return;
-  }
-  free(extra);
+  mtproxy_ffi_engine_rpc_tl_default_act_free(extra);
 }
 
 struct tl_act_extra *tl_default_act_dup(struct tl_act_extra *extra) {
-  struct tl_act_extra *new = malloc(extra->size);
-  memcpy(new, extra, extra->size);
-  new->flags = new->flags | 3;
-  return new;
-}
-
-void mtproxy_ffi_engine_rpc_log_unknown_query_type(int32_t query_type_id,
-                                                   int64_t qid) {
-  vkprintf(1, "Unknown query type %d (qid = 0x%016llx). Skipping query result.\n",
-           query_type_id, (unsigned long long)qid);
+  return mtproxy_ffi_engine_rpc_tl_default_act_dup(extra);
 }
 
 void tl_query_result_fun_set(tl_query_result_fun_t func, int query_type_id) {
@@ -185,8 +126,6 @@ void engine_work_rpc_req_result(struct tl_in_state *tlio_in,
 
 void paramed_type_free(struct paramed_type *P) __attribute__((weak));
 void paramed_type_free([[maybe_unused]] struct paramed_type *P) {}
-
-double mtproxy_ffi_engine_rpc_precise_now(void) { return precise_now; }
 
 int create_query_job(job_t job, struct raw_message *raw,
                      struct tl_query_header *h, double timeout,
@@ -213,8 +152,7 @@ int do_create_query_job(struct raw_message *raw, int type,
 }
 
 int default_tl_close_conn(connection_job_t c, [[maybe_unused]] int who) {
-  rpc_target_delete_conn(c);
-  return 0;
+  return mtproxy_ffi_engine_rpc_default_tl_close_conn(c, who);
 }
 
 int default_tl_tcp_rpcs_execute(connection_job_t c, int op,
