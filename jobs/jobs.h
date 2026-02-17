@@ -37,8 +37,6 @@ enum {
   JOBS_DEBUG = 3,
 };
 
-#define CONCAT(a, b) a##b
-
 #define PTR_MOVE(__ptr_v)                                                      \
   ({                                                                           \
     typeof(__ptr_v) __ptr_v_save = __ptr_v;                                    \
@@ -50,7 +48,6 @@ enum {
 #define JOB_REF_PASS(__ptr) 1, PTR_MOVE(__ptr)
 #define JOB_REF_NULL 1, nullptr
 #define JOB_REF_CREATE_PASS(__ptr) 1, job_incref(__ptr)
-#define JOB_REF_CREATE_PASS_N(__ptr) 1, __ptr ? job_incref(__ptr) : nullptr
 
 struct job_thread;
 struct async_job;
@@ -87,7 +84,6 @@ enum {
   JS_SIG7 = 7,
 };
 
-extern int engine_multithread_mode;
 
 enum {
   JC_NONE = 0, // no signal (unless used with "fast" flag; then it means "any
@@ -142,24 +138,6 @@ enum {
 
 #define JFS_SET(__s)                                                           \
   (0x1000000U << (__s)) // j_flags: signal __s is awaiting delivery
-#define JSS_ALLOW(__s)                                                         \
-  (0x1000000U << (__s)) // j_status: signal __s is allowed for delivery
-#define JSS_FAST(__s)                                                          \
-  (0x10000U                                                                    \
-   << (__s)) // j_status: signal __s is "fast" -- may be processed recursively
-             // in specified or in any context, not necessarily in order
-#define JSS_ALLOW_FAST(__s) (0x1010000U << (__s))
-
-#define JOB_SENDSIG(__s) (1 << (__s))
-
-#define JSC_TYPE(__c, __s) (((unsigned long long)(__c) << ((__s) * 4 + 32)))
-#define JSC_ALLOW(__c, __s) (JSC_TYPE(__c, __s) | JSS_ALLOW(__s))
-#define JSC_FAST(__c, __s) (JSC_TYPE(__c, __s) | JSS_ALLOW_FAST(__s))
-#define JSIG_MAIN(__s) JSC_ALLOW(JC_MAIN, __s)
-#define JSIG_IO(__s) JSC_ALLOW(JC_IO, __s)
-#define JSIG_CPU(__s) JSC_ALLOW(JC_CPU, __s)
-#define JSIG_FAST(__s) JSC_FAST(JC_NONE, __s)
-#define JSIG_ENGINE(__s) JSC_ALLOW(JC_ENGINE, __s)
 
 enum {
   JSP_PARENT_ERROR = 1,  // j_status: propagate error to j_error field in
@@ -186,7 +164,6 @@ enum {
 };
 
 #define JMC_EXTRACT_ANSWER(__type) (((__type) >> 8) & 255)
-#define JMC_ANSWER(__type) ((__type) << 8)
 
 /* all fields here, with the exception of bits 24..31 and JF_LOCKED of j_flags,
    j_error, j_refcnt, j_children, may be changed only by somebody who already
@@ -342,7 +319,6 @@ int try_lock_job(job_t job, int set_flags, int clear_flags);
 void complete_job(job_t job); // if JF_COMPLETED is not set, sets it and acts
                               // according to JFS_PARENT_*
 
-int change_locked_job_subclass(job_t job, int new_subclass);
 
 static inline int check_job_completion(job_t job) {
   return job->j_flags & JF_COMPLETED;

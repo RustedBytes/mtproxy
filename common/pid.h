@@ -45,7 +45,6 @@ struct process_id_ext {
 #pragma pack(pop)
 
 typedef struct process_id npid_t;
-typedef struct process_id_ext npidx_t;
 
 extern npid_t PID;
 

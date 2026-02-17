@@ -32,8 +32,6 @@ enum {
   AM_GET_MEMORY_USAGE_OVERALL = 2,
 };
 
-static inline double safe_div(double x, double y) { return y > 0 ? x / y : 0; }
-
 typedef struct {
   long long vm_size;
   long long vm_rss;

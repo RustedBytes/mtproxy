@@ -3,6 +3,9 @@
 use super::core::*;
 use core::ffi::{c_char, c_double, c_int, c_void};
 
+static mut MAIN_THREAD_PIPE_READ_END: c_int = 0;
+static mut MAIN_THREAD_PIPE_WRITE_END: c_int = 0;
+
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_engine_init(
     pwd_filename: *const c_char,
@@ -156,6 +159,64 @@ pub unsafe extern "C" fn mtproxy_ffi_engine_default_main(
     argv: *mut *mut c_char,
 ) -> c_int {
     unsafe { default_main_impl(f, argc, argv) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn create_main_thread_pipe() {
+    unsafe {
+        create_main_thread_pipe_impl(
+            &raw mut MAIN_THREAD_PIPE_READ_END,
+            &raw mut MAIN_THREAD_PIPE_WRITE_END,
+        )
+    };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn wakeup_main_thread() {
+    unsafe { wakeup_main_thread_impl(MAIN_THREAD_PIPE_WRITE_END) };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn engine_init(pwd_filename: *const c_char, do_not_open_port: c_int) {
+    unsafe { engine_init_impl(pwd_filename, do_not_open_port) };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn server_init(
+    listen_connection_type: *mut c_void,
+    listen_connection_extra: *mut c_void,
+) {
+    unsafe {
+        server_init_impl(
+            listen_connection_type,
+            listen_connection_extra,
+            MAIN_THREAD_PIPE_READ_END,
+        )
+    };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn engine_rpc_stats(tlio_out: *mut c_void) {
+    unsafe { engine_rpc_stats_impl(tlio_out) };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn default_main(
+    f: *mut ServerFunctions,
+    argc: c_int,
+    argv: *mut *mut c_char,
+) -> c_int {
+    unsafe { default_main_impl(f, argc, argv) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn engine_add_engine_parse_options() {
+    unsafe { engine_add_engine_parse_options_impl() };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn default_parse_option_func(a: c_int) -> c_int {
+    unsafe { default_parse_option_func_impl(a) }
 }
 
 #[no_mangle]

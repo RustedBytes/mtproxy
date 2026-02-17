@@ -149,10 +149,7 @@ struct tl_query_header {
   struct query_work_params *qw_params;
 };
 
-extern const struct tl_in_methods tl_in_conn_methods;
-extern const struct tl_in_methods tl_in_nbit_methods;
 extern const struct tl_in_methods tl_in_raw_msg_methods;
-extern const struct tl_out_methods tl_out_conn_methods;
 extern const struct tl_out_methods tl_out_raw_msg_methods;
 
 #define TL_IN (tlio_in->in)
@@ -188,13 +185,10 @@ extern const struct tl_out_methods tl_out_raw_msg_methods;
 #define TL_ERRNUM (tlio_in->errnum)
 
 int tlf_set_error(struct tl_in_state *tlio_in, int errnum, const char *s);
-#define tl_fetch_set_error(...) tlf_set_error(tlio_in, ##__VA_ARGS__)
 
 int tls_set_error_format(struct tl_out_state *tlio_out, int errnum,
                          const char *format, ...)
     __attribute__((format(printf, 3, 4)));
-#define tl_store_set_error_format(...)                                         \
-  tls_set_error_format(tlio_out, ##__VA_ARGS__)
 
 //  dup = 0 - delete reference
 //  dup = 1 - make msg valid raw message of size 0
@@ -275,70 +269,6 @@ static inline int tlf_init_empty(struct tl_in_state *tlio_in) {
 static inline int tl_store_end_simple(struct tl_out_state *tlio_out) {
   return tls_end_ext(tlio_out, 0);
 }
-#define tl_store_end_ext(type) tls_end_ext(tlio_out, type)
-
-#define tl_fetch_lookup_int(...) tlf_lookup_int_rust(tlio_in, ##__VA_ARGS__)
-#define tl_fetch_lookup_second_int(...)                                        \
-  tlf_lookup_second_int_rust(tlio_in, ##__VA_ARGS__)
-#define tl_fetch_lookup_long(...) tlf_lookup_long_rust(tlio_in, ##__VA_ARGS__)
-#define tl_fetch_lookup_data(...) tlf_lookup_data_rust(tlio_in, ##__VA_ARGS__)
-#define tl_fetch_int(...) tlf_int_rust(tlio_in, ##__VA_ARGS__)
-#define tl_fetch_double(...) tlf_double_rust(tlio_in, ##__VA_ARGS__)
-#define tl_fetch_long(...) tlf_long_rust(tlio_in, ##__VA_ARGS__)
-#define tl_fetch_mark(...) tlf_mark_rust(tlio_in, ##__VA_ARGS__)
-#define tl_fetch_mark_restore(...) tlf_mark_restore_rust(tlio_in, ##__VA_ARGS__)
-#define tl_fetch_mark_delete(...) tlf_mark_delete_rust(tlio_in, ##__VA_ARGS__)
-#define tl_fetch_string_len(...) tlf_string_len_rust(tlio_in, ##__VA_ARGS__)
-#define tl_fetch_pad(...) tlf_pad_rust(tlio_in, ##__VA_ARGS__)
-#define tl_fetch_raw_data(...) tlf_raw_data_rust(tlio_in, ##__VA_ARGS__)
-#define tl_fetch_string_data(...) tlf_string_data_rust(tlio_in, ##__VA_ARGS__)
-#define tl_fetch_skip_string_data(...)                                         \
-  tlf_skip_string_data_rust(tlio_in, ##__VA_ARGS__)
-#define tl_fetch_string(...) tlf_string_rust(tlio_in, ##__VA_ARGS__)
-#define tl_fetch_skip_string(...) tlf_skip_string_rust(tlio_in, ##__VA_ARGS__)
-#define tl_fetch_string0(...) tlf_string0_rust(tlio_in, ##__VA_ARGS__)
-#define tl_fetch_error(...) tlf_error_rust(tlio_in, ##__VA_ARGS__)
-#define tl_fetch_end(...) tlf_end_rust(tlio_in, ##__VA_ARGS__)
-#define tl_fetch_check_str_end(...)                                            \
-  tlf_check_str_end_rust(tlio_in, ##__VA_ARGS__)
-#define tl_fetch_unread(...) tlf_unread_rust(tlio_in, ##__VA_ARGS__)
-#define tl_fetch_skip(...) tlf_skip_rust(tlio_in, ##__VA_ARGS__)
-#define tl_fetch_check(...) tlf_check_rust(tlio_in, ##__VA_ARGS__)
-#define tl_store_get_ptr(...) tls_get_ptr_rust(tlio_out, ##__VA_ARGS__)
-#define tl_store_pos(...) tls_pos_rust(tlio_out, ##__VA_ARGS__)
-#define tl_store_get_prepend_ptr(...)                                          \
-  tls_get_prepend_ptr_rust(tlio_out, ##__VA_ARGS__)
-#define tl_store_int(...) tls_int_rust(tlio_out, ##__VA_ARGS__)
-#define tl_store_long(...) tls_long_rust(tlio_out, ##__VA_ARGS__)
-#define tl_store_double(...) tls_double_rust(tlio_out, ##__VA_ARGS__)
-#define tl_store_string_len(...) tls_string_len_rust(tlio_out, ##__VA_ARGS__)
-#define tl_store_raw_msg(...) tls_raw_msg_rust(tlio_out, ##__VA_ARGS__)
-#define tl_store_pad(...) tls_pad_rust(tlio_out, ##__VA_ARGS__)
-#define tl_store_raw_data(...) tls_raw_data_rust(tlio_out, ##__VA_ARGS__)
-#define tl_store_string_data(...) tls_string_data_rust(tlio_out, ##__VA_ARGS__)
-#define tls_string0(tlio_out, _s) tls_string_rust(tlio_out, _s, strlen(_s))
-#define tl_store_string(...) tls_string_rust(tlio_out, ##__VA_ARGS__)
-#define tl_store_string0(s) tl_store_string(s, strlen(s))
-#define tl_store_clear(...) tls_clear_rust(tlio_out, ##__VA_ARGS__)
-#define tl_store_clean(...) tls_clean_rust(tlio_out, ##__VA_ARGS__)
-
-#define tl_store_end() tl_store_end_ext(RPC_REQ_RESULT)
-#define tl_copy_through(...)                                                   \
-  tl_copy_through_rust(tlio_in, tlio_out, ##__VA_ARGS__)
-
-#define tl_fetch_int_range(...) tlf_int_range_rust(tlio_in, ##__VA_ARGS__)
-#define tl_fetch_positive_int(...) tlf_positive_int_rust(tlio_in, ##__VA_ARGS__)
-#define tl_fetch_nonnegative_int(...)                                          \
-  tlf_nonnegative_int_rust(tlio_in, ##__VA_ARGS__)
-
-#define tl_fetch_int_subset(...) tlf_int_subset_rust(tlio_in, ##__VA_ARGS__)
-#define tl_fetch_positive_long(...)                                            \
-  tlf_positive_long_rust(tlio_in, ##__VA_ARGS__)
-#define tl_fetch_nonnegative_long(...)                                         \
-  tlf_nonnegative_long_rust(tlio_in, ##__VA_ARGS__)
-#define tl_fetch_raw_message(...) tlf_raw_message_rust(tlio_in, ##__VA_ARGS__)
-#define tl_fetch_lookup_raw_message(...)                                       \
-  tlf_lookup_raw_message_rust(tlio_in, ##__VA_ARGS__)
 
 static inline void tlf_copy_error(struct tl_in_state *tlio_in,
                                   struct tl_out_state *tlio_out) {
@@ -349,7 +279,6 @@ static inline void tlf_copy_error(struct tl_in_state *tlio_in,
     }
   }
 }
-#define tl_copy_error(...) tlf_copy_error(tlio_in, tlio_out, ##__VA_ARGS__)
 
 struct tl_in_state *tl_in_state_alloc(void);
 void tl_in_state_free(struct tl_in_state *tlio_in);

@@ -43,8 +43,6 @@ static constexpr int OUR_SIGRTMAX = 64;
 #include "net/net-http-server.h"
 #include "net/net-tcp-rpc-server.h"
 
-static constexpr double DEFAULT_LONG_QUERY_THRES = 0.1;
-
 static inline unsigned long long SIG2INT(const int sig) {
   return (sig == OUR_SIGRTMAX) ? 1ull : (1ull << (unsigned long long)sig);
 }
@@ -64,7 +62,6 @@ struct rpc_custom_op {
 
 #pragma pack(pop)
 
-static constexpr unsigned long long ENGINE_NO_AUTO_APPEND = 2ull;
 static constexpr unsigned long long ENGINE_NO_PORT = 4ull;
 
 static constexpr unsigned long long ENGINE_ENABLE_IPV6 = 0x4ull;

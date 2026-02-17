@@ -41,23 +41,3 @@ struct hostent *cfg_gethost_ex(int verb);
 long long cfg_getint(void);
 long long cfg_getint_zero(void);
 long long cfg_getint_signed_zero(void);
-
-#define Expect(l)                                                              \
-  {                                                                            \
-    int t = expect_lexem(l);                                                   \
-    if (t < 0) {                                                               \
-      return t;                                                                \
-    }                                                                          \
-  }
-#define ExpectWord(s)                                                          \
-  {                                                                            \
-    int t = expect_word(s, strlen(s));                                         \
-    if (t < 0) {                                                               \
-      return t;                                                                \
-    }                                                                          \
-  }
-#define Syntax(...)                                                            \
-  {                                                                            \
-    syntax(__VA_ARGS__);                                                       \
-    return -1;                                                                 \
-  }
