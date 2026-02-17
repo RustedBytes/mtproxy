@@ -7,8 +7,7 @@
 
 #include "common/kprintf.h"
 #include "common/mp-queue-rust.h"
-#include "crypto/crc32.h"
-#include "crypto/crc32c.h"
+#include "common/rust-crc-compat.h"
 #include "jobs/jobs.h"
 #include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 
@@ -575,8 +574,7 @@ int rust_ffi_enable_crc32_bridge(void) {
     return -1;
   }
 
-  crc32_partial = rust_crc32_partial_adapter;
-  vkprintf(1, "rust crc32 bridge enabled\n");
+  vkprintf(1, "rust crc32 bridge enabled (direct rust call path)\n");
   return 0;
 }
 
@@ -657,7 +655,6 @@ int rust_ffi_enable_crc32c_bridge(void) {
     return -1;
   }
 
-  crc32c_partial = rust_crc32c_partial_adapter;
-  vkprintf(1, "rust crc32c bridge enabled\n");
+  vkprintf(1, "rust crc32c bridge enabled (direct rust call path)\n");
   return 0;
 }

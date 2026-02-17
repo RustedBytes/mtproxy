@@ -28,6 +28,7 @@
 
 #include <stdint.h>
 
+#include "common/rust-crc-compat.h"
 #include "net/net-connections.h"
 #include "pid.h"
 

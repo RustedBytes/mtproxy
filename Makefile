@@ -46,7 +46,6 @@ DEPENDENCE_STRANGE	:=	$(subst ${OBJ}/,${DEP}/,$(patsubst %.o,%.d,${OBJECTS_STRAN
 DEPENDENCE_RUST	:=	$(subst ${OBJ}/,${DEP}/,$(patsubst %.o,%.d,${RUST_OBJECTS}))
 
 LIB_OBJS_NORMAL := \
-	${OBJ}/crypto/crc32c.o \
 	${OBJ}/common/pid.o \
 	${OBJ}/common/resolver.o \
 	${OBJ}/common/parse-config.o \
@@ -66,7 +65,7 @@ LIB_OBJS_NORMAL := \
 	${OBJ}/net/net-thread.o ${OBJ}/net/net-stats.o ${OBJ}/common/proc-stat.o \
 	${OBJ}/common/kprintf.o \
 	${OBJ}/common/precise-time.o \
-	${OBJ}/common/server-functions.o ${OBJ}/crypto/crc32.o \
+	${OBJ}/common/server-functions.o \
 	${OBJ}/common/rust-ffi-bridge.o \
 
 LIB_OBJS := ${LIB_OBJS_NORMAL}

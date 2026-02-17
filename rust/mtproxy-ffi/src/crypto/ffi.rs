@@ -862,6 +862,213 @@ pub unsafe extern "C" fn mtproxy_ffi_aesni_ctx_free(evp_ctx: *mut c_void) -> i32
     0
 }
 
+/// Legacy C ABI: CRC32 partial update.
+///
+/// # Safety
+/// `data` must be readable for `len` bytes when `len > 0`.
+#[no_mangle]
+pub unsafe extern "C" fn crc32_partial(data: *const c_void, len: c_long, crc: u32) -> u32 {
+    if len <= 0 {
+        return crc;
+    }
+    let Ok(len_usize) = usize::try_from(len) else {
+        return crc;
+    };
+    unsafe { mtproxy_ffi_crc32_partial(data.cast(), len_usize, crc) }
+}
+
+/// Legacy C ABI: CRC64 partial update.
+///
+/// # Safety
+/// `data` must be readable for `len` bytes when `len > 0`.
+#[no_mangle]
+pub unsafe extern "C" fn crc64_partial(data: *const c_void, len: c_long, crc: u64) -> u64 {
+    if len <= 0 {
+        return crc;
+    }
+    let Ok(len_usize) = usize::try_from(len) else {
+        return crc;
+    };
+    unsafe { mtproxy_ffi_crc64_partial(data.cast(), len_usize, crc) }
+}
+
+/// Legacy C ABI: CRC32 combine helper.
+#[no_mangle]
+pub extern "C" fn compute_crc32_combine(crc1: u32, crc2: u32, len2: i64) -> u32 {
+    mtproxy_ffi_crc32_combine(crc1, crc2, len2)
+}
+
+/// Legacy C ABI: CRC64 combine helper.
+#[no_mangle]
+pub extern "C" fn compute_crc64_combine(crc1: u64, crc2: u64, len2: i64) -> u64 {
+    mtproxy_ffi_crc64_combine(crc1, crc2, len2)
+}
+
+/// Legacy C ABI: CRC32C partial update.
+///
+/// # Safety
+/// `data` must be readable for `len` bytes when `len > 0`.
+#[no_mangle]
+pub unsafe extern "C" fn crc32c_partial(data: *const c_void, len: c_long, crc: u32) -> u32 {
+    if len <= 0 {
+        return crc;
+    }
+    let Ok(len_usize) = usize::try_from(len) else {
+        return crc;
+    };
+    unsafe { mtproxy_ffi_crc32c_partial(data.cast(), len_usize, crc) }
+}
+
+/// Legacy C ABI: CRC32C combine helper.
+#[no_mangle]
+pub extern "C" fn compute_crc32c_combine(crc1: u32, crc2: u32, len2: i64) -> u32 {
+    mtproxy_ffi_crc32c_combine(crc1, crc2, len2)
+}
+
+/// Legacy C ABI: software CRC32C path alias.
+///
+/// # Safety
+/// `data` must be readable for `len` bytes when `len > 0`.
+#[no_mangle]
+pub unsafe extern "C" fn crc32c_partial_four_tables(
+    data: *const c_void,
+    len: c_long,
+    crc: u32,
+) -> u32 {
+    unsafe { crc32c_partial(data, len, crc) }
+}
+
+/// Legacy C ABI: generic CRC32 path alias.
+///
+/// # Safety
+/// `data` must be readable for `len` bytes when `len > 0`.
+#[no_mangle]
+pub unsafe extern "C" fn crc32_partial_generic(data: *const c_void, len: c_long, crc: u32) -> u32 {
+    unsafe { crc32_partial(data, len, crc) }
+}
+
+/// Legacy C ABI: CLMUL CRC32 path alias.
+///
+/// # Safety
+/// `data` must be readable for `len` bytes when `len > 0`.
+#[no_mangle]
+pub unsafe extern "C" fn crc32_partial_clmul(data: *const c_void, len: c_long, crc: u32) -> u32 {
+    unsafe { crc32_partial(data, len, crc) }
+}
+
+/// Legacy C ABI: one-table CRC64 path alias.
+///
+/// # Safety
+/// `data` must be readable for `len` bytes when `len > 0`.
+#[no_mangle]
+pub unsafe extern "C" fn crc64_partial_one_table(
+    data: *const c_void,
+    len: c_long,
+    crc: u64,
+) -> u64 {
+    unsafe { crc64_partial(data, len, crc) }
+}
+
+/// Legacy C ABI: CLMUL CRC64 path alias.
+///
+/// # Safety
+/// `data` must be readable for `len` bytes when `len > 0`.
+#[no_mangle]
+pub unsafe extern "C" fn crc64_partial_clmul(data: *const c_void, len: c_long, crc: u64) -> u64 {
+    unsafe { crc64_partial(data, len, crc) }
+}
+
+/// Legacy C ABI: CRC32 check/repair entrypoint.
+///
+/// # Safety
+/// `input`/`input_crc32` must be valid pointers for the provided length.
+#[no_mangle]
+pub unsafe extern "C" fn crc32_check_and_repair(
+    input: *mut c_void,
+    l: i32,
+    input_crc32: *mut u32,
+    force_exit: i32,
+) -> i32 {
+    let len = if l > 0 {
+        usize::try_from(l).unwrap_or(0)
+    } else {
+        0
+    };
+    let rc = unsafe { mtproxy_ffi_crc32_check_and_repair(input.cast(), len, input_crc32) };
+    if force_exit != 0 && rc == -1 {
+        std::process::abort();
+    }
+    rc
+}
+
+/// Legacy C ABI: GF32 powers helper.
+///
+/// # Safety
+/// `powers` must be writable for `size` entries.
+#[no_mangle]
+pub unsafe extern "C" fn gf32_compute_powers_generic(powers: *mut u32, size: i32, poly: u32) {
+    if size <= 0 {
+        return;
+    }
+    let Ok(size_usize) = usize::try_from(size) else {
+        return;
+    };
+    unsafe { mtproxy_ffi_gf32_compute_powers_generic(powers, size_usize, poly) };
+}
+
+/// Legacy C ABI: GF32 CLMUL powers helper.
+///
+/// # Safety
+/// `powers` must be writable for the required fixed-size table.
+#[no_mangle]
+pub unsafe extern "C" fn gf32_compute_powers_clmul(powers: *mut u32, poly: u32) {
+    unsafe { mtproxy_ffi_gf32_compute_powers_clmul(powers, poly) };
+}
+
+/// Legacy C ABI: GF32 generic combine helper.
+///
+/// # Safety
+/// `powers` must be readable for the required precomputed table length.
+#[no_mangle]
+pub unsafe extern "C" fn gf32_combine_generic(powers: *mut u32, crc1: u32, len2: i64) -> u32 {
+    unsafe { mtproxy_ffi_gf32_combine_generic(powers.cast_const(), crc1, len2) }
+}
+
+/// Legacy C ABI: GF32 CLMUL combine helper.
+///
+/// # Safety
+/// `powers` must be readable for the required precomputed table length.
+#[no_mangle]
+pub unsafe extern "C" fn gf32_combine_clmul(powers: *mut u32, crc1: u32, len2: i64) -> u64 {
+    unsafe { mtproxy_ffi_gf32_combine_clmul(powers.cast_const(), crc1, len2) }
+}
+
+/// Legacy C ABI: CRC32 bit-repair helper.
+#[no_mangle]
+pub extern "C" fn crc32_find_corrupted_bit(size: i32, d: u32) -> i32 {
+    mtproxy_ffi_crc32_find_corrupted_bit(size, d)
+}
+
+/// Legacy C ABI: CRC32 bit-flip helper.
+///
+/// # Safety
+/// `input` must be writable for `l` bytes.
+#[no_mangle]
+pub unsafe extern "C" fn crc32_repair_bit(input: *mut u8, l: i32, k: i32) -> i32 {
+    let len = if l > 0 {
+        usize::try_from(l).unwrap_or(0)
+    } else {
+        0
+    };
+    unsafe { mtproxy_ffi_crc32_repair_bit(input, len, k) }
+}
+
+/// Legacy C ABI: CRC64 feed-byte helper.
+#[no_mangle]
+pub extern "C" fn crc64_feed_byte(crc: u64, b: u8) -> u64 {
+    mtproxy_ffi_crc64_feed_byte(crc, b)
+}
+
 /// Computes CRC32 partial update compatible with C `crc32_partial`.
 ///
 /// # Safety

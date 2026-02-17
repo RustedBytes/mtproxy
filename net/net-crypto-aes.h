@@ -28,7 +28,6 @@
 
 #pragma once
 
-#include "crypto/aesni256.h"
 #include "net/net-connections.h"
 
 enum {
@@ -72,8 +71,8 @@ enum {
 
 /* for c->crypto */
 struct aes_crypto {
-  mtproxy_aesni_ctx_t *read_aeskey;
-  mtproxy_aesni_ctx_t *write_aeskey;
+  void *read_aeskey;
+  void *write_aeskey;
 };
 
 extern int aes_initialized;

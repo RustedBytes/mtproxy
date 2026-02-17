@@ -114,7 +114,7 @@ extern int32_t mtproxy_ffi_net_msg_rwm_sha1(struct raw_message *raw,
                                             unsigned char output[20]);
 extern int32_t mtproxy_ffi_net_msg_rwm_encrypt_decrypt_to(
     struct raw_message *raw, struct raw_message *res, int32_t bytes,
-    mtproxy_aesni_ctx_t *ctx, int32_t block_size);
+    void *ctx, int32_t block_size);
 extern void *mtproxy_ffi_net_msg_rwm_get_block_ptr(struct raw_message *raw);
 extern int32_t
 mtproxy_ffi_net_msg_rwm_get_block_ptr_bytes(struct raw_message *raw);
@@ -265,8 +265,7 @@ int rwm_sha1(struct raw_message *raw, int bytes, unsigned char output[20]) {
 }
 
 int rwm_encrypt_decrypt_to(struct raw_message *raw, struct raw_message *res,
-                           int bytes, mtproxy_aesni_ctx_t *ctx,
-                           int block_size) {
+                           int bytes, void *ctx, int block_size) {
   return mtproxy_ffi_net_msg_rwm_encrypt_decrypt_to(raw, res, bytes, ctx,
                                                     block_size);
 }
