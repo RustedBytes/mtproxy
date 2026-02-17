@@ -28,7 +28,6 @@
 */
 #pragma once
 
-#include "common/precise-time.h"
 #include "common/tl-parse.h"
 #include "net/net-connections.h"
 
@@ -96,18 +95,3 @@ struct tl_act_extra {
   int *error_code;
   int extra[0];
 };
-
-static inline struct tl_act_extra *
-tl_act_extra_init(void *buf, int size,
-                  int (*act)(job_t, struct tl_act_extra *)) {
-  struct tl_act_extra *extra = (struct tl_act_extra *)buf;
-  memset(extra, 0, sizeof(*extra));
-  extra->size = size + (int)sizeof(*extra);
-  extra->flags = 0;
-  extra->act = act;
-  extra->free = 0;
-  extra->dup = 0;
-  extra->start_rdtsc = rdtsc();
-  extra->cpu_rdtsc = 0;
-  return extra;
-}
