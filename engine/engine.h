@@ -157,7 +157,6 @@ typedef struct event_precise_cron {
 
 void set_signals_handlers(void);
 void engine_init(const char *const pwd_filename, int do_not_open_port);
-void engine_set_epoll_wait_timeout(int epoll_wait_timeout);
 int signal_check_pending_and_clear(int sig);
 int signal_check_pending(int sig);
 void signal_set_pending(int sig);

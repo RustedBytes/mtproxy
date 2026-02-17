@@ -42,8 +42,6 @@ static inline struct rpc_target_info *RPC_TARGET_INFO(rpc_target_job_t c) {
 }
 
 rpc_target_job_t rpc_target_lookup(struct process_id *PID);
-rpc_target_job_t rpc_target_lookup_hp(unsigned host, int port);
-rpc_target_job_t rpc_target_lookup_target(conn_target_job_t targ);
 
 connection_job_t rpc_target_choose_connection(rpc_target_job_t S,
                                               struct process_id *PID);
@@ -57,5 +55,3 @@ void rpc_target_insert_conn(connection_job_t c);
 void rpc_target_insert_target(conn_target_job_t t);
 void rpc_target_insert_target_ext(conn_target_job_t t, unsigned host);
 void rpc_target_delete_conn(connection_job_t c);
-
-int rpc_target_get_state(rpc_target_job_t S, struct process_id *PID);

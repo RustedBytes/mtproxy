@@ -48,10 +48,3 @@ double get_utime(int clock_id) {
   }
   return res;
 }
-
-long long get_precise_time(unsigned precision) {
-  long long res = mtproxy_ffi_get_precise_time(precision);
-  precise_time = mtproxy_ffi_precise_time_value();
-  precise_time_rdtsc = mtproxy_ffi_precise_time_rdtsc_value();
-  return res;
-}

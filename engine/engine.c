@@ -105,10 +105,6 @@ const char *get_version_string(void) {
   }
 }
 
-void engine_set_epoll_wait_timeout(int epoll_wait_timeout) {
-  mtproxy_ffi_engine_set_epoll_wait_timeout(epoll_wait_timeout);
-}
-
 void engine_init(const char *const pwd_filename, int do_not_open_port) {
   mtproxy_ffi_engine_init(pwd_filename, do_not_open_port);
 }

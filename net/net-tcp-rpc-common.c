@@ -89,15 +89,6 @@ double mtproxy_ffi_net_tcp_rpc_common_precise_now(void) { return precise_now; }
 // Flags:
 //   Flag 1 - can not edit this message. Need to make copy.
 
-void tcp_rpc_conn_send_init(connection_job_t C, struct raw_message *raw,
-                            int flags) {
-  mtproxy_ffi_net_tcp_rpc_common_conn_send_init(C, raw, flags);
-}
-
-void tcp_rpc_conn_send_im(JOB_REF_ARG(C), struct raw_message *raw, int flags) {
-  mtproxy_ffi_net_tcp_rpc_common_conn_send_im(C_tag_int, C, raw, flags);
-}
-
 void tcp_rpc_conn_send(JOB_REF_ARG(C), struct raw_message *raw, int flags) {
   mtproxy_ffi_net_tcp_rpc_common_conn_send(C_tag_int, C, raw, flags);
 }
@@ -133,10 +124,6 @@ int tcp_rpc_write_packet_compact(connection_job_t C, struct raw_message *raw) {
 
 int tcp_rpc_flush(connection_job_t C) {
   return mtproxy_ffi_net_tcp_rpc_common_flush(C);
-}
-
-void tcp_rpc_send_ping(connection_job_t C, long long ping_id) {
-  mtproxy_ffi_net_tcp_rpc_common_send_ping(C, ping_id);
 }
 
 unsigned tcp_set_default_rpc_flags(unsigned and_flags, unsigned or_flags) {

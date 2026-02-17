@@ -93,15 +93,6 @@ rpc_target_job_t rpc_target_lookup(struct process_id *pid) {
       rpc_target_tree, (const mtproxy_ffi_process_id_t *)pid, PID.ip);
 }
 
-rpc_target_job_t rpc_target_lookup_hp(unsigned ip, int port) {
-  return mtproxy_ffi_rpc_target_lookup_hp(rpc_target_tree, ip, port, PID.ip);
-}
-
-rpc_target_job_t rpc_target_lookup_target(conn_target_job_t SS) {
-  return mtproxy_ffi_rpc_target_lookup_target_runtime(SS, rpc_target_tree,
-                                                      PID.ip);
-}
-
 connection_job_t rpc_target_choose_connection(rpc_target_job_t S,
                                               struct process_id *pid) {
   return mtproxy_ffi_rpc_target_choose_connection_runtime(
@@ -122,9 +113,4 @@ int rpc_target_choose_random_connections(rpc_target_job_t S,
                                          connection_job_t buf[]) {
   return mtproxy_ffi_rpc_target_choose_random_connections_runtime(
       S, (const mtproxy_ffi_process_id_t *)pid, limit, (void **)buf);
-}
-
-int rpc_target_get_state(rpc_target_job_t S, struct process_id *pid) {
-  return mtproxy_ffi_rpc_target_get_state_runtime(
-      S, (const mtproxy_ffi_process_id_t *)pid);
 }

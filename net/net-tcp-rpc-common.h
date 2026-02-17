@@ -95,11 +95,8 @@ struct tcp_rpc_handshake_error_packet {
 // Bit 4 - raw is allocated pointer and it should be freed or reused
 void tcp_rpc_conn_send(JOB_REF_ARG(C), struct raw_message *raw, int flags);
 void tcp_rpc_conn_send_data(JOB_REF_ARG(C), int len, void *Q);
-void tcp_rpc_conn_send_init(__joblocked connection_job_t C,
-                            struct raw_message *raw, int flags);
 void tcp_rpc_conn_send_data_init(__joblocked connection_job_t c, int len,
                                  void *Q);
-void tcp_rpc_conn_send_im(JOB_REF_ARG(C), struct raw_message *raw, int flags);
 void tcp_rpc_conn_send_data_im(JOB_REF_ARG(C), int len, void *Q);
 int tcp_rpc_default_execute(connection_job_t C, int op,
                             struct raw_message *raw);
@@ -181,7 +178,6 @@ int tcp_rpc_flush_packet(connection_job_t C);
 int tcp_rpc_write_packet(connection_job_t C, struct raw_message *raw);
 int tcp_rpc_write_packet_compact(connection_job_t C, struct raw_message *raw);
 int tcp_rpc_flush(connection_job_t C);
-void tcp_rpc_send_ping(connection_job_t C, long long ping_id);
 unsigned tcp_set_default_rpc_flags(unsigned and_flags, unsigned or_flags);
 unsigned tcp_get_default_rpc_flags(void);
 void tcp_set_max_dh_accept_rate(int rate);
