@@ -96,13 +96,16 @@ struct tl_parse_module_stat {
   int tl_in_allocated, tl_out_allocated;
 };
 
+static struct tl_parse_module_stat
+    tl_parse_module_stat_storage[MAX_JOB_THREADS];
 static struct tl_parse_module_stat *tl_parse_module_stat_array[MAX_JOB_THREADS];
 static __thread struct tl_parse_module_stat *tl_parse_module_stat_tls;
 
 static void tl_parse_module_thread_init(void) {
   int id = get_this_thread_id();
   assert(id >= 0 && id < MAX_JOB_THREADS);
-  tl_parse_module_stat_tls = calloc(1, sizeof(*tl_parse_module_stat_tls));
+  tl_parse_module_stat_tls = &tl_parse_module_stat_storage[id];
+  *tl_parse_module_stat_tls = (struct tl_parse_module_stat){0};
   tl_parse_module_stat_array[id] = tl_parse_module_stat_tls;
 }
 

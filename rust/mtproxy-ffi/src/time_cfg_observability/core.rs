@@ -731,7 +731,7 @@ pub unsafe extern "C" fn mtproxy_ffi_cfg_load_config(
     };
 
     let mut effective_fd = fd;
-    if effective_fd < 0 {
+    let opened_here = if effective_fd < 0 {
         if file.is_null() {
             return -1;
         }
@@ -739,15 +739,28 @@ pub unsafe extern "C" fn mtproxy_ffi_cfg_load_config(
         if effective_fd < 0 {
             return -1;
         }
-    }
+        true
+    } else {
+        false
+    };
 
     let mut buff = unsafe { *config_buff_ptr };
     if buff.is_null() {
         let Some(alloc_size) = max_len.checked_add(4) else {
+            if opened_here {
+                unsafe {
+                    libc::close(effective_fd);
+                }
+            }
             return -4;
         };
         let alloc_ptr = unsafe { libc::malloc(alloc_size) };
         if alloc_ptr.is_null() {
+            if opened_here {
+                unsafe {
+                    libc::close(effective_fd);
+                }
+            }
             return -4;
         }
         buff = alloc_ptr.cast::<c_char>();
@@ -756,12 +769,27 @@ pub unsafe extern "C" fn mtproxy_ffi_cfg_load_config(
 
     let read_res = unsafe { libc::read(effective_fd, buff.cast(), max_len.saturating_add(1)) };
     if read_res < 0 {
+        if opened_here {
+            unsafe {
+                libc::close(effective_fd);
+            }
+        }
         return -2;
     }
     let Ok(read_len) = usize::try_from(read_res) else {
+        if opened_here {
+            unsafe {
+                libc::close(effective_fd);
+            }
+        }
         return -2;
     };
     if read_len > max_len {
+        if opened_here {
+            unsafe {
+                libc::close(effective_fd);
+            }
+        }
         return -3;
     }
 
@@ -789,6 +817,11 @@ pub unsafe extern "C" fn mtproxy_ffi_cfg_load_config(
         )
     };
     if reset_rc < 0 {
+        if opened_here {
+            unsafe {
+                libc::close(effective_fd);
+            }
+        }
         return -2;
     }
 

@@ -45,6 +45,8 @@ struct rpc_targets_module_stat {
 };
 
 static struct rpc_targets_module_stat
+    rpc_targets_module_stat_storage[MAX_JOB_THREADS];
+static struct rpc_targets_module_stat
     *rpc_targets_module_stat_array[MAX_JOB_THREADS];
 static __thread struct rpc_targets_module_stat *rpc_targets_module_stat_tls;
 
@@ -55,7 +57,8 @@ int32_t mtproxy_ffi_rpc_target_is_fast_thread(void) {
 static void rpc_targets_module_thread_init(void) {
   int id = get_this_thread_id();
   assert(id >= 0 && id < MAX_JOB_THREADS);
-  rpc_targets_module_stat_tls = calloc(1, sizeof(*rpc_targets_module_stat_tls));
+  rpc_targets_module_stat_tls = &rpc_targets_module_stat_storage[id];
+  *rpc_targets_module_stat_tls = (struct rpc_targets_module_stat){0};
   rpc_targets_module_stat_array[id] = rpc_targets_module_stat_tls;
 }
 

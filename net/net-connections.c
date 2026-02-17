@@ -103,13 +103,16 @@ struct connections_module_stat {
 };
 
 static struct connections_module_stat
+    connections_module_stat_storage[MAX_JOB_THREADS];
+static struct connections_module_stat
     *connections_module_stat_array[MAX_JOB_THREADS];
 static __thread struct connections_module_stat *connections_module_stat_tls;
 
 static void connections_module_thread_init(void) {
   int id = get_this_thread_id();
   assert(id >= 0 && id < MAX_JOB_THREADS);
-  connections_module_stat_tls = calloc(1, sizeof(*connections_module_stat_tls));
+  connections_module_stat_tls = &connections_module_stat_storage[id];
+  *connections_module_stat_tls = (struct connections_module_stat){0};
   connections_module_stat_array[id] = connections_module_stat_tls;
 }
 

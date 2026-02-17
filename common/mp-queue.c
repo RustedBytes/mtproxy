@@ -41,6 +41,8 @@ struct jobs_module_stat_mp_queue {
   int mpq_allocated;
 };
 
+static struct jobs_module_stat_mp_queue
+    jobs_module_stat_mp_queue_storage[MAX_JOB_THREADS];
 struct jobs_module_stat_mp_queue
     *jobs_module_list_stat_mp_queue[MAX_JOB_THREADS];
 __thread struct jobs_module_stat_mp_queue *jobs_module_stat_mp_queue;
@@ -54,9 +56,9 @@ static inline struct jobs_module_stat_mp_queue *mpq_current_module_stat(void) {
 void jobs_module_thread_init_mp_queue(void) {
   int id = get_this_thread_id();
   assert(id >= 0 && id < MAX_JOB_THREADS);
-
-  struct jobs_module_stat_mp_queue *stat = calloc(1, sizeof(*stat));
-  assert(stat);
+  struct jobs_module_stat_mp_queue *stat =
+      &jobs_module_stat_mp_queue_storage[id];
+  *stat = (struct jobs_module_stat_mp_queue){0};
 
   jobs_module_stat_mp_queue = stat;
   jobs_module_list_stat_mp_queue[id] = stat;
