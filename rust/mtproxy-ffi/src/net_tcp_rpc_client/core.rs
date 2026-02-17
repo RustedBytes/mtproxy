@@ -290,8 +290,8 @@ unsafe extern "C" {
     static mut dh_params_select: c_int;
     static mut PID: ProcessId;
     static mut verbosity: c_int;
-    static mut crc32_partial: Crc32PartialFn;
-    static mut crc32c_partial: Crc32PartialFn;
+    fn crc32_partial(data: *const c_void, len: c_long, crc: c_uint) -> c_uint;
+    fn crc32c_partial(data: *const c_void, len: c_long, crc: c_uint) -> c_uint;
 }
 
 #[inline]
@@ -627,7 +627,7 @@ unsafe fn tcp_rpcc_process_handshake_packet_impl(c: ConnectionJob, msg: *mut Raw
     if enable_crc32c {
         unsafe {
             (*data).crypto_flags |= RPCF_USE_CRC32C;
-            (*data).custom_crc_partial = crc32c_partial;
+            (*data).custom_crc_partial = Some(crc32c_partial);
         }
     }
     0
@@ -927,7 +927,7 @@ pub(super) unsafe fn tcp_rpcc_init_outbound_impl(c: ConnectionJob) -> c_int {
 
     unsafe {
         (*conn).last_query_sent_time = precise_now_value();
-        (*data).custom_crc_partial = crc32_partial;
+        (*data).custom_crc_partial = Some(crc32_partial);
     }
 
     if let Some(rpc_check_perm) = unsafe { (*funcs).rpc_check_perm } {

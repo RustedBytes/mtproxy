@@ -345,8 +345,8 @@ unsafe extern "C" {
     static mut dh_params_select: c_int;
     static mut PID: ProcessId;
     static mut verbosity: c_int;
-    static mut crc32_partial: Crc32PartialFn;
-    static mut crc32c_partial: Crc32PartialFn;
+    fn crc32_partial(data: *const c_void, len: c_long, crc: c_uint) -> c_uint;
+    fn crc32c_partial(data: *const c_void, len: c_long, crc: c_uint) -> c_uint;
 }
 
 #[inline]
@@ -903,7 +903,7 @@ pub(super) unsafe fn tcp_rpcs_parse_execute_impl(c: ConnectionJob) -> c_int {
                     res = unsafe { tcp_rpcs_send_handshake_packet_impl(c) };
                     if (unsafe { (*data).crypto_flags } & RPCF_USE_CRC32C) != 0 {
                         unsafe {
-                            (*data).custom_crc_partial = crc32c_partial;
+                            (*data).custom_crc_partial = Some(crc32c_partial);
                         }
                     }
                     unsafe { notification_event_insert_tcp_conn_ready(c) };
@@ -995,7 +995,7 @@ pub(super) unsafe fn tcp_rpcs_init_accepted_impl(c: ConnectionJob) -> c_int {
 
     unsafe {
         (*conn).last_query_sent_time = precise_now_value();
-        (*data).custom_crc_partial = crc32_partial;
+        (*data).custom_crc_partial = Some(crc32_partial);
     }
 
     if let Some(rpc_check_perm) = unsafe { (*funcs).rpc_check_perm } {
@@ -1028,7 +1028,7 @@ pub(super) unsafe fn tcp_rpcs_init_accepted_nohs_impl(c: ConnectionJob) -> c_int
     }
 
     unsafe {
-        (*data).custom_crc_partial = crc32_partial;
+        (*data).custom_crc_partial = Some(crc32_partial);
     }
 
     if unsafe { (*funcs).rpc_ready.is_some() } {
