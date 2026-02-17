@@ -438,7 +438,13 @@ pub unsafe extern "C" fn mtproxy_ffi_engine_rpc_custom_op_insert(
     }
 
     let mut guard = mutex_lock(&RPC_CUSTOM_OPS);
-    guard.insert(op, entry as usize);
+    if let Some(previous) = guard.insert(op, entry as usize) {
+        if previous != entry as usize {
+            unsafe {
+                libc::free(previous as *mut c_void);
+            }
+        }
+    }
     0
 }
 
@@ -455,6 +461,20 @@ pub unsafe extern "C" fn mtproxy_ffi_engine_rpc_custom_op_lookup(op: u32) -> *mu
 pub unsafe extern "C" fn mtproxy_ffi_engine_rpc_custom_op_has_any() -> c_int {
     let guard = mutex_lock(&RPC_CUSTOM_OPS);
     i32::from(!guard.is_empty())
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_engine_rpc_custom_op_clear() {
+    let mut guard = mutex_lock(&RPC_CUSTOM_OPS);
+    let to_free: Vec<usize> = guard.values().copied().collect();
+    guard.clear();
+    drop(guard);
+
+    for entry in to_free {
+        unsafe {
+            libc::free(entry as *mut c_void);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -516,13 +536,26 @@ mod tests {
     #[test]
     fn custom_op_registry_roundtrip() {
         unsafe {
+            mtproxy_ffi_engine_rpc_custom_op_clear();
             let op = 0x1234_5678;
+            let entry1 = libc::malloc(1);
+            let entry2 = libc::malloc(1);
+            assert!(!entry1.is_null());
+            assert!(!entry2.is_null());
+
             assert_eq!(
-                mtproxy_ffi_engine_rpc_custom_op_insert(op, 0xfeed as *mut c_void),
+                mtproxy_ffi_engine_rpc_custom_op_insert(op, entry1),
                 0
             );
-            assert_eq!(mtproxy_ffi_engine_rpc_custom_op_lookup(op) as usize, 0xfeed);
+            assert_eq!(mtproxy_ffi_engine_rpc_custom_op_lookup(op), entry1);
+            assert_eq!(
+                mtproxy_ffi_engine_rpc_custom_op_insert(op, entry2),
+                0
+            );
+            assert_eq!(mtproxy_ffi_engine_rpc_custom_op_lookup(op), entry2);
             assert_eq!(mtproxy_ffi_engine_rpc_custom_op_has_any(), 1);
+            mtproxy_ffi_engine_rpc_custom_op_clear();
+            assert_eq!(mtproxy_ffi_engine_rpc_custom_op_has_any(), 0);
         }
     }
 }

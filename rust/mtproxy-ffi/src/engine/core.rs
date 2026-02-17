@@ -337,6 +337,7 @@ unsafe extern "C" {
 
     fn engine_server_init();
     fn register_custom_op_cb(op: c_uint, func: CustomOpFn);
+    fn mtproxy_ffi_engine_rpc_custom_op_clear();
     fn engine_work_rpc_req_result(tlio_in: *mut c_void, params: *mut c_void);
     #[allow(clashing_extern_declarations)]
     fn create_async_job(
@@ -1286,6 +1287,7 @@ pub(super) unsafe fn default_engine_server_start_impl() {
 
         vkprintf_no_args(1, SERVER_STARTED_FMT.as_ptr().cast());
 
+        mtproxy_ffi_engine_rpc_custom_op_clear();
         register_custom_op_cb(RPC_REQ_RESULT, Some(engine_work_rpc_req_result));
         register_custom_ops(f);
 
