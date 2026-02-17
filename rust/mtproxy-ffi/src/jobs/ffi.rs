@@ -2,6 +2,7 @@
 
 use super::core::*;
 use core::ffi::c_void;
+use core::mem;
 use core::ptr;
 
 #[no_mangle]
@@ -239,6 +240,357 @@ pub unsafe extern "C" fn job_decref(job_tag_int: i32, job: JobT) {
 pub unsafe extern "C" fn job_incref(job: JobT) -> JobT {
     // SAFETY: delegates to Rust-migrated core implementation.
     unsafe { job_incref_c_impl(job) }
+}
+
+#[inline]
+unsafe fn job_message_payload_ptr(message: *mut JobMessage) -> *mut u32 {
+    // SAFETY: payload starts immediately after fixed-size header.
+    unsafe { message.cast::<u8>().add(mem::size_of::<JobMessage>()).cast::<u32>() }
+}
+
+#[inline]
+unsafe fn job_message_payload_read(message: *mut JobMessage, idx: usize) -> u32 {
+    // SAFETY: caller guarantees payload bounds.
+    unsafe { *job_message_payload_ptr(message).add(idx) }
+}
+
+unsafe fn job_message_receive_or_continuation(
+    job: JobT,
+    message: *mut JobMessage,
+    receive_message: JobMessageReceiveFn,
+    extra: *mut c_void,
+    payload_magic: u32,
+) -> i32 {
+    let msg_flags = unsafe { (*message).flags };
+    if (msg_flags & JMC_CONTINUATION) != 0 {
+        let payload_ints = unsafe { (*message).payload_ints };
+        abort_if(payload_ints < 1);
+        abort_if(unsafe { job_message_payload_read(message, 0) } != payload_magic);
+        abort_if(payload_ints != 5);
+
+        // payload[1..=2] stores function pointer, payload[3..=4] stores opaque extra pointer.
+        let func_ptr_slot = unsafe { job_message_payload_ptr(message).add(1).cast::<*const ()>() };
+        let extra_ptr_slot = unsafe { job_message_payload_ptr(message).add(3).cast::<*mut c_void>() };
+        let continuation_fn_addr = unsafe { *func_ptr_slot };
+        let continuation_extra = unsafe { *extra_ptr_slot };
+        abort_if(continuation_fn_addr.is_null());
+        // SAFETY: layout follows legacy C payload continuation contract.
+        let continuation_fn: unsafe extern "C" fn(JobT, *mut JobMessage, *mut c_void) -> i32 =
+            unsafe { mem::transmute(continuation_fn_addr) };
+        unsafe { continuation_fn(job, message, continuation_extra) }
+    } else {
+        let Some(receive) = receive_message else {
+            abort_if(true);
+            return -1;
+        };
+        unsafe { receive(job, message, extra) }
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_jobs_process_one_sublist(subclass_token_id: usize, class: i32) {
+    let _ = class;
+    let thread_class = unsafe { jobs_get_current_thread_class_c_impl() };
+    abort_if(thread_class <= 0);
+    let subclass_cnt = unsafe { jobs_get_current_thread_subclass_count_c_impl() };
+    abort_if(subclass_cnt < 0);
+
+    let subclass_id = subclass_token_id as i32 - 3;
+    abort_if(subclass_id < -2);
+    abort_if(subclass_id >= subclass_cnt);
+
+    let enter_rc = mtproxy_ffi_jobs_tokio_subclass_enter(thread_class, subclass_id);
+    abort_if(enter_rc < 0);
+    if enter_rc == 0 {
+        return;
+    }
+
+    let permit_rc = mtproxy_ffi_jobs_tokio_subclass_permit_acquire(thread_class, subclass_id);
+    abort_if(permit_rc != 0);
+
+    loop {
+        loop {
+            let pending_rc = mtproxy_ffi_jobs_tokio_subclass_has_pending(thread_class, subclass_id);
+            abort_if(pending_rc < 0);
+            if pending_rc == 0 {
+                break;
+            }
+
+            let mut job: *mut c_void = ptr::null_mut();
+            let rc = unsafe {
+                mtproxy_ffi_jobs_tokio_dequeue_subclass(
+                    thread_class,
+                    subclass_id,
+                    1,
+                    &raw mut job,
+                )
+            };
+            abort_if(rc < 0 || job.is_null());
+            unsafe {
+                process_one_job(1, job.cast::<AsyncJob>(), thread_class);
+            }
+            let mark_rc = mtproxy_ffi_jobs_tokio_subclass_mark_processed(thread_class, subclass_id);
+            abort_if(mark_rc != 0);
+        }
+
+        let cont_rc = mtproxy_ffi_jobs_tokio_subclass_exit_or_continue(thread_class, subclass_id);
+        abort_if(cont_rc < 0);
+        if cont_rc > 0 {
+            continue;
+        }
+        break;
+    }
+
+    let release_rc = mtproxy_ffi_jobs_tokio_subclass_permit_release(thread_class, subclass_id);
+    abort_if(release_rc != 0);
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_jobs_job_message_send(
+    job: JobT,
+    src: JobT,
+    type_: u32,
+    raw: *mut RawMessage,
+    dup: i32,
+    payload_ints: i32,
+    payload: *const u32,
+    flags: u32,
+    destroy: JobMessageDestructorFn,
+) {
+    abort_if(job.is_null() || raw.is_null());
+    abort_if(payload_ints < 0);
+    abort_if(payload_ints > 0 && payload.is_null());
+    abort_if((unsafe { (*job).j_type as u64 } & JT_HAVE_MSG_QUEUE) == 0);
+
+    let payload_bytes = (payload_ints as usize) * mem::size_of::<u32>();
+    let total_size = mem::size_of::<JobMessage>()
+        .checked_add(payload_bytes)
+        .unwrap_or_else(|| {
+            std::process::abort();
+        });
+    let message = unsafe { malloc(total_size).cast::<JobMessage>() };
+    abort_if(message.is_null());
+
+    unsafe {
+        (*message).type_ = type_;
+        (*message).flags = flags;
+        (*message).src = src;
+        (*message).payload_ints = payload_ints as u32;
+        (*message).next = ptr::null_mut();
+        (*message).destructor = destroy;
+        if payload_bytes > 0 {
+            memcpy(
+                job_message_payload_ptr(message).cast::<c_void>(),
+                payload.cast::<c_void>(),
+                payload_bytes,
+            );
+        }
+        if dup != 0 {
+            rwm_clone(&raw mut (*message).message, raw);
+        } else {
+            rwm_move(&raw mut (*message).message, raw);
+        }
+    }
+
+    let queue = unsafe { job_message_queue_get(job) };
+    abort_if(queue.is_null());
+    let rc = mtproxy_ffi_jobs_tokio_message_queue_push(unsafe { (*queue).tokio_queue_id }, message.cast());
+    abort_if(rc < 0);
+
+    unsafe {
+        job_signal(1, job, JS_MSG);
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_jobs_job_message_queue_work(
+    job: JobT,
+    receive_message: JobMessageReceiveFn,
+    extra: *mut c_void,
+    mask: u32,
+) {
+    abort_if(job.is_null());
+    abort_if((unsafe { (*job).j_type as u64 } & JT_HAVE_MSG_QUEUE) == 0);
+    let queue = unsafe { job_message_queue_get(job) };
+    abort_if(queue.is_null());
+
+    loop {
+        let mut msg: *mut c_void = ptr::null_mut();
+        let rc =
+            unsafe { mtproxy_ffi_jobs_tokio_message_queue_pop((*queue).tokio_queue_id, &raw mut msg) };
+        abort_if(rc < 0);
+        if rc == 0 || msg.is_null() {
+            break;
+        }
+        let msg = msg.cast::<JobMessage>();
+        unsafe {
+            (*msg).next = ptr::null_mut();
+            if !(*queue).last.is_null() {
+                (*(*queue).last).next = msg;
+                (*queue).last = msg;
+            } else {
+                (*queue).first = msg;
+                (*queue).last = msg;
+            }
+        }
+    }
+
+    let mut last: *mut JobMessage = ptr::null_mut();
+    let mut ptr_to_current: *mut *mut JobMessage = unsafe { &raw mut (*queue).first };
+    let mut stop = false;
+    while !stop {
+        let current = unsafe { *ptr_to_current };
+        if current.is_null() {
+            break;
+        }
+        let kind = unsafe { (*current).flags & JMC_TYPE_MASK };
+        abort_if(kind == 0);
+        if (mask & (1_u32 << kind)) != 0 {
+            let next = unsafe { (*current).next };
+            unsafe {
+                (*current).next = ptr::null_mut();
+            }
+            let result = unsafe {
+                job_message_receive_or_continuation(
+                    job,
+                    current,
+                    receive_message,
+                    extra,
+                    (*queue).payload_magic,
+                )
+            };
+            if result < 0 {
+                stop = true;
+            } else if result == 1 {
+                unsafe { mtproxy_ffi_jobs_job_message_free_default(current) };
+            } else if result == 2 {
+                let destructor = unsafe { (*current).destructor };
+                if let Some(dtor) = destructor {
+                    unsafe { dtor(current) };
+                } else {
+                    unsafe { mtproxy_ffi_jobs_job_message_free_default(current) };
+                }
+            }
+            unsafe {
+                *ptr_to_current = next;
+                if (*queue).last == current {
+                    (*queue).last = last;
+                }
+            }
+        } else {
+            last = current;
+            ptr_to_current = unsafe { &raw mut (*current).next };
+        }
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_jobs_job_message_queue_free(job: JobT) {
+    abort_if(job.is_null());
+    abort_if((unsafe { (*job).j_type as u64 } & JT_HAVE_MSG_QUEUE) == 0);
+    let queue_slot = unsafe { job_message_queue_get(job) };
+    abort_if(queue_slot.is_null());
+    if queue_slot.is_null() {
+        return;
+    }
+
+    let queue = queue_slot;
+    if queue.is_null() {
+        return;
+    }
+
+    unsafe {
+        while !(*queue).first.is_null() {
+            let message = (*queue).first;
+            (*queue).first = (*message).next;
+            mtproxy_ffi_jobs_job_message_free_default(message);
+        }
+        (*queue).last = ptr::null_mut();
+    }
+
+    loop {
+        let mut message: *mut c_void = ptr::null_mut();
+        let rc = unsafe {
+            mtproxy_ffi_jobs_tokio_message_queue_pop((*queue).tokio_queue_id, &raw mut message)
+        };
+        abort_if(rc < 0);
+        if rc == 0 || message.is_null() {
+            break;
+        }
+        unsafe { mtproxy_ffi_jobs_job_message_free_default(message.cast::<JobMessage>()) };
+    }
+
+    let destroy_rc = mtproxy_ffi_jobs_tokio_message_queue_destroy(unsafe { (*queue).tokio_queue_id });
+    abort_if(destroy_rc < 0);
+    unsafe {
+        free(queue.cast::<c_void>());
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_jobs_job_message_free_default(message: *mut JobMessage) {
+    if message.is_null() {
+        return;
+    }
+    let src = unsafe { (*message).src };
+    if !src.is_null() {
+        unsafe {
+            job_decref(1, src);
+        }
+    }
+    if unsafe { (*message).message.magic } != 0 {
+        unsafe {
+            rwm_free(&raw mut (*message).message);
+        }
+    }
+    unsafe {
+        free(message.cast::<c_void>());
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_jobs_job_free(job_tag_int: i32, job: JobT) -> i32 {
+    abort_if(job.is_null());
+    if (unsafe { (*job).j_type as u64 } & JT_HAVE_MSG_QUEUE) != 0 {
+        unsafe {
+            mtproxy_ffi_jobs_job_message_queue_free(job);
+        }
+    }
+    let base_ptr = unsafe { job.cast::<u8>().sub((*job).j_align as usize) };
+    unsafe {
+        free(base_ptr.cast::<c_void>());
+    }
+    let _ = job_tag_int;
+    -0x7fff_ffff - 1
+}
+
+#[repr(C)]
+pub struct EventTimer {
+    pub h_idx: i32,
+    pub flags: i32,
+    pub wakeup: Option<unsafe extern "C" fn(*mut EventTimer) -> i32>,
+    pub wakeup_time: f64,
+    pub real_wakeup_time: f64,
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_jobs_job_timer_wakeup_gateway(et: *mut EventTimer) -> i32 {
+    abort_if(et.is_null());
+    let header_size = unsafe { jobs_async_job_header_size_c_impl() };
+    let job = unsafe {
+        (et.cast::<u8>().sub(header_size)).cast::<AsyncJob>()
+    };
+    abort_if(job.is_null());
+    if unsafe { (*et).wakeup_time == (*et).real_wakeup_time } {
+        unsafe {
+            job_signal(1, job, JS_ALARM);
+        }
+    } else {
+        unsafe {
+            job_decref(1, job);
+        }
+    }
+    0
 }
 
 /// Initializes shared Tokio scheduler state for Rust-backed jobs queue routing.

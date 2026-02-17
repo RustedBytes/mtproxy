@@ -20,14 +20,20 @@ pub(super) const JS_RUN: i32 = 0;
 pub(super) const JS_MSG: i32 = 2;
 pub(super) const JS_ABORT: i32 = 5;
 pub(super) const JS_FINISH: i32 = 7;
+pub(super) const JS_ALARM: i32 = 4;
 pub(super) const JSP_PARENT_WAKEUP: u64 = 4;
 pub(super) const JT_HAVE_TIMER: u64 = 1;
 pub(super) const JT_HAVE_MSG_QUEUE: u64 = 2;
+pub(super) const JMC_TYPE_MASK: u32 = 31;
+pub(super) const JMC_CONTINUATION: u32 = 8;
 
 pub(super) type JobPtr = usize;
 pub(super) type JobsProcessFn = extern "C" fn(*mut c_void) -> i32;
 pub(super) type JobT = *mut AsyncJob;
 pub(super) type JobExecuteFn = Option<unsafe extern "C" fn(JobT, i32, *mut JobThread) -> i32>;
+pub(super) type JobMessageDestructorFn = Option<unsafe extern "C" fn(*mut JobMessage)>;
+pub(super) type JobMessageReceiveFn =
+    Option<unsafe extern "C" fn(JobT, *mut JobMessage, *mut c_void) -> i32>;
 
 #[repr(C)]
 pub struct JobThread {
@@ -55,6 +61,35 @@ pub struct AsyncJob {
     pub(super) j_parent: JobT,
 }
 
+#[repr(C)]
+pub struct RawMessage {
+    pub(super) first: *mut c_void,
+    pub(super) last: *mut c_void,
+    pub(super) total_bytes: i32,
+    pub(super) magic: i32,
+    pub(super) first_offset: i32,
+    pub(super) last_offset: i32,
+}
+
+#[repr(C)]
+pub struct JobMessage {
+    pub(super) type_: u32,
+    pub(super) flags: u32,
+    pub(super) payload_ints: u32,
+    pub(super) src: JobT,
+    pub(super) destructor: JobMessageDestructorFn,
+    pub(super) message: RawMessage,
+    pub(super) next: *mut JobMessage,
+}
+
+#[repr(C)]
+pub struct JobMessageQueue {
+    pub(super) tokio_queue_id: i32,
+    pub(super) first: *mut JobMessage,
+    pub(super) last: *mut JobMessage,
+    pub(super) payload_magic: u32,
+}
+
 unsafe extern "C" {
     pub(super) fn jobs_get_this_job_thread_c_impl() -> *mut JobThread;
 
@@ -67,8 +102,15 @@ unsafe extern "C" {
     pub(super) fn jobs_atomic_load_c_impl(ptr: *const i32) -> i32;
     pub(super) fn jobs_atomic_store_c_impl(ptr: *mut i32, value: i32);
     pub(super) fn jobs_notify_job_extra_size_c_impl() -> i32;
+    pub(super) fn jobs_get_current_thread_class_c_impl() -> i32;
+    pub(super) fn jobs_get_current_thread_subclass_count_c_impl() -> i32;
 
     pub(super) fn malloc(size: usize) -> *mut c_void;
+    pub(super) fn free(ptr: *mut c_void);
+    pub(super) fn memcpy(dst: *mut c_void, src: *const c_void, n: usize) -> *mut c_void;
+    pub(super) fn rwm_free(raw: *mut RawMessage) -> i32;
+    pub(super) fn rwm_clone(dest_raw: *mut RawMessage, src_raw: *mut RawMessage);
+    pub(super) fn rwm_move(dest_raw: *mut RawMessage, src_raw: *mut RawMessage);
 
     pub(super) fn try_lock_job(job: JobT, set_flags: i32, clear_flags: i32) -> i32;
     pub(super) fn unlock_job(job_tag_int: i32, job: JobT) -> i32;
@@ -76,6 +118,7 @@ unsafe extern "C" {
     pub(super) fn job_message_queue_init(job: JobT);
     pub(super) fn notify_job_run(job: JobT, op: i32, thread: *mut JobThread) -> i32;
     pub(super) fn process_one_job(job_tag_int: i32, job: JobT, thread_class: i32);
+    pub(super) fn job_message_queue_get(job: JobT) -> *mut JobMessageQueue;
 }
 
 #[inline]

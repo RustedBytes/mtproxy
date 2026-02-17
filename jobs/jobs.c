@@ -31,6 +31,7 @@
 #include <pthread.h>
 #include <signal.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -440,6 +441,20 @@ int jobs_atomic_load_c_impl(const int *ptr) {
 
 void jobs_atomic_store_c_impl(int *ptr, int value) {
   __atomic_store_n(ptr, value, __ATOMIC_SEQ_CST);
+}
+
+int jobs_get_current_thread_class_c_impl(void) {
+  assert(this_job_thread);
+  return this_job_thread->thread_class;
+}
+
+int jobs_get_current_thread_subclass_count_c_impl(void) {
+  assert(this_job_thread);
+  struct job_class *JC = this_job_thread->job_class;
+  if (!JC || !JC->subclasses) {
+    return -1;
+  }
+  return JC->subclasses->subclass_cnt;
 }
 
 long int lrand48_j(void) {
@@ -1050,87 +1065,7 @@ void *job_thread_ex(void *arg, void (*work_one)(void *, int)) {
 }
 
 static void process_one_sublist(unsigned long id, [[maybe_unused]] int class) {
-  struct job_thread *JT = this_job_thread;
-  assert(JT);
-
-  struct job_class *JC = JT->job_class;
-  assert(JC->subclasses);
-
-  id -= JOB_SUBCLASS_OFFSET;
-
-  int subclass_id = id;
-
-  assert(subclass_id >= -2);
-  assert(subclass_id < JC->subclasses->subclass_cnt);
-
-  int32_t enter_rc =
-      mtproxy_ffi_jobs_tokio_subclass_enter(JT->thread_class, subclass_id);
-  if (enter_rc < 0) {
-    kprintf("fatal: rust tokio subclass enter failed (class=%d subclass=%d "
-            "rc=%d)\n",
-            JT->thread_class, subclass_id, (int)enter_rc);
-    assert(0);
-  }
-  if (enter_rc == 0) {
-    return;
-  }
-
-  int32_t permit_rc = mtproxy_ffi_jobs_tokio_subclass_permit_acquire(
-      JT->thread_class, subclass_id);
-  if (permit_rc != 0) {
-    kprintf("fatal: rust tokio subclass permit acquire failed "
-            "(class=%d subclass=%d rc=%d)\n",
-            JT->thread_class, subclass_id, (int)permit_rc);
-    assert(0);
-  }
-
-  while (1) {
-    while (1) {
-      int32_t pending_rc = mtproxy_ffi_jobs_tokio_subclass_has_pending(
-          JT->thread_class, subclass_id);
-      if (pending_rc < 0) {
-        kprintf("fatal: rust tokio subclass pending check failed "
-                "(class=%d subclass=%d rc=%d)\n",
-                JT->thread_class, subclass_id, (int)pending_rc);
-        assert(0);
-      }
-      if (!pending_rc) {
-        break;
-      }
-      job_t job = NULL;
-      int32_t rc = mtproxy_ffi_jobs_tokio_dequeue_subclass(
-          JT->thread_class, subclass_id, 1, (void **)&job);
-      if (rc < 0) {
-        kprintf("fatal: rust tokio subclass dequeue failed (class=%d "
-                "subclass=%d rc=%d)\n",
-                JT->thread_class, subclass_id, (int)rc);
-        assert(0);
-      }
-      assert(job);
-
-      process_one_job(JOB_REF_PASS(job), JT->thread_class);
-      int32_t mark_rc = mtproxy_ffi_jobs_tokio_subclass_mark_processed(
-          JT->thread_class, subclass_id);
-      assert(mark_rc == 0);
-    }
-
-    int32_t cont_rc = mtproxy_ffi_jobs_tokio_subclass_exit_or_continue(
-        JT->thread_class, subclass_id);
-    if (cont_rc < 0) {
-      kprintf("fatal: rust tokio subclass exit/continue failed "
-              "(class=%d subclass=%d rc=%d)\n",
-              JT->thread_class, subclass_id, (int)cont_rc);
-      assert(0);
-    }
-    if (cont_rc > 0) {
-      continue;
-    }
-    break;
-  }
-
-  permit_rc = mtproxy_ffi_jobs_tokio_subclass_permit_release(JT->thread_class,
-                                                             subclass_id);
-  assert(permit_rc == 0);
+  mtproxy_ffi_jobs_process_one_sublist((uintptr_t)id, class);
 }
 
 static void process_one_sublist_gw(void *x, int class) {
@@ -1150,23 +1085,7 @@ void *job_thread_sub(void *arg) {
 /* ------ JOB CREATION/QUEUEING ------ */
 
 int job_timer_wakeup_gateway(event_timer_t *et) {
-  job_t job = (job_t)((char *)et - offsetof(struct async_job, j_custom));
-  if (et->wakeup_time == et->real_wakeup_time) {
-    vkprintf(JOBS_DEBUG,
-             "ALARM JOB %p, type %p, flags %08x, status %08x, refcnt %d; "
-             "PARENT %p\n",
-             job, job->j_execute, job->j_flags, job->j_status, job->j_refcnt,
-             job->j_parent);
-    job_signal(JOB_REF_PASS(job), JS_ALARM);
-  } else {
-    vkprintf(JOBS_DEBUG,
-             "ALARM JOB %p, type %p, flags %08x, status %08x, refcnt %d; "
-             "PARENT %p. SKIPPED\n",
-             job, job->j_execute, job->j_flags, job->j_status, job->j_refcnt,
-             job->j_parent);
-    job_decref(JOB_REF_PASS(job));
-  }
-  return 0;
+  return mtproxy_ffi_jobs_job_timer_wakeup_gateway(et);
 }
 
 /* --------- JOB LIST JOBS --------
@@ -1535,57 +1454,11 @@ void job_message_queue_set(job_t job, struct job_message_queue *queue) {
 }
 
 void job_message_queue_free(job_t job) {
-  assert(job->j_type & JT_HAVE_MSG_QUEUE);
+  mtproxy_ffi_jobs_job_message_queue_free(job);
   struct job_message_queue **q =
       (job->j_type & JT_HAVE_TIMER)
           ? sizeof(struct event_timer) + (void *)job->j_custom
           : (void *)job->j_custom;
-  struct job_message_queue *Q = *q;
-  if (Q) {
-    struct job_message *M;
-    while (Q->first) {
-      M = Q->first;
-      Q->first = M->next;
-      if (M->src) {
-        job_decref(JOB_REF_PASS(M->src));
-      }
-      if (M->message.magic) {
-        rwm_free(&M->message);
-      }
-      free(M);
-    }
-    assert(!Q->first);
-    Q->last = NULL;
-
-    while (1) {
-      M = NULL;
-      int32_t rc = mtproxy_ffi_jobs_tokio_message_queue_pop(Q->tokio_queue_id,
-                                                            (void **)&M);
-      if (rc < 0) {
-        kprintf("fatal: rust tokio message queue pop failed (qid=%d rc=%d)\n",
-                Q->tokio_queue_id, (int)rc);
-        assert(0);
-      }
-      if (!rc || !M) {
-        break;
-      }
-      if (M->src) {
-        job_decref(JOB_REF_PASS(M->src));
-      }
-      if (M->message.magic) {
-        rwm_free(&M->message);
-      }
-      free(M);
-    }
-    int32_t destroy_rc =
-        mtproxy_ffi_jobs_tokio_message_queue_destroy(Q->tokio_queue_id);
-    if (destroy_rc < 0) {
-      kprintf("fatal: rust tokio message queue destroy failed (qid=%d rc=%d)\n",
-              Q->tokio_queue_id, (int)destroy_rc);
-      assert(0);
-    }
-    free(*q);
-  }
   *q = NULL;
 }
 
@@ -1601,41 +1474,15 @@ void job_message_queue_init(job_t job) {
 }
 
 void job_message_free_default(struct job_message *M) {
-  if (M->src) {
-    job_decref(JOB_REF_PASS(M->src));
-  }
-  if (M->message.magic) {
-    rwm_free(&M->message);
-  }
-  free(M);
+  mtproxy_ffi_jobs_job_message_free_default(M);
 }
 
 void job_message_send(JOB_REF_ARG(job), JOB_REF_ARG(src), unsigned int type,
                       struct raw_message *raw, int dup, int payload_ints,
                       const unsigned int *payload, unsigned int flags,
                       void (*destroy)(struct job_message *)) {
-  assert(job->j_type & JT_HAVE_MSG_QUEUE);
-  struct job_message *M = malloc(sizeof(*M) + payload_ints * 4);
-  M->type = type;
-  M->flags = 0;
-  M->src = PTR_MOVE(src);
-  M->payload_ints = payload_ints;
-  M->next = NULL;
-  M->flags = flags;
-  M->destructor = destroy;
-  memcpy(M->payload, payload, payload_ints * 4);
-  (dup ? rwm_clone : rwm_move)(&M->message, raw);
-
-  struct job_message_queue *q = job_message_queue_get(job);
-  int32_t rc =
-      mtproxy_ffi_jobs_tokio_message_queue_push(q->tokio_queue_id, (void *)M);
-  if (rc < 0) {
-    kprintf("fatal: rust tokio message queue push failed (qid=%d rc=%d)\n",
-            q->tokio_queue_id, (int)rc);
-    assert(0);
-  }
-
-  job_signal(JOB_REF_PASS(job), JS_MSG);
+  mtproxy_ffi_jobs_job_message_send(job, src, type, raw, dup, payload_ints,
+                                    payload, flags, destroy);
 }
 
 void job_message_queue_work(job_t job,
@@ -1643,69 +1490,7 @@ void job_message_queue_work(job_t job,
                                                    struct job_message *M,
                                                    void *extra),
                             void *extra, unsigned int mask) {
-  assert(job->j_type & JT_HAVE_MSG_QUEUE);
-  struct job_message_queue *q = job_message_queue_get(job);
-
-  while (1) {
-    struct job_message *msg = NULL;
-    int32_t rc = mtproxy_ffi_jobs_tokio_message_queue_pop(q->tokio_queue_id,
-                                                          (void **)&msg);
-    if (rc < 0) {
-      kprintf("fatal: rust tokio message queue pop failed (qid=%d rc=%d)\n",
-              q->tokio_queue_id, (int)rc);
-      assert(0);
-    }
-    if (!rc || !msg) {
-      break;
-    }
-    msg->next = NULL;
-    if (q->last) {
-      q->last->next = msg;
-      q->last = msg;
-    } else {
-      q->last = q->first = msg;
-    }
-  }
-
-  struct job_message *last = NULL;
-  struct job_message **ptr = &q->first;
-  int stop = 0;
-  while (*ptr && !stop) {
-    struct job_message *M = *ptr;
-    unsigned int type = M->flags & JMC_TYPE_MASK;
-    assert(type);
-    if (mask & (1 << type)) {
-      struct job_message *next = M->next;
-      M->next = NULL;
-
-      int r;
-      if (type & JMC_CONTINUATION) {
-        assert(q->payload_magic);
-        r = job_message_continuation(job, M, q->payload_magic);
-      } else {
-        r = receive_message(job, M, extra);
-      }
-
-      if (r < 0) {
-        stop = 1;
-      } else if (r == 1) {
-        job_message_free_default(M);
-      } else if (r == 2) {
-        if (M->destructor) {
-          M->destructor(M);
-        } else {
-          job_message_free_default(M);
-        }
-      }
-      *ptr = next;
-      if (q->last == M) {
-        q->last = last;
-      }
-    } else {
-      last = M;
-      ptr = &last->next;
-    }
-  }
+  mtproxy_ffi_jobs_job_message_queue_work(job, receive_message, extra, mask);
 }
 
 unsigned int *payload_continuation_create(
@@ -1719,11 +1504,7 @@ unsigned int *payload_continuation_create(
 }
 
 int job_free(JOB_REF_ARG(job)) {
-  if (job->j_type & JT_HAVE_MSG_QUEUE) {
-    job_message_queue_free(job);
-  }
-  free(((void *)job) - job->j_align);
-  return JOB_DESTROYED;
+  return mtproxy_ffi_jobs_job_free(job_tag_int, job);
 }
 
 struct notify_job_subscriber {

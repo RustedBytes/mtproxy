@@ -483,6 +483,10 @@ typedef struct mtproxy_ffi_application_boundary {
 } mtproxy_ffi_application_boundary_t;
 
 typedef int32_t (*mtproxy_ffi_jobs_process_fn)(void *job);
+struct async_job;
+struct raw_message;
+struct job_message;
+struct event_timer;
 typedef int32_t (*mtproxy_ffi_engine_net_try_open_port_fn)(int32_t port, void *ctx);
 typedef void (*mtproxy_ffi_engine_signal_dispatch_fn)(int32_t sig, void *ctx);
 
@@ -617,6 +621,32 @@ int32_t mtproxy_ffi_jobs_tokio_message_queue_create(void);
 int32_t mtproxy_ffi_jobs_tokio_message_queue_destroy(int32_t queue_id);
 int32_t mtproxy_ffi_jobs_tokio_message_queue_push(int32_t queue_id, void *ptr);
 int32_t mtproxy_ffi_jobs_tokio_message_queue_pop(int32_t queue_id, void **out_ptr);
+
+// jobs helper: Rust-backed processing of subclass queue token.
+void mtproxy_ffi_jobs_process_one_sublist(uintptr_t subclass_token_id, int32_t class_id);
+
+// jobs helper: Rust-backed message queue operations for `struct async_job`.
+void mtproxy_ffi_jobs_job_message_send(
+  struct async_job *job,
+  struct async_job *src,
+  uint32_t type,
+  struct raw_message *raw_message,
+  int32_t dup,
+  int32_t payload_ints,
+  const uint32_t *payload,
+  uint32_t flags,
+  void (*destroy)(struct job_message *message)
+);
+void mtproxy_ffi_jobs_job_message_queue_work(
+  struct async_job *job,
+  int32_t (*receive_message)(struct async_job *job, struct job_message *message, void *extra),
+  void *extra,
+  uint32_t mask
+);
+void mtproxy_ffi_jobs_job_message_queue_free(struct async_job *job);
+void mtproxy_ffi_jobs_job_message_free_default(struct job_message *message);
+int32_t mtproxy_ffi_jobs_job_free(int32_t job_tag_int, struct async_job *job);
+int32_t mtproxy_ffi_jobs_job_timer_wakeup_gateway(struct event_timer *et);
 
 // net-events helpers for incremental event-loop migration.
 int32_t mtproxy_ffi_net_epoll_conv_flags(int32_t flags);
