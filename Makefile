@@ -64,6 +64,7 @@ LIB_OBJS_NORMAL := \
 	${OBJ}/net/net-thread.o ${OBJ}/net/net-stats.o \
 	${OBJ}/common/kprintf.o \
 	${OBJ}/common/precise-time.o \
+	${OBJ}/common/server-terminal-attributes.o \
 	${OBJ}/common/server-functions.o \
 	${OBJ}/common/rust-ffi-bridge.o \
 

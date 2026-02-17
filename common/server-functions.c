@@ -35,7 +35,6 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 
 #include "common/kprintf.h"
 #include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
@@ -52,9 +51,6 @@ int start_time;
 
 int daemonize = 0;
 const char *username, *progname, *groupname;
-
-void engine_set_terminal_attributes(void) __attribute__((weak));
-void engine_set_terminal_attributes(void) {}
 
 void parse_option_ex(const char *name, int arg, int *var, int val,
                      unsigned flags, int (*func)(int), const char *help, ...) {
