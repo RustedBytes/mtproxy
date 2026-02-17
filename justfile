@@ -46,10 +46,10 @@ ffi-freeze:
   ./scripts/ffi_freeze_check.sh
 
 c-format:
-  rg --files -g '*.c' -g '*.h' common crypto engine jobs mtproto net vv | xargs -r clang-format -style=file -i
+  rg --files -g '*.c' -g '*.h' common engine jobs mtproto net vv | xargs -r clang-format -style=file -i
 
 c-format-check:
-  rg --files -g '*.c' -g '*.h' common crypto engine jobs mtproto net vv | xargs -r clang-format -style=file --dry-run -Werror
+  rg --files -g '*.c' -g '*.h' common engine jobs mtproto net vv | xargs -r clang-format -style=file --dry-run -Werror
 
 format:
   just c-format

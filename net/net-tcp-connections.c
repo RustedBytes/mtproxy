@@ -28,18 +28,16 @@
 
 #include "net/net-tcp-connections.h"
 
+extern int32_t mtproxy_ffi_net_tcp_connections_cpu_tcp_free_connection_buffers(
+    connection_job_t c);
 extern int32_t
-mtproxy_ffi_net_tcp_connections_cpu_tcp_free_connection_buffers(
-    connection_job_t c);
-extern int32_t mtproxy_ffi_net_tcp_connections_cpu_tcp_server_writer(
-    connection_job_t c);
-extern int32_t mtproxy_ffi_net_tcp_connections_cpu_tcp_server_reader(
-    connection_job_t c);
+mtproxy_ffi_net_tcp_connections_cpu_tcp_server_writer(connection_job_t c);
+extern int32_t
+mtproxy_ffi_net_tcp_connections_cpu_tcp_server_reader(connection_job_t c);
 extern int32_t
 mtproxy_ffi_net_tcp_connections_cpu_tcp_aes_crypto_encrypt_output(
     connection_job_t c);
-extern int32_t
-mtproxy_ffi_net_tcp_connections_cpu_tcp_aes_crypto_decrypt_input(
+extern int32_t mtproxy_ffi_net_tcp_connections_cpu_tcp_aes_crypto_decrypt_input(
     connection_job_t c);
 extern int32_t
 mtproxy_ffi_net_tcp_connections_cpu_tcp_aes_crypto_needed_output_bytes(

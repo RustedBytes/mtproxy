@@ -200,9 +200,7 @@ static void update_local_stats_copy(struct worker_stats *S) {
   mtproxy_ffi_mtproto_update_local_stats_copy(S);
 }
 
-void add_stats(struct worker_stats *W) {
-  mtproxy_ffi_mtproto_add_stats(W);
-}
+void add_stats(struct worker_stats *W) { mtproxy_ffi_mtproto_add_stats(W); }
 
 void update_local_stats(void) {
   if (!slave_mode) {
@@ -212,9 +210,7 @@ void update_local_stats(void) {
   update_local_stats_copy(WStats + worker_id * 2 + 1);
 }
 
-void compute_stats_sum(void) {
-  mtproxy_ffi_mtproto_compute_stats_sum();
-}
+void compute_stats_sum(void) { mtproxy_ffi_mtproto_compute_stats_sum(); }
 
 /*
  *
@@ -295,7 +291,7 @@ struct client_packet_info {
 };
 
 extern int32_t mtproxy_ffi_mtproto_process_client_packet_runtime(void *tlio_in,
-                                                                  void *c);
+                                                                 void *c);
 
 int process_client_packet(struct tl_in_state *tlio_in, connection_job_t C) {
   return mtproxy_ffi_mtproto_process_client_packet_runtime(tlio_in, C);
@@ -394,9 +390,10 @@ char mtproto_cors_http_headers[] =
 extern int32_t mtproxy_ffi_mtproto_forward_tcp_query(
     void *tlio_in, void *c, void *target, int32_t flags, int64_t auth_key_id,
     const int32_t *remote_ip_port, const int32_t *our_ip_port);
-extern int32_t mtproxy_ffi_mtproto_forward_mtproto_packet(
-    void *tlio_in, void *c, int32_t len, const int32_t *remote_ip_port,
-    int32_t rpc_flags);
+extern int32_t
+mtproxy_ffi_mtproto_forward_mtproto_packet(void *tlio_in, void *c, int32_t len,
+                                           const int32_t *remote_ip_port,
+                                           int32_t rpc_flags);
 extern void *mtproxy_ffi_mtproto_choose_proxy_target(int32_t target_dc);
 
 int forward_mtproto_packet(struct tl_in_state *tlio_in, connection_job_t C,
@@ -502,16 +499,16 @@ int forward_mtproto_packet(struct tl_in_state *tlio_in, connection_job_t C,
 int forward_tcp_query(struct tl_in_state *tlio_in, connection_job_t c,
                       conn_target_job_t S, int flags, long long auth_key_id,
                       int remote_ip_port[5], int our_ip_port[5]) {
-  return mtproxy_ffi_mtproto_forward_tcp_query(tlio_in, c, S, flags, auth_key_id,
-                                               remote_ip_port, our_ip_port);
+  return mtproxy_ffi_mtproto_forward_tcp_query(
+      tlio_in, c, S, flags, auth_key_id, remote_ip_port, our_ip_port);
 }
 
 /* -------------------------- EXTERFACE ---------------------------- */
 
 struct tl_act_extra *mtfront_parse_function(struct tl_in_state *tlio_in,
                                             long long actor_id) {
-  return (struct tl_act_extra *)mtproxy_ffi_mtproto_mtfront_parse_function_runtime(
-      tlio_in, actor_id);
+  return (struct tl_act_extra *)
+      mtproxy_ffi_mtproto_mtfront_parse_function_runtime(tlio_in, actor_id);
 }
 
 /* ------------------------ FLOOD CONTROL -------------------------- */
@@ -522,8 +519,8 @@ void lru_delete_conn(connection_job_t c) {
 }
 
 void lru_insert_conn(connection_job_t c) {
-  int32_t rc = mtproxy_ffi_mtproto_ext_conn_lru_insert(CONN_INFO(c)->fd,
-                                                        CONN_INFO(c)->generation);
+  int32_t rc = mtproxy_ffi_mtproto_ext_conn_lru_insert(
+      CONN_INFO(c)->fd, CONN_INFO(c)->generation);
   assert(rc >= 0);
 }
 
@@ -583,9 +580,7 @@ void check_special_connections_overflow(void) {
   mtproxy_ffi_mtproto_check_special_connections_overflow();
 }
 
-void cron(void) {
-  mtproxy_ffi_mtproto_cron();
-}
+void cron(void) { mtproxy_ffi_mtproto_cron(); }
 
 int sfd;
 int http_ports_num;
@@ -597,9 +592,7 @@ int secret_count;
 // int outbound_connections_per_second =
 // DEFAULT_OUTBOUND_CONNECTION_CREATION_RATE;
 
-void mtfront_pre_loop(void) {
-  mtproxy_ffi_mtproto_mtfront_pre_loop();
-}
+void mtfront_pre_loop(void) { mtproxy_ffi_mtproto_mtfront_pre_loop(); }
 
 void precise_cron(void) { update_local_stats(); }
 
@@ -616,14 +609,10 @@ void mtfront_sigusr1_handler(void) {
  *
  */
 
-void usage(void) {
-  mtproxy_ffi_mtproto_usage();
-}
+void usage(void) { mtproxy_ffi_mtproto_usage(); }
 
 server_functions_t mtproto_front_functions;
-int f_parse_option(int val) {
-  return mtproxy_ffi_mtproto_f_parse_option(val);
-}
+int f_parse_option(int val) { return mtproxy_ffi_mtproto_f_parse_option(val); }
 
 void mtfront_prepare_parse_options(void) {
   mtproxy_ffi_mtproto_mtfront_prepare_parse_options();
@@ -634,17 +623,11 @@ void mtfront_parse_extra_args(int argc, char *argv[]) {
 }
 
 // executed BEFORE dropping privileges
-void mtfront_pre_init(void) {
-  mtproxy_ffi_mtproto_mtfront_pre_init();
-}
+void mtfront_pre_init(void) { mtproxy_ffi_mtproto_mtfront_pre_init(); }
 
-void mtfront_pre_start(void) {
-  mtproxy_ffi_mtproto_mtfront_pre_start();
-}
+void mtfront_pre_start(void) { mtproxy_ffi_mtproto_mtfront_pre_start(); }
 
-void mtfront_on_exit(void) {
-  mtproxy_ffi_mtproto_mtfront_on_exit();
-}
+void mtfront_on_exit(void) { mtproxy_ffi_mtproto_mtfront_on_exit(); }
 
 server_functions_t mtproto_front_functions = {
     .default_modules_disabled = 0,

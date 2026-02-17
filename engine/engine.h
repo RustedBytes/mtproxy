@@ -52,7 +52,8 @@ static inline unsigned long long SIG2INT(const int sig) {
 }
 
 static constexpr unsigned long long SIG_INTERRUPT_MASK =
-    (1ull << (unsigned long long)SIGTERM) | (1ull << (unsigned long long)SIGINT);
+    (1ull << (unsigned long long)SIGTERM) |
+    (1ull << (unsigned long long)SIGINT);
 
 extern double precise_now_diff;
 

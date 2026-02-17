@@ -31,28 +31,41 @@
 
 extern void mtproxy_ffi_net_tcp_rpc_common_conn_send_init(
     connection_job_t c, struct raw_message *raw, int32_t flags);
-extern void mtproxy_ffi_net_tcp_rpc_common_conn_send_im(
-    int32_t c_tag_int, connection_job_t c, struct raw_message *raw, int32_t flags);
-extern void mtproxy_ffi_net_tcp_rpc_common_conn_send(
-    int32_t c_tag_int, connection_job_t c, struct raw_message *raw, int32_t flags);
-extern void mtproxy_ffi_net_tcp_rpc_common_conn_send_data(
-    int32_t c_tag_int, connection_job_t c, int32_t len, void *data);
-extern void mtproxy_ffi_net_tcp_rpc_common_conn_send_data_init(
-    connection_job_t c, int32_t len, void *data);
-extern void mtproxy_ffi_net_tcp_rpc_common_conn_send_data_im(
-    int32_t c_tag_int, connection_job_t c, int32_t len, void *data);
-extern int32_t mtproxy_ffi_net_tcp_rpc_common_default_execute(
-    connection_job_t c, int32_t op, struct raw_message *raw);
-extern int32_t mtproxy_ffi_net_tcp_rpc_common_write_packet(
-    connection_job_t c, struct raw_message *raw);
-extern int32_t mtproxy_ffi_net_tcp_rpc_common_write_packet_compact(
-    connection_job_t c, struct raw_message *raw);
+extern void mtproxy_ffi_net_tcp_rpc_common_conn_send_im(int32_t c_tag_int,
+                                                        connection_job_t c,
+                                                        struct raw_message *raw,
+                                                        int32_t flags);
+extern void mtproxy_ffi_net_tcp_rpc_common_conn_send(int32_t c_tag_int,
+                                                     connection_job_t c,
+                                                     struct raw_message *raw,
+                                                     int32_t flags);
+extern void mtproxy_ffi_net_tcp_rpc_common_conn_send_data(int32_t c_tag_int,
+                                                          connection_job_t c,
+                                                          int32_t len,
+                                                          void *data);
+extern void
+mtproxy_ffi_net_tcp_rpc_common_conn_send_data_init(connection_job_t c,
+                                                   int32_t len, void *data);
+extern void mtproxy_ffi_net_tcp_rpc_common_conn_send_data_im(int32_t c_tag_int,
+                                                             connection_job_t c,
+                                                             int32_t len,
+                                                             void *data);
+extern int32_t
+mtproxy_ffi_net_tcp_rpc_common_default_execute(connection_job_t c, int32_t op,
+                                               struct raw_message *raw);
+extern int32_t
+mtproxy_ffi_net_tcp_rpc_common_write_packet(connection_job_t c,
+                                            struct raw_message *raw);
+extern int32_t
+mtproxy_ffi_net_tcp_rpc_common_write_packet_compact(connection_job_t c,
+                                                    struct raw_message *raw);
 extern int32_t mtproxy_ffi_net_tcp_rpc_common_flush(connection_job_t c);
 extern int32_t mtproxy_ffi_net_tcp_rpc_common_flush_packet(connection_job_t c);
 extern void mtproxy_ffi_net_tcp_rpc_common_send_ping(connection_job_t c,
                                                      int64_t ping_id);
-extern uint32_t mtproxy_ffi_net_tcp_rpc_common_set_default_rpc_flags(
-    uint32_t and_flags, uint32_t or_flags);
+extern uint32_t
+mtproxy_ffi_net_tcp_rpc_common_set_default_rpc_flags(uint32_t and_flags,
+                                                     uint32_t or_flags);
 extern uint32_t mtproxy_ffi_net_tcp_rpc_common_get_default_rpc_flags(void);
 extern void mtproxy_ffi_net_tcp_rpc_common_set_max_dh_accept_rate(int32_t rate);
 extern int32_t mtproxy_ffi_net_tcp_rpc_common_add_dh_accept(void);
@@ -127,7 +140,8 @@ void tcp_rpc_send_ping(connection_job_t C, long long ping_id) {
 }
 
 unsigned tcp_set_default_rpc_flags(unsigned and_flags, unsigned or_flags) {
-  return mtproxy_ffi_net_tcp_rpc_common_set_default_rpc_flags(and_flags, or_flags);
+  return mtproxy_ffi_net_tcp_rpc_common_set_default_rpc_flags(and_flags,
+                                                              or_flags);
 }
 
 unsigned tcp_get_default_rpc_flags(void) {
