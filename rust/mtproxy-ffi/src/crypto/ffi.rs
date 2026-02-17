@@ -3,6 +3,139 @@
 use super::core::*;
 use crate::*;
 
+#[inline]
+fn abort_on_failure(rc: i32) {
+    if rc != 0 {
+        std::process::abort();
+    }
+}
+
+/// C-compatible legacy MD5 entrypoint.
+///
+/// # Safety
+/// `output` must point to at least 16 writable bytes.
+#[no_mangle]
+pub unsafe extern "C" fn md5(input: *mut u8, ilen: i32, output: *mut u8) {
+    let len = if ilen > 0 {
+        usize::try_from(ilen).unwrap_or(0)
+    } else {
+        0
+    };
+    let rc = unsafe { mtproxy_ffi_md5(input.cast_const(), len, output) };
+    abort_on_failure(rc);
+}
+
+/// C-compatible legacy MD5-hex entrypoint.
+///
+/// # Safety
+/// `output` must point to at least 32 writable bytes.
+#[no_mangle]
+pub unsafe extern "C" fn md5_hex(input: *mut c_char, ilen: i32, output: *mut c_char) {
+    let len = if ilen > 0 {
+        usize::try_from(ilen).unwrap_or(0)
+    } else {
+        0
+    };
+    let rc = unsafe { mtproxy_ffi_md5_hex(input.cast_const().cast(), len, output) };
+    abort_on_failure(rc);
+}
+
+/// C-compatible legacy SHA256 entrypoint.
+///
+/// # Safety
+/// `output` must point to at least 32 writable bytes.
+#[no_mangle]
+pub unsafe extern "C" fn sha256(input: *const u8, ilen: i32, output: *mut u8) {
+    let len = if ilen > 0 {
+        usize::try_from(ilen).unwrap_or(0)
+    } else {
+        0
+    };
+    let rc = unsafe { mtproxy_ffi_sha256(input, len, output) };
+    abort_on_failure(rc);
+}
+
+/// C-compatible legacy SHA256-HMAC entrypoint.
+///
+/// # Safety
+/// `key`, `input`, and `output` must be valid buffers for their declared lengths.
+#[no_mangle]
+pub unsafe extern "C" fn sha256_hmac(
+    key: *mut u8,
+    keylen: i32,
+    input: *mut u8,
+    ilen: i32,
+    output: *mut u8,
+) {
+    let key_len = if keylen > 0 {
+        usize::try_from(keylen).unwrap_or(0)
+    } else {
+        0
+    };
+    let len = if ilen > 0 {
+        usize::try_from(ilen).unwrap_or(0)
+    } else {
+        0
+    };
+    let rc = unsafe {
+        mtproxy_ffi_sha256_hmac(key.cast_const(), key_len, input.cast_const(), len, output)
+    };
+    abort_on_failure(rc);
+}
+
+/// C-compatible legacy AESNI context init entrypoint.
+///
+/// # Safety
+/// `key`, `iv`, and return pointer must be valid.
+#[no_mangle]
+pub unsafe extern "C" fn aesni_ctx_init_kind(
+    cipher_kind: i32,
+    key: *mut u8,
+    iv: *mut u8,
+    is_encrypt: i32,
+) -> *mut c_void {
+    let mut out_ctx: *mut c_void = core::ptr::null_mut();
+    let rc = unsafe {
+        mtproxy_ffi_aesni_ctx_init(
+            cipher_kind,
+            key.cast_const(),
+            iv.cast_const(),
+            is_encrypt,
+            &raw mut out_ctx,
+        )
+    };
+    abort_on_failure(rc);
+    if out_ctx.is_null() {
+        std::process::abort();
+    }
+    out_ctx
+}
+
+/// C-compatible legacy AESNI context free entrypoint.
+///
+/// # Safety
+/// `ctx` must be null or returned by `aesni_ctx_init_kind`.
+#[no_mangle]
+pub unsafe extern "C" fn aesni_ctx_free(ctx: *mut c_void) {
+    let rc = unsafe { mtproxy_ffi_aesni_ctx_free(ctx) };
+    abort_on_failure(rc);
+}
+
+/// C-compatible legacy AESNI crypt entrypoint.
+///
+/// # Safety
+/// `ctx` must be valid and buffers must cover `size` bytes.
+#[no_mangle]
+pub unsafe extern "C" fn aesni_crypt(
+    ctx: *mut c_void,
+    input: *const c_void,
+    output: *mut c_void,
+    size: i32,
+) {
+    let rc = unsafe { mtproxy_ffi_aesni_crypt(ctx, input.cast(), output.cast(), size) };
+    abort_on_failure(rc);
+}
+
 /// Fetches current net-crypto-aes allocation counters.
 ///
 /// # Safety
@@ -508,7 +641,7 @@ pub unsafe extern "C" fn mtproxy_ffi_crypto_aes_create_keys(
     )
 }
 
-/// AES-CBC/CTR wrapper used by `crypto/aesni256.c`.
+/// AES-CBC/CTR wrapper used by legacy C ABI call paths.
 ///
 /// # Safety
 /// `evp_ctx` must be a valid context returned by `mtproxy_ffi_aesni_ctx_init`.

@@ -2,22 +2,6 @@
 
 Generated from C callsites referencing `mtproxy_ffi_*` and `rust_*` symbols.
 
-## Wave A Routing Notes
-- `net/net-tcp-rpc-client.c` and `net/net-tcp-rpc-server.c` compatibility paths are now policy-routed to `mtproxy-core::runtime::net::tcp_rpc_client` and `mtproxy-core::runtime::net::tcp_rpc_server`.
-- `net/net-events.c` compatibility path now reuses `mtproxy-core::runtime::net::events` for epoll conversion and event-loop policy decisions.
-- `net/net-connections.c` compatibility path now reuses `mtproxy-core::runtime::net::connections` for:
-  - connection job dispatch policy
-  - socket job dispatch policy
-  - target job dispatch/post-tick/finalize policy
-  - connection/socket/read-write policy helpers
-- `net/net-connections.c` target create/free hash lookup family+mode routing is now selected by typed core lookup plans.
-- `net/net-msg-buffers.c` size-class policy path is routed through `mtproxy-core::runtime::net::msg_buffers`.
-- `net/net-thread.c` notification-event dispatch policy is routed through `mtproxy-core::runtime::net::thread`.
-- `engine/engine.c` parse-option thread/multithread decision routing is now selected by `mtproxy-core::runtime::engine`.
-- `engine/engine.c` `engine_init`/`server_init` pre-open/range-open/bind/listener branch routing now uses typed plans from `mtproxy-core::runtime::engine`.
-
-This keeps C-facing runtime behavior parity while reducing FFI-local policy ownership.
-
 ## Edge Legend
 - `C module -> FFI symbol group -> Rust runtime area`
 
@@ -199,9 +183,6 @@ This keeps C-facing runtime behavior parity while reducing FFI-local policy owne
 - rust_sf_set_debug_handlers -> runtime/bootstrap+config
 
 ## crypto
-- mtproxy_ffi_aesni_crypt -> runtime/misc
-- mtproxy_ffi_aesni_ctx_free -> runtime/misc
-- mtproxy_ffi_aesni_ctx_init -> runtime/misc
 - mtproxy_ffi_crc32_check_and_repair -> runtime/crypto
 - mtproxy_ffi_crc32_combine -> runtime/crypto
 - mtproxy_ffi_crc32_find_corrupted_bit -> runtime/crypto
@@ -215,12 +196,6 @@ This keeps C-facing runtime behavior parity while reducing FFI-local policy owne
 - mtproxy_ffi_gf32_combine_generic -> runtime/misc
 - mtproxy_ffi_gf32_compute_powers_clmul -> runtime/misc
 - mtproxy_ffi_gf32_compute_powers_generic -> runtime/misc
-- mtproxy_ffi_md5 -> runtime/misc
-- mtproxy_ffi_md5_hex -> runtime/misc
-- mtproxy_ffi_sha256 -> runtime/misc
-- mtproxy_ffi_sha256_hmac -> runtime/misc
-- rust_key_len -> runtime/bootstrap+config
-- rust_len -> runtime/bootstrap+config
 - rust_len_from_int -> runtime/bootstrap+config
 - rust_len_from_long -> runtime/bootstrap+config
 
@@ -691,3 +666,4 @@ This keeps C-facing runtime behavior parity while reducing FFI-local policy owne
 - mtproxy_ffi_rpc_target_lookup_target_runtime -> runtime/misc
 - mtproxy_ffi_rpc_target_tree_t -> runtime/misc
 - mtproxy_ffi_rpc_targets_prepare_stat_runtime -> runtime/misc
+

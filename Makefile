@@ -48,11 +48,8 @@ DEPENDENCE_RUST	:=	$(subst ${OBJ}/,${DEP}/,$(patsubst %.o,%.d,${RUST_OBJECTS}))
 LIB_OBJS_NORMAL := \
 	${OBJ}/crypto/crc32c.o \
 	${OBJ}/common/pid.o \
-	${OBJ}/crypto/sha256.o \
-	${OBJ}/crypto/md5.o \
 	${OBJ}/common/resolver.o \
 	${OBJ}/common/parse-config.o \
-	${OBJ}/crypto/aesni256.o \
 	${OBJ}/jobs/jobs.o ${OBJ}/common/mp-queue.o \
 	${OBJ}/common/mp-queue-rust.o \
 	${OBJ}/net/net-events.o ${OBJ}/net/net-msg.o ${OBJ}/net/net-msg-buffers.o \
