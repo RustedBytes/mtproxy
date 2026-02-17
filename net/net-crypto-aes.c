@@ -38,6 +38,9 @@
 
 aes_secret_t main_secret;
 int aes_initialized;
+char pwd_config_buf[MAX_PWD_CONFIG_LEN + 128];
+int pwd_config_len;
+char pwd_config_md5[33] = {'n', 'o', 'n', 'e', 0};
 
 int crypto_aes_prepare_stat(stats_buffer_t *sb) {
   int allocated_aes_crypto = 0;

@@ -1,8 +1,9 @@
 //! Rust runtime implementation for `net/net-tcp-rpc-server.c`.
 
 use core::ffi::{c_char, c_double, c_int, c_long, c_uint, c_void};
-use core::mem::{size_of, MaybeUninit};
+use core::mem::{align_of, size_of, MaybeUninit};
 use core::ptr;
+use core::sync::atomic::{AtomicI32, Ordering};
 use mtproxy_core::runtime::net::tcp_rpc_common::{
     parse_handshake_packet, parse_nonce_packet, HandshakeErrorPacket, HandshakePacket,
     PacketSerialization, ProcessId as CoreProcessId,
@@ -24,6 +25,7 @@ use mtproxy_core::runtime::net::tcp_rpc_server::{
 };
 
 pub(super) type ConnectionJob = *mut c_void;
+type Job = *mut c_void;
 
 const CONN_CUSTOM_DATA_BYTES: usize = 256;
 const NEED_MORE_BYTES: c_int = 0x7fff_ffff;
@@ -101,6 +103,24 @@ impl Default for RawMessage {
 #[repr(C)]
 pub(super) struct MpQueue {
     _priv: [u8; 0],
+}
+
+#[repr(C)]
+struct AsyncJob {
+    j_flags: c_int,
+    j_status: c_int,
+    j_sigclass: c_int,
+    j_refcnt: c_int,
+    j_error: c_int,
+    j_children: c_int,
+    j_align: c_int,
+    j_custom_bytes: c_int,
+    j_type: c_uint,
+    j_subclass: c_int,
+    j_thread: *mut c_void,
+    j_execute: Option<unsafe extern "C" fn(Job, c_int, *mut c_void) -> c_int>,
+    j_parent: Job,
+    j_custom: [i64; 0],
 }
 
 #[repr(C)]
@@ -270,26 +290,11 @@ struct AesKeyData {
 }
 
 unsafe extern "C" {
-    fn mtproxy_ffi_net_tcp_rpc_server_conn_info(c: ConnectionJob) -> *mut ConnectionInfo;
-    fn mtproxy_ffi_net_tcp_rpc_server_data(c: ConnectionJob) -> *mut TcpRpcData;
-    fn mtproxy_ffi_net_tcp_rpc_server_funcs(c: ConnectionJob) -> *mut TcpRpcServerFunctions;
-    fn mtproxy_ffi_net_tcp_rpc_server_send_data(c: ConnectionJob, len: c_int, data: *const c_void);
-    fn mtproxy_ffi_net_tcp_rpc_server_send_data_im(
-        c: ConnectionJob,
-        len: c_int,
-        data: *const c_void,
-    );
-    fn mtproxy_ffi_net_tcp_rpc_server_send_data_init(
-        c: ConnectionJob,
-        len: c_int,
-        data: *const c_void,
-    );
-    fn mtproxy_ffi_net_tcp_rpc_server_precise_now() -> c_double;
-    fn mtproxy_ffi_net_tcp_rpc_server_now() -> c_int;
-    fn mtproxy_ffi_net_tcp_rpc_server_flags_or(c: ConnectionJob, mask: c_int);
+    fn mtproxy_ffi_net_connections_precise_now() -> c_double;
 
     fn fail_connection(c: ConnectionJob, who: c_int);
     fn cpu_server_close_connection(c: ConnectionJob, who: c_int) -> c_int;
+    fn job_incref(job: Job) -> Job;
 
     fn notification_event_insert_tcp_conn_ready(c: ConnectionJob);
     fn notification_event_insert_tcp_conn_close(c: ConnectionJob);
@@ -308,6 +313,9 @@ unsafe extern "C" {
         bytes: c_int,
         custom_crc32_partial: Crc32PartialFn,
     ) -> c_uint;
+    fn tcp_rpc_conn_send_data(c_tag_int: c_int, c: ConnectionJob, len: c_int, q: *mut c_void);
+    fn tcp_rpc_conn_send_data_im(c_tag_int: c_int, c: ConnectionJob, len: c_int, q: *mut c_void);
+    fn tcp_rpc_conn_send_data_init(c: ConnectionJob, len: c_int, q: *mut c_void);
 
     fn init_server_PID(ip: c_uint, port: c_int);
     fn get_my_ipv4() -> c_uint;
@@ -350,22 +358,32 @@ unsafe extern "C" {
 }
 
 #[inline]
+unsafe fn job_custom_ptr<T>(job: Job) -> *mut T {
+    ptr::addr_of_mut!((*job.cast::<AsyncJob>()).j_custom).cast::<T>()
+}
+
+#[inline]
 unsafe fn conn_info(c: ConnectionJob) -> *mut ConnectionInfo {
-    let conn = unsafe { mtproxy_ffi_net_tcp_rpc_server_conn_info(c) };
+    let conn = unsafe { job_custom_ptr::<ConnectionInfo>(c) };
     assert!(!conn.is_null());
     conn
 }
 
 #[inline]
 unsafe fn rpc_data(c: ConnectionJob) -> *mut TcpRpcData {
-    let data = unsafe { mtproxy_ffi_net_tcp_rpc_server_data(c) };
+    let conn = unsafe { conn_info(c) };
+    let base = unsafe { (*conn).custom_data.as_ptr() as usize };
+    let align = align_of::<TcpRpcData>();
+    let aligned = (base + align - 1) & !(align - 1);
+    let data = aligned as *mut TcpRpcData;
     assert!(!data.is_null());
     data
 }
 
 #[inline]
 unsafe fn rpc_funcs(c: ConnectionJob) -> *mut TcpRpcServerFunctions {
-    let funcs = unsafe { mtproxy_ffi_net_tcp_rpc_server_funcs(c) };
+    let conn = unsafe { conn_info(c) };
+    let funcs = unsafe { (*conn).extra.cast::<TcpRpcServerFunctions>() };
     assert!(!funcs.is_null());
     funcs
 }
@@ -378,41 +396,38 @@ unsafe fn main_secret_key_signature() -> c_int {
 
 #[inline]
 fn precise_now_value() -> c_double {
-    unsafe { mtproxy_ffi_net_tcp_rpc_server_precise_now() }
+    unsafe { mtproxy_ffi_net_connections_precise_now() }
 }
 
 #[inline]
 fn unix_time_now() -> c_int {
-    let now = unsafe { libc::time(ptr::null_mut()) };
-    c_int::try_from(now).unwrap_or(c_int::MAX)
+    let unix_now = unsafe { libc::time(ptr::null_mut()) };
+    c_int::try_from(unix_now).unwrap_or(c_int::MAX)
 }
 
 #[inline]
 fn now_or_unix_time() -> c_int {
-    let now = unsafe { mtproxy_ffi_net_tcp_rpc_server_now() };
-    if now != 0 {
-        now
-    } else {
-        unix_time_now()
-    }
+    unix_time_now()
 }
 
 #[inline]
 unsafe fn send_data(c: ConnectionJob, data: *const u8, len: usize) {
     let len_i32 = c_int::try_from(len).unwrap_or(c_int::MAX);
-    unsafe { mtproxy_ffi_net_tcp_rpc_server_send_data(c, len_i32, data.cast()) };
+    let c_ref = unsafe { job_incref(c) };
+    unsafe { tcp_rpc_conn_send_data(1, c_ref, len_i32, data.cast_mut().cast()) };
 }
 
 #[inline]
 unsafe fn send_data_im(c: ConnectionJob, data: *const u8, len: usize) {
     let len_i32 = c_int::try_from(len).unwrap_or(c_int::MAX);
-    unsafe { mtproxy_ffi_net_tcp_rpc_server_send_data_im(c, len_i32, data.cast()) };
+    let c_ref = unsafe { job_incref(c) };
+    unsafe { tcp_rpc_conn_send_data_im(1, c_ref, len_i32, data.cast_mut().cast()) };
 }
 
 #[inline]
 unsafe fn send_data_init(c: ConnectionJob, data: *const u8, len: usize) {
     let len_i32 = c_int::try_from(len).unwrap_or(c_int::MAX);
-    unsafe { mtproxy_ffi_net_tcp_rpc_server_send_data_init(c, len_i32, data.cast()) };
+    unsafe { tcp_rpc_conn_send_data_init(c, len_i32, data.cast_mut().cast()) };
 }
 
 #[inline]
@@ -945,7 +960,7 @@ pub(super) unsafe fn tcp_rpcs_wakeup_impl(c: ConnectionJob) -> c_int {
     unsafe { notification_event_insert_tcp_conn_wakeup(c) };
 
     if core_should_set_wantwr(unsafe { (*conn).out_p.total_bytes }) {
-        unsafe { mtproxy_ffi_net_tcp_rpc_server_flags_or(c, C_WANTWR) };
+        unsafe { (&*((&raw mut (*conn).flags).cast::<AtomicI32>())).fetch_or(C_WANTWR, Ordering::SeqCst) };
     }
 
     unsafe {
@@ -961,7 +976,7 @@ pub(super) unsafe fn tcp_rpcs_alarm_impl(c: ConnectionJob) -> c_int {
     unsafe { notification_event_insert_tcp_conn_alarm(c) };
 
     if core_should_set_wantwr(unsafe { (*conn).out_p.total_bytes }) {
-        unsafe { mtproxy_ffi_net_tcp_rpc_server_flags_or(c, C_WANTWR) };
+        unsafe { (&*((&raw mut (*conn).flags).cast::<AtomicI32>())).fetch_or(C_WANTWR, Ordering::SeqCst) };
     }
 
     unsafe {
@@ -1135,7 +1150,7 @@ pub(super) unsafe fn tcp_rpcs_init_crypto_impl(
 
         unsafe {
             incr_active_dh_connections();
-            mtproxy_ffi_net_tcp_rpc_server_flags_or(c, C_ISDH);
+            (&*((&raw mut (*conn).flags).cast::<AtomicI32>())).fetch_or(C_ISDH, Ordering::SeqCst);
         }
 
         use_dh = true;

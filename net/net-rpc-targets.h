@@ -52,6 +52,4 @@ int rpc_target_choose_random_connections(rpc_target_job_t S,
                                          connection_job_t buf[]);
 
 void rpc_target_insert_conn(connection_job_t c);
-void rpc_target_insert_target(conn_target_job_t t);
-void rpc_target_insert_target_ext(conn_target_job_t t, unsigned host);
 void rpc_target_delete_conn(connection_job_t c);

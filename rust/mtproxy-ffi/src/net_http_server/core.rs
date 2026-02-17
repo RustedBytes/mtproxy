@@ -1,6 +1,7 @@
 //! Rust runtime implementation for `net/net-http-server.c`.
 
-use core::ffi::{c_char, c_int, c_long, c_void};
+use core::ffi::{c_char, c_int, c_long, c_longlong, c_uint, c_void};
+use core::mem::align_of;
 use core::ptr;
 
 const MAX_HTTP_HEADER_SIZE: c_int = 16384;
@@ -65,7 +66,26 @@ const TEXT_HTML_CSTR: &[u8] = b"text/html\0";
 const KEEP_ALIVE_CSTR: &[u8] = b"keep-alive\0";
 const CLOSE_CSTR: &[u8] = b"close\0";
 
-pub(super) type ConnectionJob = *mut c_void;
+type Job = *mut c_void;
+pub(super) type ConnectionJob = Job;
+
+#[repr(C)]
+struct AsyncJob {
+    j_flags: c_int,
+    j_status: c_int,
+    j_sigclass: c_int,
+    j_refcnt: c_int,
+    j_error: c_int,
+    j_children: c_int,
+    j_align: c_int,
+    j_custom_bytes: c_int,
+    j_type: c_uint,
+    j_subclass: c_int,
+    j_thread: *mut c_void,
+    j_execute: *mut c_void,
+    j_parent: Job,
+    j_custom: [c_longlong; 0],
+}
 
 #[repr(C)]
 pub(super) struct EventTimer {
@@ -183,8 +203,6 @@ pub(super) struct HtsData {
 }
 
 unsafe extern "C" {
-    fn mtproxy_ffi_net_http_server_conn_info(c: ConnectionJob) -> *mut ConnectionInfo;
-
     fn mtproxy_ffi_net_http_error_msg_text(code: *mut c_int) -> *const c_char;
     fn mtproxy_ffi_net_http_gen_date(out: *mut c_char, out_len: c_int, time: c_int) -> c_int;
     fn mtproxy_ffi_net_http_get_header(
@@ -217,10 +235,6 @@ unsafe extern "C" {
 
     fn kprintf(format: *const c_char, ...);
 
-    fn hts_default_execute(c: ConnectionJob, raw: *mut RawMessage, op: c_int) -> c_int;
-
-    fn mtproxy_ffi_net_http_server_now() -> c_int;
-
     static mut http_connections: c_int;
     static mut http_queries: i64;
     static mut http_bad_headers: i64;
@@ -234,8 +248,13 @@ static mut NOW_DATE_STRING: [u8; HTTP_DATE_LEN + 1] = *b"Thu, 01 Jan 1970 00:00:
 static mut NOW_DATE_UTIME: c_int = 0;
 
 #[inline]
+unsafe fn job_custom_ptr<T>(job: Job) -> *mut T {
+    ptr::addr_of_mut!((*job.cast::<AsyncJob>()).j_custom).cast::<T>()
+}
+
+#[inline]
 unsafe fn conn_info(c: ConnectionJob) -> *mut ConnectionInfo {
-    let conn = unsafe { mtproxy_ffi_net_http_server_conn_info(c) };
+    let conn = unsafe { job_custom_ptr::<ConnectionInfo>(c) };
     assert!(!conn.is_null());
     conn
 }
@@ -243,7 +262,12 @@ unsafe fn conn_info(c: ConnectionJob) -> *mut ConnectionInfo {
 #[inline]
 unsafe fn hts_data(c: ConnectionJob) -> *mut HtsData {
     let conn = unsafe { conn_info(c) };
-    unsafe { (*conn).custom_data.as_mut_ptr().cast::<HtsData>() }
+    let base = unsafe { (*conn).custom_data.as_ptr() as usize };
+    let align = align_of::<HtsData>();
+    let aligned = (base + align - 1) & !(align - 1);
+    let data = aligned as *mut HtsData;
+    assert!(!data.is_null());
+    data
 }
 
 #[inline]
@@ -878,7 +902,7 @@ pub(super) unsafe fn hts_parse_execute_impl(c: ConnectionJob) -> c_int {
             if unsafe { ((*d).query_flags & QF_ERROR) == 0 } {
                 if unsafe { (*funcs).execute.is_none() } {
                     unsafe {
-                        (*funcs).execute = Some(hts_default_execute);
+                        (*funcs).execute = Some(crate::net_http_server::ffi::hts_default_execute);
                     }
                 }
 
@@ -1058,7 +1082,7 @@ pub(super) unsafe fn gen_http_date_impl(date_buffer: *mut c_char, time: c_int) {
 
 pub(super) unsafe fn cur_http_date_impl() -> *mut c_char {
     let now_date_ptr = ptr::addr_of_mut!(NOW_DATE_STRING).cast::<u8>();
-    let now_value = unsafe { mtproxy_ffi_net_http_server_now() };
+    let now_value = c_int::try_from(unsafe { libc::time(ptr::null_mut()) }).unwrap_or(c_int::MAX);
     if unsafe { NOW_DATE_UTIME != now_value } {
         unsafe {
             NOW_DATE_UTIME = now_value;

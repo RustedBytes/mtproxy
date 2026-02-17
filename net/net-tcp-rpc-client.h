@@ -53,8 +53,6 @@ struct tcp_rpc_client_functions {
 extern struct tcp_rpc_client_functions default_tcp_rpc_client;
 
 extern conn_type_t ct_tcp_rpc_client;
-int tcp_rpcc_compact_parse_execute(connection_job_t c);
-int tcp_rpcc_connected_nohs(connection_job_t c);
 int tcp_rpcc_init_outbound(connection_job_t c);
 // int tcp_rpcc_flush_packet (connection_job_t c); -- use tcp_rpc_flush_packet()
 // instead

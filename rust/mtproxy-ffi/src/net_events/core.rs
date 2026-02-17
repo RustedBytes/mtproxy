@@ -61,6 +61,7 @@ pub(super) const CSTR_FATAL: &[u8] = b"fatal\0";
 pub(super) const CSTR_NONE: &[u8] = b"(none)\0";
 
 #[repr(C)]
+#[derive(Clone, Copy)]
 pub struct EventDescr {
     pub fd: c_int,
     pub state: c_int,

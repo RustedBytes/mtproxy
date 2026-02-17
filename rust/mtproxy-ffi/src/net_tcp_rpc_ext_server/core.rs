@@ -440,7 +440,7 @@ unsafe extern "C" {
     fn fail_connection(c: ConnectionJob, who: c_int);
     fn tcp_rpcs_parse_execute(c: ConnectionJob) -> c_int;
     fn tcp_rpcs_default_execute(c: ConnectionJob, op: c_int, msg: *mut RawMessage) -> c_int;
-    fn mtproxy_ffi_net_tcp_rpc_server_precise_now() -> c_double;
+    fn mtproxy_ffi_net_connections_precise_now() -> c_double;
 
     fn aes_crypto_ctr128_init(
         c: ConnectionJob,
@@ -487,7 +487,7 @@ unsafe fn rpc_funcs(c: ConnectionJob) -> *mut TcpRpcServerFunctions {
 
 #[inline]
 unsafe fn precise_now_value() -> c_double {
-    unsafe { mtproxy_ffi_net_tcp_rpc_server_precise_now() }
+    unsafe { mtproxy_ffi_net_connections_precise_now() }
 }
 
 #[inline]

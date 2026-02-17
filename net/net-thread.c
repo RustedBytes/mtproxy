@@ -88,7 +88,7 @@ static void net_thread_job_decref_bridge(void *who) {
 
 static void net_thread_event_free_bridge(void *event) { free(event); }
 
-void run_notification_event(struct notification_event *ev) {
+static void run_notification_event(struct notification_event *ev) {
   int32_t rc = mtproxy_ffi_net_thread_run_notification_event(
       ev->type, ev->who, ev, net_thread_rpc_ready_bridge,
       net_thread_rpc_close_bridge, net_thread_rpc_alarm_bridge,
@@ -132,8 +132,8 @@ void notification_event_job_create(void) {
   unlock_job(JOB_REF_CREATE_PASS(notification_job));
 }
 
-void notification_event_insert_conn(connection_job_t C,
-                                    enum notification_event_type type) {
+static void notification_event_insert_conn(connection_job_t C,
+                                           enum notification_event_type type) {
   struct notification_event *ev = malloc(sizeof(*ev));
   ev->who = job_incref(C);
   ev->type = type;

@@ -516,6 +516,7 @@ unsafe extern "C" {
     fn free_mp_queue(mq: *mut MpQueue);
     fn mtproxy_ffi_net_connections_mpq_push_w(mq: *mut MpQueue, x: *mut c_void, flags: c_int);
     #[allow(clashing_extern_declarations)]
+    #[link_name = "mtproxy_ffi_net_msg_buffers_alloc"]
     fn alloc_msg_buffer(neighbor: *mut MsgBuffer, size_hint: c_int) -> *mut MsgBuffer;
     fn new_msg_part(neighbor: *mut MsgPart, x: *mut MsgBuffer) -> *mut MsgPart;
     fn rwm_init(raw: *mut RawMessage, alloc_bytes: c_int) -> c_int;
@@ -542,8 +543,11 @@ unsafe extern "C" {
     fn cpu_server_close_connection(c: ConnectionJob, who: c_int) -> c_int;
     fn cpu_server_read_write(c: ConnectionJob) -> c_int;
     fn cpu_server_free_connection(c: ConnectionJob) -> c_int;
+    #[link_name = "mtproxy_ffi_net_tcp_connections_cpu_tcp_free_connection_buffers"]
     fn cpu_tcp_free_connection_buffers(c: ConnectionJob) -> c_int;
+    #[link_name = "mtproxy_ffi_net_tcp_connections_cpu_tcp_server_reader"]
     fn cpu_tcp_server_reader(c: ConnectionJob) -> c_int;
+    #[link_name = "mtproxy_ffi_net_tcp_connections_cpu_tcp_server_writer"]
     fn cpu_tcp_server_writer(c: ConnectionJob) -> c_int;
 
     fn mtproxy_ffi_net_connections_precise_now() -> c_double;

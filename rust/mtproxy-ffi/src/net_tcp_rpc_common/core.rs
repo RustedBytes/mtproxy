@@ -2,12 +2,13 @@
 //! `net/net-tcp-rpc-common.c`.
 
 use core::ffi::{c_char, c_double, c_int, c_long, c_uint, c_void};
-use core::mem::size_of;
+use core::mem::{align_of, size_of};
 use core::ptr;
 use std::cell::Cell;
 use std::thread_local;
 
 pub(super) type ConnectionJob = *mut c_void;
+type Job = *mut c_void;
 
 const CONN_CUSTOM_DATA_BYTES: usize = 256;
 
@@ -63,6 +64,24 @@ impl Default for RawMessage {
 #[repr(C)]
 pub(super) struct MpQueue {
     _priv: [u8; 0],
+}
+
+#[repr(C)]
+struct AsyncJob {
+    j_flags: c_int,
+    j_status: c_int,
+    j_sigclass: c_int,
+    j_refcnt: c_int,
+    j_error: c_int,
+    j_children: c_int,
+    j_align: c_int,
+    j_custom_bytes: c_int,
+    j_type: c_uint,
+    j_subclass: c_int,
+    j_thread: *mut c_void,
+    j_execute: Option<unsafe extern "C" fn(Job, c_int, *mut c_void) -> c_int>,
+    j_parent: Job,
+    j_custom: [i64; 0],
 }
 
 type ConnLifecycleFn = Option<unsafe extern "C" fn(ConnectionJob) -> c_int>;
@@ -160,6 +179,19 @@ pub(super) struct ConnectionInfo {
 }
 
 #[repr(C)]
+struct SocketConnectionInfo {
+    pub timer: EventTimer,
+    pub fd: c_int,
+    pub pad: c_int,
+    pub flags: c_int,
+    pub current_epoll_status: c_int,
+    pub type_: *mut ConnFunctions,
+    pub ev: *mut c_void,
+    pub conn: ConnectionJob,
+    pub out_packet_queue: *mut MpQueue,
+}
+
+#[repr(C)]
 #[derive(Clone, Copy, Default)]
 pub(super) struct ProcessId {
     pub ip: u32,
@@ -192,10 +224,7 @@ pub(super) struct TcpRpcData {
 }
 
 unsafe extern "C" {
-    fn mtproxy_ffi_net_tcp_rpc_common_conn_info(c: ConnectionJob) -> *mut ConnectionInfo;
-    fn mtproxy_ffi_net_tcp_rpc_common_data(c: ConnectionJob) -> *mut TcpRpcData;
-    fn mtproxy_ffi_net_tcp_rpc_common_socket_out_packet_queue(c: ConnectionJob) -> *mut MpQueue;
-    fn mtproxy_ffi_net_tcp_rpc_common_precise_now() -> c_double;
+    fn mtproxy_ffi_net_connections_precise_now() -> c_double;
 
     fn rwm_clone(dest_raw: *mut RawMessage, src_raw: *mut RawMessage);
     fn rwm_push_data(raw: *mut RawMessage, data: *const c_void, alloc_bytes: c_int) -> c_int;
@@ -218,22 +247,38 @@ unsafe extern "C" {
 }
 
 #[inline]
+unsafe fn job_custom_ptr<T>(job: Job) -> *mut T {
+    ptr::addr_of_mut!((*job.cast::<AsyncJob>()).j_custom).cast::<T>()
+}
+
+#[inline]
 unsafe fn conn_info(c: ConnectionJob) -> *mut ConnectionInfo {
-    let conn = unsafe { mtproxy_ffi_net_tcp_rpc_common_conn_info(c) };
+    let conn = unsafe { job_custom_ptr::<ConnectionInfo>(c) };
     assert!(!conn.is_null());
     conn
 }
 
 #[inline]
 unsafe fn rpc_data(c: ConnectionJob) -> *mut TcpRpcData {
-    let data = unsafe { mtproxy_ffi_net_tcp_rpc_common_data(c) };
+    let conn = unsafe { conn_info(c) };
+    let base = unsafe { (*conn).custom_data.as_ptr() as usize };
+    let align = align_of::<TcpRpcData>();
+    let aligned = (base + align - 1) & !(align - 1);
+    let data = aligned as *mut TcpRpcData;
     assert!(!data.is_null());
     data
 }
 
 #[inline]
 unsafe fn precise_now_value() -> c_double {
-    unsafe { mtproxy_ffi_net_tcp_rpc_common_precise_now() }
+    unsafe { mtproxy_ffi_net_connections_precise_now() }
+}
+
+#[inline]
+unsafe fn socket_out_packet_queue(socket_conn: ConnectionJob) -> *mut MpQueue {
+    let socket = unsafe { job_custom_ptr::<SocketConnectionInfo>(socket_conn) };
+    assert!(!socket.is_null());
+    unsafe { (*socket).out_packet_queue }
 }
 
 #[inline]
@@ -323,8 +368,7 @@ pub(super) unsafe fn tcp_rpc_conn_send_init_impl(
 
     let socket_conn = unsafe { (*conn).io_conn };
     if !socket_conn.is_null() {
-        let out_packet_queue =
-            unsafe { mtproxy_ffi_net_tcp_rpc_common_socket_out_packet_queue(socket_conn) };
+        let out_packet_queue = unsafe { socket_out_packet_queue(socket_conn) };
         let _ = unsafe { mpq_push_w(out_packet_queue, out_raw.cast(), 0) };
         let socket_ref = unsafe { job_incref(socket_conn) };
         unsafe { job_signal(1, socket_ref, JS_RUN) };
@@ -583,4 +627,15 @@ pub(super) unsafe fn tcp_add_dh_accept_impl() -> c_int {
     CUR_DH_ACCEPT_RATE_TIME.with(|v| v.set(new_state.last_time));
 
     result
+}
+
+pub(super) unsafe fn copy_remote_pid_impl(c: ConnectionJob, out_pid: *mut ProcessId) -> c_int {
+    if c.is_null() || out_pid.is_null() {
+        return -1;
+    }
+    let data = unsafe { rpc_data(c) };
+    unsafe {
+        *out_pid = (*data).remote_pid;
+    }
+    0
 }

@@ -33,6 +33,8 @@ void mtproxy_ffi_precise_time_set_tls(double precise_now_value,
   precise_now_rdtsc = precise_now_rdtsc_value;
 }
 
+void mtproxy_ffi_precise_time_set_now(int now_value) { now = now_value; }
+
 void mtproxy_ffi_precise_time_set_global(long long precise_time_value,
                                          long long precise_time_rdtsc_value) {
   precise_time = precise_time_value;

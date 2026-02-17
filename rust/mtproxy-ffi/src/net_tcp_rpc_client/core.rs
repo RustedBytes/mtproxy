@@ -1,7 +1,7 @@
 //! Rust runtime implementation for `net/net-tcp-rpc-client.c`.
 
 use core::ffi::{c_char, c_double, c_int, c_long, c_uint, c_void};
-use core::mem::{size_of, MaybeUninit};
+use core::mem::{align_of, size_of, MaybeUninit};
 use core::ptr;
 use core::sync::atomic::{AtomicI32, Ordering};
 
@@ -23,6 +23,7 @@ use mtproxy_core::runtime::net::tcp_rpc_common::{
 };
 
 pub(super) type ConnectionJob = *mut c_void;
+type Job = *mut c_void;
 
 const CONN_CUSTOM_DATA_BYTES: usize = 256;
 
@@ -90,6 +91,24 @@ impl Default for RawMessage {
 #[repr(C)]
 pub(super) struct MpQueue {
     _priv: [u8; 0],
+}
+
+#[repr(C)]
+struct AsyncJob {
+    j_flags: c_int,
+    j_status: c_int,
+    j_sigclass: c_int,
+    j_refcnt: c_int,
+    j_error: c_int,
+    j_children: c_int,
+    j_align: c_int,
+    j_custom_bytes: c_int,
+    j_type: c_uint,
+    j_subclass: c_int,
+    j_thread: *mut c_void,
+    j_execute: Option<unsafe extern "C" fn(Job, c_int, *mut c_void) -> c_int>,
+    j_parent: Job,
+    j_custom: [i64; 0],
 }
 
 #[repr(C)]
@@ -225,16 +244,13 @@ struct CryptoTempDhParams {
 }
 
 unsafe extern "C" {
-    fn mtproxy_ffi_net_tcp_rpc_client_conn_info(c: ConnectionJob) -> *mut ConnectionInfo;
-    fn mtproxy_ffi_net_tcp_rpc_client_data(c: ConnectionJob) -> *mut TcpRpcData;
-    fn mtproxy_ffi_net_tcp_rpc_client_funcs(c: ConnectionJob) -> *mut TcpRpcClientFunctions;
-    fn mtproxy_ffi_net_tcp_rpc_client_send_data(c: ConnectionJob, len: c_int, data: *const c_void);
-    fn mtproxy_ffi_net_tcp_rpc_client_precise_now() -> c_double;
+    fn mtproxy_ffi_net_connections_precise_now() -> c_double;
 
     fn fail_connection(c: ConnectionJob, who: c_int);
     fn cpu_server_close_connection(c: ConnectionJob, who: c_int) -> c_int;
     fn notification_event_insert_tcp_conn_ready(c: ConnectionJob);
     fn notification_event_insert_tcp_conn_close(c: ConnectionJob);
+    fn job_incref(job: Job) -> Job;
 
     fn rwm_init(raw: *mut RawMessage, alloc_bytes: c_int) -> c_int;
     fn rwm_free(raw: *mut RawMessage) -> c_int;
@@ -250,6 +266,7 @@ unsafe extern "C" {
         custom_crc32_partial: Crc32PartialFn,
     ) -> c_uint;
 
+    fn tcp_rpc_conn_send_data(c_tag_int: c_int, c: ConnectionJob, len: c_int, q: *mut c_void);
     fn tcp_rpc_default_execute(c: ConnectionJob, op: c_int, raw: *mut RawMessage) -> c_int;
     fn tcp_get_default_rpc_flags() -> c_uint;
     fn tcp_add_dh_accept() -> c_int;
@@ -295,22 +312,32 @@ unsafe extern "C" {
 }
 
 #[inline]
+unsafe fn job_custom_ptr<T>(job: Job) -> *mut T {
+    ptr::addr_of_mut!((*job.cast::<AsyncJob>()).j_custom).cast::<T>()
+}
+
+#[inline]
 unsafe fn conn_info(c: ConnectionJob) -> *mut ConnectionInfo {
-    let conn = unsafe { mtproxy_ffi_net_tcp_rpc_client_conn_info(c) };
+    let conn = unsafe { job_custom_ptr::<ConnectionInfo>(c) };
     assert!(!conn.is_null());
     conn
 }
 
 #[inline]
 unsafe fn rpc_data(c: ConnectionJob) -> *mut TcpRpcData {
-    let data = unsafe { mtproxy_ffi_net_tcp_rpc_client_data(c) };
+    let conn = unsafe { conn_info(c) };
+    let base = unsafe { (*conn).custom_data.as_ptr() as usize };
+    let align = align_of::<TcpRpcData>();
+    let aligned = (base + align - 1) & !(align - 1);
+    let data = aligned as *mut TcpRpcData;
     assert!(!data.is_null());
     data
 }
 
 #[inline]
 unsafe fn rpc_funcs(c: ConnectionJob) -> *mut TcpRpcClientFunctions {
-    let funcs = unsafe { mtproxy_ffi_net_tcp_rpc_client_funcs(c) };
+    let conn = unsafe { conn_info(c) };
+    let funcs = unsafe { (*conn).extra.cast::<TcpRpcClientFunctions>() };
     assert!(!funcs.is_null());
     funcs
 }
@@ -350,12 +377,13 @@ fn core_to_pid(pid: mtproxy_core::runtime::net::tcp_rpc_common::ProcessId) -> Pr
 #[inline]
 unsafe fn send_data(c: ConnectionJob, data: *const u8, len: usize) {
     let len_i32 = c_int::try_from(len).unwrap_or(c_int::MAX);
-    unsafe { mtproxy_ffi_net_tcp_rpc_client_send_data(c, len_i32, data.cast()) };
+    let c_ref = unsafe { job_incref(c) };
+    unsafe { tcp_rpc_conn_send_data(1, c_ref, len_i32, data.cast_mut().cast()) };
 }
 
 #[inline]
 fn precise_now_value() -> c_double {
-    unsafe { mtproxy_ffi_net_tcp_rpc_client_precise_now() }
+    unsafe { mtproxy_ffi_net_connections_precise_now() }
 }
 
 #[inline]

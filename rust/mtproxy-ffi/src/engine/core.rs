@@ -388,6 +388,7 @@ unsafe extern "C" {
     fn init_server_PID(ip: c_uint, port: c_int);
     fn get_my_ipv4() -> c_uint;
     fn get_my_ipv6(ipv6: *mut u8) -> c_int;
+    #[link_name = "mtproxy_ffi_net_msg_buffers_init"]
     fn init_msg_buffers(max_buffer_bytes: c_long) -> c_int;
     fn init_async_jobs() -> c_int;
     fn create_new_job_class(job_class: c_int, min_threads: c_int, max_threads: c_int) -> c_int;

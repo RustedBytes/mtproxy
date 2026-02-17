@@ -27,6 +27,7 @@
 
 #include "common/mp-queue.h"
 #include <assert.h>
+#include <stdint.h>
 #include <stddef.h>
 
 enum {
@@ -117,23 +118,26 @@ struct buffers_stat {
   long long max_allocated_buffer_bytes;
 };
 
-void fetch_buffers_stat(struct buffers_stat *bs);
+extern void
+mtproxy_ffi_net_msg_buffers_fetch_buffers_stat(struct buffers_stat *bs);
+extern int32_t mtproxy_ffi_net_msg_buffers_init(long max_buffer_bytes);
+extern struct msg_buffer *
+mtproxy_ffi_net_msg_buffers_alloc(struct msg_buffer *neighbor,
+                                  int32_t size_hint);
+extern int32_t mtproxy_ffi_net_msg_buffers_free(struct msg_buffer *buffer);
+extern int32_t mtproxy_ffi_net_msg_buffers_reach_limit(double ratio);
+extern double mtproxy_ffi_net_msg_buffers_usage(void);
 
-int free_msg_buffer(struct msg_buffer *X);
+#define fetch_buffers_stat mtproxy_ffi_net_msg_buffers_fetch_buffers_stat
+#define init_msg_buffers mtproxy_ffi_net_msg_buffers_init
+#define alloc_msg_buffer mtproxy_ffi_net_msg_buffers_alloc
+#define free_msg_buffer mtproxy_ffi_net_msg_buffers_free
+#define msg_buffer_reach_limit mtproxy_ffi_net_msg_buffers_reach_limit
+#define msg_buffer_usage mtproxy_ffi_net_msg_buffers_usage
+
 static inline void msg_buffer_decref(struct msg_buffer *buffer) {
   if (buffer->refcnt == 1 || __sync_fetch_and_add(&buffer->refcnt, -1) == 1) {
     buffer->refcnt = 0;
     free_msg_buffer(buffer);
   }
 }
-
-int init_msg_buffers(long max_buffer_bytes);
-
-struct msg_buffer *alloc_msg_buffer(struct msg_buffer *neighbor, int size_hint);
-
-int free_msg_buffer(struct msg_buffer *buffer);
-int msg_buffer_reach_limit(double ratio);
-double msg_buffer_usage(void);
-
-extern long long max_allocated_buffer_bytes;
-extern int allocated_buffer_chunks, max_allocated_buffer_chunks;

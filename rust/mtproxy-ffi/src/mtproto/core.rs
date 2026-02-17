@@ -597,6 +597,7 @@ unsafe extern "C" {
     fn mtproxy_ffi_net_tcp_rpc_ext_show_our_ip(c: ConnectionJob) -> *const c_char;
     fn mtproxy_ffi_net_tcp_rpc_ext_show_remote_ip(c: ConnectionJob) -> *const c_char;
     fn fetch_connections_stat(st: *mut MtprotoConnectionsStat);
+    #[link_name = "mtproxy_ffi_net_msg_buffers_fetch_buffers_stat"]
     fn fetch_buffers_stat(bs: *mut MtprotoBuffersStat);
     fn fetch_tot_dh_rounds_stat(rounds: *mut i64);
     fn fetch_aes_crypto_stat(
@@ -1508,6 +1509,7 @@ fn mtproto_parse_hex_nibble(byte: u8) -> Option<u8> {
 }
 
 unsafe fn mtproto_choose_proxy_target_impl(target_dc: c_int) -> ConnTargetJob {
+    const PICK_BATCH: c_int = 64;
     let cur_conf = unsafe { CurConf };
     if cur_conf.is_null() {
         return core::ptr::null_mut();
@@ -1519,35 +1521,48 @@ unsafe fn mtproto_choose_proxy_target_impl(target_dc: c_int) -> ConnTargetJob {
         return core::ptr::null_mut();
     }
 
-    let mut attempts = 5;
-    while attempts > 0 {
-        attempts -= 1;
+    let targets_num = unsafe { (*mfc).targets_num };
+    assert!(targets_num > 0);
+    let Some(targets_len) = usize::try_from(targets_num).ok() else {
+        return core::ptr::null_mut();
+    };
+    let targets = unsafe { (*mfc).cluster_targets };
+    assert!(!targets.is_null());
 
-        let targets_num = unsafe { (*mfc).targets_num };
-        assert!(targets_num > 0);
-        let Some(targets_len) = usize::try_from(targets_num).ok() else {
-            return core::ptr::null_mut();
+    let rand = unsafe { lrand48() };
+    let start_idx = usize::try_from(rand).unwrap_or(0) % targets_len;
+    for off in 0..targets_len {
+        let idx = (start_idx + off) % targets_len;
+        let s = unsafe { *targets.add(idx) };
+
+        let mut candidates = [core::ptr::null_mut(); PICK_BATCH as usize];
+        let picked = unsafe {
+            rpc_target_choose_random_connections(
+                s,
+                core::ptr::null_mut(),
+                PICK_BATCH,
+                candidates.as_mut_ptr(),
+            )
         };
-
-        let rand = unsafe { lrand48() };
-        let rand_idx = usize::try_from(rand).unwrap_or(0) % targets_len;
-
-        let targets = unsafe { (*mfc).cluster_targets };
-        assert!(!targets.is_null());
-        let s = unsafe { *targets.add(rand_idx) };
-
-        let mut c: ConnectionJob = core::ptr::null_mut();
-        unsafe {
-            rpc_target_choose_random_connections(s, core::ptr::null_mut(), 1, &mut c);
-        }
-
-        // Preserve C behavior exactly: candidate connection is decref'ed only on tag match.
-        if !c.is_null() {
-            let data = unsafe { mtproto_rpc_data_ptr(c) };
-            if !data.is_null() && unsafe { (*data).extra_int == mtproto_conn_tag(c) } {
+        let count = picked.max(0).min(PICK_BATCH) as usize;
+        let mut i = 0;
+        while i < count {
+            let c = candidates[i];
+            if !c.is_null() {
+                let data = unsafe { mtproto_rpc_data_ptr(c) };
+                let is_match = if !data.is_null() {
+                    let tag = unsafe { mtproto_conn_tag(c) };
+                    let marker = unsafe { (*data).extra_int };
+                    marker == tag || marker == -tag
+                } else {
+                    false
+                };
                 unsafe { mtproto_job_decref(c) };
-                return s;
+                if is_match {
+                    return s;
+                }
             }
+            i = i.saturating_add(1);
         }
     }
 
@@ -1560,26 +1575,39 @@ pub(super) unsafe fn mtproto_choose_proxy_target_ffi(target_dc: c_int) -> ConnTa
 
 #[inline]
 unsafe fn mtproto_forward_pick_connection(target: ConnTargetJob) -> ConnectionJob {
-    let mut attempts = 5;
+    const PICK_BATCH: c_int = 64;
+    let mut attempts = 3;
     while !target.is_null() && attempts > 0 {
         attempts -= 1;
-        let mut d: ConnectionJob = core::ptr::null_mut();
-        unsafe {
-            rpc_target_choose_random_connections(target, core::ptr::null_mut(), 1, &mut d);
+        let mut candidates = [core::ptr::null_mut(); PICK_BATCH as usize];
+        let picked = unsafe {
+            rpc_target_choose_random_connections(
+                target,
+                core::ptr::null_mut(),
+                PICK_BATCH,
+                candidates.as_mut_ptr(),
+            )
+        };
+        let count = picked.max(0).min(PICK_BATCH) as usize;
+        let mut i = 0;
+        while i < count {
+            let d = candidates[i];
+            if !d.is_null() {
+                let data = unsafe { mtproto_rpc_data_ptr(d) };
+                let is_match = if !data.is_null() {
+                    let tag = unsafe { mtproto_conn_tag(d) };
+                    let marker = unsafe { (*data).extra_int };
+                    marker == tag || marker == -tag
+                } else {
+                    false
+                };
+                if is_match {
+                    return d;
+                }
+                unsafe { mtproto_job_decref(d) };
+            }
+            i = i.saturating_add(1);
         }
-        if d.is_null() {
-            continue;
-        }
-        let data = unsafe { mtproto_rpc_data_ptr(d) };
-        if data.is_null() {
-            unsafe { mtproto_job_decref(d) };
-            continue;
-        }
-        let tag = unsafe { mtproto_conn_tag(d) };
-        if unsafe { (*data).extra_int } == tag {
-            return d;
-        }
-        unsafe { mtproto_job_decref(d) };
     }
     core::ptr::null_mut()
 }

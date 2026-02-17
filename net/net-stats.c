@@ -27,6 +27,7 @@
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <sys/epoll.h>
 #include <sys/socket.h>
 #include <sys/uio.h>
@@ -46,7 +47,6 @@ int my_pid;
 int connections_prepare_stat(stats_buffer_t *sb);
 int udp_prepare_stat(stats_buffer_t *sb);
 int raw_msg_prepare_stat(stats_buffer_t *sb);
-int raw_msg_buffer_prepare_stat(stats_buffer_t *sb);
 int crypto_aes_prepare_stat(stats_buffer_t *sb);
 int crypto_dh_prepare_stat(stats_buffer_t *sb);
 int jobs_prepare_stat(stats_buffer_t *sb);
@@ -58,6 +58,7 @@ extern double mtproxy_ffi_net_stats_recent_idle_percent(double a_idle_time,
                                                         double a_idle_quotient);
 extern double mtproxy_ffi_net_stats_average_idle_percent(double tot_idle_time,
                                                          int uptime);
+extern int32_t mtproxy_ffi_net_msg_buffers_raw_prepare_stat(stats_buffer_t *sb);
 
 extern long long epoll_calls;
 extern long long epoll_intr;
@@ -101,7 +102,7 @@ int prepare_stats(char *buff, int buff_size) {
 
   connections_prepare_stat(&sb);
   raw_msg_prepare_stat(&sb);
-  raw_msg_buffer_prepare_stat(&sb);
+  mtproxy_ffi_net_msg_buffers_raw_prepare_stat(&sb);
   mtproxy_ffi_tl_parse_prepare_stat((mtproxy_ffi_stats_buffer_t *)&sb);
   crypto_aes_prepare_stat(&sb);
   crypto_dh_prepare_stat(&sb);

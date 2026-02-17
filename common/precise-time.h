@@ -20,8 +20,6 @@
 */
 #pragma once
 
-#include <time.h>
-
 /* RDTSC */
 #if defined(__i386__)
 static __inline__ unsigned long long rdtsc(void) {
@@ -50,3 +48,6 @@ extern long long precise_time_rdtsc; // when precise_time was obtained
 
 /* ??? */
 double get_double_time(void);
+void mtproxy_ffi_precise_time_set_tls(double precise_now_value,
+                                      long long precise_now_rdtsc_value);
+void mtproxy_ffi_precise_time_set_now(int now_value);

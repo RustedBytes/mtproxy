@@ -26,14 +26,47 @@
 
 #pragma once
 
+#include <stdint.h>
+
 #include "net/net-connections.h"
 
-int cpu_tcp_server_writer(connection_job_t c);
-int cpu_tcp_free_connection_buffers(connection_job_t c);
-int cpu_tcp_server_reader(connection_job_t c);
-int cpu_tcp_aes_crypto_decrypt_input(connection_job_t c);
-int cpu_tcp_aes_crypto_encrypt_output(connection_job_t c);
-int cpu_tcp_aes_crypto_needed_output_bytes(connection_job_t c);
-int cpu_tcp_aes_crypto_ctr128_decrypt_input(connection_job_t c);
-int cpu_tcp_aes_crypto_ctr128_encrypt_output(connection_job_t c);
-int cpu_tcp_aes_crypto_ctr128_needed_output_bytes(connection_job_t c);
+extern int32_t mtproxy_ffi_net_tcp_connections_cpu_tcp_free_connection_buffers(
+    connection_job_t c);
+extern int32_t
+mtproxy_ffi_net_tcp_connections_cpu_tcp_server_writer(connection_job_t c);
+extern int32_t
+mtproxy_ffi_net_tcp_connections_cpu_tcp_server_reader(connection_job_t c);
+extern int32_t
+mtproxy_ffi_net_tcp_connections_cpu_tcp_aes_crypto_encrypt_output(
+    connection_job_t c);
+extern int32_t mtproxy_ffi_net_tcp_connections_cpu_tcp_aes_crypto_decrypt_input(
+    connection_job_t c);
+extern int32_t
+mtproxy_ffi_net_tcp_connections_cpu_tcp_aes_crypto_needed_output_bytes(
+    connection_job_t c);
+extern int32_t
+mtproxy_ffi_net_tcp_connections_cpu_tcp_aes_crypto_ctr128_encrypt_output(
+    connection_job_t c);
+extern int32_t
+mtproxy_ffi_net_tcp_connections_cpu_tcp_aes_crypto_ctr128_decrypt_input(
+    connection_job_t c);
+extern int32_t
+mtproxy_ffi_net_tcp_connections_cpu_tcp_aes_crypto_ctr128_needed_output_bytes(
+    connection_job_t c);
+
+#define cpu_tcp_free_connection_buffers \
+  mtproxy_ffi_net_tcp_connections_cpu_tcp_free_connection_buffers
+#define cpu_tcp_server_writer mtproxy_ffi_net_tcp_connections_cpu_tcp_server_writer
+#define cpu_tcp_server_reader mtproxy_ffi_net_tcp_connections_cpu_tcp_server_reader
+#define cpu_tcp_aes_crypto_encrypt_output \
+  mtproxy_ffi_net_tcp_connections_cpu_tcp_aes_crypto_encrypt_output
+#define cpu_tcp_aes_crypto_decrypt_input \
+  mtproxy_ffi_net_tcp_connections_cpu_tcp_aes_crypto_decrypt_input
+#define cpu_tcp_aes_crypto_needed_output_bytes \
+  mtproxy_ffi_net_tcp_connections_cpu_tcp_aes_crypto_needed_output_bytes
+#define cpu_tcp_aes_crypto_ctr128_encrypt_output \
+  mtproxy_ffi_net_tcp_connections_cpu_tcp_aes_crypto_ctr128_encrypt_output
+#define cpu_tcp_aes_crypto_ctr128_decrypt_input \
+  mtproxy_ffi_net_tcp_connections_cpu_tcp_aes_crypto_ctr128_decrypt_input
+#define cpu_tcp_aes_crypto_ctr128_needed_output_bytes \
+  mtproxy_ffi_net_tcp_connections_cpu_tcp_aes_crypto_ctr128_needed_output_bytes
