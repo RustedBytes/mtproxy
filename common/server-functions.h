@@ -37,11 +37,11 @@ extern "C" {
 #endif
 
 #ifdef __LP64__
-#define PTR_BITS 64
-#define BITS_STR "64"
+enum { PTR_BITS = 64 };
+static const char BITS_STR[] = "64";
 #else
-#define PTR_BITS 32
-#define BITS_STR "32"
+enum { PTR_BITS = 32 };
+static const char BITS_STR[] = "32";
 #endif
 
 enum {
