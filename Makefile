@@ -48,8 +48,6 @@ DEPENDENCE_RUST	:=	$(subst ${OBJ}/,${DEP}/,$(patsubst %.o,%.d,${RUST_OBJECTS}))
 LIB_OBJS_NORMAL := \
 	${OBJ}/common/parse-config.o \
 	${OBJ}/jobs/jobs.o \
-	${OBJ}/net/net-msg.o \
-	${OBJ}/net/net-crypto-aes.o ${OBJ}/net/net-crypto-dh.o \
 	${OBJ}/net/net-connections.o \
 	${OBJ}/net/net-rpc-targets.o \
 	${OBJ}/common/tl-parse.o ${OBJ}/common/common-stats.o \

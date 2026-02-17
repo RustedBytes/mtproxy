@@ -2,6 +2,61 @@
 
 use super::core::*;
 use crate::*;
+use core::ptr;
+
+#[repr(C)]
+pub struct StatsBuffer {
+    buff: *mut c_char,
+    pos: c_int,
+    size: c_int,
+    flags: c_int,
+}
+
+type ConnectionJob = *mut c_void;
+
+const DH_RPC_PARAM_HASH: c_int = 0x0062_0b93;
+
+const fn pwd_config_md5_default() -> [c_char; 33] {
+    let mut value = [0; 33];
+    value[0] = b'n' as c_char;
+    value[1] = b'o' as c_char;
+    value[2] = b'n' as c_char;
+    value[3] = b'e' as c_char;
+    value
+}
+
+unsafe extern "C" {
+    fn sb_printf(sb: *mut StatsBuffer, format: *const c_char, ...);
+    fn kprintf(format: *const c_char, ...);
+    static mut verbosity: c_int;
+    fn mtproxy_ffi_net_connections_conn_crypto_slots(
+        c: ConnectionJob,
+        out_crypto_slot: *mut *mut *mut c_void,
+        out_crypto_temp_slot: *mut *mut *mut c_void,
+    ) -> c_int;
+}
+
+#[no_mangle]
+pub static mut main_secret: MtproxyAesSecret = MtproxyAesSecret {
+    refcnt: 0,
+    secret_len: 0,
+    secret: [0u8; MAX_PWD_LEN + 4],
+};
+
+#[no_mangle]
+pub static mut aes_initialized: c_int = 0;
+
+#[no_mangle]
+pub static mut pwd_config_buf: [c_char; MAX_PWD_CONFIG_LEN + 128] = [0; MAX_PWD_CONFIG_LEN + 128];
+
+#[no_mangle]
+pub static mut pwd_config_len: c_int = 0;
+
+#[no_mangle]
+pub static mut pwd_config_md5: [c_char; 33] = pwd_config_md5_default();
+
+#[no_mangle]
+pub static mut dh_params_select: c_int = 0;
 
 #[inline]
 fn abort_on_failure(rc: i32) {
@@ -266,11 +321,11 @@ pub unsafe extern "C" fn mtproxy_ffi_crypto_aes_conn_free(
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_crypto_aes_load_pwd_file(
     filename: *const c_char,
-    pwd_config_buf: *mut u8,
+    pwd_config_buf_out: *mut u8,
     pwd_config_capacity: i32,
     pwd_config_len_out: *mut i32,
     pwd_config_md5_out: *mut c_char,
-    main_secret: *mut MtproxyAesSecret,
+    main_secret_out: *mut MtproxyAesSecret,
 ) -> i32 {
     let Ok(buf_capacity) = usize::try_from(pwd_config_capacity) else {
         return -1;
@@ -278,7 +333,7 @@ pub unsafe extern "C" fn mtproxy_ffi_crypto_aes_load_pwd_file(
     if buf_capacity < (MAX_PWD_CONFIG_LEN + 4) {
         return -1;
     }
-    let Some(cfg_out) = (unsafe { mut_slice_from_ptr(pwd_config_buf, buf_capacity) }) else {
+    let Some(cfg_out) = (unsafe { mut_slice_from_ptr(pwd_config_buf_out, buf_capacity) }) else {
         return -1;
     };
     let Some(pwd_config_len_out_ref) = (unsafe { mut_ref_from_ptr(pwd_config_len_out) }) else {
@@ -289,7 +344,7 @@ pub unsafe extern "C" fn mtproxy_ffi_crypto_aes_load_pwd_file(
     else {
         return -1;
     };
-    let Some(main_secret_ref) = (unsafe { mut_ref_from_ptr(main_secret) }) else {
+    let Some(main_secret_ref) = (unsafe { mut_ref_from_ptr(main_secret_out) }) else {
         return -1;
     };
 
@@ -490,19 +545,19 @@ pub unsafe extern "C" fn mtproxy_ffi_crypto_dh_fetch_tot_rounds(out_rounds: *mut
 pub unsafe extern "C" fn mtproxy_ffi_crypto_dh_first_round_stateful(
     g_a: *mut u8,
     dh_params: *mut MtproxyCryptoTempDhParams,
-    dh_params_select: i32,
+    dh_params_select_arg: i32,
 ) -> i32 {
     let Some(dh_params_ref) = (unsafe { mut_ref_from_ptr(dh_params) }) else {
         return -1;
     };
-    if dh_params_select <= 0 {
+    if dh_params_select_arg <= 0 {
         return -1;
     }
     let rc = mtproxy_ffi_crypto_dh_first_round(g_a, dh_params_ref.a.as_mut_ptr());
     if rc != 1 {
         return -1;
     }
-    dh_params_ref.dh_params_select = dh_params_select;
+    dh_params_ref.dh_params_select = dh_params_select_arg;
     dh_params_ref.magic = CRYPTO_TEMP_DH_PARAMS_MAGIC;
     DH_TOT_ROUNDS_0.fetch_add(1, Ordering::AcqRel);
     1
@@ -1687,4 +1742,290 @@ pub unsafe extern "C" fn mtproxy_ffi_sha256_hmac(
     mac.update(input_ref);
     out_ref.copy_from_slice(&mac.finalize().into_bytes());
     0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn crypto_aes_prepare_stat(sb: *mut StatsBuffer) -> c_int {
+    let mut allocated_aes_crypto = 0;
+    let mut allocated_aes_crypto_temp = 0;
+    unsafe { fetch_aes_crypto_stat(&raw mut allocated_aes_crypto, &raw mut allocated_aes_crypto_temp) };
+    unsafe { sb_printf(sb, c"allocated_aes_crypto\t%d\n".as_ptr(), allocated_aes_crypto) };
+    unsafe {
+        sb_printf(
+            sb,
+            c"allocated_aes_crypto_temp\t%d\n".as_ptr(),
+            allocated_aes_crypto_temp,
+        )
+    };
+    unsafe {
+        sb_printf(
+            sb,
+            c"aes_pwd_hash\t%s\n".as_ptr(),
+            ptr::addr_of!(pwd_config_md5).cast::<c_char>(),
+        )
+    };
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn fetch_aes_crypto_stat(
+    allocated_aes_crypto_ptr: *mut c_int,
+    allocated_aes_crypto_temp_ptr: *mut c_int,
+) {
+    let rc = unsafe {
+        mtproxy_ffi_crypto_aes_fetch_stat(allocated_aes_crypto_ptr, allocated_aes_crypto_temp_ptr)
+    };
+    assert_eq!(rc, 0);
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn aes_crypto_init(
+    c: ConnectionJob,
+    key_data: *mut c_void,
+    key_data_len: c_int,
+) -> c_int {
+    let mut crypto_slot: *mut *mut c_void = ptr::null_mut();
+    let rc_slots = unsafe {
+        mtproxy_ffi_net_connections_conn_crypto_slots(c, &raw mut crypto_slot, ptr::null_mut())
+    };
+    if rc_slots != 0 || crypto_slot.is_null() {
+        return -1;
+    }
+    let rc = unsafe {
+        mtproxy_ffi_crypto_aes_conn_init(
+            crypto_slot,
+            key_data.cast::<MtproxyAesKeyData>().cast_const(),
+            key_data_len,
+            0,
+        )
+    };
+    if rc == 0 { 0 } else { -1 }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn aes_crypto_ctr128_init(
+    c: ConnectionJob,
+    key_data: *mut c_void,
+    key_data_len: c_int,
+) -> c_int {
+    let mut crypto_slot: *mut *mut c_void = ptr::null_mut();
+    let rc_slots = unsafe {
+        mtproxy_ffi_net_connections_conn_crypto_slots(c, &raw mut crypto_slot, ptr::null_mut())
+    };
+    if rc_slots != 0 || crypto_slot.is_null() {
+        return -1;
+    }
+    let rc = unsafe {
+        mtproxy_ffi_crypto_aes_conn_init(
+            crypto_slot,
+            key_data.cast::<MtproxyAesKeyData>().cast_const(),
+            key_data_len,
+            1,
+        )
+    };
+    if rc == 0 { 0 } else { -1 }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn aes_crypto_free(c: ConnectionJob) -> c_int {
+    let mut crypto_slot: *mut *mut c_void = ptr::null_mut();
+    let mut crypto_temp_slot: *mut *mut c_void = ptr::null_mut();
+    let rc_slots = unsafe {
+        mtproxy_ffi_net_connections_conn_crypto_slots(
+            c,
+            &raw mut crypto_slot,
+            &raw mut crypto_temp_slot,
+        )
+    };
+    if rc_slots != 0 || crypto_slot.is_null() || crypto_temp_slot.is_null() {
+        return -1;
+    }
+    let rc = unsafe { mtproxy_ffi_crypto_aes_conn_free(crypto_slot, crypto_temp_slot) };
+    if rc == 0 { 0 } else { -1 }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn aes_load_pwd_file(filename: *const c_char) -> c_int {
+    let rc = unsafe {
+        mtproxy_ffi_crypto_aes_load_pwd_file(
+            filename,
+            ptr::addr_of_mut!(pwd_config_buf).cast::<u8>(),
+            i32::try_from(MAX_PWD_CONFIG_LEN + 128).unwrap_or(i32::MAX),
+            ptr::addr_of_mut!(pwd_config_len),
+            ptr::addr_of_mut!(pwd_config_md5).cast::<c_char>(),
+            ptr::addr_of_mut!(main_secret),
+        )
+    };
+    if rc == 1 {
+        unsafe { aes_initialized = 1 };
+    }
+    rc
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn aes_generate_nonce(res: *mut c_char) -> c_int {
+    let rc = unsafe { mtproxy_ffi_crypto_aes_generate_nonce(res.cast::<u8>()) };
+    if rc == 0 { 0 } else { -1 }
+}
+
+#[no_mangle]
+#[allow(clippy::similar_names)]
+pub unsafe extern "C" fn aes_create_keys(
+    out: *mut MtproxyAesKeyData,
+    am_client: c_int,
+    nonce_server: *const c_char,
+    nonce_client: *const c_char,
+    client_timestamp: c_int,
+    server_ip: u32,
+    server_port: u16,
+    server_ipv6: *const u8,
+    client_ip: u32,
+    client_port: u16,
+    client_ipv6: *const u8,
+    key: *const MtproxyAesSecret,
+    temp_key: *const u8,
+    temp_key_len: c_int,
+) -> c_int {
+    let Some(key_ref) = (unsafe { ref_from_ptr(key) }) else {
+        return -1;
+    };
+    let secret_len = key_ref.secret_len;
+    let rc = unsafe {
+        mtproxy_ffi_crypto_aes_create_keys(
+            out,
+            am_client,
+            nonce_server.cast::<u8>(),
+            nonce_client.cast::<u8>(),
+            client_timestamp,
+            server_ip,
+            server_port,
+            server_ipv6,
+            client_ip,
+            client_port,
+            client_ipv6,
+            key_ref.secret.as_ptr(),
+            secret_len,
+            temp_key,
+            temp_key_len,
+        )
+    };
+    assert!(rc == 1 || rc < 0);
+    rc
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn free_crypto_temp(crypto: *mut c_void, len: c_int) {
+    let rc = unsafe { mtproxy_ffi_crypto_free_temp(crypto, len) };
+    assert_eq!(rc, 0);
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn alloc_crypto_temp(len: c_int) -> *mut c_void {
+    let res = unsafe { mtproxy_ffi_crypto_alloc_temp(len) };
+    assert!(!res.is_null());
+    res
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn crypto_dh_prepare_stat(sb: *mut StatsBuffer) -> c_int {
+    let mut rounds = [0_i64; 3];
+    unsafe { fetch_tot_dh_rounds_stat(rounds.as_mut_ptr()) };
+    unsafe {
+        sb_printf(
+            sb,
+            c"tot_dh_rounds\t%lld %lld %lld\n".as_ptr(),
+            rounds[0],
+            rounds[1],
+            rounds[2],
+        )
+    };
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn fetch_tot_dh_rounds_stat(tot_dh_rounds: *mut i64) {
+    let rc = unsafe { mtproxy_ffi_crypto_dh_fetch_tot_rounds(tot_dh_rounds) };
+    assert_eq!(rc, 0);
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn init_dh_params() -> c_int {
+    let mut select = 0;
+    let rc = unsafe { mtproxy_ffi_crypto_dh_init_params(&raw mut select) };
+    if rc < 0 {
+        return -1;
+    }
+    unsafe { dh_params_select = select };
+    assert_eq!(unsafe { dh_params_select }, DH_RPC_PARAM_HASH);
+    rc
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn dh_first_round(
+    g_a: *mut u8,
+    dh_params: *mut MtproxyCryptoTempDhParams,
+) -> c_int {
+    if g_a.is_null() || dh_params.is_null() {
+        return -1;
+    }
+    let r = unsafe {
+        mtproxy_ffi_crypto_dh_first_round_stateful(g_a, dh_params, dh_params_select)
+    };
+    if r == 1 { 1 } else { -1 }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn dh_second_round(g_ab: *mut u8, g_a: *mut u8, g_b: *const u8) -> c_int {
+    if g_ab.is_null() || g_a.is_null() || g_b.is_null() {
+        return -1;
+    }
+    let r = unsafe { mtproxy_ffi_crypto_dh_second_round_stateful(g_ab, g_a, g_b) };
+    if r <= 0 {
+        return r;
+    }
+
+    if unsafe { verbosity } >= 2 {
+        unsafe {
+            kprintf(
+                c"DH key is %02x%02x%02x...%02x%02x%02x\n".as_ptr(),
+                c_int::from(*g_ab.add(0)),
+                c_int::from(*g_ab.add(1)),
+                c_int::from(*g_ab.add(2)),
+                c_int::from(*g_ab.add(253)),
+                c_int::from(*g_ab.add(254)),
+                c_int::from(*g_ab.add(255)),
+            )
+        };
+    }
+    r
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn dh_third_round(
+    g_ab: *mut u8,
+    g_b: *const u8,
+    dh_params: *mut MtproxyCryptoTempDhParams,
+) -> c_int {
+    if g_ab.is_null() || g_b.is_null() || dh_params.is_null() {
+        return -1;
+    }
+    let r = unsafe { mtproxy_ffi_crypto_dh_third_round_stateful(g_ab, g_b, dh_params.cast_const()) };
+    if r <= 0 {
+        return r;
+    }
+
+    if unsafe { verbosity } >= 2 {
+        unsafe {
+            kprintf(
+                c"DH key is %02x%02x%02x...%02x%02x%02x\n".as_ptr(),
+                c_int::from(*g_ab.add(0)),
+                c_int::from(*g_ab.add(1)),
+                c_int::from(*g_ab.add(2)),
+                c_int::from(*g_ab.add(253)),
+                c_int::from(*g_ab.add(254)),
+                c_int::from(*g_ab.add(255)),
+            )
+        };
+    }
+    r
 }

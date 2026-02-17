@@ -69,9 +69,6 @@ struct msg_part {
   int data_end; // end of data offset inside part->data
 };
 
-extern int rwm_total_msg_parts;
-extern int rwm_total_msgs;
-
 enum {
   MSG_PART_MAGIC = 0x8341aa7,
   MSG_PART_LOCKED_MAGIC = ~MSG_PART_MAGIC,

@@ -677,6 +677,17 @@ unsafe fn conn_info(c: ConnectionJob) -> *mut ConnectionInfo {
 }
 
 #[inline]
+pub(super) unsafe fn conn_crypto_slots(
+    c: ConnectionJob,
+) -> (*mut *mut c_void, *mut *mut c_void) {
+    let conn = unsafe { conn_info(c) };
+    if conn.is_null() {
+        return (ptr::null_mut(), ptr::null_mut());
+    }
+    (ptr::addr_of_mut!((*conn).crypto), ptr::addr_of_mut!((*conn).crypto_temp))
+}
+
+#[inline]
 unsafe fn socket_conn_info(c: SocketConnectionJob) -> *mut SocketConnectionInfo {
     unsafe { job_custom_ptr(c) }
 }

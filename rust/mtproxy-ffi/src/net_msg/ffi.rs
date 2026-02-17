@@ -1,10 +1,22 @@
 //! FFI export surface for net message runtime.
 
 use super::core::*;
-use core::ffi::{c_int, c_void};
+use core::ffi::{c_char, c_int, c_void};
 use core::ptr;
 use core::sync::atomic::Ordering;
 use libc::iovec;
+
+#[repr(C)]
+pub struct RawMsgStatsBuffer {
+    pub buff: *mut c_char,
+    pub pos: c_int,
+    pub size: c_int,
+    pub flags: c_int,
+}
+
+unsafe extern "C" {
+    fn sb_printf(sb: *mut RawMsgStatsBuffer, format: *const c_char, ...);
+}
 
 #[no_mangle]
 pub static mut empty_rwm: RawMessage = RawMessage {
@@ -367,4 +379,262 @@ pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_to_tl_string(raw: *mut RawMessa
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_from_tl_string(raw: *mut RawMessage) {
     rwm_from_tl_string_impl(raw)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn raw_msg_prepare_stat(sb: *mut RawMsgStatsBuffer) -> c_int {
+    if sb.is_null() {
+        return 0;
+    }
+
+    let mut total_msgs = 0;
+    let mut total_msg_parts = 0;
+    let rc = unsafe { mtproxy_ffi_net_msg_fetch_stats(&raw mut total_msgs, &raw mut total_msg_parts) };
+    assert_eq!(rc, 0);
+
+    unsafe { sb_printf(sb, c">>>>>>raw_msg>>>>>>\tstart\n".as_ptr()) };
+    unsafe { sb_printf(sb, c"rwm_total_msgs\t%d\n".as_ptr(), total_msgs) };
+    unsafe { sb_printf(sb, c"rwm_total_msg_parts\t%d\n".as_ptr(), total_msg_parts) };
+    unsafe { sb_printf(sb, c"<<<<<<raw_msg<<<<<<\tend\n".as_ptr()) };
+    unsafe { (*sb).pos }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn new_msg_part(neighbor: *mut MsgPart, x: *mut MsgBuffer) -> *mut MsgPart {
+    unsafe { mtproxy_ffi_net_msg_new_msg_part(neighbor, x) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rwm_free(raw: *mut RawMessage) -> c_int {
+    unsafe { mtproxy_ffi_net_msg_rwm_free(raw) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rwm_init(raw: *mut RawMessage, alloc_bytes: c_int) -> c_int {
+    unsafe { mtproxy_ffi_net_msg_rwm_init(raw, alloc_bytes) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rwm_create(
+    raw: *mut RawMessage,
+    data: *const c_void,
+    alloc_bytes: c_int,
+) -> c_int {
+    unsafe { mtproxy_ffi_net_msg_rwm_create(raw, data, alloc_bytes) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rwm_clone(dest_raw: *mut RawMessage, src_raw: *mut RawMessage) {
+    unsafe { mtproxy_ffi_net_msg_rwm_clone(dest_raw, src_raw) };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rwm_move(dest_raw: *mut RawMessage, src_raw: *mut RawMessage) {
+    unsafe { mtproxy_ffi_net_msg_rwm_move(dest_raw, src_raw) };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rwm_push_data(
+    raw: *mut RawMessage,
+    data: *const c_void,
+    alloc_bytes: c_int,
+) -> c_int {
+    unsafe { mtproxy_ffi_net_msg_rwm_push_data(raw, data, alloc_bytes) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rwm_push_data_ext(
+    raw: *mut RawMessage,
+    data: *const c_void,
+    alloc_bytes: c_int,
+    prepend: c_int,
+    small_buffer: c_int,
+    std_buffer: c_int,
+) -> c_int {
+    unsafe {
+        mtproxy_ffi_net_msg_rwm_push_data_ext(
+            raw,
+            data,
+            alloc_bytes,
+            prepend,
+            small_buffer,
+            std_buffer,
+        )
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rwm_push_data_front(
+    raw: *mut RawMessage,
+    data: *const c_void,
+    alloc_bytes: c_int,
+) -> c_int {
+    unsafe { mtproxy_ffi_net_msg_rwm_push_data_front(raw, data, alloc_bytes) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rwm_fetch_data(
+    raw: *mut RawMessage,
+    data: *mut c_void,
+    bytes: c_int,
+) -> c_int {
+    unsafe { mtproxy_ffi_net_msg_rwm_fetch_data(raw, data, bytes) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rwm_skip_data(raw: *mut RawMessage, bytes: c_int) -> c_int {
+    unsafe { mtproxy_ffi_net_msg_rwm_skip_data(raw, bytes) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rwm_fetch_lookup(
+    raw: *mut RawMessage,
+    buf: *mut c_void,
+    bytes: c_int,
+) -> c_int {
+    unsafe { mtproxy_ffi_net_msg_rwm_fetch_lookup(raw, buf, bytes) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rwm_fetch_data_back(
+    raw: *mut RawMessage,
+    data: *mut c_void,
+    bytes: c_int,
+) -> c_int {
+    unsafe { mtproxy_ffi_net_msg_rwm_fetch_data_back(raw, data, bytes) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rwm_trunc(raw: *mut RawMessage, len: c_int) -> c_int {
+    unsafe { mtproxy_ffi_net_msg_rwm_trunc(raw, len) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rwm_union(raw: *mut RawMessage, tail: *mut RawMessage) -> c_int {
+    unsafe { mtproxy_ffi_net_msg_rwm_union(raw, tail) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rwm_split_head(
+    head: *mut RawMessage,
+    raw: *mut RawMessage,
+    bytes: c_int,
+) -> c_int {
+    unsafe { mtproxy_ffi_net_msg_rwm_split_head(head, raw, bytes) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rwm_prepend_alloc(raw: *mut RawMessage, alloc_bytes: c_int) -> *mut c_void {
+    unsafe { mtproxy_ffi_net_msg_rwm_prepend_alloc(raw, alloc_bytes) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rwm_postpone_alloc(raw: *mut RawMessage, alloc_bytes: c_int) -> *mut c_void {
+    unsafe { mtproxy_ffi_net_msg_rwm_postpone_alloc(raw, alloc_bytes) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rwm_prepare_iovec(
+    raw: *const RawMessage,
+    iov: *mut iovec,
+    iov_len: c_int,
+    bytes: c_int,
+) -> c_int {
+    unsafe { mtproxy_ffi_net_msg_rwm_prepare_iovec(raw, iov, iov_len, bytes) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rwm_dump(raw: *mut RawMessage) -> c_int {
+    unsafe { mtproxy_ffi_net_msg_rwm_dump(raw) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rwm_custom_crc32(
+    raw: *mut RawMessage,
+    bytes: c_int,
+    custom_crc32_partial: Crc32PartialFunc,
+) -> u32 {
+    unsafe { mtproxy_ffi_net_msg_rwm_custom_crc32(raw, bytes, custom_crc32_partial) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rwm_process(
+    raw: *mut RawMessage,
+    bytes: c_int,
+    process_block: ProcessBlockFn,
+    extra: *mut c_void,
+) -> c_int {
+    unsafe { mtproxy_ffi_net_msg_rwm_process(raw, bytes, process_block, extra) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rwm_process_ex(
+    raw: *mut RawMessage,
+    bytes: c_int,
+    offset: c_int,
+    flags: c_int,
+    process_block: ProcessBlockFn,
+    extra: *mut c_void,
+) -> c_int {
+    unsafe { mtproxy_ffi_net_msg_rwm_process_ex(raw, bytes, offset, flags, process_block, extra) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rwm_process_from_offset(
+    raw: *mut RawMessage,
+    bytes: c_int,
+    offset: c_int,
+    process_block: ProcessBlockFn,
+    extra: *mut c_void,
+) -> c_int {
+    unsafe { mtproxy_ffi_net_msg_rwm_process_from_offset(raw, bytes, offset, process_block, extra) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rwm_transform_from_offset(
+    raw: *mut RawMessage,
+    bytes: c_int,
+    offset: c_int,
+    transform_block: TransformBlockFn,
+    extra: *mut c_void,
+) -> c_int {
+    unsafe {
+        mtproxy_ffi_net_msg_rwm_transform_from_offset(raw, bytes, offset, transform_block, extra)
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rwm_process_and_advance(
+    raw: *mut RawMessage,
+    bytes: c_int,
+    process_block: ProcessBlockFn,
+    extra: *mut c_void,
+) -> c_int {
+    unsafe { mtproxy_ffi_net_msg_rwm_process_and_advance(raw, bytes, process_block, extra) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rwm_sha1(raw: *mut RawMessage, bytes: c_int, output: *mut u8) -> c_int {
+    unsafe { mtproxy_ffi_net_msg_rwm_sha1(raw, bytes, output) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rwm_encrypt_decrypt_to(
+    raw: *mut RawMessage,
+    res: *mut RawMessage,
+    bytes: c_int,
+    ctx: *mut c_void,
+    block_size: c_int,
+) -> c_int {
+    unsafe { mtproxy_ffi_net_msg_rwm_encrypt_decrypt_to(raw, res, bytes, ctx, block_size) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rwm_get_block_ptr(raw: *mut RawMessage) -> *mut c_void {
+    unsafe { mtproxy_ffi_net_msg_rwm_get_block_ptr(raw) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rwm_get_block_ptr_bytes(raw: *mut RawMessage) -> c_int {
+    unsafe { mtproxy_ffi_net_msg_rwm_get_block_ptr_bytes(raw) }
 }

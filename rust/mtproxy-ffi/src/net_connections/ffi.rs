@@ -13,6 +13,29 @@ pub extern "C" fn mtproxy_ffi_net_connections_server_check_ready(
     server_check_ready_impl(status, ready)
 }
 
+/// Returns pointers to `connection_info.crypto` and `.crypto_temp` slots.
+///
+/// # Safety
+/// `out_crypto_slot`/`out_crypto_temp_slot` may be null; non-null pointers must be writable.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_connections_conn_crypto_slots(
+    c: ConnectionJob,
+    out_crypto_slot: *mut *mut *mut c_void,
+    out_crypto_temp_slot: *mut *mut *mut c_void,
+) -> c_int {
+    let (crypto_slot, crypto_temp_slot) = unsafe { conn_crypto_slots(c) };
+    if crypto_slot.is_null() || crypto_temp_slot.is_null() {
+        return -1;
+    }
+    if !out_crypto_slot.is_null() {
+        unsafe { *out_crypto_slot = crypto_slot };
+    }
+    if !out_crypto_temp_slot.is_null() {
+        unsafe { *out_crypto_temp_slot = crypto_temp_slot };
+    }
+    0
+}
+
 /// Applies accept-rate accounting and decides whether one accept is allowed.
 ///
 /// # Safety
