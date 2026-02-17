@@ -700,20 +700,6 @@ int32_t mtproxy_ffi_net_msg_encrypt_decrypt_effective_bytes(
   int32_t block_size
 );
 
-// net-thread helper: runs one notification event via callback bridge.
-int32_t mtproxy_ffi_net_thread_run_notification_event(
-  int32_t event_type,
-  void *who,
-  void *event,
-  int32_t (*rpc_ready)(void *who),
-  void (*rpc_close)(void *who),
-  void (*rpc_alarm)(void *who),
-  void (*rpc_wakeup)(void *who),
-  void (*fail_connection)(void *who, int32_t code),
-  void (*job_decref)(void *who),
-  void (*event_free)(void *event)
-);
-
 // common/resolver helpers: kdb state reload and gethostbyname planning.
 enum { MTPROXY_FFI_RESOLVER_LOOKUP_SYSTEM_DNS = 0 };
 enum { MTPROXY_FFI_RESOLVER_LOOKUP_NOT_FOUND = 1 };

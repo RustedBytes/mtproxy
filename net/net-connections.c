@@ -634,7 +634,6 @@ int tcp_prepare_iovec(struct iovec *iov, int *iovcnt, int maxcnt,
 }
 
 void assert_net_cpu_thread(void) {}
-void assert_net_net_thread(void) {}
 void assert_engine_thread(void) {
   assert(this_job_thread && (this_job_thread->thread_class == JC_ENGINE ||
                              this_job_thread->thread_class == JC_MAIN));

@@ -458,7 +458,6 @@ static inline int is_ipv6_localhost(unsigned char ipv6[16]) {
 }
 
 void assert_net_cpu_thread(void);
-void assert_net_net_thread(void);
 void assert_engine_thread(void);
 
 connection_job_t conn_target_get_connection(conn_target_job_t CT,
