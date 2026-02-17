@@ -129,7 +129,11 @@ pub fn get_domain_server_hello_encrypted_size(
 /// # Returns
 /// `true` if the timestamp is valid and the request should be allowed
 #[must_use]
-pub fn is_allowed_timestamp(timestamp: i32, now: i32, first_client_random_time: Option<i32>) -> bool {
+pub fn is_allowed_timestamp(
+    timestamp: i32,
+    now: i32,
+    first_client_random_time: Option<i32>,
+) -> bool {
     // Do not allow timestamps in the future
     // After time synchronization client should always have time in the past
     if timestamp > now + 3 {
@@ -173,13 +177,13 @@ pub fn add_length(buffer: &mut [u8], pos: &mut usize, length: i32) -> bool {
     if *pos + 2 > buffer.len() {
         return false;
     }
-    
+
     let length_u16 = if length < 0 || length > 65535 {
         return false;
     } else {
         length as u16
     };
-    
+
     let bytes = length_u16.to_be_bytes();
     buffer[*pos..*pos + 2].copy_from_slice(&bytes);
     *pos += 2;
@@ -200,7 +204,7 @@ pub fn add_string(buffer: &mut [u8], pos: &mut usize, data: &[u8]) -> bool {
     if *pos + data.len() > buffer.len() {
         return false;
     }
-    
+
     buffer[*pos..*pos + data.len()].copy_from_slice(data);
     *pos += data.len();
     true
@@ -225,7 +229,7 @@ pub fn add_grease(buffer: &mut [u8], pos: &mut usize, greases: &[u8], num: usize
     if num >= greases.len() {
         return false;
     }
-    
+
     buffer[*pos] = greases[num];
     buffer[*pos + 1] = greases[num];
     *pos += 2;
@@ -265,7 +269,7 @@ pub fn add_random_bytes(buffer: &mut [u8], pos: &mut usize, rand_bytes: &[u8]) -
     if *pos + rand_bytes.len() > buffer.len() {
         return false;
     }
-    
+
     buffer[*pos..*pos + rand_bytes.len()].copy_from_slice(rand_bytes);
     *pos += rand_bytes.len();
     true
@@ -285,7 +289,7 @@ pub fn add_public_key(buffer: &mut [u8], pos: &mut usize, public_key: &[u8; 32])
     if *pos + 32 > buffer.len() {
         return false;
     }
-    
+
     buffer[*pos..*pos + 32].copy_from_slice(public_key);
     *pos += 32;
     true
@@ -295,11 +299,10 @@ pub fn add_public_key(buffer: &mut [u8], pos: &mut usize, public_key: &[u8; 32])
 mod tests {
     use super::{
         add_grease, add_length, add_public_key, add_random_bytes, add_string,
-        client_random_bucket_index, domain_bucket_index,
-        get_domain_server_hello_encrypted_size, have_client_random_check, is_allowed_timestamp,
-        select_server_hello_profile, tls_expect_bytes, tls_has_bytes, tls_read_length,
-        CLIENT_RANDOM_HASH_BITS, DOMAIN_HASH_MOD, MAX_ALLOWED_TIMESTAMP_ERROR,
-        SERVER_HELLO_PROFILE_FIXED, SERVER_HELLO_PROFILE_RANDOM_AVG,
+        client_random_bucket_index, domain_bucket_index, get_domain_server_hello_encrypted_size,
+        have_client_random_check, is_allowed_timestamp, select_server_hello_profile,
+        tls_expect_bytes, tls_has_bytes, tls_read_length, CLIENT_RANDOM_HASH_BITS, DOMAIN_HASH_MOD,
+        MAX_ALLOWED_TIMESTAMP_ERROR, SERVER_HELLO_PROFILE_FIXED, SERVER_HELLO_PROFILE_RANDOM_AVG,
         SERVER_HELLO_PROFILE_RANDOM_NEAR,
     };
 
@@ -396,24 +399,42 @@ mod tests {
     #[test]
     fn test_get_domain_server_hello_encrypted_size_no_random() {
         // Without randomization, should return base size
-        assert_eq!(get_domain_server_hello_encrypted_size(1000, false, 123), 1000);
-        assert_eq!(get_domain_server_hello_encrypted_size(2500, false, 999), 2500);
+        assert_eq!(
+            get_domain_server_hello_encrypted_size(1000, false, 123),
+            1000
+        );
+        assert_eq!(
+            get_domain_server_hello_encrypted_size(2500, false, 999),
+            2500
+        );
     }
 
     #[test]
     fn test_get_domain_server_hello_encrypted_size_with_random() {
         // With randomization, should add -1, 0, or +1
         // Test case where rand & 1 == 0 and (rand >> 1) & 1 == 0: result = base + 0 - 0 = base
-        assert_eq!(get_domain_server_hello_encrypted_size(1000, true, 0b00), 1000);
-        
+        assert_eq!(
+            get_domain_server_hello_encrypted_size(1000, true, 0b00),
+            1000
+        );
+
         // Test case where rand & 1 == 1 and (rand >> 1) & 1 == 0: result = base + 0 - 1 = base - 1
-        assert_eq!(get_domain_server_hello_encrypted_size(1000, true, 0b01), 999);
-        
+        assert_eq!(
+            get_domain_server_hello_encrypted_size(1000, true, 0b01),
+            999
+        );
+
         // Test case where rand & 1 == 0 and (rand >> 1) & 1 == 1: result = base + 1 - 0 = base + 1
-        assert_eq!(get_domain_server_hello_encrypted_size(1000, true, 0b10), 1001);
-        
+        assert_eq!(
+            get_domain_server_hello_encrypted_size(1000, true, 0b10),
+            1001
+        );
+
         // Test case where rand & 1 == 1 and (rand >> 1) & 1 == 1: result = base + 1 - 1 = base
-        assert_eq!(get_domain_server_hello_encrypted_size(1000, true, 0b11), 1000);
+        assert_eq!(
+            get_domain_server_hello_encrypted_size(1000, true, 0b11),
+            1000
+        );
     }
 
     #[test]
@@ -429,14 +450,22 @@ mod tests {
         let now = 1000;
         // Recent past timestamps within MAX_ALLOWED_TIMESTAMP_ERROR should be allowed
         assert!(is_allowed_timestamp(999, now, None));
-        assert!(is_allowed_timestamp(now - MAX_ALLOWED_TIMESTAMP_ERROR + 1, now, None));
+        assert!(is_allowed_timestamp(
+            now - MAX_ALLOWED_TIMESTAMP_ERROR + 1,
+            now,
+            None
+        ));
     }
 
     #[test]
     fn test_is_allowed_timestamp_old() {
         let now = 1000;
         // Old timestamps (> MAX_ALLOWED_TIMESTAMP_ERROR) should be rejected
-        assert!(!is_allowed_timestamp(now - MAX_ALLOWED_TIMESTAMP_ERROR - 1, now, None));
+        assert!(!is_allowed_timestamp(
+            now - MAX_ALLOWED_TIMESTAMP_ERROR - 1,
+            now,
+            None
+        ));
     }
 
     #[test]
@@ -452,19 +481,19 @@ mod tests {
     fn test_add_length() {
         let mut buffer = [0u8; 10];
         let mut pos = 0;
-        
+
         // Test normal case
         assert!(add_length(&mut buffer, &mut pos, 0x1234));
         assert_eq!(buffer[0], 0x12);
         assert_eq!(buffer[1], 0x34);
         assert_eq!(pos, 2);
-        
+
         // Test max value
         assert!(add_length(&mut buffer, &mut pos, 65535));
         assert_eq!(buffer[2], 0xff);
         assert_eq!(buffer[3], 0xff);
         assert_eq!(pos, 4);
-        
+
         // Test buffer overflow
         let mut pos = 9;
         assert!(!add_length(&mut buffer, &mut pos, 100));
@@ -475,11 +504,11 @@ mod tests {
     fn test_add_length_invalid_values() {
         let mut buffer = [0u8; 10];
         let mut pos = 0;
-        
+
         // Test negative value
         assert!(!add_length(&mut buffer, &mut pos, -1));
         assert_eq!(pos, 0);
-        
+
         // Test value too large
         assert!(!add_length(&mut buffer, &mut pos, 65536));
         assert_eq!(pos, 0);
@@ -489,23 +518,23 @@ mod tests {
     fn test_add_string() {
         let mut buffer = [0u8; 20];
         let mut pos = 0;
-        
+
         // Test normal case
         let data = b"hello";
         assert!(add_string(&mut buffer, &mut pos, data));
         assert_eq!(&buffer[0..5], b"hello");
         assert_eq!(pos, 5);
-        
+
         // Test another string
         let data2 = b" world";
         assert!(add_string(&mut buffer, &mut pos, data2));
         assert_eq!(&buffer[0..11], b"hello world");
         assert_eq!(pos, 11);
-        
+
         // Test empty string
         assert!(add_string(&mut buffer, &mut pos, b""));
         assert_eq!(pos, 11);
-        
+
         // Test buffer overflow
         let large_data = b"too much data here";
         assert!(!add_string(&mut buffer, &mut pos, large_data));
@@ -517,24 +546,24 @@ mod tests {
         let mut buffer = [0u8; 10];
         let greases = [0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x11];
         let mut pos = 0;
-        
+
         // Test first GREASE
         assert!(add_grease(&mut buffer, &mut pos, &greases, 0));
         assert_eq!(buffer[0], 0xaa);
         assert_eq!(buffer[1], 0xaa);
         assert_eq!(pos, 2);
-        
+
         // Test third GREASE
         assert!(add_grease(&mut buffer, &mut pos, &greases, 2));
         assert_eq!(buffer[2], 0xcc);
         assert_eq!(buffer[3], 0xcc);
         assert_eq!(pos, 4);
-        
+
         // Test buffer overflow
         let mut pos = 9;
         assert!(!add_grease(&mut buffer, &mut pos, &greases, 0));
         assert_eq!(pos, 9); // Position unchanged on failure
-        
+
         // Test invalid index
         let mut pos = 0;
         assert!(!add_grease(&mut buffer, &mut pos, &greases, 10));
@@ -546,16 +575,16 @@ mod tests {
         let random1 = [1u8; 16];
         let random2 = [2u8; 16];
         let random3 = [3u8; 16];
-        
+
         let existing = [&random1, &random2];
-        
+
         // Test found
         assert!(have_client_random_check(&random1, &existing));
         assert!(have_client_random_check(&random2, &existing));
-        
+
         // Test not found
         assert!(!have_client_random_check(&random3, &existing));
-        
+
         // Test empty list
         assert!(!have_client_random_check(&random1, &[]));
     }
@@ -564,19 +593,19 @@ mod tests {
     fn test_add_random_bytes() {
         let mut buffer = [0u8; 20];
         let mut pos = 0;
-        
+
         // Test normal case
         let random_data = [0xaa, 0xbb, 0xcc, 0xdd];
         assert!(add_random_bytes(&mut buffer, &mut pos, &random_data));
         assert_eq!(&buffer[0..4], &random_data);
         assert_eq!(pos, 4);
-        
+
         // Test another set of random bytes
         let more_random = [0x11, 0x22, 0x33];
         assert!(add_random_bytes(&mut buffer, &mut pos, &more_random));
         assert_eq!(&buffer[4..7], &more_random);
         assert_eq!(pos, 7);
-        
+
         // Test buffer overflow
         let large_random = [0xff; 20];
         assert!(!add_random_bytes(&mut buffer, &mut pos, &large_random));
@@ -587,19 +616,19 @@ mod tests {
     fn test_add_public_key() {
         let mut buffer = [0u8; 64];
         let mut pos = 0;
-        
+
         // Test normal case with 32-byte key
         let pub_key = [0x42u8; 32];
         assert!(add_public_key(&mut buffer, &mut pos, &pub_key));
         assert_eq!(&buffer[0..32], &pub_key);
         assert_eq!(pos, 32);
-        
+
         // Test adding another key
         let pub_key2 = [0x99u8; 32];
         assert!(add_public_key(&mut buffer, &mut pos, &pub_key2));
         assert_eq!(&buffer[32..64], &pub_key2);
         assert_eq!(pos, 64);
-        
+
         // Test buffer overflow
         let pub_key3 = [0xffu8; 32];
         assert!(!add_public_key(&mut buffer, &mut pos, &pub_key3));

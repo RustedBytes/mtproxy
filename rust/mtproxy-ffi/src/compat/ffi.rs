@@ -514,7 +514,9 @@ pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_add_random_bytes(
     rand_bytes: *const u8,
     rand_bytes_len: i32,
 ) -> i32 {
-    unsafe { net_tcp_rpc_ext_add_random_bytes_ffi(buffer, buffer_len, pos, rand_bytes, rand_bytes_len) }
+    unsafe {
+        net_tcp_rpc_ext_add_random_bytes_ffi(buffer, buffer_len, pos, rand_bytes, rand_bytes_len)
+    }
 }
 
 /// Adds a 32-byte public key to a TLS request buffer.
@@ -737,7 +739,14 @@ pub unsafe extern "C" fn mtproxy_ffi_tcp_rpc_add_dh_accept(
     let Some(out_time) = (unsafe { mut_ref_from_ptr(out_last_time) }) else {
         return -1;
     };
-    tcp_rpc_add_dh_accept_impl(remaining, last_time, max_rate, precise_now, out_rem, out_time)
+    tcp_rpc_add_dh_accept_impl(
+        remaining,
+        last_time,
+        max_rate,
+        precise_now,
+        out_rem,
+        out_time,
+    )
 }
 
 /// Parses a tcp-rpc nonce packet into normalized fields.

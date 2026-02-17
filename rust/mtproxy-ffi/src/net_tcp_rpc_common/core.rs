@@ -203,8 +203,11 @@ unsafe extern "C" {
     fn rwm_fetch_data(raw: *mut RawMessage, data: *mut c_void, bytes: c_int) -> c_int;
     fn rwm_union(raw: *mut RawMessage, tail: *mut RawMessage) -> c_int;
     fn rwm_create(raw: *mut RawMessage, data: *const c_void, alloc_bytes: c_int) -> c_int;
-    fn rwm_custom_crc32(raw: *mut RawMessage, bytes: c_int, custom_crc32_partial: Crc32PartialFn)
-    -> c_uint;
+    fn rwm_custom_crc32(
+        raw: *mut RawMessage,
+        bytes: c_int,
+        custom_crc32_partial: Crc32PartialFn,
+    ) -> c_uint;
 
     fn mpq_push_w(mq: *mut MpQueue, val: *mut c_void, flags: c_int) -> c_long;
 
@@ -257,7 +260,10 @@ pub(super) unsafe fn tcp_rpc_conn_send_data_impl(
 ) {
     assert_eq!(len & 3, 0);
     let mut raw = RawMessage::default();
-    assert_eq!(unsafe { rwm_create(ptr::addr_of_mut!(raw), data.cast_const(), len) }, len);
+    assert_eq!(
+        unsafe { rwm_create(ptr::addr_of_mut!(raw), data.cast_const(), len) },
+        len
+    );
     unsafe { tcp_rpc_conn_send_impl(c_tag_int, c, ptr::addr_of_mut!(raw), 0) };
 }
 
@@ -268,7 +274,10 @@ pub(super) unsafe fn tcp_rpc_conn_send_data_init_impl(
 ) {
     assert_eq!(len & 3, 0);
     let mut raw = RawMessage::default();
-    assert_eq!(unsafe { rwm_create(ptr::addr_of_mut!(raw), data.cast_const(), len) }, len);
+    assert_eq!(
+        unsafe { rwm_create(ptr::addr_of_mut!(raw), data.cast_const(), len) },
+        len
+    );
     unsafe { tcp_rpc_conn_send_init_impl(c, ptr::addr_of_mut!(raw), 0) };
 }
 
@@ -280,17 +289,26 @@ pub(super) unsafe fn tcp_rpc_conn_send_data_im_impl(
 ) {
     assert_eq!(len & 3, 0);
     let mut raw = RawMessage::default();
-    assert_eq!(unsafe { rwm_create(ptr::addr_of_mut!(raw), data.cast_const(), len) }, len);
+    assert_eq!(
+        unsafe { rwm_create(ptr::addr_of_mut!(raw), data.cast_const(), len) },
+        len
+    );
     unsafe { tcp_rpc_conn_send_im_impl(c_tag_int, c, ptr::addr_of_mut!(raw), 0) };
 }
 
-pub(super) unsafe fn tcp_rpc_conn_send_init_impl(c: ConnectionJob, raw: *mut RawMessage, flags: c_int) {
+pub(super) unsafe fn tcp_rpc_conn_send_init_impl(
+    c: ConnectionJob,
+    raw: *mut RawMessage,
+    flags: c_int,
+) {
     let conn = unsafe { conn_info(c) };
     let data = unsafe { rpc_data(c) };
     assert!(!raw.is_null());
 
     assert_eq!(unsafe { (*raw).total_bytes & 3 }, 0);
-    let header_words = [unsafe { (*raw).total_bytes + 12 }, unsafe { (*data).out_packet_num }];
+    let header_words = [unsafe { (*raw).total_bytes + 12 }, unsafe {
+        (*data).out_packet_num
+    }];
     unsafe {
         (*data).out_packet_num += 1;
     }
@@ -299,7 +317,8 @@ pub(super) unsafe fn tcp_rpc_conn_send_init_impl(c: ConnectionJob, raw: *mut Raw
     unsafe { copy_or_clone_message(out_raw, raw, flags) };
 
     let _ = unsafe { rwm_push_data_front(out_raw, header_words.as_ptr().cast(), 8) };
-    let crc32 = unsafe { rwm_custom_crc32(out_raw, (*out_raw).total_bytes, (*data).custom_crc_partial) };
+    let crc32 =
+        unsafe { rwm_custom_crc32(out_raw, (*out_raw).total_bytes, (*data).custom_crc_partial) };
     let _ = unsafe { rwm_push_data(out_raw, ptr::addr_of!(crc32).cast(), 4) };
 
     let socket_conn = unsafe { (*conn).io_conn };
@@ -323,7 +342,9 @@ pub(super) unsafe fn tcp_rpc_conn_send_im_impl(
     assert!(!raw.is_null());
 
     assert_eq!(unsafe { (*raw).total_bytes & 3 }, 0);
-    let header_words = [unsafe { (*raw).total_bytes + 12 }, unsafe { (*data).out_packet_num }];
+    let header_words = [unsafe { (*raw).total_bytes + 12 }, unsafe {
+        (*data).out_packet_num
+    }];
     unsafe {
         (*data).out_packet_num += 1;
     }
@@ -332,7 +353,8 @@ pub(super) unsafe fn tcp_rpc_conn_send_im_impl(
     unsafe { copy_or_clone_message(out_raw, raw, flags) };
 
     let _ = unsafe { rwm_push_data_front(out_raw, header_words.as_ptr().cast(), 8) };
-    let crc32 = unsafe { rwm_custom_crc32(out_raw, (*out_raw).total_bytes, (*data).custom_crc_partial) };
+    let crc32 =
+        unsafe { rwm_custom_crc32(out_raw, (*out_raw).total_bytes, (*data).custom_crc_partial) };
     let _ = unsafe { rwm_push_data(out_raw, ptr::addr_of!(crc32).cast(), 4) };
 
     let _ = unsafe { rwm_union(ptr::addr_of_mut!((*conn).out), out_raw) };
@@ -386,12 +408,7 @@ pub(super) unsafe fn tcp_rpc_default_execute_impl(
         );
         pong_packet[0] = RPC_PONG;
         unsafe {
-            tcp_rpc_conn_send_data_impl(
-                1,
-                job_incref(c),
-                12,
-                pong_packet.as_mut_ptr().cast(),
-            )
+            tcp_rpc_conn_send_data_impl(1, job_incref(c), 12, pong_packet.as_mut_ptr().cast())
         };
         return 0;
     }
@@ -408,13 +425,16 @@ pub(super) unsafe fn tcp_rpc_write_packet_impl(c: ConnectionJob, raw: *mut RawMe
     assert!(!raw.is_null());
 
     if (unsafe { (*data).flags } & (RPC_F_COMPACT | RPC_F_MEDIUM)) == 0 {
-        let header_words = [unsafe { (*raw).total_bytes + 12 }, unsafe { (*data).out_packet_num }];
+        let header_words = [unsafe { (*raw).total_bytes + 12 }, unsafe {
+            (*data).out_packet_num
+        }];
         unsafe {
             (*data).out_packet_num += 1;
         }
 
         let _ = unsafe { rwm_push_data_front(raw, header_words.as_ptr().cast(), 8) };
-        let crc32 = unsafe { rwm_custom_crc32(raw, (*raw).total_bytes, (*data).custom_crc_partial) };
+        let crc32 =
+            unsafe { rwm_custom_crc32(raw, (*raw).total_bytes, (*data).custom_crc_partial) };
         let _ = unsafe { rwm_push_data(raw, ptr::addr_of!(crc32).cast(), 4) };
         let _ = unsafe { rwm_union(ptr::addr_of_mut!((*conn).out), raw) };
     }
@@ -432,13 +452,17 @@ pub(super) unsafe fn tcp_rpc_write_packet_compact_impl(
 
     if unsafe { (*raw).total_bytes } == 5 {
         let mut flag = 0_u8;
-        assert_eq!(unsafe { rwm_fetch_data(raw, ptr::addr_of_mut!(flag).cast(), 1) }, 1);
+        assert_eq!(
+            unsafe { rwm_fetch_data(raw, ptr::addr_of_mut!(flag).cast(), 1) },
+            1
+        );
         assert_eq!(flag, 0xdd);
         let _ = unsafe { rwm_union(ptr::addr_of_mut!((*conn).out), raw) };
         return 0;
     }
 
-    if (unsafe { (*conn).flags } & C_IS_TLS) != 0 && unsafe { (*conn).left_tls_packet_length } == -1 {
+    if (unsafe { (*conn).flags } & C_IS_TLS) != 0 && unsafe { (*conn).left_tls_packet_length } == -1
+    {
         let _ = unsafe { rwm_union(ptr::addr_of_mut!((*conn).out), raw) };
         return 0;
     }
@@ -459,14 +483,15 @@ pub(super) unsafe fn tcp_rpc_write_packet_compact_impl(
         assert_eq!(len & 3, 0);
     }
 
-    let (prefix_word, prefix_bytes) = mtproxy_core::runtime::net::tcp_rpc_common::encode_compact_header(
-        len,
-        if (unsafe { (*data).flags } & RPC_F_MEDIUM) != 0 {
-            1
-        } else {
-            0
-        },
-    );
+    let (prefix_word, prefix_bytes) =
+        mtproxy_core::runtime::net::tcp_rpc_common::encode_compact_header(
+            len,
+            if (unsafe { (*data).flags } & RPC_F_MEDIUM) != 0 {
+                1
+            } else {
+                0
+            },
+        );
     assert!(prefix_bytes == 1 || prefix_bytes == 4);
     let _ = unsafe { rwm_push_data_front(raw, ptr::addr_of!(prefix_word).cast(), prefix_bytes) };
     let _ = unsafe { rwm_union(ptr::addr_of_mut!((*conn).out), raw) };
@@ -480,7 +505,8 @@ pub(super) unsafe fn tcp_rpc_flush_impl(c: ConnectionJob) -> c_int {
     if unsafe { !(*conn).crypto.is_null() } {
         let conn_type = unsafe { (*conn).type_ };
         if !conn_type.is_null() {
-            let pad_bytes = if let Some(needed) = unsafe { (*conn_type).crypto_needed_output_bytes } {
+            let pad_bytes = if let Some(needed) = unsafe { (*conn_type).crypto_needed_output_bytes }
+            {
                 unsafe { needed(c) }
             } else {
                 0
@@ -491,7 +517,13 @@ pub(super) unsafe fn tcp_rpc_flush_impl(c: ConnectionJob) -> c_int {
                 let pad_str = [4_i32, 4_i32, 4_i32];
                 assert!(pad_bytes <= 12);
                 assert_eq!(
-                    unsafe { rwm_push_data(ptr::addr_of_mut!((*conn).out), pad_str.as_ptr().cast(), pad_bytes) },
+                    unsafe {
+                        rwm_push_data(
+                            ptr::addr_of_mut!((*conn).out),
+                            pad_str.as_ptr().cast(),
+                            pad_bytes,
+                        )
+                    },
                     pad_bytes
                 );
             }

@@ -6,7 +6,16 @@ use core::ptr;
 use core::sync::atomic::{AtomicI32, Ordering};
 
 use mtproxy_core::runtime::net::tcp_rpc_client::{
-    packet_len_state as core_packet_len_state, process_nonce_packet_for_compat,
+    default_check_perm as core_default_check_perm, default_check_ready as core_default_check_ready,
+    default_connected_crypto_flags as core_default_connected_crypto_flags,
+    default_outbound_crypto_flags as core_default_outbound_crypto_flags,
+    init_fake_crypto_state as core_init_fake_crypto_state,
+    normalize_perm_flags as core_normalize_perm_flags, packet_len_state as core_packet_len_state,
+    process_nonce_packet_for_compat, requires_dh_accept as core_requires_dh_accept,
+    validate_handshake as core_validate_handshake,
+    validate_handshake_header as core_validate_handshake_header,
+    validate_nonce_header as core_validate_nonce_header, DefaultReadyState, RPCF_ALLOW_ENC,
+    RPCF_ALLOW_UNENC, RPCF_ENC_SENT, RPCF_REQ_DH, RPCF_USE_CRC32C,
 };
 use mtproxy_core::runtime::net::tcp_rpc_common::{
     parse_handshake_packet, parse_nonce_packet, HandshakeErrorPacket, HandshakePacket,
@@ -27,17 +36,9 @@ const CR_NOTYET: c_int = 0;
 const CR_OK: c_int = 1;
 const CR_FAILED: c_int = 4;
 
-const RPCF_ALLOW_UNENC: c_int = 1;
-const RPCF_ALLOW_ENC: c_int = 2;
-const RPCF_REQ_DH: c_int = 4;
-const RPCF_ALLOW_SKIP_DH: c_int = 8;
-const RPCF_ENC_SENT: c_int = 16;
-const RPCF_USE_CRC32C: c_int = 2048;
-
 const TCP_RPC_IGNORE_PID: c_int = 4;
 
 const RPC_NONCE: c_int = 0x7acb_87aa_u32 as i32;
-const RPC_HANDSHAKE: c_int = 0x7682_eef5_u32 as i32;
 const RPC_CRYPTO_NONE: c_int = 0;
 const RPC_CRYPTO_AES: c_int = 1;
 const RPC_CRYPTO_AES_EXT: c_int = 2;
@@ -417,11 +418,15 @@ unsafe fn tcp_rpcc_process_nonce_packet_impl(c: ConnectionJob, msg: *mut RawMess
     );
     let packet_len = unsafe { (*msg).total_bytes };
 
-    if packet_num != -2 || packet_type != RPC_NONCE {
-        return -2;
-    }
-    if packet_len < NONCE_PACKET_LEN as c_int || packet_len > NONCE_DH_PACKET_MAX_LEN as c_int {
-        return -3;
+    let nonce_header_state = core_validate_nonce_header(
+        packet_num,
+        packet_type,
+        packet_len,
+        NONCE_PACKET_LEN as c_int,
+        NONCE_DH_PACKET_MAX_LEN as c_int,
+    );
+    if nonce_header_state < 0 {
+        return nonce_header_state;
     }
 
     let Ok(packet_len_usize) = usize::try_from(packet_len) else {
@@ -567,10 +572,16 @@ unsafe fn tcp_rpcc_process_handshake_packet_impl(c: ConnectionJob, msg: *mut Raw
         4
     );
 
-    if packet_num != -1 || packet_type != RPC_HANDSHAKE {
+    let handshake_header_state = core_validate_handshake_header(
+        packet_num,
+        packet_type,
+        packet_len,
+        c_int::try_from(HandshakePacket::size()).unwrap_or(c_int::MAX),
+    );
+    if handshake_header_state == -2 {
         return -2;
     }
-    if packet_len != c_int::try_from(HandshakePacket::size()).unwrap_or(c_int::MAX) {
+    if handshake_header_state == -3 {
         let _ = unsafe { tcp_rpcc_send_handshake_error_packet_impl(c, -3) };
         return -3;
     }
@@ -588,34 +599,32 @@ unsafe fn tcp_rpcc_process_handshake_packet_impl(c: ConnectionJob, msg: *mut Raw
     let mut sender_pid = core_to_pid(parsed.sender_pid);
     let mut expected_remote = unsafe { (*data).remote_pid };
     let sender_matches = unsafe { matches_pid(&mut sender_pid, &mut expected_remote) != 0 };
-    if !sender_matches && (unsafe { (*funcs).mode_flags } & TCP_RPC_IGNORE_PID) == 0 {
-        let _ = unsafe { tcp_rpcc_send_handshake_error_packet_impl(c, -6) };
-        return -6;
-    }
     if sender_pid.ip == 0 {
         sender_pid.ip = unsafe { (*data).remote_pid.ip };
-    }
-    unsafe {
-        (*data).remote_pid = sender_pid;
     }
 
     let mut local_pid = unsafe { PID };
     let mut peer_pid = core_to_pid(parsed.peer_pid);
-    if unsafe { matches_pid(&mut local_pid, &mut peer_pid) == 0 } {
-        let _ = unsafe { tcp_rpcc_send_handshake_error_packet_impl(c, -4) };
-        return -4;
-    }
-
-    if (parsed.flags & 0xff) != 0 {
-        let _ = unsafe { tcp_rpcc_send_handshake_error_packet_impl(c, -7) };
-        return -7;
-    }
-
-    if (parsed.flags & RPCF_USE_CRC32C) != 0 {
-        if ((unsafe { tcp_get_default_rpc_flags() } as c_int) & RPCF_USE_CRC32C) == 0 {
-            let _ = unsafe { tcp_rpcc_send_handshake_error_packet_impl(c, -8) };
-            return -8;
+    let peer_pid_matches = unsafe { matches_pid(&mut local_pid, &mut peer_pid) != 0 };
+    let enable_crc32c = match core_validate_handshake(
+        parsed.flags,
+        sender_matches,
+        (unsafe { (*funcs).mode_flags } & TCP_RPC_IGNORE_PID) != 0,
+        peer_pid_matches,
+        unsafe { tcp_get_default_rpc_flags() as c_int },
+    ) {
+        Ok(value) => value,
+        Err(code) => {
+            let _ = unsafe { tcp_rpcc_send_handshake_error_packet_impl(c, code) };
+            return code;
         }
+    };
+
+    unsafe {
+        (*data).remote_pid = sender_pid;
+    }
+
+    if enable_crc32c {
         unsafe {
             (*data).crypto_flags |= RPCF_USE_CRC32C;
             (*data).custom_crc_partial = crc32c_partial;
@@ -807,20 +816,19 @@ pub(super) unsafe fn tcp_rpcc_connected_impl(c: ConnectionJob) -> c_int {
     }
 
     if let Some(rpc_check_perm) = unsafe { (*funcs).rpc_check_perm } {
-        let mut res = unsafe { rpc_check_perm(c) };
+        let res = unsafe { rpc_check_perm(c) };
         if res < 0 {
             return res;
         }
-        res &= RPCF_ALLOW_UNENC | RPCF_ALLOW_ENC | RPCF_REQ_DH | RPCF_ALLOW_SKIP_DH;
-        if (res & (RPCF_ALLOW_UNENC | RPCF_ALLOW_ENC)) == 0 {
+        let Some(res) = core_normalize_perm_flags(res) else {
             return -1;
-        }
+        };
         unsafe {
             (*data).crypto_flags = res;
         }
     } else {
         unsafe {
-            (*data).crypto_flags = RPCF_ALLOW_ENC | RPCF_ALLOW_UNENC;
+            (*data).crypto_flags = core_default_connected_crypto_flags();
         }
     }
 
@@ -862,60 +870,51 @@ pub(super) unsafe fn tcp_rpcc_default_check_ready_impl(c: ConnectionJob) -> c_in
     let conn = unsafe { conn_info(c) };
     let data = unsafe { rpc_data(c) };
 
-    if (unsafe { (*conn).flags } & C_ERROR) != 0 {
-        unsafe {
-            (*conn).ready = CR_FAILED;
-            return (*conn).ready;
-        }
-    }
-
     const CONNECT_TIMEOUT: c_double = 3.0;
-    if unsafe { (*conn).status == CONN_CONNECTING || (*data).in_packet_num < 0 } {
-        assert!(unsafe { (*conn).last_query_sent_time } != 0.0);
-        if unsafe { (*conn).last_query_sent_time < precise_now_value() - CONNECT_TIMEOUT } {
-            unsafe { fail_connection(c, -6) };
+    let ready_state = core_default_check_ready(
+        (unsafe { (*conn).flags } & C_ERROR) != 0,
+        unsafe { (*conn).status == CONN_CONNECTING },
+        unsafe { (*data).in_packet_num },
+        unsafe { (*conn).last_query_sent_time },
+        precise_now_value(),
+        CONNECT_TIMEOUT,
+        unsafe { (*conn).status == CONN_WORKING },
+    );
+
+    match ready_state {
+        DefaultReadyState::NotYet => unsafe {
+            (*conn).ready = CR_NOTYET;
+            (*conn).ready
+        },
+        DefaultReadyState::Ok => unsafe {
+            (*conn).ready = CR_OK;
+            (*conn).ready
+        },
+        DefaultReadyState::Fail(code) => {
+            if code < 0 {
+                unsafe { fail_connection(c, code) };
+            }
             unsafe {
                 (*conn).ready = CR_FAILED;
-                return (*conn).ready;
+                (*conn).ready
             }
         }
-        unsafe {
-            (*conn).ready = CR_NOTYET;
-            return (*conn).ready;
-        }
-    }
-
-    if unsafe { (*conn).status == CONN_WORKING } {
-        unsafe {
-            (*conn).ready = CR_OK;
-            return (*conn).ready;
-        }
-    }
-
-    unsafe { fail_connection(c, -7) };
-    unsafe {
-        (*conn).ready = CR_FAILED;
-        (*conn).ready
     }
 }
 
 unsafe fn tcp_rpcc_init_fake_crypto_impl(c: ConnectionJob) -> c_int {
     let data = unsafe { rpc_data(c) };
-    if unsafe { ((*data).crypto_flags & RPCF_ALLOW_UNENC) == 0 } {
+    let Ok(next_flags) = core_init_fake_crypto_state(unsafe { (*data).crypto_flags }) else {
         return -1;
-    }
+    };
 
     let mut packet = [0_u8; NONCE_PACKET_LEN];
     write_i32_ne(&mut packet, 0, RPC_NONCE);
     write_i32_ne(&mut packet, 8, RPC_CRYPTO_NONE);
     unsafe { send_data(c, packet.as_ptr(), packet.len()) };
 
-    assert_eq!(
-        unsafe { (*data).crypto_flags & (RPCF_ALLOW_ENC | RPCF_ENC_SENT) },
-        0
-    );
     unsafe {
-        (*data).crypto_flags |= RPCF_ENC_SENT;
+        (*data).crypto_flags = next_flags;
     }
 
     1
@@ -932,15 +931,14 @@ pub(super) unsafe fn tcp_rpcc_init_outbound_impl(c: ConnectionJob) -> c_int {
     }
 
     if let Some(rpc_check_perm) = unsafe { (*funcs).rpc_check_perm } {
-        let mut res = unsafe { rpc_check_perm(c) };
+        let res = unsafe { rpc_check_perm(c) };
         if res < 0 {
             return res;
         }
-        res &= RPCF_ALLOW_UNENC | RPCF_ALLOW_ENC | RPCF_REQ_DH | RPCF_ALLOW_SKIP_DH;
-        if (res & (RPCF_ALLOW_UNENC | RPCF_ALLOW_ENC)) == 0 {
+        let Some(res) = core_normalize_perm_flags(res) else {
             return -1;
-        }
-        if (res & RPCF_REQ_DH) != 0 && unsafe { tcp_add_dh_accept() } < 0 {
+        };
+        if core_requires_dh_accept(res) && unsafe { tcp_add_dh_accept() } < 0 {
             return -1;
         }
         unsafe {
@@ -948,7 +946,7 @@ pub(super) unsafe fn tcp_rpcc_init_outbound_impl(c: ConnectionJob) -> c_int {
         }
     } else {
         unsafe {
-            (*data).crypto_flags = RPCF_ALLOW_UNENC;
+            (*data).crypto_flags = core_default_outbound_crypto_flags();
         }
     }
 
@@ -963,7 +961,7 @@ pub(super) fn tcp_force_enable_dh_impl() {
 }
 
 pub(super) unsafe fn tcp_rpcc_default_check_perm_impl(_c: ConnectionJob) -> c_int {
-    RPCF_ALLOW_ENC | (unsafe { tcp_get_default_rpc_flags() } as c_int)
+    core_default_check_perm(unsafe { tcp_get_default_rpc_flags() as c_int })
 }
 
 pub(super) unsafe fn tcp_rpcc_init_crypto_impl(c: ConnectionJob) -> c_int {

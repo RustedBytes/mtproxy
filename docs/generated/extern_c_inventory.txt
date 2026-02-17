@@ -1,0 +1,1085 @@
+rust/mtproxy-ffi/src/jobs/core.rs:28:pub(super) type JobsProcessFn = extern "C" fn(*mut c_void) -> i32;
+rust/mtproxy-ffi/src/jobs/core.rs:30:pub(super) type JobExecuteFn = Option<unsafe extern "C" fn(JobT, i32, *mut JobThread) -> i32>;
+rust/mtproxy-ffi/src/jobs/core.rs:58:unsafe extern "C" {
+rust/mtproxy-ffi/src/jobs/core.rs:108:pub(super) extern "C" fn jobs_process_main_job_from_tokio(job_ptr: *mut c_void) -> i32 {
+rust/mtproxy-ffi/src/jobs/core.rs:525:    extern "C" fn collect_job_ptr(job: *mut c_void) -> i32 {
+rust/mtproxy-ffi/src/stats/core.rs:11:unsafe extern "C" {
+rust/mtproxy-ffi/src/stats/core.rs:20:extern "C" {
+rust/mtproxy-ffi/src/stats/core.rs:30:extern "C" {
+rust/mtproxy-ffi/src/stats/core.rs:63:pub type StatFunT = Option<unsafe extern "C" fn(*mut StatsBuffer)>;
+rust/mtproxy-ffi/src/stats/core.rs:117:pub unsafe extern "C" fn mtproxy_ffi_am_get_memory_usage(
+rust/mtproxy-ffi/src/stats/core.rs:161:pub unsafe extern "C" fn mtproxy_ffi_am_get_memory_stats(
+rust/mtproxy-ffi/src/stats/core.rs:215:pub unsafe extern "C" fn mtproxy_ffi_sb_register_stat_fun(func: StatFunT) -> c_int {
+rust/mtproxy-ffi/src/stats/core.rs:257:pub unsafe extern "C" fn mtproxy_ffi_sb_init(sb: *mut StatsBuffer, buff: *mut c_char, size: c_int) {
+rust/mtproxy-ffi/src/stats/core.rs:271:pub unsafe extern "C" fn mtproxy_ffi_sb_alloc(sb: *mut StatsBuffer, size: c_int) {
+rust/mtproxy-ffi/src/stats/core.rs:292:pub unsafe extern "C" fn mtproxy_ffi_sb_release(sb: *mut StatsBuffer) {
+rust/mtproxy-ffi/src/stats/core.rs:360:pub unsafe extern "C" fn mtproxy_ffi_sb_prepare(sb: *mut StatsBuffer) {
+rust/mtproxy-ffi/src/stats/core.rs:394:pub unsafe extern "C" fn mtproxy_ffi_sb_vprintf(
+rust/mtproxy-ffi/src/stats/core.rs:418:    extern "C" {
+rust/mtproxy-ffi/src/stats/core.rs:433:            extern "C" {
+rust/mtproxy-ffi/src/stats/core.rs:453:pub unsafe extern "C" fn mtproxy_ffi_sb_memory(sb: *mut StatsBuffer, flags: c_int) {
+rust/mtproxy-ffi/src/stats/core.rs:506:pub unsafe extern "C" fn mtproxy_ffi_sb_print_queries(
+rust/mtproxy-ffi/src/stats/core.rs:534:pub unsafe extern "C" fn mtproxy_ffi_sb_sum_i(
+rust/mtproxy-ffi/src/stats/core.rs:556:pub unsafe extern "C" fn mtproxy_ffi_sb_sum_ll(
+rust/mtproxy-ffi/src/stats/core.rs:578:pub unsafe extern "C" fn mtproxy_ffi_sb_sum_f(
+rust/mtproxy-ffi/src/stats/core.rs:601:pub unsafe extern "C" fn mtproxy_ffi_sbp_print_date(
+rust/mtproxy-ffi/src/stats/core.rs:629:    extern "C" {
+rust/mtproxy-ffi/src/net_msg/core.rs:41:    pub free_buffer: Option<unsafe extern "C" fn(*mut MsgBuffersChunk, *mut MsgBuffer) -> c_int>,
+rust/mtproxy-ffi/src/net_msg/core.rs:107:    Option<unsafe extern "C" fn(*mut c_void, *const c_void, c_int) -> c_int>;
+rust/mtproxy-ffi/src/net_msg/core.rs:109:    Option<unsafe extern "C" fn(*mut c_void, *mut c_void, c_int) -> c_int>;
+rust/mtproxy-ffi/src/net_msg/core.rs:110:pub(super) type Crc32PartialFunc = Option<unsafe extern "C" fn(*const c_void, c_long, u32) -> u32>;
+rust/mtproxy-ffi/src/net_msg/core.rs:112:unsafe extern "C" {
+rust/mtproxy-ffi/src/net_msg/core.rs:968:unsafe extern "C" fn rwm_process_memcpy_cb(
+rust/mtproxy-ffi/src/net_msg/core.rs:982:unsafe extern "C" fn rwm_process_nop_cb(
+rust/mtproxy-ffi/src/net_msg/core.rs:1527:    unsafe extern "C" fn sha1_copy_block(
+rust/mtproxy-ffi/src/net_msg/core.rs:1574:unsafe extern "C" fn crc32c_process_cb(
+rust/mtproxy-ffi/src/net_msg/core.rs:1584:unsafe extern "C" fn crc32_process_cb(
+rust/mtproxy-ffi/src/net_msg/core.rs:1630:unsafe extern "C" fn custom_crc32_process_cb(
+rust/mtproxy-ffi/src/net_msg/core.rs:1840:unsafe extern "C" fn rwm_process_encrypt_decrypt_cb(
+rust/mtproxy-ffi/src/jobs/ffi.rs:8:pub unsafe extern "C" fn jobs_enable_tokio_bridge() -> i32 {
+rust/mtproxy-ffi/src/jobs/ffi.rs:18:pub unsafe extern "C" fn run_pending_main_jobs() -> i32 {
+rust/mtproxy-ffi/src/jobs/ffi.rs:37:pub unsafe extern "C" fn job_change_signals(job: JobT, job_signals: u64) {
+rust/mtproxy-ffi/src/jobs/ffi.rs:48:pub unsafe extern "C" fn create_async_job_c_impl(
+rust/mtproxy-ffi/src/jobs/ffi.rs:127:pub unsafe extern "C" fn create_async_job(
+rust/mtproxy-ffi/src/jobs/ffi.rs:151:pub unsafe extern "C" fn notify_job_create(sig_class: i32) -> JobT {
+rust/mtproxy-ffi/src/jobs/ffi.rs:172:pub unsafe extern "C" fn schedule_job(job_tag_int: i32, job: JobT) -> i32 {
+rust/mtproxy-ffi/src/jobs/ffi.rs:184:pub unsafe extern "C" fn job_signal_c_impl(job_tag_int: i32, job: JobT, signo: i32) {
+rust/mtproxy-ffi/src/jobs/ffi.rs:193:pub unsafe extern "C" fn job_decref_c_impl(job_tag_int: i32, job: JobT) {
+rust/mtproxy-ffi/src/jobs/ffi.rs:217:pub unsafe extern "C" fn job_incref_c_impl(job: JobT) -> JobT {
+rust/mtproxy-ffi/src/jobs/ffi.rs:227:pub unsafe extern "C" fn job_signal(job_tag_int: i32, job: JobT, signo: i32) {
+rust/mtproxy-ffi/src/jobs/ffi.rs:233:pub unsafe extern "C" fn job_decref(job_tag_int: i32, job: JobT) {
+rust/mtproxy-ffi/src/jobs/ffi.rs:239:pub unsafe extern "C" fn job_incref(job: JobT) -> JobT {
+rust/mtproxy-ffi/src/jobs/ffi.rs:249:pub extern "C" fn mtproxy_ffi_jobs_tokio_init() -> i32 {
+rust/mtproxy-ffi/src/jobs/ffi.rs:266:pub extern "C" fn mtproxy_ffi_jobs_tokio_enqueue_class(job_class: i32, job: *mut c_void) -> i32 {
+rust/mtproxy-ffi/src/jobs/ffi.rs:285:pub unsafe extern "C" fn mtproxy_ffi_jobs_tokio_dequeue_class(
+rust/mtproxy-ffi/src/jobs/ffi.rs:312:pub extern "C" fn mtproxy_ffi_jobs_tokio_enqueue_subclass(
+rust/mtproxy-ffi/src/jobs/ffi.rs:335:pub unsafe extern "C" fn mtproxy_ffi_jobs_tokio_dequeue_subclass(
+rust/mtproxy-ffi/src/jobs/ffi.rs:362:pub extern "C" fn mtproxy_ffi_jobs_tokio_subclass_enter(job_class: i32, subclass_id: i32) -> i32 {
+rust/mtproxy-ffi/src/jobs/ffi.rs:388:pub extern "C" fn mtproxy_ffi_jobs_tokio_subclass_has_pending(
+rust/mtproxy-ffi/src/jobs/ffi.rs:412:pub extern "C" fn mtproxy_ffi_jobs_tokio_subclass_mark_processed(
+rust/mtproxy-ffi/src/jobs/ffi.rs:435:pub extern "C" fn mtproxy_ffi_jobs_tokio_subclass_exit_or_continue(
+rust/mtproxy-ffi/src/jobs/ffi.rs:467:pub extern "C" fn mtproxy_ffi_jobs_tokio_subclass_permit_acquire(
+rust/mtproxy-ffi/src/jobs/ffi.rs:507:pub extern "C" fn mtproxy_ffi_jobs_tokio_subclass_permit_release(
+rust/mtproxy-ffi/src/jobs/ffi.rs:540:pub extern "C" fn mtproxy_ffi_jobs_tokio_enqueue_main(job: *mut c_void) -> i32 {
+rust/mtproxy-ffi/src/jobs/ffi.rs:554:pub extern "C" fn mtproxy_ffi_jobs_tokio_drain_main(
+rust/mtproxy-ffi/src/jobs/ffi.rs:592:pub extern "C" fn mtproxy_ffi_jobs_tokio_timer_queue_create() -> i32 {
+rust/mtproxy-ffi/src/jobs/ffi.rs:606:pub extern "C" fn mtproxy_ffi_jobs_tokio_timer_queue_destroy(queue_id: i32) -> i32 {
+rust/mtproxy-ffi/src/jobs/ffi.rs:622:pub extern "C" fn mtproxy_ffi_jobs_tokio_timer_queue_push(queue_id: i32, ptr: *mut c_void) -> i32 {
+rust/mtproxy-ffi/src/jobs/ffi.rs:644:pub unsafe extern "C" fn mtproxy_ffi_jobs_tokio_timer_queue_pop(
+rust/mtproxy-ffi/src/jobs/ffi.rs:671:pub extern "C" fn mtproxy_ffi_jobs_tokio_message_queue_create() -> i32 {
+rust/mtproxy-ffi/src/jobs/ffi.rs:685:pub extern "C" fn mtproxy_ffi_jobs_tokio_message_queue_destroy(queue_id: i32) -> i32 {
+rust/mtproxy-ffi/src/jobs/ffi.rs:701:pub extern "C" fn mtproxy_ffi_jobs_tokio_message_queue_push(
+rust/mtproxy-ffi/src/jobs/ffi.rs:726:pub unsafe extern "C" fn mtproxy_ffi_jobs_tokio_message_queue_pop(
+rust/mtproxy-ffi/src/net_msg/ffi.rs:20:pub unsafe extern "C" fn mtproxy_ffi_net_msg_fetch_stats(
+rust/mtproxy-ffi/src/net_msg/ffi.rs:33:pub unsafe extern "C" fn mtproxy_ffi_net_msg_new_msg_part(
+rust/mtproxy-ffi/src/net_msg/ffi.rs:41:pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_free(raw: *mut RawMessage) -> c_int {
+rust/mtproxy-ffi/src/net_msg/ffi.rs:46:pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_init(
+rust/mtproxy-ffi/src/net_msg/ffi.rs:54:pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_create(
+rust/mtproxy-ffi/src/net_msg/ffi.rs:63:pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_clone(
+rust/mtproxy-ffi/src/net_msg/ffi.rs:71:pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_move(
+rust/mtproxy-ffi/src/net_msg/ffi.rs:79:pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_push_data(
+rust/mtproxy-ffi/src/net_msg/ffi.rs:95:pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_push_data_ext(
+rust/mtproxy-ffi/src/net_msg/ffi.rs:107:pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_push_data_front(
+rust/mtproxy-ffi/src/net_msg/ffi.rs:116:pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_fetch_data(
+rust/mtproxy-ffi/src/net_msg/ffi.rs:125:pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_skip_data(
+rust/mtproxy-ffi/src/net_msg/ffi.rs:133:pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_fetch_lookup(
+rust/mtproxy-ffi/src/net_msg/ffi.rs:142:pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_fetch_data_back(
+rust/mtproxy-ffi/src/net_msg/ffi.rs:151:pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_fetch_lookup_back(
+rust/mtproxy-ffi/src/net_msg/ffi.rs:160:pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_trunc(raw: *mut RawMessage, len: c_int) -> c_int {
+rust/mtproxy-ffi/src/net_msg/ffi.rs:165:pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_union(
+rust/mtproxy-ffi/src/net_msg/ffi.rs:173:pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_split(
+rust/mtproxy-ffi/src/net_msg/ffi.rs:182:pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_split_head(
+rust/mtproxy-ffi/src/net_msg/ffi.rs:191:pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_prepend_alloc(
+rust/mtproxy-ffi/src/net_msg/ffi.rs:199:pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_postpone_alloc(
+rust/mtproxy-ffi/src/net_msg/ffi.rs:207:pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_clean(raw: *mut RawMessage) {
+rust/mtproxy-ffi/src/net_msg/ffi.rs:212:pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_clear(raw: *mut RawMessage) {
+rust/mtproxy-ffi/src/net_msg/ffi.rs:217:pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_check(raw: *mut RawMessage) -> c_int {
+rust/mtproxy-ffi/src/net_msg/ffi.rs:222:pub unsafe extern "C" fn mtproxy_ffi_net_msg_fork_message_chain(raw: *mut RawMessage) -> c_int {
+rust/mtproxy-ffi/src/net_msg/ffi.rs:227:pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_compare(
+rust/mtproxy-ffi/src/net_msg/ffi.rs:235:pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_prepare_iovec(
+rust/mtproxy-ffi/src/net_msg/ffi.rs:245:pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_dump_sizes(raw: *mut RawMessage) -> c_int {
+rust/mtproxy-ffi/src/net_msg/ffi.rs:250:pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_dump(raw: *mut RawMessage) -> c_int {
+rust/mtproxy-ffi/src/net_msg/ffi.rs:255:pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_crc32c(raw: *mut RawMessage, bytes: c_int) -> u32 {
+rust/mtproxy-ffi/src/net_msg/ffi.rs:260:pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_crc32(raw: *mut RawMessage, bytes: c_int) -> u32 {
+rust/mtproxy-ffi/src/net_msg/ffi.rs:265:pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_custom_crc32(
+rust/mtproxy-ffi/src/net_msg/ffi.rs:274:pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_process(
+rust/mtproxy-ffi/src/net_msg/ffi.rs:284:pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_process_ex(
+rust/mtproxy-ffi/src/net_msg/ffi.rs:296:pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_process_from_offset(
+rust/mtproxy-ffi/src/net_msg/ffi.rs:307:pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_transform_from_offset(
+rust/mtproxy-ffi/src/net_msg/ffi.rs:319:pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_process_and_advance(
+rust/mtproxy-ffi/src/net_msg/ffi.rs:329:pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_sha1(
+rust/mtproxy-ffi/src/net_msg/ffi.rs:338:pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_encrypt_decrypt_to(
+rust/mtproxy-ffi/src/net_msg/ffi.rs:349:pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_get_block_ptr(
+rust/mtproxy-ffi/src/net_msg/ffi.rs:356:pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_get_block_ptr_bytes(
+rust/mtproxy-ffi/src/net_msg/ffi.rs:363:pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_to_tl_string(raw: *mut RawMessage) {
+rust/mtproxy-ffi/src/net_msg/ffi.rs:368:pub unsafe extern "C" fn mtproxy_ffi_net_msg_rwm_from_tl_string(raw: *mut RawMessage) {
+rust/mtproxy-ffi/src/server_functions/core.rs:26:unsafe extern "C" {
+rust/mtproxy-ffi/src/server_functions/core.rs:45:    C(unsafe extern "C" fn(c_int) -> c_int),
+rust/mtproxy-ffi/src/server_functions/core.rs:474:pub(super) extern "C" fn rust_sf_extended_debug_handler(
+rust/mtproxy-ffi/src/server_functions/core.rs:700:    func: Option<unsafe extern "C" fn(c_int) -> c_int>,
+rust/mtproxy-ffi/src/server_functions/core.rs:1034:pub(super) fn sf_ksignal_impl(sig: c_int, handler: Option<extern "C" fn(c_int)>) {
+rust/mtproxy-ffi/src/mp_queue/core.rs:43:pub unsafe extern "C" fn mtproxy_ffi_mpq_handle_create(
+rust/mtproxy-ffi/src/mp_queue/core.rs:71:pub unsafe extern "C" fn mtproxy_ffi_mpq_handle_destroy(handle: *mut c_void) -> i32 {
+rust/mtproxy-ffi/src/mp_queue/core.rs:91:pub unsafe extern "C" fn mtproxy_ffi_mpq_handle_clear(handle: *mut c_void) -> i32 {
+rust/mtproxy-ffi/src/mp_queue/core.rs:109:pub unsafe extern "C" fn mtproxy_ffi_mpq_handle_push(
+rust/mtproxy-ffi/src/mp_queue/core.rs:143:pub unsafe extern "C" fn mtproxy_ffi_mpq_handle_pop(
+rust/mtproxy-ffi/src/mp_queue/core.rs:174:pub unsafe extern "C" fn mtproxy_ffi_mpq_handle_is_empty(handle: *mut c_void) -> i32 {
+rust/mtproxy-ffi/src/mp_queue/core.rs:196:pub unsafe extern "C" fn mtproxy_ffi_mpq_handle_push_w(
+rust/mtproxy-ffi/src/mp_queue/core.rs:234:pub unsafe extern "C" fn mtproxy_ffi_mpq_handle_pop_w(
+rust/mtproxy-ffi/src/mp_queue/core.rs:266:pub unsafe extern "C" fn mtproxy_ffi_mpq_handle_pop_nw(
+rust/mtproxy-ffi/src/net_connections/runtime.rs:194:type JobFunction = Option<unsafe extern "C" fn(Job, c_int, *mut c_void) -> c_int>;
+rust/mtproxy-ffi/src/net_connections/runtime.rs:195:type EventHandler = Option<unsafe extern "C" fn(c_int, *mut c_void, *mut EventDescr) -> c_int>;
+rust/mtproxy-ffi/src/net_connections/runtime.rs:234:    wakeup: Option<unsafe extern "C" fn(*mut EventTimer) -> c_int>,
+rust/mtproxy-ffi/src/net_connections/runtime.rs:285:    free: Option<unsafe extern "C" fn(*mut c_void)>,
+rust/mtproxy-ffi/src/net_connections/runtime.rs:288:type ConnFn1 = Option<unsafe extern "C" fn(ConnectionJob) -> c_int>;
+rust/mtproxy-ffi/src/net_connections/runtime.rs:289:type ConnFn2 = Option<unsafe extern "C" fn(ConnectionJob, c_int) -> c_int>;
+rust/mtproxy-ffi/src/net_connections/runtime.rs:290:type ConnWakeupAioFn = Option<unsafe extern "C" fn(ConnectionJob, c_int) -> c_int>;
+rust/mtproxy-ffi/src/net_connections/runtime.rs:291:type ConnWritePacketFn = Option<unsafe extern "C" fn(ConnectionJob, *mut RawMessage) -> c_int>;
+rust/mtproxy-ffi/src/net_connections/runtime.rs:292:type ConnCryptoInitFn = Option<unsafe extern "C" fn(ConnectionJob, *mut c_void, c_int) -> c_int>;
+rust/mtproxy-ffi/src/net_connections/runtime.rs:435:    work: Option<unsafe extern "C" fn(c_int, *mut c_void, *mut EventDescr) -> c_int>,
+rust/mtproxy-ffi/src/net_connections/runtime.rs:474:unsafe extern "C" {
+rust/mtproxy-ffi/src/net_connections/runtime.rs:604:        act: Option<unsafe extern "C" fn(ConnectionJob, *mut c_void)>,
+rust/mtproxy-ffi/src/net_connections/runtime.rs:609:        act: Option<unsafe extern "C" fn(ConnectionJob, *mut c_void, *mut c_void, *mut c_void)>,
+rust/mtproxy-ffi/src/net_connections/runtime.rs:616:        act: Option<unsafe extern "C" fn(ConnectionJob)>,
+rust/mtproxy-ffi/src/net_connections/runtime.rs:2703:unsafe extern "C" fn target_pick_policy_callback(c: ConnectionJob, x: *mut c_void) {
+rust/mtproxy-ffi/src/net_connections/runtime.rs:2750:unsafe extern "C" fn target_count_connection_num_callback(
+rust/mtproxy-ffi/src/net_connections/runtime.rs:2779:unsafe extern "C" fn target_find_bad_connection_callback(c: ConnectionJob, x: *mut c_void) {
+rust/mtproxy-ffi/src/net_connections/runtime.rs:2952:unsafe extern "C" fn target_fail_connection_callback(c: ConnectionJob) {
+rust/mtproxy-ffi/src/net_tcp_rpc_ext_server/core.rs:148:    pub wakeup: Option<unsafe extern "C" fn(*mut EventTimer) -> c_int>,
+rust/mtproxy-ffi/src/net_tcp_rpc_ext_server/core.rs:182:type ConnLifecycleFn = Option<unsafe extern "C" fn(ConnectionJob) -> c_int>;
+rust/mtproxy-ffi/src/net_tcp_rpc_ext_server/core.rs:183:type ConnCloseFn = Option<unsafe extern "C" fn(ConnectionJob, c_int) -> c_int>;
+rust/mtproxy-ffi/src/net_tcp_rpc_ext_server/core.rs:184:type ConnWakeupAioFn = Option<unsafe extern "C" fn(ConnectionJob, c_int) -> c_int>;
+rust/mtproxy-ffi/src/net_tcp_rpc_ext_server/core.rs:185:type ConnPacketFn = Option<unsafe extern "C" fn(ConnectionJob, *mut RawMessage) -> c_int>;
+rust/mtproxy-ffi/src/net_tcp_rpc_ext_server/core.rs:186:type ConnCryptoInitFn = Option<unsafe extern "C" fn(ConnectionJob, *mut c_void, c_int) -> c_int>;
+rust/mtproxy-ffi/src/net_tcp_rpc_ext_server/core.rs:293:    pub custom_crc_partial: Option<unsafe extern "C" fn(*const c_void, c_long, u32) -> u32>,
+rust/mtproxy-ffi/src/net_tcp_rpc_ext_server/core.rs:296:type RpcExecuteFn = Option<unsafe extern "C" fn(ConnectionJob, c_int, *mut RawMessage) -> c_int>;
+rust/mtproxy-ffi/src/net_tcp_rpc_ext_server/core.rs:303:    pub check_ready: Option<unsafe extern "C" fn(ConnectionJob) -> c_int>,
+rust/mtproxy-ffi/src/net_tcp_rpc_ext_server/core.rs:304:    pub flush_packet: Option<unsafe extern "C" fn(ConnectionJob) -> c_int>,
+rust/mtproxy-ffi/src/net_tcp_rpc_ext_server/core.rs:305:    pub rpc_check_perm: Option<unsafe extern "C" fn(ConnectionJob) -> c_int>,
+rust/mtproxy-ffi/src/net_tcp_rpc_ext_server/core.rs:306:    pub rpc_init_crypto: Option<unsafe extern "C" fn(ConnectionJob, *mut c_void) -> c_int>,
+rust/mtproxy-ffi/src/net_tcp_rpc_ext_server/core.rs:308:    pub rpc_wakeup: Option<unsafe extern "C" fn(ConnectionJob) -> c_int>,
+rust/mtproxy-ffi/src/net_tcp_rpc_ext_server/core.rs:309:    pub rpc_alarm: Option<unsafe extern "C" fn(ConnectionJob) -> c_int>,
+rust/mtproxy-ffi/src/net_tcp_rpc_ext_server/core.rs:310:    pub rpc_ready: Option<unsafe extern "C" fn(ConnectionJob) -> c_int>,
+rust/mtproxy-ffi/src/net_tcp_rpc_ext_server/core.rs:311:    pub rpc_close: Option<unsafe extern "C" fn(ConnectionJob, c_int) -> c_int>,
+rust/mtproxy-ffi/src/net_tcp_rpc_ext_server/core.rs:392:unsafe extern "C" {
+rust/mtproxy-ffi/src/server_functions/ffi.rs:6:pub unsafe extern "C" fn rust_sf_init_parse_options(
+rust/mtproxy-ffi/src/server_functions/ffi.rs:21:pub unsafe extern "C" fn rust_sf_parse_option_add(
+rust/mtproxy-ffi/src/server_functions/ffi.rs:26:    func: Option<unsafe extern "C" fn(c_int) -> c_int>,
+rust/mtproxy-ffi/src/server_functions/ffi.rs:33:pub unsafe extern "C" fn rust_sf_parse_option_alias(name: *const c_char, val: c_int) -> c_int {
+rust/mtproxy-ffi/src/server_functions/ffi.rs:38:pub unsafe extern "C" fn rust_sf_parse_option_long_alias(
+rust/mtproxy-ffi/src/server_functions/ffi.rs:46:pub extern "C" fn rust_sf_remove_parse_option(val: c_int) -> c_int {
+rust/mtproxy-ffi/src/server_functions/ffi.rs:51:pub extern "C" fn rust_sf_parse_usage() -> c_int {
+rust/mtproxy-ffi/src/server_functions/ffi.rs:56:pub unsafe extern "C" fn rust_sf_parse_engine_options_long(
+rust/mtproxy-ffi/src/server_functions/ffi.rs:64:pub extern "C" fn rust_sf_add_builtin_parse_options() -> c_int {
+rust/mtproxy-ffi/src/server_functions/ffi.rs:69:pub extern "C" fn rust_sf_ksignal(sig: c_int, handler: Option<extern "C" fn(c_int)>) {
+rust/mtproxy-ffi/src/server_functions/ffi.rs:74:pub extern "C" fn rust_sf_set_debug_handlers() {
+rust/mtproxy-ffi/src/server_functions/ffi.rs:79:pub unsafe extern "C" fn rust_parse_memory_limit(s: *const c_char) -> c_longlong {
+rust/mtproxy-ffi/src/server_functions/ffi.rs:84:pub unsafe extern "C" fn rust_change_user_group(
+rust/mtproxy-ffi/src/server_functions/ffi.rs:92:pub unsafe extern "C" fn rust_change_user(username_ptr: *const c_char) -> c_int {
+rust/mtproxy-ffi/src/server_functions/ffi.rs:97:pub extern "C" fn rust_raise_file_rlimit(maxfiles: c_int) -> c_int {
+rust/mtproxy-ffi/src/server_functions/ffi.rs:102:pub extern "C" fn rust_print_backtrace() {
+rust/mtproxy-ffi/src/vv_tree/core.rs:50:pub unsafe extern "C" fn vv_tree_create() -> *mut VvTreeHandle {
+rust/mtproxy-ffi/src/vv_tree/core.rs:58:pub unsafe extern "C" fn vv_tree_destroy(handle: *mut VvTreeHandle) {
+rust/mtproxy-ffi/src/vv_tree/core.rs:66:pub unsafe extern "C" fn vv_tree_insert(
+rust/mtproxy-ffi/src/vv_tree/core.rs:80:pub unsafe extern "C" fn vv_tree_lookup(
+rust/mtproxy-ffi/src/vv_tree/core.rs:97:pub unsafe extern "C" fn vv_tree_delete(handle: *mut VvTreeHandle, key: *const c_void) -> c_int {
+rust/mtproxy-ffi/src/vv_tree/core.rs:107:pub unsafe extern "C" fn vv_tree_clear(handle: *mut VvTreeHandle) {
+rust/mtproxy-ffi/src/vv_tree/core.rs:116:pub unsafe extern "C" fn vv_tree_count(handle: *mut VvTreeHandle) -> c_int {
+rust/mtproxy-ffi/src/vv_tree/core.rs:125:pub unsafe extern "C" fn vv_tree_traverse(
+rust/mtproxy-ffi/src/vv_tree/core.rs:127:    callback: unsafe extern "C" fn(*const c_void),
+rust/mtproxy-ffi/src/vv_tree/core.rs:182:pub unsafe extern "C" fn tree_insert_connection(
+rust/mtproxy-ffi/src/vv_tree/core.rs:197:pub unsafe extern "C" fn tree_delete_connection(
+rust/mtproxy-ffi/src/vv_tree/core.rs:220:pub unsafe extern "C" fn tree_lookup_ptr_connection(
+rust/mtproxy-ffi/src/vv_tree/core.rs:237:pub unsafe extern "C" fn tree_act_connection(
+rust/mtproxy-ffi/src/vv_tree/core.rs:239:    act: unsafe extern "C" fn(*mut c_void),
+rust/mtproxy-ffi/src/vv_tree/core.rs:253:pub unsafe extern "C" fn tree_act_ex_connection(
+rust/mtproxy-ffi/src/vv_tree/core.rs:255:    act: unsafe extern "C" fn(*mut c_void, *mut c_void),
+rust/mtproxy-ffi/src/vv_tree/core.rs:270:pub unsafe extern "C" fn tree_act_ex2_connection(
+rust/mtproxy-ffi/src/vv_tree/core.rs:272:    act: unsafe extern "C" fn(*mut c_void, *mut c_void, *mut c_void),
+rust/mtproxy-ffi/src/vv_tree/core.rs:288:pub unsafe extern "C" fn tree_act_ex3_connection(
+rust/mtproxy-ffi/src/vv_tree/core.rs:290:    act: unsafe extern "C" fn(*mut c_void, *mut c_void, *mut c_void, *mut c_void),
+rust/mtproxy-ffi/src/vv_tree/core.rs:307:pub unsafe extern "C" fn get_tree_ptr_connection(
+rust/mtproxy-ffi/src/vv_tree/core.rs:318:pub unsafe extern "C" fn tree_free_connection(tree: *mut tree_connection) {
+rust/mtproxy-ffi/src/vv_tree/core.rs:323:pub unsafe extern "C" fn free_tree_ptr_connection(tree: *mut tree_connection) {
+rust/mtproxy-ffi/src/vv_tree/core.rs:372:pub unsafe extern "C" fn mtproxy_ffi_rpc_target_tree_acquire(
+rust/mtproxy-ffi/src/vv_tree/core.rs:379:pub unsafe extern "C" fn mtproxy_ffi_rpc_target_tree_release(
+rust/mtproxy-ffi/src/vv_tree/core.rs:386:pub unsafe extern "C" fn mtproxy_ffi_rpc_target_tree_insert(
+rust/mtproxy-ffi/src/vv_tree/core.rs:411:pub unsafe extern "C" fn mtproxy_ffi_rpc_target_tree_lookup(
+rust/mtproxy-ffi/src/vv_tree/core.rs:432:pub unsafe extern "C" fn mtproxy_ffi_engine_rpc_custom_op_insert(
+rust/mtproxy-ffi/src/vv_tree/core.rs:446:pub unsafe extern "C" fn mtproxy_ffi_engine_rpc_custom_op_lookup(op: u32) -> *mut c_void {
+rust/mtproxy-ffi/src/vv_tree/core.rs:455:pub unsafe extern "C" fn mtproxy_ffi_engine_rpc_custom_op_has_any() -> c_int {
+rust/mtproxy-ffi/src/net_rpc_targets/core.rs:37:type ConnFn1 = Option<unsafe extern "C" fn(ConnectionJob) -> c_int>;
+rust/mtproxy-ffi/src/net_rpc_targets/core.rs:38:type ConnFn2 = Option<unsafe extern "C" fn(ConnectionJob, c_int) -> c_int>;
+rust/mtproxy-ffi/src/net_rpc_targets/core.rs:39:type ConnWakeupAioFn = Option<unsafe extern "C" fn(ConnectionJob, c_int) -> c_int>;
+rust/mtproxy-ffi/src/net_rpc_targets/core.rs:40:type ConnWritePacketFn = Option<unsafe extern "C" fn(ConnectionJob, *mut RawMessage) -> c_int>;
+rust/mtproxy-ffi/src/net_rpc_targets/core.rs:41:type ConnCryptoInitFn = Option<unsafe extern "C" fn(ConnectionJob, *mut c_void, c_int) -> c_int>;
+rust/mtproxy-ffi/src/net_rpc_targets/core.rs:47:    wakeup: Option<unsafe extern "C" fn(*mut EventTimer) -> c_int>,
+rust/mtproxy-ffi/src/net_rpc_targets/core.rs:155:type Crc32PartialFn = Option<unsafe extern "C" fn(*const c_void, c_long, c_uint) -> c_uint>;
+rust/mtproxy-ffi/src/net_rpc_targets/core.rs:233:    j_execute: Option<unsafe extern "C" fn(Job, c_int, *mut c_void) -> c_int>,
+rust/mtproxy-ffi/src/net_rpc_targets/core.rs:246:unsafe extern "C" {
+rust/mtproxy-ffi/src/net_rpc_targets/core.rs:369:unsafe extern "C" fn check_connection_cb(
+rust/mtproxy-ffi/src/net_rpc_targets/core.rs:418:unsafe extern "C" fn check_connection_arr_cb(c: ConnectionJob, ex: *mut c_void, ex2: *mut c_void) {
+rust/mtproxy-ffi/src/net_tcp_rpc_ext_server/ffi.rs:7:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_server_create_request(
+rust/mtproxy-ffi/src/net_tcp_rpc_ext_server/ffi.rs:14:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_server_check_response(
+rust/mtproxy-ffi/src/net_tcp_rpc_ext_server/ffi.rs:33:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_server_update_domain_info(
+rust/mtproxy-ffi/src/net_tcp_rpc_ext_server/ffi.rs:40:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_server_get_sni_domain_info(
+rust/mtproxy-ffi/src/net_tcp_rpc_ext_server/ffi.rs:48:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_server_compact_parse_execute(
+rust/mtproxy-ffi/src/net_tcp_rpc_ext_server/ffi.rs:55:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_server_proxy_pass_parse_execute(
+rust/mtproxy-ffi/src/net_tcp_rpc_ext_server/ffi.rs:62:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_server_proxy_pass_close(
+rust/mtproxy-ffi/src/net_tcp_rpc_ext_server/ffi.rs:70:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_server_proxy_pass_write_packet(
+rust/mtproxy-ffi/src/net_tcp_rpc_ext_server/ffi.rs:78:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_server_init_proxy_domains(
+rust/mtproxy-ffi/src/net_tcp_rpc_ext_server/ffi.rs:86:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_server_init_proxy_domains_state() {
+rust/mtproxy-ffi/src/net_tcp_rpc_ext_server/ffi.rs:91:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_server_proxy_connection(
+rust/mtproxy-ffi/src/net_tcp_rpc_ext_server/ffi.rs:99:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_server_set_ext_secret(secret: *const u8) {
+rust/mtproxy-ffi/src/net_tcp_rpc_ext_server/ffi.rs:104:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_server_add_proxy_domain(
+rust/mtproxy-ffi/src/net_tcp_rpc_ext_server/ffi.rs:111:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_server_lookup_domain_info(
+rust/mtproxy-ffi/src/net_tcp_rpc_ext_server/ffi.rs:119:pub extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_server_default_domain_info() -> *const DomainInfo {
+rust/mtproxy-ffi/src/net_tcp_rpc_ext_server/ffi.rs:124:pub extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_server_allow_only_tls() -> c_int {
+rust/mtproxy-ffi/src/net_tcp_rpc_ext_server/ffi.rs:129:pub extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_server_ext_secret_count() -> c_int {
+rust/mtproxy-ffi/src/net_tcp_rpc_ext_server/ffi.rs:134:pub extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_server_ext_secret_at(index: c_int) -> *const u8 {
+rust/mtproxy-ffi/src/net_tcp_rpc_ext_server/ffi.rs:139:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_server_domain_server_hello_encrypted_size(
+rust/mtproxy-ffi/src/net_tcp_rpc_ext_server/ffi.rs:146:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_server_ext_alarm(c: ConnectionJob) -> c_int {
+rust/mtproxy-ffi/src/net_tcp_rpc_ext_server/ffi.rs:151:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_server_have_client_random(
+rust/mtproxy-ffi/src/net_tcp_rpc_ext_server/ffi.rs:158:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_server_add_client_random(
+rust/mtproxy-ffi/src/net_tcp_rpc_ext_server/ffi.rs:166:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_server_delete_old_client_randoms(now: c_int) {
+rust/mtproxy-ffi/src/net_tcp_rpc_ext_server/ffi.rs:171:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_server_is_allowed_timestamp(
+rust/mtproxy-ffi/src/net_rpc_targets/ffi.rs:9:pub unsafe extern "C" fn mtproxy_ffi_rpc_target_insert_conn(
+rust/mtproxy-ffi/src/net_rpc_targets/ffi.rs:19:pub unsafe extern "C" fn mtproxy_ffi_rpc_target_delete_conn(
+rust/mtproxy-ffi/src/net_rpc_targets/ffi.rs:29:pub unsafe extern "C" fn mtproxy_ffi_rpc_target_lookup_runtime(
+rust/mtproxy-ffi/src/net_rpc_targets/ffi.rs:38:pub unsafe extern "C" fn mtproxy_ffi_rpc_target_choose_connection_runtime(
+rust/mtproxy-ffi/src/net_rpc_targets/ffi.rs:46:pub unsafe extern "C" fn mtproxy_ffi_rpc_target_choose_random_connections_runtime(
+rust/mtproxy-ffi/src/net_rpc_targets/ffi.rs:56:pub unsafe extern "C" fn mtproxy_ffi_rpc_targets_prepare_stat_runtime(
+rust/mtproxy-ffi/src/net_rpc_targets/ffi.rs:65:pub unsafe extern "C" fn mtproxy_ffi_rpc_target_lookup(
+rust/mtproxy-ffi/src/net_rpc_targets/ffi.rs:74:pub unsafe extern "C" fn mtproxy_ffi_rpc_target_lookup_hp(
+rust/mtproxy-ffi/src/net_rpc_targets/ffi.rs:84:pub unsafe extern "C" fn mtproxy_ffi_rpc_target_lookup_target_runtime(
+rust/mtproxy-ffi/src/net_rpc_targets/ffi.rs:93:pub unsafe extern "C" fn mtproxy_ffi_rpc_target_get_state_runtime(
+rust/mtproxy-ffi/src/ffi_types/core.rs:288:    pub(crate) wakeup: Option<unsafe extern "C" fn(*mut MtproxyEventTimer) -> c_int>,
+rust/mtproxy-ffi/src/ffi_types/core.rs:552:unsafe extern "C" {
+rust/mtproxy-ffi/src/net_connections/ffi.rs:9:pub extern "C" fn mtproxy_ffi_net_connections_server_check_ready(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:21:pub unsafe extern "C" fn mtproxy_ffi_net_connections_accept_rate_decide(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:46:pub unsafe extern "C" fn mtproxy_ffi_net_connections_compute_next_reconnect(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:70:pub extern "C" fn mtproxy_ffi_net_connections_target_bucket_ipv4(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:84:pub unsafe extern "C" fn mtproxy_ffi_net_connections_target_bucket_ipv6(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:98:pub unsafe extern "C" fn mtproxy_ffi_net_connections_target_ready_transition(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:116:pub extern "C" fn mtproxy_ffi_net_connections_target_needed_connections(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:132:pub extern "C" fn mtproxy_ffi_net_connections_target_should_attempt_reconnect(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:142:pub extern "C" fn mtproxy_ffi_net_connections_target_ready_bucket(ready: c_int) -> c_int {
+rust/mtproxy-ffi/src/net_connections/ffi.rs:148:pub extern "C" fn mtproxy_ffi_net_connections_target_find_bad_should_select(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:160:pub unsafe extern "C" fn mtproxy_ffi_net_connections_target_remove_dead_connection_deltas(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:176:pub extern "C" fn mtproxy_ffi_net_connections_target_tree_update_action(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:184:pub extern "C" fn mtproxy_ffi_net_connections_target_connect_socket_action(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:192:pub extern "C" fn mtproxy_ffi_net_connections_target_create_insert_should_insert(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:200:pub extern "C" fn mtproxy_ffi_net_connections_target_lookup_match_action(mode: c_int) -> c_int {
+rust/mtproxy-ffi/src/net_connections/ffi.rs:206:pub extern "C" fn mtproxy_ffi_net_connections_target_lookup_miss_action(mode: c_int) -> c_int {
+rust/mtproxy-ffi/src/net_connections/ffi.rs:212:pub extern "C" fn mtproxy_ffi_net_connections_target_free_action(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:225:pub unsafe extern "C" fn mtproxy_ffi_net_connections_destroy_target_transition(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:245:pub unsafe extern "C" fn mtproxy_ffi_net_connections_create_target_transition(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:265:pub extern "C" fn mtproxy_ffi_net_connections_connection_write_close_action(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:277:pub extern "C" fn mtproxy_ffi_net_connections_connection_timeout_action(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:286:pub extern "C" fn mtproxy_ffi_net_connections_fail_connection_action(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:298:pub unsafe extern "C" fn mtproxy_ffi_net_connections_free_connection_allocated_deltas(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:318:pub unsafe extern "C" fn mtproxy_ffi_net_connections_close_connection_failure_deltas(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:338:pub extern "C" fn mtproxy_ffi_net_connections_close_connection_has_isdh(flags: c_int) -> c_int {
+rust/mtproxy-ffi/src/net_connections/ffi.rs:347:pub unsafe extern "C" fn mtproxy_ffi_net_connections_close_connection_basic_deltas(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:375:pub extern "C" fn mtproxy_ffi_net_connections_close_connection_has_special(flags: c_int) -> c_int {
+rust/mtproxy-ffi/src/net_connections/ffi.rs:381:pub extern "C" fn mtproxy_ffi_net_connections_close_connection_should_signal_special_aux(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:398:pub unsafe extern "C" fn mtproxy_ffi_net_connections_alloc_connection_basic_type_policy(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:420:pub unsafe extern "C" fn mtproxy_ffi_net_connections_alloc_connection_success_deltas(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:454:pub extern "C" fn mtproxy_ffi_net_connections_alloc_connection_listener_flags(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:462:pub extern "C" fn mtproxy_ffi_net_connections_alloc_connection_special_action(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:474:pub extern "C" fn mtproxy_ffi_net_connections_alloc_connection_failure_action(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:482:pub extern "C" fn mtproxy_ffi_net_connections_socket_job_action(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:496:pub extern "C" fn mtproxy_ffi_net_connections_socket_job_abort_error() -> c_int {
+rust/mtproxy-ffi/src/net_connections/ffi.rs:502:pub extern "C" fn mtproxy_ffi_net_connections_fail_socket_connection_action(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:513:pub unsafe extern "C" fn mtproxy_ffi_net_connections_alloc_socket_connection_plan(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:536:pub unsafe extern "C" fn mtproxy_ffi_net_connections_socket_free_plan(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:546:pub extern "C" fn mtproxy_ffi_net_connections_conn_job_run_actions(flags: c_int) -> c_int {
+rust/mtproxy-ffi/src/net_connections/ffi.rs:552:pub extern "C" fn mtproxy_ffi_net_connections_conn_job_ready_pending_should_promote_status(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:564:pub extern "C" fn mtproxy_ffi_net_connections_conn_job_ready_pending_cas_failure_expected(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:576:pub extern "C" fn mtproxy_ffi_net_connections_conn_job_alarm_should_call(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:590:pub extern "C" fn mtproxy_ffi_net_connections_conn_job_abort_has_error(flags: c_int) -> c_int {
+rust/mtproxy-ffi/src/net_connections/ffi.rs:596:pub extern "C" fn mtproxy_ffi_net_connections_conn_job_abort_should_close(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:604:pub extern "C" fn mtproxy_ffi_net_connections_socket_job_run_should_call_read_write(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:612:pub extern "C" fn mtproxy_ffi_net_connections_socket_job_run_should_signal_aux(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:628:pub extern "C" fn mtproxy_ffi_net_connections_socket_job_aux_should_update_epoll(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:636:pub extern "C" fn mtproxy_ffi_net_connections_socket_reader_should_run(flags: c_int) -> c_int {
+rust/mtproxy-ffi/src/net_connections/ffi.rs:642:pub extern "C" fn mtproxy_ffi_net_connections_socket_reader_io_action(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:658:pub extern "C" fn mtproxy_ffi_net_connections_socket_writer_should_run(flags: c_int) -> c_int {
+rust/mtproxy-ffi/src/net_connections/ffi.rs:667:pub unsafe extern "C" fn mtproxy_ffi_net_connections_socket_writer_io_action(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:691:pub extern "C" fn mtproxy_ffi_net_connections_socket_writer_should_call_ready_to_write(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:707:pub extern "C" fn mtproxy_ffi_net_connections_socket_writer_should_abort_on_stop(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:721:pub extern "C" fn mtproxy_ffi_net_connections_socket_read_write_connect_action(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:729:pub extern "C" fn mtproxy_ffi_net_connections_socket_gateway_clear_flags(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:738:pub extern "C" fn mtproxy_ffi_net_connections_socket_gateway_abort_action(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:750:pub extern "C" fn mtproxy_ffi_net_connections_listening_job_action(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:760:pub extern "C" fn mtproxy_ffi_net_connections_listening_init_fd_action(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:769:pub extern "C" fn mtproxy_ffi_net_connections_listening_init_update_max_connection(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:781:pub extern "C" fn mtproxy_ffi_net_connections_listening_init_mode_policy(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:796:pub extern "C" fn mtproxy_ffi_net_connections_connection_event_should_release(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:810:pub extern "C" fn mtproxy_ffi_net_connections_connection_get_by_fd_action(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:824:pub extern "C" fn mtproxy_ffi_net_connections_connection_generation_matches(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:839:pub extern "C" fn mtproxy_ffi_net_connections_check_conn_functions_default_mask(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:879:pub extern "C" fn mtproxy_ffi_net_connections_check_conn_functions_accept_mask(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:896:pub unsafe extern "C" fn mtproxy_ffi_net_connections_check_conn_functions_raw_policy(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:920:pub extern "C" fn mtproxy_ffi_net_connections_target_pick_should_skip(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:936:pub extern "C" fn mtproxy_ffi_net_connections_target_pick_should_select(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:956:pub extern "C" fn mtproxy_ffi_net_connections_target_pick_should_incref(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:966:pub extern "C" fn mtproxy_ffi_net_connections_target_job_boot_delay() -> c_double {
+rust/mtproxy-ffi/src/net_connections/ffi.rs:972:pub extern "C" fn mtproxy_ffi_net_connections_target_job_retry_delay() -> c_double {
+rust/mtproxy-ffi/src/net_connections/ffi.rs:978:pub extern "C" fn mtproxy_ffi_net_connections_target_job_should_run_tick(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:992:pub extern "C" fn mtproxy_ffi_net_connections_target_job_update_mode(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:1000:pub extern "C" fn mtproxy_ffi_net_connections_target_job_post_tick_action(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:1014:pub extern "C" fn mtproxy_ffi_net_connections_target_job_finalize_free_action(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:1022:pub unsafe extern "C" fn mtproxy_ffi_net_connections_connection_write_close(c: ConnectionJob) {
+rust/mtproxy-ffi/src/net_connections/ffi.rs:1028:pub unsafe extern "C" fn mtproxy_ffi_net_connections_set_connection_timeout(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:1037:pub unsafe extern "C" fn mtproxy_ffi_net_connections_clear_connection_timeout(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:1045:pub unsafe extern "C" fn mtproxy_ffi_net_connections_fail_connection(c: ConnectionJob, err: c_int) {
+rust/mtproxy-ffi/src/net_connections/ffi.rs:1051:pub unsafe extern "C" fn mtproxy_ffi_net_connections_cpu_server_free_connection(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:1059:pub unsafe extern "C" fn mtproxy_ffi_net_connections_cpu_server_close_connection(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:1068:pub unsafe extern "C" fn mtproxy_ffi_net_connections_connection_event_incref(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:1077:pub unsafe extern "C" fn mtproxy_ffi_net_connections_connection_get_by_fd(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:1085:pub unsafe extern "C" fn mtproxy_ffi_net_connections_connection_get_by_fd_generation(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:1094:pub unsafe extern "C" fn mtproxy_ffi_net_connections_server_check_ready_conn(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:1102:pub unsafe extern "C" fn mtproxy_ffi_net_connections_server_noop(c: ConnectionJob) -> c_int {
+rust/mtproxy-ffi/src/net_connections/ffi.rs:1108:pub unsafe extern "C" fn mtproxy_ffi_net_connections_server_failed(c: ConnectionJob) -> c_int {
+rust/mtproxy-ffi/src/net_connections/ffi.rs:1114:pub unsafe extern "C" fn mtproxy_ffi_net_connections_server_flush(c: ConnectionJob) -> c_int {
+rust/mtproxy-ffi/src/net_connections/ffi.rs:1120:pub unsafe extern "C" fn mtproxy_ffi_net_connections_check_conn_functions(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:1129:pub unsafe extern "C" fn mtproxy_ffi_net_connections_compute_next_reconnect_target(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:1137:pub unsafe extern "C" fn mtproxy_ffi_net_connections_conn_target_get_connection(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:1146:pub unsafe extern "C" fn mtproxy_ffi_net_connections_fail_socket_connection(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:1155:pub unsafe extern "C" fn mtproxy_ffi_net_connections_do_connection_job(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:1165:pub unsafe extern "C" fn mtproxy_ffi_net_connections_alloc_new_socket_connection(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:1174:pub unsafe extern "C" fn mtproxy_ffi_net_connections_alloc_new_connection(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:1194:pub unsafe extern "C" fn mtproxy_ffi_net_connections_net_server_socket_free(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:1202:pub unsafe extern "C" fn mtproxy_ffi_net_connections_net_server_socket_reader(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:1210:pub unsafe extern "C" fn mtproxy_ffi_net_connections_net_server_socket_writer(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:1218:pub unsafe extern "C" fn mtproxy_ffi_net_connections_do_socket_connection_job(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:1228:pub unsafe extern "C" fn mtproxy_ffi_net_connections_net_accept_new_connections(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:1236:pub unsafe extern "C" fn mtproxy_ffi_net_connections_init_listening_connection_ext(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:1248:pub unsafe extern "C" fn mtproxy_ffi_net_connections_init_listening_connection(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:1258:pub unsafe extern "C" fn mtproxy_ffi_net_connections_init_listening_tcpv6_connection(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:1269:pub unsafe extern "C" fn mtproxy_ffi_net_connections_destroy_dead_target_connections(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:1277:pub unsafe extern "C" fn mtproxy_ffi_net_connections_create_new_connections(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:1285:pub unsafe extern "C" fn mtproxy_ffi_net_connections_do_conn_target_job(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:1295:pub unsafe extern "C" fn mtproxy_ffi_net_connections_clean_unused_target(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:1303:pub unsafe extern "C" fn mtproxy_ffi_net_connections_destroy_target(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:1312:pub unsafe extern "C" fn mtproxy_ffi_net_connections_create_target(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:1321:pub unsafe extern "C" fn mtproxy_ffi_net_connections_free_target_core(ctj: ConnTargetJob) -> c_int {
+rust/mtproxy-ffi/src/net_connections/ffi.rs:1327:pub unsafe extern "C" fn mtproxy_ffi_net_connections_insert_free_later_struct(f: *mut FreeLater) {
+rust/mtproxy-ffi/src/net_connections/ffi.rs:1333:pub unsafe extern "C" fn mtproxy_ffi_net_connections_free_later_act() {
+rust/mtproxy-ffi/src/net_connections/ffi.rs:1339:pub unsafe extern "C" fn mtproxy_ffi_net_connections_do_listening_connection_job(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:1349:pub unsafe extern "C" fn mtproxy_ffi_net_connections_net_server_socket_read_write(
+rust/mtproxy-ffi/src/net_connections/ffi.rs:1357:pub unsafe extern "C" fn mtproxy_ffi_net_connections_net_server_socket_read_write_gateway(
+rust/mtproxy-ffi/src/net_tcp_rpc_client/core.rs:60:    pub wakeup: Option<unsafe extern "C" fn(*mut EventTimer) -> c_int>,
+rust/mtproxy-ffi/src/net_tcp_rpc_client/core.rs:145:    Option<unsafe extern "C" fn(*const c_void, c_long, c_uint) -> c_uint>;
+rust/mtproxy-ffi/src/net_tcp_rpc_client/core.rs:176:type RpcExecuteFn = Option<unsafe extern "C" fn(ConnectionJob, c_int, *mut RawMessage) -> c_int>;
+rust/mtproxy-ffi/src/net_tcp_rpc_client/core.rs:177:type RpcCheckReadyFn = Option<unsafe extern "C" fn(ConnectionJob) -> c_int>;
+rust/mtproxy-ffi/src/net_tcp_rpc_client/core.rs:178:type RpcFlushPacketFn = Option<unsafe extern "C" fn(ConnectionJob) -> c_int>;
+rust/mtproxy-ffi/src/net_tcp_rpc_client/core.rs:179:type RpcCheckPermFn = Option<unsafe extern "C" fn(ConnectionJob) -> c_int>;
+rust/mtproxy-ffi/src/net_tcp_rpc_client/core.rs:180:type RpcInitCryptoFn = Option<unsafe extern "C" fn(ConnectionJob) -> c_int>;
+rust/mtproxy-ffi/src/net_tcp_rpc_client/core.rs:182:    Option<unsafe extern "C" fn(ConnectionJob, *mut c_char, c_int, *mut u8, c_int) -> c_int>;
+rust/mtproxy-ffi/src/net_tcp_rpc_client/core.rs:183:type RpcWakeupFn = Option<unsafe extern "C" fn(ConnectionJob) -> c_int>;
+rust/mtproxy-ffi/src/net_tcp_rpc_client/core.rs:184:type RpcCloseFn = Option<unsafe extern "C" fn(ConnectionJob, c_int) -> c_int>;
+rust/mtproxy-ffi/src/net_tcp_rpc_client/core.rs:226:unsafe extern "C" {
+rust/mtproxy-ffi/src/tests/core.rs:138:unsafe extern "C" fn capture_engine_signal(sig: i32, ctx: *mut c_void) {
+rust/mtproxy-ffi/src/tests/core.rs:150:unsafe extern "C" fn capture_engine_net_try_open(port: i32, ctx: *mut c_void) -> i32 {
+rust/mtproxy-ffi/src/net_tcp_rpc_client/ffi.rs:7:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_client_parse_execute(c: ConnectionJob) -> c_int {
+rust/mtproxy-ffi/src/net_tcp_rpc_client/ffi.rs:12:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_client_connected(c: ConnectionJob) -> c_int {
+rust/mtproxy-ffi/src/net_tcp_rpc_client/ffi.rs:17:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_client_close_connection(
+rust/mtproxy-ffi/src/net_tcp_rpc_client/ffi.rs:25:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_client_check_ready(c: ConnectionJob) -> c_int {
+rust/mtproxy-ffi/src/net_tcp_rpc_client/ffi.rs:30:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_client_default_check_ready(
+rust/mtproxy-ffi/src/net_tcp_rpc_client/ffi.rs:37:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_client_init_outbound(c: ConnectionJob) -> c_int {
+rust/mtproxy-ffi/src/net_tcp_rpc_client/ffi.rs:42:pub extern "C" fn mtproxy_ffi_net_tcp_rpc_client_force_enable_dh() {
+rust/mtproxy-ffi/src/net_tcp_rpc_client/ffi.rs:47:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_client_default_check_perm(
+rust/mtproxy-ffi/src/net_tcp_rpc_client/ffi.rs:54:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_client_init_crypto(c: ConnectionJob) -> c_int {
+rust/mtproxy-ffi/src/net_tcp_rpc_client/ffi.rs:59:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_client_start_crypto(
+rust/mtproxy-ffi/src/compat/core.rs:321:pub(super) type NetThreadRpcReadyFn = unsafe extern "C" fn(*mut c_void) -> i32;
+rust/mtproxy-ffi/src/compat/core.rs:322:pub(super) type NetThreadRpcFn = unsafe extern "C" fn(*mut c_void);
+rust/mtproxy-ffi/src/compat/core.rs:323:pub(super) type NetThreadFailConnectionFn = unsafe extern "C" fn(*mut c_void, i32);
+rust/mtproxy-ffi/src/compat/core.rs:1130:pub(super) type EngineNetTryOpenPortFn = unsafe extern "C" fn(i32, *mut c_void) -> i32;
+rust/mtproxy-ffi/src/compat/core.rs:1131:pub(super) type EngineSignalDispatchFn = unsafe extern "C" fn(i32, *mut c_void);
+rust/mtproxy-ffi/src/net_tcp_rpc_common/core.rs:34:    pub wakeup: Option<unsafe extern "C" fn(*mut EventTimer) -> c_int>,
+rust/mtproxy-ffi/src/net_tcp_rpc_common/core.rs:68:type ConnLifecycleFn = Option<unsafe extern "C" fn(ConnectionJob) -> c_int>;
+rust/mtproxy-ffi/src/net_tcp_rpc_common/core.rs:69:type ConnCloseFn = Option<unsafe extern "C" fn(ConnectionJob, c_int) -> c_int>;
+rust/mtproxy-ffi/src/net_tcp_rpc_common/core.rs:70:type ConnWakeupAioFn = Option<unsafe extern "C" fn(ConnectionJob, c_int) -> c_int>;
+rust/mtproxy-ffi/src/net_tcp_rpc_common/core.rs:71:type ConnPacketFn = Option<unsafe extern "C" fn(ConnectionJob, *mut RawMessage) -> c_int>;
+rust/mtproxy-ffi/src/net_tcp_rpc_common/core.rs:72:type ConnCryptoInitFn = Option<unsafe extern "C" fn(ConnectionJob, *mut c_void, c_int) -> c_int>;
+rust/mtproxy-ffi/src/net_tcp_rpc_common/core.rs:172:    Option<unsafe extern "C" fn(*const c_void, c_long, c_uint) -> c_uint>;
+rust/mtproxy-ffi/src/net_tcp_rpc_common/core.rs:194:unsafe extern "C" {
+rust/mtproxy-ffi/src/vv_io/core.rs:56:pub extern "C" fn vv_format_ipv4(addr: u32) -> *const c_char {
+rust/mtproxy-ffi/src/vv_io/core.rs:74:pub unsafe extern "C" fn vv_format_ipv6(ipv6_bytes: *const c_void) -> *const c_char {
+rust/mtproxy-ffi/src/vv_io/core.rs:92:pub unsafe extern "C" fn vv_ipv4_to_octets(addr: u32, out: *mut u8) {
+rust/mtproxy-ffi/src/net_tcp_rpc_common/ffi.rs:7:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_common_conn_send_init(
+rust/mtproxy-ffi/src/net_tcp_rpc_common/ffi.rs:16:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_common_conn_send_im(
+rust/mtproxy-ffi/src/net_tcp_rpc_common/ffi.rs:26:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_common_conn_send(
+rust/mtproxy-ffi/src/net_tcp_rpc_common/ffi.rs:36:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_common_conn_send_data(
+rust/mtproxy-ffi/src/net_tcp_rpc_common/ffi.rs:46:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_common_conn_send_data_init(
+rust/mtproxy-ffi/src/net_tcp_rpc_common/ffi.rs:55:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_common_conn_send_data_im(
+rust/mtproxy-ffi/src/net_tcp_rpc_common/ffi.rs:65:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_common_default_execute(
+rust/mtproxy-ffi/src/net_tcp_rpc_common/ffi.rs:74:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_common_write_packet(
+rust/mtproxy-ffi/src/net_tcp_rpc_common/ffi.rs:82:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_common_write_packet_compact(
+rust/mtproxy-ffi/src/net_tcp_rpc_common/ffi.rs:90:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_common_flush(c: ConnectionJob) -> c_int {
+rust/mtproxy-ffi/src/net_tcp_rpc_common/ffi.rs:95:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_common_flush_packet(c: ConnectionJob) -> c_int {
+rust/mtproxy-ffi/src/net_tcp_rpc_common/ffi.rs:100:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_common_send_ping(c: ConnectionJob, ping_id: i64) {
+rust/mtproxy-ffi/src/net_tcp_rpc_common/ffi.rs:105:pub extern "C" fn mtproxy_ffi_net_tcp_rpc_common_set_default_rpc_flags(
+rust/mtproxy-ffi/src/net_tcp_rpc_common/ffi.rs:113:pub extern "C" fn mtproxy_ffi_net_tcp_rpc_common_get_default_rpc_flags() -> u32 {
+rust/mtproxy-ffi/src/net_tcp_rpc_common/ffi.rs:118:pub extern "C" fn mtproxy_ffi_net_tcp_rpc_common_set_max_dh_accept_rate(rate: c_int) {
+rust/mtproxy-ffi/src/net_tcp_rpc_common/ffi.rs:123:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_common_add_dh_accept() -> c_int {
+rust/mtproxy-ffi/src/net_events/core.rs:83:    pub work: Option<unsafe extern "C" fn(c_int, *mut c_void, *mut EventDescr) -> c_int>,
+rust/mtproxy-ffi/src/net_events/core.rs:87:unsafe extern "C" {
+rust/mtproxy-ffi/src/net_events/core.rs:1362:    handler: Option<unsafe extern "C" fn(c_int, *mut c_void, *mut EventDescr) -> c_int>,
+rust/mtproxy-ffi/src/net_tcp_rpc_server/core.rs:54:    pub wakeup: Option<unsafe extern "C" fn(*mut EventTimer) -> c_int>,
+rust/mtproxy-ffi/src/net_tcp_rpc_server/core.rs:139:    Option<unsafe extern "C" fn(*const c_void, c_long, c_uint) -> c_uint>;
+rust/mtproxy-ffi/src/net_tcp_rpc_server/core.rs:163:type RpcExecuteFn = Option<unsafe extern "C" fn(ConnectionJob, c_int, *mut RawMessage) -> c_int>;
+rust/mtproxy-ffi/src/net_tcp_rpc_server/core.rs:164:type RpcCheckReadyFn = Option<unsafe extern "C" fn(ConnectionJob) -> c_int>;
+rust/mtproxy-ffi/src/net_tcp_rpc_server/core.rs:165:type RpcFlushPacketFn = Option<unsafe extern "C" fn(ConnectionJob) -> c_int>;
+rust/mtproxy-ffi/src/net_tcp_rpc_server/core.rs:166:type RpcCheckPermFn = Option<unsafe extern "C" fn(ConnectionJob) -> c_int>;
+rust/mtproxy-ffi/src/net_tcp_rpc_server/core.rs:167:type RpcInitCryptoFn = Option<unsafe extern "C" fn(ConnectionJob, *mut TcpRpcNoncePacket) -> c_int>;
+rust/mtproxy-ffi/src/net_tcp_rpc_server/core.rs:168:type RpcWakeupFn = Option<unsafe extern "C" fn(ConnectionJob) -> c_int>;
+rust/mtproxy-ffi/src/net_tcp_rpc_server/core.rs:169:type RpcCloseFn = Option<unsafe extern "C" fn(ConnectionJob, c_int) -> c_int>;
+rust/mtproxy-ffi/src/net_tcp_rpc_server/core.rs:193:type ConnLifecycleFn = Option<unsafe extern "C" fn(ConnectionJob) -> c_int>;
+rust/mtproxy-ffi/src/net_tcp_rpc_server/core.rs:194:type ConnCloseFn = Option<unsafe extern "C" fn(ConnectionJob, c_int) -> c_int>;
+rust/mtproxy-ffi/src/net_tcp_rpc_server/core.rs:261:unsafe extern "C" {
+rust/mtproxy-ffi/src/net_tcp_rpc_server/ffi.rs:7:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_server_default_execute(
+rust/mtproxy-ffi/src/net_tcp_rpc_server/ffi.rs:16:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_server_parse_execute(c: ConnectionJob) -> c_int {
+rust/mtproxy-ffi/src/net_tcp_rpc_server/ffi.rs:21:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_server_wakeup(c: ConnectionJob) -> c_int {
+rust/mtproxy-ffi/src/net_tcp_rpc_server/ffi.rs:26:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_server_alarm(c: ConnectionJob) -> c_int {
+rust/mtproxy-ffi/src/net_tcp_rpc_server/ffi.rs:31:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_server_do_wakeup(c: ConnectionJob) -> c_int {
+rust/mtproxy-ffi/src/net_tcp_rpc_server/ffi.rs:36:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_server_init_accepted(c: ConnectionJob) -> c_int {
+rust/mtproxy-ffi/src/net_tcp_rpc_server/ffi.rs:41:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_server_close_connection(
+rust/mtproxy-ffi/src/net_tcp_rpc_server/ffi.rs:49:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_server_init_accepted_nohs(
+rust/mtproxy-ffi/src/net_tcp_rpc_server/ffi.rs:56:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_server_default_check_perm(
+rust/mtproxy-ffi/src/net_tcp_rpc_server/ffi.rs:63:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_server_init_crypto(
+rust/mtproxy-ffi/src/engine/ffi.rs:7:pub unsafe extern "C" fn mtproxy_ffi_engine_init(
+rust/mtproxy-ffi/src/engine/ffi.rs:15:pub unsafe extern "C" fn mtproxy_ffi_engine_check_server_functions() {
+rust/mtproxy-ffi/src/engine/ffi.rs:20:pub unsafe extern "C" fn mtproxy_ffi_engine_do_precise_cron() {
+rust/mtproxy-ffi/src/engine/ffi.rs:25:pub unsafe extern "C" fn mtproxy_ffi_engine_default_engine_server_start() {
+rust/mtproxy-ffi/src/engine/ffi.rs:30:pub unsafe extern "C" fn mtproxy_ffi_engine_create_main_thread_pipe(
+rust/mtproxy-ffi/src/engine/ffi.rs:38:pub unsafe extern "C" fn mtproxy_ffi_engine_wakeup_main_thread(pipe_write_end: c_int) {
+rust/mtproxy-ffi/src/engine/ffi.rs:43:pub unsafe extern "C" fn mtproxy_ffi_engine_server_exit() {
+rust/mtproxy-ffi/src/engine/ffi.rs:48:pub unsafe extern "C" fn mtproxy_ffi_engine_server_init(
+rust/mtproxy-ffi/src/engine/ffi.rs:63:pub unsafe extern "C" fn mtproxy_ffi_engine_startup(e: *mut EngineState, f: *mut ServerFunctions) {
+rust/mtproxy-ffi/src/engine/ffi.rs:68:pub unsafe extern "C" fn mtproxy_ffi_engine_add_engine_parse_options() {
+rust/mtproxy-ffi/src/engine/ffi.rs:73:pub unsafe extern "C" fn mtproxy_ffi_engine_default_parse_option_func(a: c_int) -> c_int {
+rust/mtproxy-ffi/src/engine/ffi.rs:78:pub unsafe extern "C" fn mtproxy_ffi_engine_prepare_stats() -> c_int {
+rust/mtproxy-ffi/src/engine/ffi.rs:83:pub unsafe extern "C" fn mtproxy_ffi_engine_rpc_stats(tlio_out: *mut core::ffi::c_void) {
+rust/mtproxy-ffi/src/engine/ffi.rs:88:pub unsafe extern "C" fn mtproxy_ffi_engine_default_parse_extra_args(
+rust/mtproxy-ffi/src/engine/ffi.rs:96:pub unsafe extern "C" fn mtproxy_ffi_engine_default_cron() {
+rust/mtproxy-ffi/src/engine/ffi.rs:101:pub unsafe extern "C" fn mtproxy_ffi_engine_set_signals_handlers() {
+rust/mtproxy-ffi/src/engine/ffi.rs:106:pub unsafe extern "C" fn mtproxy_ffi_engine_set_epoll_wait_timeout(epoll_wait_timeout: c_int) {
+rust/mtproxy-ffi/src/engine/ffi.rs:111:pub unsafe extern "C" fn mtproxy_ffi_engine_precise_cron_function_insert(ev: *mut EventPreciseCron) {
+rust/mtproxy-ffi/src/engine/ffi.rs:116:pub unsafe extern "C" fn mtproxy_ffi_engine_precise_cron_function_remove(ev: *mut EventPreciseCron) {
+rust/mtproxy-ffi/src/engine/ffi.rs:121:pub unsafe extern "C" fn mtproxy_ffi_engine_update_job_stats_gw(ex: *mut c_void) -> c_double {
+rust/mtproxy-ffi/src/engine/ffi.rs:126:pub unsafe extern "C" fn mtproxy_ffi_engine_precise_cron_job_run(
+rust/mtproxy-ffi/src/engine/ffi.rs:135:pub unsafe extern "C" fn mtproxy_ffi_engine_terminate_job_run(
+rust/mtproxy-ffi/src/engine/ffi.rs:144:pub unsafe extern "C" fn mtproxy_ffi_engine_default_get_op(tlio_in: *mut c_void) -> c_int {
+rust/mtproxy-ffi/src/engine/ffi.rs:149:pub unsafe extern "C" fn mtproxy_ffi_engine_default_main(
+rust/mtproxy-ffi/src/compat/ffi.rs:8:pub extern "C" fn mtproxy_ffi_api_version() -> u32 {
+rust/mtproxy-ffi/src/compat/ffi.rs:18:pub extern "C" fn mtproxy_ffi_startup_handshake(expected_api_version: u32) -> i32 {
+rust/mtproxy-ffi/src/compat/ffi.rs:27:pub unsafe extern "C" fn mtproxy_ffi_get_concurrency_boundary(
+rust/mtproxy-ffi/src/compat/ffi.rs:38:pub unsafe extern "C" fn mtproxy_ffi_get_network_boundary(out: *mut MtproxyNetworkBoundary) -> i32 {
+rust/mtproxy-ffi/src/compat/ffi.rs:47:pub unsafe extern "C" fn mtproxy_ffi_get_rpc_boundary(out: *mut MtproxyRpcBoundary) -> i32 {
+rust/mtproxy-ffi/src/compat/ffi.rs:56:pub unsafe extern "C" fn mtproxy_ffi_get_crypto_boundary(out: *mut MtproxyCryptoBoundary) -> i32 {
+rust/mtproxy-ffi/src/compat/ffi.rs:65:pub unsafe extern "C" fn mtproxy_ffi_get_application_boundary(
+rust/mtproxy-ffi/src/compat/ffi.rs:73:pub extern "C" fn mtproxy_ffi_net_epoll_conv_flags(flags: i32) -> i32 {
+rust/mtproxy-ffi/src/compat/ffi.rs:79:pub extern "C" fn mtproxy_ffi_resolver_kdb_load_hosts() -> i32 {
+rust/mtproxy-ffi/src/compat/ffi.rs:85:pub extern "C" fn mtproxy_ffi_resolver_kdb_hosts_loaded() -> i32 {
+rust/mtproxy-ffi/src/compat/ffi.rs:95:pub unsafe extern "C" fn mtproxy_ffi_resolver_gethostbyname_plan(
+rust/mtproxy-ffi/src/compat/ffi.rs:105:pub extern "C" fn mtproxy_ffi_net_epoll_unconv_flags(epoll_flags: i32) -> i32 {
+rust/mtproxy-ffi/src/compat/ffi.rs:111:pub extern "C" fn mtproxy_ffi_net_timers_wait_msec(wakeup_time: f64, now: f64) -> i32 {
+rust/mtproxy-ffi/src/compat/ffi.rs:121:pub unsafe extern "C" fn mtproxy_ffi_net_select_best_key_signature(
+rust/mtproxy-ffi/src/compat/ffi.rs:141:pub extern "C" fn mtproxy_ffi_net_connection_is_active(flags: i32) -> i32 {
+rust/mtproxy-ffi/src/compat/ffi.rs:147:pub extern "C" fn mtproxy_ffi_net_compute_conn_events(flags: i32, use_epollet: i32) -> i32 {
+rust/mtproxy-ffi/src/compat/ffi.rs:156:pub unsafe extern "C" fn mtproxy_ffi_net_add_nat_info(rule_text: *const c_char) -> i32 {
+rust/mtproxy-ffi/src/compat/ffi.rs:162:pub extern "C" fn mtproxy_ffi_net_translate_ip(local_ip: u32) -> u32 {
+rust/mtproxy-ffi/src/compat/ffi.rs:168:pub extern "C" fn mtproxy_ffi_net_msg_tl_marker_kind(marker: i32) -> i32 {
+rust/mtproxy-ffi/src/compat/ffi.rs:174:pub extern "C" fn mtproxy_ffi_net_msg_tl_padding(total_bytes: i32) -> i32 {
+rust/mtproxy-ffi/src/compat/ffi.rs:180:pub extern "C" fn mtproxy_ffi_net_msg_encrypt_decrypt_effective_bytes(
+rust/mtproxy-ffi/src/compat/ffi.rs:190:pub extern "C" fn mtproxy_ffi_net_stats_recent_idle_percent(
+rust/mtproxy-ffi/src/compat/ffi.rs:199:pub extern "C" fn mtproxy_ffi_net_stats_average_idle_percent(
+rust/mtproxy-ffi/src/compat/ffi.rs:208:pub extern "C" fn mtproxy_ffi_net_tcp_aes_aligned_len(total_bytes: i32) -> i32 {
+rust/mtproxy-ffi/src/compat/ffi.rs:214:pub extern "C" fn mtproxy_ffi_net_tcp_aes_needed_output_bytes(total_bytes: i32) -> i32 {
+rust/mtproxy-ffi/src/compat/ffi.rs:220:pub extern "C" fn mtproxy_ffi_net_tcp_tls_encrypt_chunk_len(total_bytes: i32, is_tls: i32) -> i32 {
+rust/mtproxy-ffi/src/compat/ffi.rs:226:pub extern "C" fn mtproxy_ffi_net_tcp_tls_header_needed_bytes(available: i32) -> i32 {
+rust/mtproxy-ffi/src/compat/ffi.rs:235:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_tls_parse_header(
+rust/mtproxy-ffi/src/compat/ffi.rs:244:pub extern "C" fn mtproxy_ffi_net_tcp_tls_decrypt_chunk_len(
+rust/mtproxy-ffi/src/compat/ffi.rs:253:pub extern "C" fn mtproxy_ffi_net_tcp_reader_negative_skip_take(
+rust/mtproxy-ffi/src/compat/ffi.rs:262:pub extern "C" fn mtproxy_ffi_net_tcp_reader_negative_skip_next(
+rust/mtproxy-ffi/src/compat/ffi.rs:271:pub extern "C" fn mtproxy_ffi_net_tcp_reader_positive_skip_next(
+rust/mtproxy-ffi/src/compat/ffi.rs:288:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_reader_skip_from_parse_result(
+rust/mtproxy-ffi/src/compat/ffi.rs:306:pub extern "C" fn mtproxy_ffi_net_tcp_reader_precheck_result(flags: i32) -> i32 {
+rust/mtproxy-ffi/src/compat/ffi.rs:312:pub extern "C" fn mtproxy_ffi_net_tcp_reader_should_continue(
+rust/mtproxy-ffi/src/compat/ffi.rs:325:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_domain_bucket_index(
+rust/mtproxy-ffi/src/compat/ffi.rs:337:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_client_random_bucket_index(
+rust/mtproxy-ffi/src/compat/ffi.rs:348:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_select_server_hello_profile(
+rust/mtproxy-ffi/src/compat/ffi.rs:372:pub extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_is_allowed_timestamp(
+rust/mtproxy-ffi/src/compat/ffi.rs:390:pub extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_tls_has_bytes(
+rust/mtproxy-ffi/src/compat/ffi.rs:405:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_tls_read_length(
+rust/mtproxy-ffi/src/compat/ffi.rs:420:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_tls_expect_bytes(
+rust/mtproxy-ffi/src/compat/ffi.rs:436:pub extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_get_domain_server_hello_encrypted_size(
+rust/mtproxy-ffi/src/compat/ffi.rs:452:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_add_length(
+rust/mtproxy-ffi/src/compat/ffi.rs:470:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_add_string(
+rust/mtproxy-ffi/src/compat/ffi.rs:490:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_add_grease(
+rust/mtproxy-ffi/src/compat/ffi.rs:510:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_add_random_bytes(
+rust/mtproxy-ffi/src/compat/ffi.rs:529:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_add_public_key(
+rust/mtproxy-ffi/src/compat/ffi.rs:543:pub unsafe extern "C" fn mtproxy_ffi_net_thread_run_notification_event(
+rust/mtproxy-ffi/src/compat/ffi.rs:576:pub unsafe extern "C" fn mtproxy_ffi_net_http_error_msg_text(code: *mut i32) -> *const c_char {
+rust/mtproxy-ffi/src/compat/ffi.rs:585:pub unsafe extern "C" fn mtproxy_ffi_net_http_gen_date(
+rust/mtproxy-ffi/src/compat/ffi.rs:598:pub unsafe extern "C" fn mtproxy_ffi_net_http_gen_time(
+rust/mtproxy-ffi/src/compat/ffi.rs:612:pub unsafe extern "C" fn mtproxy_ffi_net_http_get_header(
+rust/mtproxy-ffi/src/compat/ffi.rs:628:pub unsafe extern "C" fn mtproxy_ffi_msg_buffers_pick_size_index(
+rust/mtproxy-ffi/src/compat/ffi.rs:641:pub unsafe extern "C" fn mtproxy_ffi_tcp_rpc_encode_compact_header(
+rust/mtproxy-ffi/src/compat/ffi.rs:660:pub unsafe extern "C" fn mtproxy_ffi_tcp_rpc_decode_compact_header(
+rust/mtproxy-ffi/src/compat/ffi.rs:680:pub extern "C" fn mtproxy_ffi_tcp_rpc_set_default_rpc_flags(and_flags: u32, or_flags: u32) -> u32 {
+rust/mtproxy-ffi/src/compat/ffi.rs:686:pub extern "C" fn mtproxy_ffi_tcp_rpc_get_default_rpc_flags() -> u32 {
+rust/mtproxy-ffi/src/compat/ffi.rs:692:pub extern "C" fn mtproxy_ffi_tcp_rpc_set_max_dh_accept_rate(rate: i32) {
+rust/mtproxy-ffi/src/compat/ffi.rs:698:pub extern "C" fn mtproxy_ffi_tcp_rpc_get_max_dh_accept_rate() -> i32 {
+rust/mtproxy-ffi/src/compat/ffi.rs:707:pub unsafe extern "C" fn mtproxy_ffi_tcp_rpc_construct_ping_packet(
+rust/mtproxy-ffi/src/compat/ffi.rs:726:pub unsafe extern "C" fn mtproxy_ffi_tcp_rpc_add_dh_accept(
+rust/mtproxy-ffi/src/compat/ffi.rs:748:pub unsafe extern "C" fn mtproxy_ffi_tcp_rpc_parse_nonce_packet(
+rust/mtproxy-ffi/src/compat/ffi.rs:784:pub unsafe extern "C" fn mtproxy_ffi_tcp_rpc_client_process_nonce_packet(
+rust/mtproxy-ffi/src/compat/ffi.rs:820:pub unsafe extern "C" fn mtproxy_ffi_tcp_rpc_server_process_nonce_packet(
+rust/mtproxy-ffi/src/compat/ffi.rs:853:pub unsafe extern "C" fn mtproxy_ffi_tcp_rpc_parse_handshake_packet(
+rust/mtproxy-ffi/src/compat/ffi.rs:873:pub extern "C" fn mtproxy_ffi_tcp_rpc_client_packet_len_state(
+rust/mtproxy-ffi/src/compat/ffi.rs:882:pub extern "C" fn mtproxy_ffi_tcp_rpc_server_packet_header_malformed(packet_len: i32) -> i32 {
+rust/mtproxy-ffi/src/compat/ffi.rs:888:pub extern "C" fn mtproxy_ffi_tcp_rpc_server_packet_len_state(
+rust/mtproxy-ffi/src/compat/ffi.rs:897:pub extern "C" fn mtproxy_ffi_tcp_rpc_server_default_execute_should_pong(
+rust/mtproxy-ffi/src/compat/ffi.rs:909:pub unsafe extern "C" fn mtproxy_ffi_tcp_rpc_server_default_execute_set_pong(
+rust/mtproxy-ffi/src/compat/ffi.rs:922:pub unsafe extern "C" fn mtproxy_ffi_tcp_rpc_server_build_handshake_packet(
+rust/mtproxy-ffi/src/compat/ffi.rs:946:pub unsafe extern "C" fn mtproxy_ffi_tcp_rpc_server_build_handshake_error_packet(
+rust/mtproxy-ffi/src/compat/ffi.rs:964:pub extern "C" fn mtproxy_ffi_tcp_rpc_server_validate_handshake_header(
+rust/mtproxy-ffi/src/compat/ffi.rs:980:pub extern "C" fn mtproxy_ffi_tcp_rpc_server_validate_nonce_header(
+rust/mtproxy-ffi/src/compat/ffi.rs:1001:pub unsafe extern "C" fn mtproxy_ffi_tcp_rpc_server_validate_handshake(
+rust/mtproxy-ffi/src/compat/ffi.rs:1021:pub extern "C" fn mtproxy_ffi_tcp_rpc_server_should_set_wantwr(out_total_bytes: i32) -> i32 {
+rust/mtproxy-ffi/src/compat/ffi.rs:1027:pub extern "C" fn mtproxy_ffi_tcp_rpc_server_should_notify_close(has_rpc_close: i32) -> i32 {
+rust/mtproxy-ffi/src/compat/ffi.rs:1033:pub extern "C" fn mtproxy_ffi_tcp_rpc_server_do_wakeup() -> i32 {
+rust/mtproxy-ffi/src/compat/ffi.rs:1039:pub extern "C" fn mtproxy_ffi_tcp_rpc_server_notification_pending_queries() -> i32 {
+rust/mtproxy-ffi/src/compat/ffi.rs:1048:pub unsafe extern "C" fn mtproxy_ffi_tcp_rpc_server_init_accepted_state(
+rust/mtproxy-ffi/src/compat/ffi.rs:1071:pub unsafe extern "C" fn mtproxy_ffi_tcp_rpc_server_init_accepted_nohs_state(
+rust/mtproxy-ffi/src/compat/ffi.rs:1083:pub unsafe extern "C" fn mtproxy_ffi_tcp_rpc_server_init_fake_crypto_state(
+rust/mtproxy-ffi/src/compat/ffi.rs:1092:pub extern "C" fn mtproxy_ffi_tcp_rpc_server_default_check_perm(default_rpc_flags: i32) -> i32 {
+rust/mtproxy-ffi/src/compat/ffi.rs:1101:pub unsafe extern "C" fn mtproxy_ffi_rpc_target_normalize_pid(
+rust/mtproxy-ffi/src/compat/ffi.rs:1110:pub extern "C" fn mtproxy_ffi_engine_rpc_common_default_query_type_mask() -> i32 {
+rust/mtproxy-ffi/src/compat/ffi.rs:1121:pub extern "C" fn mtproxy_ffi_engine_rpc_common_default_parse_decision(
+rust/mtproxy-ffi/src/compat/ffi.rs:1130:pub extern "C" fn mtproxy_ffi_engine_rpc_query_result_type_id_from_qid(qid: i64) -> i32 {
+rust/mtproxy-ffi/src/compat/ffi.rs:1136:pub extern "C" fn mtproxy_ffi_engine_rpc_query_result_dispatch_decision(
+rust/mtproxy-ffi/src/compat/ffi.rs:1145:pub extern "C" fn mtproxy_ffi_engine_rpc_need_dup(flags: i32) -> i32 {
+rust/mtproxy-ffi/src/compat/ffi.rs:1151:pub extern "C" fn mtproxy_ffi_engine_rpc_query_job_dispatch_decision(
+rust/mtproxy-ffi/src/compat/ffi.rs:1160:pub extern "C" fn mtproxy_ffi_engine_rpc_tcp_should_hold_conn(op: i32) -> i32 {
+rust/mtproxy-ffi/src/compat/ffi.rs:1166:pub extern "C" fn mtproxy_ffi_engine_net_default_port_mod() -> i32 {
+rust/mtproxy-ffi/src/compat/ffi.rs:1181:pub unsafe extern "C" fn mtproxy_ffi_engine_net_try_open_port_range(
+rust/mtproxy-ffi/src/compat/ffi.rs:1216:pub unsafe extern "C" fn mtproxy_ffi_engine_net_open_privileged_port(
+rust/mtproxy-ffi/src/compat/ffi.rs:1244:pub extern "C" fn mtproxy_ffi_engine_signal_set_pending(sig: i32) {
+rust/mtproxy-ffi/src/compat/ffi.rs:1250:pub extern "C" fn mtproxy_ffi_engine_signal_check_pending(sig: i32) -> i32 {
+rust/mtproxy-ffi/src/compat/ffi.rs:1256:pub extern "C" fn mtproxy_ffi_engine_signal_check_pending_and_clear(sig: i32) -> i32 {
+rust/mtproxy-ffi/src/compat/ffi.rs:1262:pub extern "C" fn mtproxy_ffi_engine_interrupt_signal_raised() -> i32 {
+rust/mtproxy-ffi/src/compat/ffi.rs:1268:pub extern "C" fn mtproxy_ffi_engine_process_signals_allowed(
+rust/mtproxy-ffi/src/compat/ffi.rs:1278:pub extern "C" fn mtproxy_ffi_engine_rpc_result_new_flags(old_flags: i32) -> i32 {
+rust/mtproxy-ffi/src/compat/ffi.rs:1284:pub extern "C" fn mtproxy_ffi_engine_rpc_result_header_len(flags: i32) -> i32 {
+rust/mtproxy-ffi/src/compat/ffi.rs:1290:pub extern "C" fn mtproxy_ffi_mtproto_ext_conn_hash(
+rust/mtproxy-ffi/src/compat/ffi.rs:1300:pub extern "C" fn mtproxy_ffi_mtproto_conn_tag(generation: i32) -> i32 {
+rust/mtproxy-ffi/src/net_events/ffi.rs:7:pub unsafe extern "C" fn mtproxy_ffi_net_events_init_epoll() -> c_int {
+rust/mtproxy-ffi/src/net_events/ffi.rs:12:pub unsafe extern "C" fn mtproxy_ffi_net_events_remove_event_from_heap(
+rust/mtproxy-ffi/src/net_events/ffi.rs:20:pub unsafe extern "C" fn mtproxy_ffi_net_events_put_event_into_heap(ev: *mut EventDescr) -> c_int {
+rust/mtproxy-ffi/src/net_events/ffi.rs:25:pub unsafe extern "C" fn mtproxy_ffi_net_events_put_event_into_heap_tail(
+rust/mtproxy-ffi/src/net_events/ffi.rs:33:pub unsafe extern "C" fn mtproxy_ffi_net_events_epoll_sethandler(
+rust/mtproxy-ffi/src/net_events/ffi.rs:36:    handler: Option<unsafe extern "C" fn(c_int, *mut c_void, *mut EventDescr) -> c_int>,
+rust/mtproxy-ffi/src/net_events/ffi.rs:43:pub unsafe extern "C" fn mtproxy_ffi_net_events_epoll_insert(fd: c_int, flags: c_int) -> c_int {
+rust/mtproxy-ffi/src/net_events/ffi.rs:48:pub unsafe extern "C" fn mtproxy_ffi_net_events_epoll_remove(fd: c_int) -> c_int {
+rust/mtproxy-ffi/src/net_events/ffi.rs:53:pub unsafe extern "C" fn mtproxy_ffi_net_events_epoll_close(fd: c_int) -> c_int {
+rust/mtproxy-ffi/src/net_events/ffi.rs:58:pub unsafe extern "C" fn mtproxy_ffi_net_events_epoll_fetch_events(timeout: c_int) -> c_int {
+rust/mtproxy-ffi/src/net_events/ffi.rs:63:pub unsafe extern "C" fn mtproxy_ffi_net_events_epoll_work(timeout: c_int) -> c_int {
+rust/mtproxy-ffi/src/net_events/ffi.rs:68:pub unsafe extern "C" fn mtproxy_ffi_net_events_maximize_sndbuf(socket_fd: c_int, max: c_int) {
+rust/mtproxy-ffi/src/net_events/ffi.rs:73:pub unsafe extern "C" fn mtproxy_ffi_net_events_maximize_rcvbuf(socket_fd: c_int, max: c_int) {
+rust/mtproxy-ffi/src/net_events/ffi.rs:78:pub unsafe extern "C" fn mtproxy_ffi_net_events_server_socket(
+rust/mtproxy-ffi/src/net_events/ffi.rs:88:pub unsafe extern "C" fn mtproxy_ffi_net_events_client_socket(
+rust/mtproxy-ffi/src/net_events/ffi.rs:97:pub unsafe extern "C" fn mtproxy_ffi_net_events_client_socket_ipv6(
+rust/mtproxy-ffi/src/net_events/ffi.rs:106:pub unsafe extern "C" fn mtproxy_ffi_net_events_get_my_ipv4() -> c_uint {
+rust/mtproxy-ffi/src/net_events/ffi.rs:111:pub unsafe extern "C" fn mtproxy_ffi_net_events_get_my_ipv6(ipv6: *mut u8) -> c_int {
+rust/mtproxy-ffi/src/net_events/ffi.rs:116:pub unsafe extern "C" fn mtproxy_ffi_net_events_conv_addr(
+rust/mtproxy-ffi/src/net_events/ffi.rs:124:pub unsafe extern "C" fn mtproxy_ffi_net_events_conv_addr6(
+rust/mtproxy-ffi/src/net_events/ffi.rs:132:pub unsafe extern "C" fn mtproxy_ffi_net_events_show_ip(ip: c_uint) -> *const c_char {
+rust/mtproxy-ffi/src/net_events/ffi.rs:137:pub unsafe extern "C" fn mtproxy_ffi_net_events_show_ipv6(ipv6: *const u8) -> *const c_char {
+rust/mtproxy-ffi/src/engine/core.rs:102:type ParseFn = Option<unsafe extern "C" fn(*mut c_void, i64) -> *mut c_void>;
+rust/mtproxy-ffi/src/engine/core.rs:103:type ParseStatsFn = Option<unsafe extern "C" fn(*mut c_void)>;
+rust/mtproxy-ffi/src/engine/core.rs:104:type ParseOptionFn = Option<unsafe extern "C" fn(c_int) -> c_int>;
+rust/mtproxy-ffi/src/engine/core.rs:105:type ParseExtraArgsFn = Option<unsafe extern "C" fn(c_int, *mut *mut c_char)>;
+rust/mtproxy-ffi/src/engine/core.rs:106:type VoidFn = Option<unsafe extern "C" fn()>;
+rust/mtproxy-ffi/src/engine/core.rs:107:type OnWaitingExitFn = Option<unsafe extern "C" fn() -> c_int>;
+rust/mtproxy-ffi/src/engine/core.rs:108:type GetOpFn = Option<unsafe extern "C" fn(*mut c_void) -> c_int>;
+rust/mtproxy-ffi/src/engine/core.rs:109:type CustomOpFn = Option<unsafe extern "C" fn(*mut c_void, *mut c_void)>;
+rust/mtproxy-ffi/src/engine/core.rs:110:type JobExecuteFn = Option<unsafe extern "C" fn(Job, c_int, *mut c_void) -> c_int>;
+rust/mtproxy-ffi/src/engine/core.rs:111:type JobTimerWakeupFn = Option<unsafe extern "C" fn(*mut c_void) -> c_double>;
+rust/mtproxy-ffi/src/engine/core.rs:112:type KsignalHandler = Option<unsafe extern "C" fn(c_int)>;
+rust/mtproxy-ffi/src/engine/core.rs:128:    wakeup: Option<unsafe extern "C" fn(*mut EventTimer) -> c_int>,
+rust/mtproxy-ffi/src/engine/core.rs:179:    run_script: Option<unsafe extern "C" fn() -> c_int>,
+rust/mtproxy-ffi/src/engine/core.rs:231:    wakeup: Option<unsafe extern "C" fn(*mut EventPreciseCron)>,
+rust/mtproxy-ffi/src/engine/core.rs:234:unsafe extern "C" {
+rust/mtproxy-ffi/src/engine/core.rs:275:        stat: Option<unsafe extern "C" fn(*mut c_void)>,
+rust/mtproxy-ffi/src/engine/core.rs:334:        handler: Option<unsafe extern "C" fn(c_int, *mut c_void, *mut c_void) -> c_int>,
+rust/mtproxy-ffi/src/engine/core.rs:452:unsafe extern "C" fn rust_default_nop() {}
+rust/mtproxy-ffi/src/engine/core.rs:454:unsafe extern "C" fn rust_default_parse_option(_: c_int) -> c_int {
+rust/mtproxy-ffi/src/engine/core.rs:458:unsafe extern "C" fn rust_default_sighup() {}
+rust/mtproxy-ffi/src/engine/core.rs:460:unsafe extern "C" fn rust_default_sigusr1() {
+rust/mtproxy-ffi/src/engine/core.rs:466:unsafe extern "C" fn rust_default_sigrtmax_9() {}
+rust/mtproxy-ffi/src/engine/core.rs:468:unsafe extern "C" fn rust_default_sigrtmax_8() {}
+rust/mtproxy-ffi/src/engine/core.rs:470:unsafe extern "C" fn rust_default_sigrtmax_4() {}
+rust/mtproxy-ffi/src/engine/core.rs:472:unsafe extern "C" fn rust_default_sigrtmax_1() {}
+rust/mtproxy-ffi/src/engine/core.rs:474:unsafe extern "C" fn rust_default_sigrtmax() {}
+rust/mtproxy-ffi/src/engine/core.rs:476:unsafe extern "C" fn rust_parse_option_engine(val: c_int) -> c_int {
+rust/mtproxy-ffi/src/engine/core.rs:533:    default_f: unsafe extern "C" fn(),
+rust/mtproxy-ffi/src/engine/core.rs:549:pub(super) unsafe extern "C" fn default_cron_impl() {
+rust/mtproxy-ffi/src/engine/core.rs:594:pub(super) unsafe extern "C" fn update_job_stats_gw_impl(_ex: *mut c_void) -> c_double {
+rust/mtproxy-ffi/src/engine/core.rs:601:pub(super) unsafe extern "C" fn precise_cron_job_run_impl(
+rust/mtproxy-ffi/src/engine/core.rs:623:pub(super) unsafe extern "C" fn terminate_job_run_impl(
+rust/mtproxy-ffi/src/engine/core.rs:646:pub(super) unsafe extern "C" fn default_get_op_impl(tlio_in: *mut c_void) -> c_int {
+rust/mtproxy-ffi/src/engine/core.rs:739:unsafe extern "C" fn engine_epoll_nop(fd: c_int, _data: *mut c_void, _ev: *mut c_void) -> c_int {
+rust/mtproxy-ffi/src/engine/core.rs:1169:                    Some(quiet_signal_handler as unsafe extern "C" fn(c_int))
+rust/mtproxy-ffi/src/engine/core.rs:1171:                    Some(default_signal_handler as unsafe extern "C" fn(c_int))
+rust/mtproxy-ffi/src/tl_parse/abi.rs:88:    fetch_raw_data: Option<unsafe extern "C" fn(*mut TlInState, *mut c_void, c_int)>,
+rust/mtproxy-ffi/src/tl_parse/abi.rs:89:    fetch_move: Option<unsafe extern "C" fn(*mut TlInState, c_int)>,
+rust/mtproxy-ffi/src/tl_parse/abi.rs:90:    fetch_lookup: Option<unsafe extern "C" fn(*mut TlInState, *mut c_void, c_int)>,
+rust/mtproxy-ffi/src/tl_parse/abi.rs:91:    fetch_clear: Option<unsafe extern "C" fn(*mut TlInState)>,
+rust/mtproxy-ffi/src/tl_parse/abi.rs:92:    fetch_mark: Option<unsafe extern "C" fn(*mut TlInState)>,
+rust/mtproxy-ffi/src/tl_parse/abi.rs:93:    fetch_mark_restore: Option<unsafe extern "C" fn(*mut TlInState)>,
+rust/mtproxy-ffi/src/tl_parse/abi.rs:94:    fetch_mark_delete: Option<unsafe extern "C" fn(*mut TlInState)>,
+rust/mtproxy-ffi/src/tl_parse/abi.rs:95:    fetch_raw_message: Option<unsafe extern "C" fn(*mut TlInState, *mut RawMessage, c_int)>,
+rust/mtproxy-ffi/src/tl_parse/abi.rs:96:    fetch_lookup_raw_message: Option<unsafe extern "C" fn(*mut TlInState, *mut RawMessage, c_int)>,
+rust/mtproxy-ffi/src/tl_parse/abi.rs:104:    store_get_ptr: Option<unsafe extern "C" fn(*mut TlOutState, c_int) -> *mut c_void>,
+rust/mtproxy-ffi/src/tl_parse/abi.rs:105:    store_get_prepend_ptr: Option<unsafe extern "C" fn(*mut TlOutState, c_int) -> *mut c_void>,
+rust/mtproxy-ffi/src/tl_parse/abi.rs:106:    store_raw_data: Option<unsafe extern "C" fn(*mut TlOutState, *const c_void, c_int)>,
+rust/mtproxy-ffi/src/tl_parse/abi.rs:107:    store_raw_msg: Option<unsafe extern "C" fn(*mut TlOutState, *mut RawMessage)>,
+rust/mtproxy-ffi/src/tl_parse/abi.rs:108:    store_read_back: Option<unsafe extern "C" fn(*mut TlOutState, c_int)>,
+rust/mtproxy-ffi/src/tl_parse/abi.rs:109:    store_read_back_nondestruct: Option<unsafe extern "C" fn(*mut TlOutState, *mut c_void, c_int)>,
+rust/mtproxy-ffi/src/tl_parse/abi.rs:110:    store_crc32_partial: Option<unsafe extern "C" fn(*mut TlOutState, c_int, u32) -> u32>,
+rust/mtproxy-ffi/src/tl_parse/abi.rs:111:    store_flush: Option<unsafe extern "C" fn(*mut TlOutState)>,
+rust/mtproxy-ffi/src/tl_parse/abi.rs:112:    store_clear: Option<unsafe extern "C" fn(*mut TlOutState)>,
+rust/mtproxy-ffi/src/tl_parse/abi.rs:113:    copy_through: [Option<unsafe extern "C" fn(*mut TlInState, *mut TlOutState, c_int, c_int)>; 10],
+rust/mtproxy-ffi/src/tl_parse/abi.rs:114:    store_prefix: Option<unsafe extern "C" fn(*mut TlOutState)>,
+rust/mtproxy-ffi/src/tl_parse/abi.rs:163:unsafe extern "C" {
+rust/mtproxy-ffi/src/tl_parse/abi.rs:254:fn in_fetch_move_cb(state: *mut TlInState) -> Option<unsafe extern "C" fn(*mut TlInState, c_int)> {
+rust/mtproxy-ffi/src/tl_parse/abi.rs:262:) -> Option<unsafe extern "C" fn(*mut TlInState, *mut c_void, c_int)> {
+rust/mtproxy-ffi/src/tl_parse/abi.rs:270:) -> Option<unsafe extern "C" fn(*mut TlInState, *mut c_void, c_int)> {
+rust/mtproxy-ffi/src/tl_parse/abi.rs:278:) -> Option<unsafe extern "C" fn(*mut TlInState, *mut RawMessage, c_int)> {
+rust/mtproxy-ffi/src/tl_parse/abi.rs:286:) -> Option<unsafe extern "C" fn(*mut TlInState, *mut RawMessage, c_int)> {
+rust/mtproxy-ffi/src/tl_parse/abi.rs:292:fn in_fetch_mark_cb(state: *mut TlInState) -> Option<unsafe extern "C" fn(*mut TlInState)> {
+rust/mtproxy-ffi/src/tl_parse/abi.rs:298:fn in_fetch_mark_restore_cb(state: *mut TlInState) -> Option<unsafe extern "C" fn(*mut TlInState)> {
+rust/mtproxy-ffi/src/tl_parse/abi.rs:304:fn in_fetch_mark_delete_cb(state: *mut TlInState) -> Option<unsafe extern "C" fn(*mut TlInState)> {
+rust/mtproxy-ffi/src/tl_parse/abi.rs:333:) -> Option<unsafe extern "C" fn(*mut TlOutState, *const c_void, c_int)> {
+rust/mtproxy-ffi/src/tl_parse/abi.rs:341:) -> Option<unsafe extern "C" fn(*mut TlOutState, c_int)> {
+rust/mtproxy-ffi/src/tl_parse/abi.rs:347:fn out_store_clear_cb(state: *mut TlOutState) -> Option<unsafe extern "C" fn(*mut TlOutState)> {
+rust/mtproxy-ffi/src/tl_parse/abi.rs:355:) -> Option<unsafe extern "C" fn(*mut TlOutState, c_int) -> *mut c_void> {
+rust/mtproxy-ffi/src/tl_parse/abi.rs:363:) -> Option<unsafe extern "C" fn(*mut TlOutState, c_int) -> *mut c_void> {
+rust/mtproxy-ffi/src/tl_parse/abi.rs:371:) -> Option<unsafe extern "C" fn(*mut TlOutState, *mut RawMessage)> {
+rust/mtproxy-ffi/src/tl_parse/abi.rs:380:) -> Option<unsafe extern "C" fn(*mut TlInState, *mut TlOutState, c_int, c_int)> {
+rust/mtproxy-ffi/src/tl_parse/abi.rs:390:    store_get_prepend_ptr: Option<unsafe extern "C" fn(*mut TlOutState, c_int) -> *mut c_void>,
+rust/mtproxy-ffi/src/tl_parse/abi.rs:391:    store_prefix: Option<unsafe extern "C" fn(*mut TlOutState)>,
+rust/mtproxy-ffi/src/tl_parse/abi.rs:392:    store_flush: Option<unsafe extern "C" fn(*mut TlOutState)>,
+rust/mtproxy-ffi/src/tl_parse/abi.rs:432:unsafe extern "C" fn tl_raw_msg_fetch_raw_data(
+rust/mtproxy-ffi/src/tl_parse/abi.rs:440:unsafe extern "C" fn tl_raw_msg_fetch_move(tlio_in: *mut TlInState, len: c_int) {
+rust/mtproxy-ffi/src/tl_parse/abi.rs:445:unsafe extern "C" fn tl_raw_msg_fetch_lookup(
+rust/mtproxy-ffi/src/tl_parse/abi.rs:453:unsafe extern "C" fn tl_raw_msg_fetch_raw_message(
+rust/mtproxy-ffi/src/tl_parse/abi.rs:461:unsafe extern "C" fn tl_raw_msg_fetch_lookup_raw_message(
+rust/mtproxy-ffi/src/tl_parse/abi.rs:470:unsafe extern "C" fn tl_raw_msg_fetch_mark(tlio_in: *mut TlInState) {
+rust/mtproxy-ffi/src/tl_parse/abi.rs:486:unsafe extern "C" fn tl_raw_msg_fetch_mark_restore(tlio_in: *mut TlInState) {
+rust/mtproxy-ffi/src/tl_parse/abi.rs:499:unsafe extern "C" fn tl_raw_msg_fetch_mark_delete(tlio_in: *mut TlInState) {
+rust/mtproxy-ffi/src/tl_parse/abi.rs:507:unsafe extern "C" fn tl_raw_msg_store_get_ptr(
+rust/mtproxy-ffi/src/tl_parse/abi.rs:514:unsafe extern "C" fn tl_raw_msg_store_get_prepend_ptr(
+rust/mtproxy-ffi/src/tl_parse/abi.rs:521:unsafe extern "C" fn tl_raw_msg_store_raw_data(
+rust/mtproxy-ffi/src/tl_parse/abi.rs:529:unsafe extern "C" fn tl_raw_msg_store_raw_msg(tlio_out: *mut TlOutState, raw: *mut RawMessage) {
+rust/mtproxy-ffi/src/tl_parse/abi.rs:533:unsafe extern "C" fn tl_raw_msg_store_read_back(tlio_out: *mut TlOutState, len: c_int) {
+rust/mtproxy-ffi/src/tl_parse/abi.rs:537:unsafe extern "C" fn tl_raw_msg_store_read_back_nondestruct(
+rust/mtproxy-ffi/src/tl_parse/abi.rs:548:unsafe extern "C" fn tl_raw_msg_raw_msg_copy_through(
+rust/mtproxy-ffi/src/tl_parse/abi.rs:567:unsafe extern "C" fn tl_raw_msg_str_copy_through(
+rust/mtproxy-ffi/src/tl_parse/abi.rs:582:unsafe extern "C" fn tl_raw_msg_fetch_clear(tlio_in: *mut TlInState) {
+rust/mtproxy-ffi/src/tl_parse/abi.rs:591:unsafe extern "C" fn tl_raw_msg_store_clear(tlio_out: *mut TlOutState) {
+rust/mtproxy-ffi/src/tl_parse/abi.rs:600:unsafe extern "C" fn tl_raw_msg_store_flush(tlio_out: *mut TlOutState) {
+rust/mtproxy-ffi/src/tl_parse/abi.rs:609:unsafe extern "C" fn tl_tcp_raw_msg_store_clear(tlio_out: *mut TlOutState) {
+rust/mtproxy-ffi/src/tl_parse/abi.rs:622:unsafe extern "C" fn tl_tcp_raw_msg_store_flush(tlio_out: *mut TlOutState) {
+rust/mtproxy-ffi/src/tl_parse/abi.rs:629:unsafe extern "C" fn tl_tcp_raw_msg_store_flush_unaligned(tlio_out: *mut TlOutState) {
+rust/mtproxy-ffi/src/tl_parse/abi.rs:636:unsafe extern "C" fn tl_str_fetch_raw_data(tlio_in: *mut TlInState, buf: *mut c_void, len: c_int) {
+rust/mtproxy-ffi/src/tl_parse/abi.rs:645:unsafe extern "C" fn tl_str_fetch_move(tlio_in: *mut TlInState, len: c_int) {
+rust/mtproxy-ffi/src/tl_parse/abi.rs:649:unsafe extern "C" fn tl_str_fetch_lookup(tlio_in: *mut TlInState, buf: *mut c_void, len: c_int) {
+rust/mtproxy-ffi/src/tl_parse/abi.rs:657:unsafe extern "C" fn tl_str_fetch_raw_message(
+rust/mtproxy-ffi/src/tl_parse/abi.rs:666:unsafe extern "C" fn tl_str_fetch_lookup_raw_message(
+rust/mtproxy-ffi/src/tl_parse/abi.rs:674:unsafe extern "C" fn tl_str_store_get_ptr(tlio_out: *mut TlOutState, len: c_int) -> *mut c_void {
+rust/mtproxy-ffi/src/tl_parse/abi.rs:680:unsafe extern "C" fn tl_str_store_get_prepend_ptr(
+rust/mtproxy-ffi/src/tl_parse/abi.rs:687:unsafe extern "C" fn tl_str_store_raw_data(
+rust/mtproxy-ffi/src/tl_parse/abi.rs:700:unsafe extern "C" fn tl_str_store_raw_msg(tlio_out: *mut TlOutState, raw: *mut RawMessage) {
+rust/mtproxy-ffi/src/tl_parse/abi.rs:706:unsafe extern "C" fn tl_str_store_read_back(tlio_out: *mut TlOutState, len: c_int) {
+rust/mtproxy-ffi/src/tl_parse/abi.rs:710:unsafe extern "C" fn tl_str_store_read_back_nondestruct(
+rust/mtproxy-ffi/src/tl_parse/abi.rs:722:unsafe extern "C" fn tl_str_raw_msg_copy_through(
+rust/mtproxy-ffi/src/tl_parse/abi.rs:734:unsafe extern "C" fn tl_str_str_copy_through(
+rust/mtproxy-ffi/src/tl_parse/abi.rs:751:unsafe extern "C" fn tl_str_fetch_mark(tlio_in: *mut TlInState) {
+rust/mtproxy-ffi/src/tl_parse/abi.rs:757:unsafe extern "C" fn tl_str_fetch_mark_restore(tlio_in: *mut TlInState) {
+rust/mtproxy-ffi/src/tl_parse/abi.rs:765:unsafe extern "C" fn tl_str_fetch_mark_delete(tlio_in: *mut TlInState) {
+rust/mtproxy-ffi/src/tl_parse/abi.rs:769:unsafe extern "C" fn tl_str_store_clear(tlio_out: *mut TlOutState) {
+rust/mtproxy-ffi/src/tl_parse/abi.rs:773:unsafe extern "C" fn tl_str_store_flush(tlio_out: *mut TlOutState) {
+rust/mtproxy-ffi/src/mtproto/core.rs:135:type MtprotoJobExecuteFn = Option<unsafe extern "C" fn(ConnectionJob, c_int, *mut c_void) -> c_int>;
+rust/mtproxy-ffi/src/mtproto/core.rs:136:type MtprotoJobCallbackFn = Option<unsafe extern "C" fn(*mut c_void, c_int) -> c_int>;
+rust/mtproxy-ffi/src/mtproto/core.rs:160:    wakeup: Option<unsafe extern "C" fn(*mut MtprotoEventTimer) -> c_int>,
+rust/mtproxy-ffi/src/mtproto/core.rs:481:unsafe extern "C" {
+rust/mtproxy-ffi/src/mtproto/core.rs:1321:unsafe extern "C" fn mtproto_finish_postponed_http_response_bridge(
+rust/mtproxy-ffi/src/mtproto/core.rs:2582:unsafe extern "C" fn mtproto_client_packet_job_run_bridge(
+rust/mtproxy-ffi/src/mtproto/core.rs:2980:unsafe extern "C" fn mtproto_do_rpcs_execute_bridge(data: *mut c_void, s_len: c_int) -> c_int {
+rust/mtproxy-ffi/src/mtproto/core.rs:4415:    let checks: [unsafe extern "C" fn() -> c_int; 9] = [
+rust/mtproxy-ffi/src/net_tcp_connections/core.rs:29:type JobFunction = Option<unsafe extern "C" fn(Job, c_int, *mut c_void) -> c_int>;
+rust/mtproxy-ffi/src/net_tcp_connections/core.rs:53:    pub wakeup: Option<unsafe extern "C" fn(*mut EventTimer) -> c_int>,
+rust/mtproxy-ffi/src/net_tcp_connections/core.rs:87:type ConnFn1 = Option<unsafe extern "C" fn(ConnectionJob) -> c_int>;
+rust/mtproxy-ffi/src/net_tcp_connections/core.rs:88:type ConnFn2 = Option<unsafe extern "C" fn(ConnectionJob, c_int) -> c_int>;
+rust/mtproxy-ffi/src/net_tcp_connections/core.rs:89:type ConnWakeupAioFn = Option<unsafe extern "C" fn(ConnectionJob, c_int) -> c_int>;
+rust/mtproxy-ffi/src/net_tcp_connections/core.rs:90:type ConnWritePacketFn = Option<unsafe extern "C" fn(ConnectionJob, *mut RawMessage) -> c_int>;
+rust/mtproxy-ffi/src/net_tcp_connections/core.rs:91:type ConnCryptoInitFn = Option<unsafe extern "C" fn(ConnectionJob, *mut c_void, c_int) -> c_int>;
+rust/mtproxy-ffi/src/net_tcp_connections/core.rs:209:unsafe extern "C" {
+rust/mtproxy-ffi/src/engine_rpc/core.rs:63:type OpaqueJobFunction = Option<unsafe extern "C" fn(*mut c_void, c_int, *mut c_void) -> c_int>;
+rust/mtproxy-ffi/src/engine_rpc/core.rs:65:type JobFunction = Option<unsafe extern "C" fn(Job, c_int, *mut c_void) -> c_int>;
+rust/mtproxy-ffi/src/engine_rpc/core.rs:66:type TlActFn = Option<unsafe extern "C" fn(Job, *mut TlActExtra) -> c_int>;
+rust/mtproxy-ffi/src/engine_rpc/core.rs:67:type TlActFreeFn = Option<unsafe extern "C" fn(*mut TlActExtra)>;
+rust/mtproxy-ffi/src/engine_rpc/core.rs:68:type TlActDupFn = Option<unsafe extern "C" fn(*mut TlActExtra) -> *mut TlActExtra>;
+rust/mtproxy-ffi/src/engine_rpc/core.rs:70:    Option<unsafe extern "C" fn(*mut TlInState, c_longlong) -> *mut TlActExtra>;
+rust/mtproxy-ffi/src/engine_rpc/core.rs:71:pub(super) type TlGetOpFn = Option<unsafe extern "C" fn(*mut TlInState) -> c_int>;
+rust/mtproxy-ffi/src/engine_rpc/core.rs:72:pub(super) type TlStatFn = Option<unsafe extern "C" fn(*mut c_void)>;
+rust/mtproxy-ffi/src/engine_rpc/core.rs:73:pub(super) type TlQueryResultFn = Option<unsafe extern "C" fn(*mut TlInState, *mut TlQueryHeader)>;
+rust/mtproxy-ffi/src/engine_rpc/core.rs:74:pub(super) type CustomOpFn = Option<unsafe extern "C" fn(*mut TlInState, *mut QueryWorkParams)>;
+rust/mtproxy-ffi/src/engine_rpc/core.rs:88:    wakeup: Option<unsafe extern "C" fn(*mut EventTimer) -> c_int>,
+rust/mtproxy-ffi/src/engine_rpc/core.rs:209:type Crc32PartialFn = Option<unsafe extern "C" fn(*const c_void, c_long, c_uint) -> c_uint>;
+rust/mtproxy-ffi/src/engine_rpc/core.rs:322:unsafe extern "C" {
+rust/mtproxy-ffi/src/engine_rpc/core.rs:668:pub(super) unsafe extern "C" fn tl_default_act_free_impl(extra: *mut TlActExtra) {
+rust/mtproxy-ffi/src/engine_rpc/core.rs:683:pub(super) unsafe extern "C" fn tl_default_act_dup_impl(extra: *mut TlActExtra) -> *mut TlActExtra {
+rust/mtproxy-ffi/src/engine_rpc/core.rs:1095:unsafe extern "C" fn process_act_atom_subjob_callback(
+rust/mtproxy-ffi/src/engine_rpc/core.rs:1103:unsafe extern "C" fn process_query_job_callback(
+rust/mtproxy-ffi/src/engine_rpc/core.rs:1111:unsafe extern "C" fn process_parse_subjob_callback(
+rust/mtproxy-ffi/src/engine_rpc/core.rs:1119:unsafe extern "C" fn process_query_custom_subjob_callback(
+rust/mtproxy-ffi/src/engine_rpc/core.rs:1127:unsafe extern "C" fn do_query_job_run_callback(
+rust/mtproxy-ffi/src/kprintf/core.rs:9:unsafe extern "C" {
+rust/mtproxy-ffi/src/kprintf/core.rs:39:pub unsafe extern "C" fn mtproxy_ffi_nck_write(fd: c_int, data: *const c_void, len: usize) {
+rust/mtproxy-ffi/src/kprintf/core.rs:50:pub unsafe extern "C" fn mtproxy_ffi_nck_pwrite(
+rust/mtproxy-ffi/src/kprintf/core.rs:66:pub unsafe extern "C" fn mtproxy_ffi_hexdump(start: *const c_void, end: *const c_void) -> c_int {
+rust/mtproxy-ffi/src/kprintf/core.rs:132:pub unsafe extern "C" fn mtproxy_ffi_reopen_logs_ext(slave_mode: c_int) {
+rust/mtproxy-ffi/src/kprintf/core.rs:149:    extern "C" {
+rust/mtproxy-ffi/src/kprintf/core.rs:167:        extern "C" {
+rust/mtproxy-ffi/src/kprintf/core.rs:176:pub extern "C" fn mtproxy_ffi_reopen_logs() {
+rust/mtproxy-ffi/src/kprintf/core.rs:233:pub unsafe extern "C" fn mtproxy_ffi_kwrite(fd: c_int, buf: *const c_void, count: c_int) -> c_int {
+rust/mtproxy-ffi/src/kprintf/core.rs:246:    extern "C" {
+rust/mtproxy-ffi/src/kprintf/core.rs:310:pub unsafe extern "C" fn mtproxy_ffi_kdb_write(
+rust/mtproxy-ffi/src/kprintf/core.rs:368:            extern "C" {
+rust/mtproxy-ffi/src/kprintf/core.rs:395:                    extern "C" {
+rust/mtproxy-ffi/src/kprintf/core.rs:431:pub extern "C" fn mtproxy_ffi_get_reindex_speed() -> f64 {
+rust/mtproxy-ffi/src/kprintf/core.rs:437:pub extern "C" fn mtproxy_ffi_set_reindex_speed(speed: f64) {
+rust/mtproxy-ffi/src/net_http_server/core.rs:74:    pub wakeup: Option<unsafe extern "C" fn(*mut EventTimer) -> c_int>,
+rust/mtproxy-ffi/src/net_http_server/core.rs:146:    Option<unsafe extern "C" fn(ConnectionJob, *mut RawMessage, c_int) -> c_int>;
+rust/mtproxy-ffi/src/net_http_server/core.rs:147:pub(super) type HttpWakeupFn = Option<unsafe extern "C" fn(ConnectionJob) -> c_int>;
+rust/mtproxy-ffi/src/net_http_server/core.rs:148:pub(super) type HttpCloseFn = Option<unsafe extern "C" fn(ConnectionJob, c_int) -> c_int>;
+rust/mtproxy-ffi/src/net_http_server/core.rs:185:unsafe extern "C" {
+rust/mtproxy-ffi/src/net_tcp_connections/ffi.rs:7:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_connections_cpu_tcp_free_connection_buffers(
+rust/mtproxy-ffi/src/net_tcp_connections/ffi.rs:14:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_connections_cpu_tcp_server_writer(
+rust/mtproxy-ffi/src/net_tcp_connections/ffi.rs:21:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_connections_cpu_tcp_server_reader(
+rust/mtproxy-ffi/src/net_tcp_connections/ffi.rs:28:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_connections_cpu_tcp_aes_crypto_encrypt_output(
+rust/mtproxy-ffi/src/net_tcp_connections/ffi.rs:35:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_connections_cpu_tcp_aes_crypto_decrypt_input(
+rust/mtproxy-ffi/src/net_tcp_connections/ffi.rs:42:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_connections_cpu_tcp_aes_crypto_needed_output_bytes(
+rust/mtproxy-ffi/src/net_tcp_connections/ffi.rs:49:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_connections_cpu_tcp_aes_crypto_ctr128_encrypt_output(
+rust/mtproxy-ffi/src/net_tcp_connections/ffi.rs:56:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_connections_cpu_tcp_aes_crypto_ctr128_decrypt_input(
+rust/mtproxy-ffi/src/net_tcp_connections/ffi.rs:63:pub unsafe extern "C" fn mtproxy_ffi_net_tcp_connections_cpu_tcp_aes_crypto_ctr128_needed_output_bytes(
+rust/mtproxy-ffi/src/engine_rpc/ffi.rs:7:pub unsafe extern "C" fn mtproxy_ffi_engine_rpc_register_custom_op_cb(
+rust/mtproxy-ffi/src/engine_rpc/ffi.rs:15:pub unsafe extern "C" fn mtproxy_ffi_engine_rpc_fetch_query(
+rust/mtproxy-ffi/src/engine_rpc/ffi.rs:43:pub unsafe extern "C" fn mtproxy_ffi_engine_rpc_process_act_atom_subjob(
+rust/mtproxy-ffi/src/engine_rpc/ffi.rs:52:pub unsafe extern "C" fn mtproxy_ffi_engine_rpc_process_query_job(
+rust/mtproxy-ffi/src/engine_rpc/ffi.rs:61:pub unsafe extern "C" fn mtproxy_ffi_engine_rpc_tl_aio_init_store(
+rust/mtproxy-ffi/src/engine_rpc/ffi.rs:70:pub unsafe extern "C" fn mtproxy_ffi_engine_rpc_engine_work_rpc_req_result(
+rust/mtproxy-ffi/src/engine_rpc/ffi.rs:78:pub unsafe extern "C" fn mtproxy_ffi_engine_rpc_tl_result_new_flags(old_flags: c_int) -> c_int {
+rust/mtproxy-ffi/src/engine_rpc/ffi.rs:83:pub unsafe extern "C" fn mtproxy_ffi_engine_rpc_tl_result_get_header_len(
+rust/mtproxy-ffi/src/engine_rpc/ffi.rs:90:pub unsafe extern "C" fn mtproxy_ffi_engine_rpc_tl_result_make_header(
+rust/mtproxy-ffi/src/engine_rpc/ffi.rs:98:pub unsafe extern "C" fn mtproxy_ffi_engine_rpc_tl_default_act_free(extra: *mut TlActExtra) {
+rust/mtproxy-ffi/src/engine_rpc/ffi.rs:103:pub unsafe extern "C" fn mtproxy_ffi_engine_rpc_tl_default_act_dup(
+rust/mtproxy-ffi/src/engine_rpc/ffi.rs:110:pub unsafe extern "C" fn mtproxy_ffi_engine_rpc_tl_query_result_fun_set(
+rust/mtproxy-ffi/src/engine_rpc/ffi.rs:118:pub unsafe extern "C" fn mtproxy_ffi_engine_rpc_engine_tl_init(
+rust/mtproxy-ffi/src/engine_rpc/ffi.rs:128:pub unsafe extern "C" fn mtproxy_ffi_engine_rpc_tl_engine_store_stats(tlio_out: *mut c_void) {
+rust/mtproxy-ffi/src/engine_rpc/ffi.rs:133:pub unsafe extern "C" fn mtproxy_ffi_engine_rpc_process_query_custom_subjob(
+rust/mtproxy-ffi/src/engine_rpc/ffi.rs:142:pub unsafe extern "C" fn mtproxy_ffi_engine_rpc_create_query_job(
+rust/mtproxy-ffi/src/engine_rpc/ffi.rs:167:pub unsafe extern "C" fn mtproxy_ffi_engine_rpc_create_query_custom_job(
+rust/mtproxy-ffi/src/engine_rpc/ffi.rs:178:pub unsafe extern "C" fn mtproxy_ffi_engine_rpc_do_create_query_job(
+rust/mtproxy-ffi/src/engine_rpc/ffi.rs:188:pub unsafe extern "C" fn mtproxy_ffi_engine_rpc_default_tl_close_conn(
+rust/mtproxy-ffi/src/engine_rpc/ffi.rs:196:pub unsafe extern "C" fn mtproxy_ffi_engine_rpc_default_tl_tcp_rpcs_execute(
+rust/mtproxy-ffi/src/engine_rpc/ffi.rs:205:pub unsafe extern "C" fn mtproxy_ffi_engine_rpc_tl_generate_next_qid(
+rust/mtproxy-ffi/src/engine_rpc/ffi.rs:212:pub unsafe extern "C" fn mtproxy_ffi_engine_rpc_tl_store_stats(
+rust/mtproxy-ffi/src/engine_rpc/ffi.rs:221:pub unsafe extern "C" fn mtproxy_ffi_engine_rpc_query_job_run(
+rust/mtproxy-ffi/src/engine_rpc/ffi.rs:230:pub unsafe extern "C" fn mtproxy_ffi_engine_rpc_do_query_job_run(
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:24:pub unsafe extern "C" fn mtproxy_ffi_tl_store_header(
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:32:pub unsafe extern "C" fn mtproxy_ffi_tl_store_end_ext(
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:41:pub unsafe extern "C" fn mtproxy_ffi_tl_query_header_delete(h: *mut TlQueryHeader) {
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:46:pub unsafe extern "C" fn mtproxy_ffi_tl_query_header_dup(
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:53:pub unsafe extern "C" fn mtproxy_ffi_tl_query_header_clone(
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:60:pub unsafe extern "C" fn mtproxy_ffi_tl_set_error(
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:69:pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_init(
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:80:pub unsafe extern "C" fn mtproxy_ffi_tl_init_raw_message(
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:90:pub unsafe extern "C" fn mtproxy_ffi_tl_init_str(
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:99:pub unsafe extern "C" fn mtproxy_ffi_tl_store_init(
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:112:pub unsafe extern "C" fn mtproxy_ffi_tl_init_raw_msg(
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:121:pub unsafe extern "C" fn mtproxy_ffi_tl_init_raw_msg_nosend(tlio_out: *mut TlOutState) -> c_int {
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:126:pub unsafe extern "C" fn mtproxy_ffi_tl_init_str_out(
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:136:pub unsafe extern "C" fn mtproxy_ffi_tl_init_tcp_raw_msg(
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:147:pub unsafe extern "C" fn mtproxy_ffi_tl_query_header_parse(
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:155:pub unsafe extern "C" fn mtproxy_ffi_tl_query_answer_header_parse(
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:163:pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_check(
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:171:pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_lookup_int(tlio_in: *mut TlInState) -> c_int {
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:176:pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_lookup_second_int(tlio_in: *mut TlInState) -> c_int {
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:181:pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_lookup_long(tlio_in: *mut TlInState) -> i64 {
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:186:pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_lookup_data(
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:195:pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_int(tlio_in: *mut TlInState) -> c_int {
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:200:pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_double(tlio_in: *mut TlInState) -> f64 {
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:205:pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_long(tlio_in: *mut TlInState) -> i64 {
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:210:pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_raw_data(
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:219:pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_mark(tlio_in: *mut TlInState) {
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:224:pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_mark_restore(tlio_in: *mut TlInState) {
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:229:pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_mark_delete(tlio_in: *mut TlInState) {
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:234:pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_string_len(
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:242:pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_pad(tlio_in: *mut TlInState) -> c_int {
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:247:pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_string_data(
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:256:pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_skip_string_data(
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:264:pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_string(
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:273:pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_skip_string(
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:281:pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_string0(
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:290:pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_check_str_end(
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:298:pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_unread(tlio_in: *mut TlInState) -> c_int {
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:303:pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_skip(tlio_in: *mut TlInState, len: c_int) -> c_int {
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:308:pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_end(tlio_in: *mut TlInState) -> c_int {
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:313:pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_error(tlio_in: *mut TlInState) -> c_int {
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:318:pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_int_range(
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:327:pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_positive_int(tlio_in: *mut TlInState) -> c_int {
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:332:pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_nonnegative_int(tlio_in: *mut TlInState) -> c_int {
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:337:pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_int_subset(
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:345:pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_long_range(
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:354:pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_positive_long(tlio_in: *mut TlInState) -> i64 {
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:359:pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_nonnegative_long(tlio_in: *mut TlInState) -> i64 {
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:364:pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_raw_message(
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:373:pub unsafe extern "C" fn mtproxy_ffi_tl_fetch_lookup_raw_message(
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:382:pub unsafe extern "C" fn mtproxy_ffi_tl_store_get_ptr(
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:390:pub unsafe extern "C" fn mtproxy_ffi_tl_store_get_prepend_ptr(
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:398:pub unsafe extern "C" fn mtproxy_ffi_tl_store_int(tlio_out: *mut TlOutState, x: c_int) -> c_int {
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:403:pub unsafe extern "C" fn mtproxy_ffi_tl_store_long(tlio_out: *mut TlOutState, x: i64) -> c_int {
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:408:pub unsafe extern "C" fn mtproxy_ffi_tl_store_double(tlio_out: *mut TlOutState, x: f64) -> c_int {
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:413:pub unsafe extern "C" fn mtproxy_ffi_tl_store_raw_data(
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:422:pub unsafe extern "C" fn mtproxy_ffi_tl_store_raw_msg(
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:431:pub unsafe extern "C" fn mtproxy_ffi_tl_store_string_len(
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:439:pub unsafe extern "C" fn mtproxy_ffi_tl_store_pad(tlio_out: *mut TlOutState) -> c_int {
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:444:pub unsafe extern "C" fn mtproxy_ffi_tl_store_string_data(
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:453:pub unsafe extern "C" fn mtproxy_ffi_tl_store_string(
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:462:pub unsafe extern "C" fn mtproxy_ffi_tl_store_clear(tlio_out: *mut TlOutState) -> c_int {
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:467:pub unsafe extern "C" fn mtproxy_ffi_tl_store_clean(tlio_out: *mut TlOutState) -> c_int {
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:472:pub unsafe extern "C" fn mtproxy_ffi_tl_store_pos(tlio_out: *mut TlOutState) -> c_int {
+rust/mtproxy-ffi/src/tl_parse/ffi.rs:477:pub unsafe extern "C" fn mtproxy_ffi_tl_copy_through(
+rust/mtproxy-ffi/src/net_http_server/ffi.rs:7:pub unsafe extern "C" fn mtproxy_ffi_net_http_server_hts_default_execute(
+rust/mtproxy-ffi/src/net_http_server/ffi.rs:16:pub unsafe extern "C" fn mtproxy_ffi_net_http_server_hts_init_accepted(c: ConnectionJob) -> c_int {
+rust/mtproxy-ffi/src/net_http_server/ffi.rs:21:pub unsafe extern "C" fn mtproxy_ffi_net_http_server_hts_close_connection(
+rust/mtproxy-ffi/src/net_http_server/ffi.rs:29:pub unsafe extern "C" fn mtproxy_ffi_net_http_server_write_http_error_raw(
+rust/mtproxy-ffi/src/net_http_server/ffi.rs:38:pub unsafe extern "C" fn mtproxy_ffi_net_http_server_write_http_error(
+rust/mtproxy-ffi/src/net_http_server/ffi.rs:46:pub unsafe extern "C" fn mtproxy_ffi_net_http_server_hts_write_packet(
+rust/mtproxy-ffi/src/net_http_server/ffi.rs:54:pub unsafe extern "C" fn mtproxy_ffi_net_http_server_hts_parse_execute(c: ConnectionJob) -> c_int {
+rust/mtproxy-ffi/src/net_http_server/ffi.rs:59:pub unsafe extern "C" fn mtproxy_ffi_net_http_server_hts_std_wakeup(c: ConnectionJob) -> c_int {
+rust/mtproxy-ffi/src/net_http_server/ffi.rs:64:pub unsafe extern "C" fn mtproxy_ffi_net_http_server_hts_std_alarm(c: ConnectionJob) -> c_int {
+rust/mtproxy-ffi/src/net_http_server/ffi.rs:69:pub unsafe extern "C" fn mtproxy_ffi_net_http_server_hts_do_wakeup(c: ConnectionJob) -> c_int {
+rust/mtproxy-ffi/src/net_http_server/ffi.rs:74:pub unsafe extern "C" fn mtproxy_ffi_net_http_server_gen_http_date(
+rust/mtproxy-ffi/src/net_http_server/ffi.rs:82:pub unsafe extern "C" fn mtproxy_ffi_net_http_server_cur_http_date() -> *mut c_char {
+rust/mtproxy-ffi/src/net_http_server/ffi.rs:87:pub unsafe extern "C" fn mtproxy_ffi_net_http_server_get_http_header(
+rust/mtproxy-ffi/src/net_http_server/ffi.rs:99:pub unsafe extern "C" fn mtproxy_ffi_net_http_server_write_basic_http_header_raw(
+rust/mtproxy-ffi/src/net_http_server/ffi.rs:112:pub unsafe extern "C" fn mtproxy_ffi_net_http_server_http_flush(
+rust/mtproxy-ffi/src/mtproto/ffi.rs:11:pub unsafe extern "C" fn mtproxy_ffi_mtproto_proxy_usage(program_name: *const c_char) -> i32 {
+rust/mtproxy-ffi/src/mtproto/ffi.rs:20:pub unsafe extern "C" fn mtproxy_ffi_mtproto_proxy_main(
+rust/mtproxy-ffi/src/mtproto/ffi.rs:33:pub unsafe extern "C" fn clear_config(mc: *mut MtproxyMfConfig, do_destroy_targets: c_int) {
+rust/mtproxy-ffi/src/mtproto/ffi.rs:43:pub unsafe extern "C" fn mf_cluster_lookup(
+rust/mtproxy-ffi/src/mtproto/ffi.rs:56:pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_resolve_default_target_from_cfg_cur() -> c_int {
+rust/mtproxy-ffi/src/mtproto/ffi.rs:61:pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_set_default_target_endpoint(
+rust/mtproxy-ffi/src/mtproto/ffi.rs:83:pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_create_target(
+rust/mtproxy-ffi/src/mtproto/ffi.rs:91:pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_now_or_time() -> c_int {
+rust/mtproxy-ffi/src/mtproto/ffi.rs:100:pub unsafe extern "C" fn mtproxy_ffi_mtproto_parse_text_ipv4(
+rust/mtproxy-ffi/src/mtproto/ffi.rs:113:pub unsafe extern "C" fn mtproxy_ffi_mtproto_parse_text_ipv6(
+rust/mtproxy-ffi/src/mtproto/ffi.rs:127:pub unsafe extern "C" fn mtproxy_ffi_mtproto_inspect_packet_header(
+rust/mtproxy-ffi/src/mtproto/ffi.rs:141:pub unsafe extern "C" fn mtproxy_ffi_mtproto_parse_client_packet(
+rust/mtproxy-ffi/src/mtproto/ffi.rs:150:pub unsafe extern "C" fn mtproxy_ffi_mtproto_process_client_packet(
+rust/mtproxy-ffi/src/mtproto/ffi.rs:161:pub unsafe extern "C" fn mtproxy_ffi_mtproto_process_client_packet_runtime(
+rust/mtproxy-ffi/src/mtproto/ffi.rs:169:pub unsafe extern "C" fn mtproxy_ffi_mtproto_push_rpc_confirmation_runtime(
+rust/mtproxy-ffi/src/mtproto/ffi.rs:178:pub unsafe extern "C" fn mtproxy_ffi_mtproto_mtfront_parse_function_runtime(
+rust/mtproxy-ffi/src/mtproto/ffi.rs:186:pub unsafe extern "C" fn mtproxy_ffi_mtproto_process_http_query(
+rust/mtproxy-ffi/src/mtproto/ffi.rs:194:pub unsafe extern "C" fn mtproxy_ffi_mtproto_http_query_job_run(
+rust/mtproxy-ffi/src/mtproto/ffi.rs:203:pub unsafe extern "C" fn mtproxy_ffi_mtproto_callback_job_run(
+rust/mtproxy-ffi/src/mtproto/ffi.rs:212:pub unsafe extern "C" fn mtproxy_ffi_mtproto_client_packet_job_run(
+rust/mtproxy-ffi/src/mtproto/ffi.rs:221:pub unsafe extern "C" fn mtproxy_ffi_mtproto_client_send_message_runtime(
+rust/mtproxy-ffi/src/mtproto/ffi.rs:232:pub unsafe extern "C" fn mtproxy_ffi_mtproto_add_stats(w: *mut c_void) {
+rust/mtproxy-ffi/src/mtproto/ffi.rs:237:pub unsafe extern "C" fn mtproxy_ffi_mtproto_compute_stats_sum() {
+rust/mtproxy-ffi/src/mtproto/ffi.rs:242:pub unsafe extern "C" fn mtproxy_ffi_mtproto_check_all_conn_buffers() {
+rust/mtproxy-ffi/src/mtproto/ffi.rs:247:pub unsafe extern "C" fn mtproxy_ffi_mtproto_check_conn_buffers_runtime(c: *mut c_void) -> i32 {
+rust/mtproxy-ffi/src/mtproto/ffi.rs:252:pub unsafe extern "C" fn mtproxy_ffi_mtproto_update_local_stats_copy(s: *mut c_void) {
+rust/mtproxy-ffi/src/mtproto/ffi.rs:257:pub unsafe extern "C" fn mtproxy_ffi_mtproto_mtfront_prepare_stats(sb: *mut c_void) {
+rust/mtproxy-ffi/src/mtproto/ffi.rs:262:pub unsafe extern "C" fn mtproxy_ffi_mtproto_hts_stats_execute(
+rust/mtproxy-ffi/src/mtproto/ffi.rs:271:pub unsafe extern "C" fn mtproxy_ffi_mtproto_hts_execute(
+rust/mtproxy-ffi/src/mtproto/ffi.rs:280:pub unsafe extern "C" fn mtproxy_ffi_mtproto_rpcc_execute(
+rust/mtproxy-ffi/src/mtproto/ffi.rs:289:pub unsafe extern "C" fn mtproxy_ffi_mtproto_mtfront_client_ready(c: *mut c_void) -> i32 {
+rust/mtproxy-ffi/src/mtproto/ffi.rs:294:pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_rpcs_execute(
+rust/mtproxy-ffi/src/mtproto/ffi.rs:303:pub unsafe extern "C" fn mtproxy_ffi_mtproto_mtfront_client_close(
+rust/mtproxy-ffi/src/mtproto/ffi.rs:311:pub unsafe extern "C" fn mtproxy_ffi_mtproto_do_close_in_ext_conn(
+rust/mtproxy-ffi/src/mtproto/ffi.rs:319:pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_rpc_ready(c: *mut c_void) -> i32 {
+rust/mtproxy-ffi/src/mtproto/ffi.rs:324:pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_rpc_close(c: *mut c_void, who: c_int) -> i32 {
+rust/mtproxy-ffi/src/mtproto/ffi.rs:329:pub unsafe extern "C" fn mtproxy_ffi_mtproto_proxy_rpc_ready(c: *mut c_void) -> i32 {
+rust/mtproxy-ffi/src/mtproto/ffi.rs:334:pub unsafe extern "C" fn mtproxy_ffi_mtproto_proxy_rpc_close(c: *mut c_void, who: c_int) -> i32 {
+rust/mtproxy-ffi/src/mtproto/ffi.rs:339:pub unsafe extern "C" fn mtproxy_ffi_mtproto_do_rpcs_execute(
+rust/mtproxy-ffi/src/mtproto/ffi.rs:347:pub unsafe extern "C" fn mtproxy_ffi_mtproto_finish_postponed_http_response(
+rust/mtproxy-ffi/src/mtproto/ffi.rs:355:pub unsafe extern "C" fn mtproxy_ffi_mtproto_http_alarm(c: *mut c_void) -> i32 {
+rust/mtproxy-ffi/src/mtproto/ffi.rs:360:pub unsafe extern "C" fn mtproxy_ffi_mtproto_http_close(c: *mut c_void, who: c_int) -> i32 {
+rust/mtproxy-ffi/src/mtproto/ffi.rs:365:pub unsafe extern "C" fn mtproxy_ffi_mtproto_f_parse_option(val: c_int) -> i32 {
+rust/mtproxy-ffi/src/mtproto/ffi.rs:370:pub unsafe extern "C" fn mtproxy_ffi_mtproto_mtfront_prepare_parse_options() {
+rust/mtproxy-ffi/src/mtproto/ffi.rs:375:pub unsafe extern "C" fn mtproxy_ffi_mtproto_check_children_dead() {
+rust/mtproxy-ffi/src/mtproto/ffi.rs:380:pub unsafe extern "C" fn mtproxy_ffi_mtproto_check_children_status() {
+rust/mtproxy-ffi/src/mtproto/ffi.rs:385:pub unsafe extern "C" fn mtproxy_ffi_mtproto_check_special_connections_overflow() {
+rust/mtproxy-ffi/src/mtproto/ffi.rs:390:pub unsafe extern "C" fn mtproxy_ffi_mtproto_kill_children(signal: c_int) {
+rust/mtproxy-ffi/src/mtproto/ffi.rs:395:pub unsafe extern "C" fn mtproxy_ffi_mtproto_cron() {
+rust/mtproxy-ffi/src/mtproto/ffi.rs:400:pub unsafe extern "C" fn mtproxy_ffi_mtproto_usage() {
+rust/mtproxy-ffi/src/mtproto/ffi.rs:405:pub unsafe extern "C" fn mtproxy_ffi_mtproto_mtfront_parse_extra_args(
+rust/mtproxy-ffi/src/mtproto/ffi.rs:413:pub unsafe extern "C" fn mtproxy_ffi_mtproto_mtfront_sigusr1_handler() {
+rust/mtproxy-ffi/src/mtproto/ffi.rs:418:pub unsafe extern "C" fn mtproxy_ffi_mtproto_mtfront_on_exit() {
+rust/mtproxy-ffi/src/mtproto/ffi.rs:423:pub unsafe extern "C" fn mtproxy_ffi_mtproto_mtfront_pre_init() {
+rust/mtproxy-ffi/src/mtproto/ffi.rs:428:pub unsafe extern "C" fn mtproxy_ffi_mtproto_mtfront_pre_start() {
+rust/mtproxy-ffi/src/mtproto/ffi.rs:433:pub unsafe extern "C" fn mtproxy_ffi_mtproto_mtfront_pre_loop() {
+rust/mtproxy-ffi/src/mtproto/ffi.rs:438:pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_conn_reset() {
+rust/mtproxy-ffi/src/mtproto/ffi.rs:443:pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_conn_create(
+rust/mtproxy-ffi/src/mtproto/ffi.rs:458:pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_conn_get_by_in_fd(
+rust/mtproxy-ffi/src/mtproto/ffi.rs:466:pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_conn_get_by_out_conn_id(
+rust/mtproxy-ffi/src/mtproto/ffi.rs:474:pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_conn_update_auth_key(
+rust/mtproxy-ffi/src/mtproto/ffi.rs:483:pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_conn_remove_by_out_conn_id(
+rust/mtproxy-ffi/src/mtproto/ffi.rs:491:pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_conn_remove_by_in_conn_id(
+rust/mtproxy-ffi/src/mtproto/ffi.rs:500:pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_conn_remove_any_by_out_fd(
+rust/mtproxy-ffi/src/mtproto/ffi.rs:508:pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_conn_remove_any_by_in_fd(
+rust/mtproxy-ffi/src/mtproto/ffi.rs:516:pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_conn_lru_insert(
+rust/mtproxy-ffi/src/mtproto/ffi.rs:524:pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_conn_lru_delete(in_fd: c_int) -> i32 {
+rust/mtproxy-ffi/src/mtproto/ffi.rs:529:pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_conn_lru_pop_oldest(
+rust/mtproxy-ffi/src/mtproto/ffi.rs:536:pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_conn_counts(
+rust/mtproxy-ffi/src/mtproto/ffi.rs:544:pub unsafe extern "C" fn mtproxy_ffi_mtproto_notify_ext_connection_runtime(
+rust/mtproxy-ffi/src/mtproto/ffi.rs:552:pub unsafe extern "C" fn mtproxy_ffi_mtproto_remove_ext_connection_runtime(
+rust/mtproxy-ffi/src/mtproto/ffi.rs:561:pub unsafe extern "C" fn mtproxy_ffi_mtproto_build_rpc_proxy_req(
+rust/mtproxy-ffi/src/mtproto/ffi.rs:608:pub unsafe extern "C" fn mtproxy_ffi_mtproto_build_http_ok_header(
+rust/mtproxy-ffi/src/mtproto/ffi.rs:629:pub unsafe extern "C" fn mtproxy_ffi_mtproto_client_send_non_http_wrap(
+rust/mtproxy-ffi/src/mtproto/ffi.rs:637:pub unsafe extern "C" fn mtproxy_ffi_mtproto_http_send_message(
+rust/mtproxy-ffi/src/mtproto/ffi.rs:646:pub unsafe extern "C" fn mtproxy_ffi_mtproto_forward_tcp_query(
+rust/mtproxy-ffi/src/mtproto/ffi.rs:669:pub unsafe extern "C" fn mtproxy_ffi_mtproto_forward_mtproto_packet(
+rust/mtproxy-ffi/src/mtproto/ffi.rs:680:pub unsafe extern "C" fn mtproxy_ffi_mtproto_choose_proxy_target(target_dc: c_int) -> *mut c_void {
+rust/mtproxy-ffi/src/mtproto/ffi.rs:689:pub unsafe extern "C" fn mtproxy_ffi_mtproto_parse_function(
+rust/mtproxy-ffi/src/mtproto/ffi.rs:703:pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_preinit(
+rust/mtproxy-ffi/src/mtproto/ffi.rs:717:pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_decide_cluster_apply(
+rust/mtproxy-ffi/src/mtproto/ffi.rs:740:pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_getlex_ext(
+rust/mtproxy-ffi/src/mtproto/ffi.rs:753:pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_scan_directive_token(
+rust/mtproxy-ffi/src/mtproto/ffi.rs:770:pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_parse_directive_step(
+rust/mtproxy-ffi/src/mtproto/ffi.rs:802:pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_parse_proxy_target_step(
+rust/mtproxy-ffi/src/mtproto/ffi.rs:847:pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_parse_full_pass(
+rust/mtproxy-ffi/src/mtproto/ffi.rs:880:pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_expect_semicolon(
+rust/mtproxy-ffi/src/mtproto/ffi.rs:894:pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_lookup_cluster_index(
+rust/mtproxy-ffi/src/mtproto/ffi.rs:922:pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_finalize(
+rust/mtproxy-ffi/src/mtproto/ffi.rs:945:pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_parse_config(
+rust/mtproxy-ffi/src/mtproto/ffi.rs:958:pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_do_reload_config(flags: i32) -> i32 {
+rust/mtproxy-ffi/src/crypto/ffi.rs:11:pub unsafe extern "C" fn mtproxy_ffi_crypto_aes_fetch_stat(
+rust/mtproxy-ffi/src/crypto/ffi.rs:34:pub unsafe extern "C" fn mtproxy_ffi_crypto_aes_conn_init(
+rust/mtproxy-ffi/src/crypto/ffi.rs:102:pub unsafe extern "C" fn mtproxy_ffi_crypto_aes_conn_free(
+rust/mtproxy-ffi/src/crypto/ffi.rs:134:pub unsafe extern "C" fn mtproxy_ffi_crypto_aes_load_pwd_file(
+rust/mtproxy-ffi/src/crypto/ffi.rs:220:pub unsafe extern "C" fn mtproxy_ffi_crypto_aes_generate_nonce(out: *mut u8) -> i32 {
+rust/mtproxy-ffi/src/crypto/ffi.rs:265:pub unsafe extern "C" fn mtproxy_ffi_crypto_alloc_temp(len: i32) -> *mut c_void {
+rust/mtproxy-ffi/src/crypto/ffi.rs:286:pub unsafe extern "C" fn mtproxy_ffi_crypto_free_temp(ptr: *mut c_void, len: i32) -> i32 {
+rust/mtproxy-ffi/src/crypto/ffi.rs:306:pub unsafe extern "C" fn mtproxy_ffi_crypto_dh_init_params(out_dh_params_select: *mut i32) -> i32 {
+rust/mtproxy-ffi/src/crypto/ffi.rs:342:pub unsafe extern "C" fn mtproxy_ffi_crypto_dh_fetch_tot_rounds(out_rounds: *mut i64) -> i32 {
+rust/mtproxy-ffi/src/crypto/ffi.rs:357:pub unsafe extern "C" fn mtproxy_ffi_crypto_dh_first_round_stateful(
+rust/mtproxy-ffi/src/crypto/ffi.rs:384:pub unsafe extern "C" fn mtproxy_ffi_crypto_dh_second_round_stateful(
+rust/mtproxy-ffi/src/crypto/ffi.rs:402:pub unsafe extern "C" fn mtproxy_ffi_crypto_dh_third_round_stateful(
+rust/mtproxy-ffi/src/crypto/ffi.rs:422:pub unsafe extern "C" fn mtproxy_ffi_crypto_dh_is_good_rpc_dh_bin(
+rust/mtproxy-ffi/src/crypto/ffi.rs:445:pub unsafe extern "C" fn mtproxy_ffi_crypto_aes_create_keys(
+rust/mtproxy-ffi/src/crypto/ffi.rs:516:pub unsafe extern "C" fn mtproxy_ffi_aesni_crypt(
+rust/mtproxy-ffi/src/crypto/ffi.rs:552:pub unsafe extern "C" fn mtproxy_ffi_crypto_rand_bytes(out: *mut u8, len: i32) -> i32 {
+rust/mtproxy-ffi/src/crypto/ffi.rs:574:pub unsafe extern "C" fn mtproxy_ffi_crypto_tls_generate_public_key(out: *mut u8) -> i32 {
+rust/mtproxy-ffi/src/crypto/ffi.rs:585:pub extern "C" fn mtproxy_ffi_crypto_dh_get_params_select() -> i32 {
+rust/mtproxy-ffi/src/crypto/ffi.rs:594:pub unsafe extern "C" fn mtproxy_ffi_crypto_dh_first_round(g_a: *mut u8, a_out: *mut u8) -> i32 {
+rust/mtproxy-ffi/src/crypto/ffi.rs:610:pub unsafe extern "C" fn mtproxy_ffi_crypto_dh_second_round(
+rust/mtproxy-ffi/src/crypto/ffi.rs:648:pub unsafe extern "C" fn mtproxy_ffi_crypto_dh_third_round(
+rust/mtproxy-ffi/src/crypto/ffi.rs:679:pub unsafe extern "C" fn mtproxy_ffi_aesni_ctx_init(
+rust/mtproxy-ffi/src/crypto/ffi.rs:724:pub unsafe extern "C" fn mtproxy_ffi_aesni_ctx_free(evp_ctx: *mut c_void) -> i32 {
+rust/mtproxy-ffi/src/crypto/ffi.rs:737:pub unsafe extern "C" fn mtproxy_ffi_crc32_partial(data: *const u8, len: usize, crc: u32) -> u32 {
+rust/mtproxy-ffi/src/crypto/ffi.rs:753:pub unsafe extern "C" fn mtproxy_ffi_crc32c_partial(data: *const u8, len: usize, crc: u32) -> u32 {
+rust/mtproxy-ffi/src/crypto/ffi.rs:766:pub extern "C" fn mtproxy_ffi_crc32_combine(crc1: u32, crc2: u32, len2: i64) -> u32 {
+rust/mtproxy-ffi/src/crypto/ffi.rs:772:pub extern "C" fn mtproxy_ffi_crc32c_combine(crc1: u32, crc2: u32, len2: i64) -> u32 {
+rust/mtproxy-ffi/src/crypto/ffi.rs:781:pub unsafe extern "C" fn mtproxy_ffi_crc64_partial(data: *const u8, len: usize, crc: u64) -> u64 {
+rust/mtproxy-ffi/src/crypto/ffi.rs:794:pub extern "C" fn mtproxy_ffi_crc64_combine(crc1: u64, crc2: u64, len2: i64) -> u64 {
+rust/mtproxy-ffi/src/crypto/ffi.rs:800:pub extern "C" fn mtproxy_ffi_crc64_feed_byte(crc: u64, b: u8) -> u64 {
+rust/mtproxy-ffi/src/crypto/ffi.rs:809:pub unsafe extern "C" fn mtproxy_ffi_gf32_compute_powers_generic(
+rust/mtproxy-ffi/src/crypto/ffi.rs:828:pub unsafe extern "C" fn mtproxy_ffi_gf32_compute_powers_clmul(powers: *mut u32, poly: u32) {
+rust/mtproxy-ffi/src/crypto/ffi.rs:840:pub unsafe extern "C" fn mtproxy_ffi_gf32_combine_generic(
+rust/mtproxy-ffi/src/crypto/ffi.rs:859:pub unsafe extern "C" fn mtproxy_ffi_gf32_combine_clmul(
+rust/mtproxy-ffi/src/crypto/ffi.rs:875:pub extern "C" fn mtproxy_ffi_crc32_find_corrupted_bit(size: i32, d: u32) -> i32 {
+rust/mtproxy-ffi/src/crypto/ffi.rs:884:pub unsafe extern "C" fn mtproxy_ffi_crc32_repair_bit(input: *mut u8, len: usize, k: i32) -> i32 {
+rust/mtproxy-ffi/src/crypto/ffi.rs:900:pub unsafe extern "C" fn mtproxy_ffi_crc32_check_and_repair(
+rust/mtproxy-ffi/src/crypto/ffi.rs:922:pub unsafe extern "C" fn mtproxy_ffi_pid_init_common(pid: *mut MtproxyProcessId) -> i32 {
+rust/mtproxy-ffi/src/crypto/ffi.rs:951:pub unsafe extern "C" fn mtproxy_ffi_pid_init_client(pid: *mut MtproxyProcessId, ip: u32) -> i32 {
+rust/mtproxy-ffi/src/crypto/ffi.rs:967:pub unsafe extern "C" fn mtproxy_ffi_pid_init_server(
+rust/mtproxy-ffi/src/crypto/ffi.rs:991:pub unsafe extern "C" fn mtproxy_ffi_matches_pid(
+rust/mtproxy-ffi/src/crypto/ffi.rs:1018:pub unsafe extern "C" fn mtproxy_ffi_process_id_is_newer(
+rust/mtproxy-ffi/src/crypto/ffi.rs:1048:pub unsafe extern "C" fn mtproxy_ffi_cpuid_fill(out: *mut MtproxyCpuid) -> i32 {
+rust/mtproxy-ffi/src/crypto/ffi.rs:1085:pub unsafe extern "C" fn mtproxy_ffi_md5(input: *const u8, len: usize, output: *mut u8) -> i32 {
+rust/mtproxy-ffi/src/crypto/ffi.rs:1104:pub unsafe extern "C" fn mtproxy_ffi_md5_hex(
+rust/mtproxy-ffi/src/crypto/ffi.rs:1128:pub unsafe extern "C" fn mtproxy_ffi_md5_hmac(
+rust/mtproxy-ffi/src/crypto/ffi.rs:1160:pub unsafe extern "C" fn mtproxy_ffi_sha1(input: *const u8, len: usize, output: *mut u8) -> i32 {
+rust/mtproxy-ffi/src/crypto/ffi.rs:1180:pub unsafe extern "C" fn mtproxy_ffi_sha1_two_chunks(
+rust/mtproxy-ffi/src/crypto/ffi.rs:1210:pub unsafe extern "C" fn mtproxy_ffi_sha256(input: *const u8, len: usize, output: *mut u8) -> i32 {
+rust/mtproxy-ffi/src/crypto/ffi.rs:1230:pub unsafe extern "C" fn mtproxy_ffi_sha256_two_chunks(
+rust/mtproxy-ffi/src/crypto/ffi.rs:1260:pub unsafe extern "C" fn mtproxy_ffi_sha256_hmac(
+rust/mtproxy-ffi/src/net_timers/core.rs:22:    pub wakeup: Option<unsafe extern "C" fn(*mut EventTimer) -> c_int>,
+rust/mtproxy-ffi/src/net_timers/core.rs:155:unsafe extern "C" {
+rust/mtproxy-ffi/src/net_timers/core.rs:192:pub unsafe extern "C" fn insert_event_timer(et: *mut EventTimer) -> c_int {
+rust/mtproxy-ffi/src/net_timers/core.rs:200:pub unsafe extern "C" fn remove_event_timer(et: *mut EventTimer) -> c_int {
+rust/mtproxy-ffi/src/net_timers/core.rs:208:pub extern "C" fn thread_run_timers() -> c_int {
+rust/mtproxy-ffi/src/net_timers/core.rs:284:pub extern "C" fn timers_get_first() -> c_double {
+rust/mtproxy-ffi/src/net_timers/core.rs:296:pub unsafe extern "C" fn timers_prepare_stat(sb: *mut c_void) -> c_int {
+rust/mtproxy-ffi/src/net_timers/core.rs:335:    unsafe extern "C" fn test_wakeup(_: *mut EventTimer) -> c_int {
+rust/mtproxy-ffi/src/time_cfg_observability/core.rs:61:pub extern "C" fn mtproxy_ffi_get_utime_monotonic() -> f64 {
+rust/mtproxy-ffi/src/time_cfg_observability/core.rs:71:pub extern "C" fn mtproxy_ffi_get_double_time() -> f64 {
+rust/mtproxy-ffi/src/time_cfg_observability/core.rs:88:pub extern "C" fn mtproxy_ffi_get_utime(clock_id: i32) -> f64 {
+rust/mtproxy-ffi/src/time_cfg_observability/core.rs:100:pub extern "C" fn mtproxy_ffi_get_precise_time(precision: u32) -> i64 {
+rust/mtproxy-ffi/src/time_cfg_observability/core.rs:115:pub extern "C" fn mtproxy_ffi_precise_now_value() -> f64 {
+rust/mtproxy-ffi/src/time_cfg_observability/core.rs:121:pub extern "C" fn mtproxy_ffi_precise_now_rdtsc_value() -> i64 {
+rust/mtproxy-ffi/src/time_cfg_observability/core.rs:127:pub extern "C" fn mtproxy_ffi_precise_time_value() -> i64 {
+rust/mtproxy-ffi/src/time_cfg_observability/core.rs:133:pub extern "C" fn mtproxy_ffi_precise_time_rdtsc_value() -> i64 {
+rust/mtproxy-ffi/src/time_cfg_observability/core.rs:301:pub unsafe extern "C" fn mtproxy_ffi_cfg_skipspc(
+rust/mtproxy-ffi/src/time_cfg_observability/core.rs:336:pub unsafe extern "C" fn mtproxy_ffi_cfg_skipspc_global() -> i32 {
+rust/mtproxy-ffi/src/time_cfg_observability/core.rs:359:pub unsafe extern "C" fn mtproxy_ffi_cfg_skspc(
+rust/mtproxy-ffi/src/time_cfg_observability/core.rs:381:pub unsafe extern "C" fn mtproxy_ffi_cfg_skspc_global() -> i32 {
+rust/mtproxy-ffi/src/time_cfg_observability/core.rs:404:pub unsafe extern "C" fn mtproxy_ffi_cfg_getword_len(cur: *const c_char, len: usize) -> i32 {
+rust/mtproxy-ffi/src/time_cfg_observability/core.rs:416:pub unsafe extern "C" fn mtproxy_ffi_cfg_getword_global() -> i32 {
+rust/mtproxy-ffi/src/time_cfg_observability/core.rs:426:pub unsafe extern "C" fn mtproxy_ffi_cfg_getstr_len(cur: *const c_char, len: usize) -> i32 {
+rust/mtproxy-ffi/src/time_cfg_observability/core.rs:438:pub unsafe extern "C" fn mtproxy_ffi_cfg_getstr_global() -> i32 {
+rust/mtproxy-ffi/src/time_cfg_observability/core.rs:448:pub unsafe extern "C" fn mtproxy_ffi_cfg_getlex_global() -> i32 {
+rust/mtproxy-ffi/src/time_cfg_observability/core.rs:473:pub unsafe extern "C" fn mtproxy_ffi_cfg_getint(
+rust/mtproxy-ffi/src/time_cfg_observability/core.rs:494:pub unsafe extern "C" fn mtproxy_ffi_cfg_getint_global() -> i64 {
+rust/mtproxy-ffi/src/time_cfg_observability/core.rs:516:pub unsafe extern "C" fn mtproxy_ffi_cfg_getint_zero(
+rust/mtproxy-ffi/src/time_cfg_observability/core.rs:545:pub unsafe extern "C" fn mtproxy_ffi_cfg_getint_zero_global() -> i64 {
+rust/mtproxy-ffi/src/time_cfg_observability/core.rs:570:pub unsafe extern "C" fn mtproxy_ffi_cfg_getint_signed_zero(
+rust/mtproxy-ffi/src/time_cfg_observability/core.rs:591:pub unsafe extern "C" fn mtproxy_ffi_cfg_getint_signed_zero_global() -> i64 {
+rust/mtproxy-ffi/src/time_cfg_observability/core.rs:616:pub unsafe extern "C" fn mtproxy_ffi_cfg_expect_lexem(lexem: i32) -> i32 {
+rust/mtproxy-ffi/src/time_cfg_observability/core.rs:630:pub unsafe extern "C" fn mtproxy_ffi_cfg_expect_word(name: *const c_char, len: i32) -> i32 {
+rust/mtproxy-ffi/src/time_cfg_observability/core.rs:663:pub unsafe extern "C" fn mtproxy_ffi_cfg_reset_config(
+rust/mtproxy-ffi/src/time_cfg_observability/core.rs:706:pub unsafe extern "C" fn mtproxy_ffi_cfg_load_config(
+rust/mtproxy-ffi/src/time_cfg_observability/core.rs:804:pub unsafe extern "C" fn mtproxy_ffi_cfg_md5_hex_config(
+rust/mtproxy-ffi/src/time_cfg_observability/core.rs:837:pub unsafe extern "C" fn mtproxy_ffi_cfg_close_config(
+rust/mtproxy-ffi/src/time_cfg_observability/core.rs:944:pub unsafe extern "C" fn mtproxy_ffi_cfg_gethost_ex(verb: i32) -> *mut c_void {
+rust/mtproxy-ffi/src/time_cfg_observability/core.rs:953:pub unsafe extern "C" fn mtproxy_ffi_cfg_gethost() -> *mut c_void {
+rust/mtproxy-ffi/src/time_cfg_observability/core.rs:1019:pub unsafe extern "C" fn mtproxy_ffi_tl_parse_query_header(
+rust/mtproxy-ffi/src/time_cfg_observability/core.rs:1041:pub unsafe extern "C" fn mtproxy_ffi_tl_parse_answer_header(
+rust/mtproxy-ffi/src/time_cfg_observability/core.rs:1139:pub unsafe extern "C" fn mtproxy_ffi_parse_proc_stat_line(
+rust/mtproxy-ffi/src/time_cfg_observability/core.rs:1164:pub unsafe extern "C" fn mtproxy_ffi_read_proc_stat_file(
+rust/mtproxy-ffi/src/time_cfg_observability/core.rs:1206:pub unsafe extern "C" fn mtproxy_ffi_parse_statm(
+rust/mtproxy-ffi/src/time_cfg_observability/core.rs:1280:pub unsafe extern "C" fn mtproxy_ffi_parse_meminfo_summary(
+rust/mtproxy-ffi/src/time_cfg_observability/core.rs:1307:pub unsafe extern "C" fn mtproxy_ffi_format_log_prefix(
+rust/mtproxy-ffi/src/net_msg_buffers/core.rs:48:type FreeBufferFn = unsafe extern "C" fn(*mut MsgBuffersChunk, *mut MsgBuffer) -> c_int;
+rust/mtproxy-ffi/src/net_msg_buffers/core.rs:49:type JobFunction = unsafe extern "C" fn(*mut AsyncJob, c_int, *mut JobThread) -> c_int;
+rust/mtproxy-ffi/src/net_msg_buffers/core.rs:188:unsafe extern "C" {
+rust/mtproxy-ffi/src/net_msg_buffers/core.rs:927:pub(super) unsafe extern "C" fn free_std_msg_buffer(
+rust/mtproxy-ffi/src/net_msg_buffers/core.rs:973:unsafe extern "C" fn free_msg_buffer_job(
+rust/mtproxy-ffi/src/net_msg_buffers/ffi.rs:7:pub unsafe extern "C" fn mtproxy_ffi_net_msg_buffers_raw_prepare_stat(
+rust/mtproxy-ffi/src/net_msg_buffers/ffi.rs:14:pub unsafe extern "C" fn mtproxy_ffi_net_msg_buffers_fetch_buffers_stat(bs: *mut BuffersStat) {
+rust/mtproxy-ffi/src/net_msg_buffers/ffi.rs:19:pub unsafe extern "C" fn mtproxy_ffi_net_msg_buffers_init(max_buffer_bytes: c_long) -> c_int {
+rust/mtproxy-ffi/src/net_msg_buffers/ffi.rs:24:pub unsafe extern "C" fn mtproxy_ffi_net_msg_buffers_alloc(
+rust/mtproxy-ffi/src/net_msg_buffers/ffi.rs:32:pub unsafe extern "C" fn mtproxy_ffi_net_msg_buffers_free(buffer: *mut MsgBuffer) -> c_int {
+rust/mtproxy-ffi/src/net_msg_buffers/ffi.rs:37:pub extern "C" fn mtproxy_ffi_net_msg_buffers_reach_limit(ratio: c_double) -> c_int {
+rust/mtproxy-ffi/src/net_msg_buffers/ffi.rs:42:pub extern "C" fn mtproxy_ffi_net_msg_buffers_usage() -> c_double {

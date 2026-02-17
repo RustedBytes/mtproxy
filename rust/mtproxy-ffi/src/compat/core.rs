@@ -206,7 +206,9 @@ pub(super) fn net_tcp_rpc_ext_is_allowed_timestamp_impl(
     } else {
         None
     };
-    if mtproxy_core::runtime::net::tcp_rpc_ext_server::is_allowed_timestamp(timestamp, now, first_time) {
+    if mtproxy_core::runtime::net::tcp_rpc_ext_server::is_allowed_timestamp(
+        timestamp, now, first_time,
+    ) {
         1
     } else {
         0
@@ -467,7 +469,7 @@ pub(super) fn tcp_rpc_add_dh_accept_impl(
         remaining,
         last_time,
     };
-    
+
     match mtproxy_core::runtime::net::tcp_rpc_common::add_dh_accept(state, max_rate, precise_now) {
         Ok(new_state) => {
             *out_remaining = new_state.remaining;
@@ -494,16 +496,6 @@ pub(super) fn tcp_rpc_server_packet_len_state_impl(packet_len: i32, max_packet_l
     mtproxy_core::runtime::net::tcp_rpc_server::packet_len_state(packet_len, max_packet_len)
 }
 
-const RPC_PACKET_PING: i32 = i32::from_ne_bytes(0x5730_a2df_u32.to_ne_bytes());
-const RPC_PACKET_PONG: i32 = i32::from_ne_bytes(0x8430_eaa7_u32.to_ne_bytes());
-const RPCF_ALLOW_UNENC: i32 = 1;
-const RPCF_ALLOW_ENC: i32 = 2;
-const RPCF_REQ_DH: i32 = 4;
-const RPCF_ALLOW_SKIP_DH: i32 = 8;
-const RPCF_ENC_SENT: i32 = 16;
-const RPCF_QUICKACK: i32 = 512;
-const RPCF_USE_CRC32C: i32 = 2048;
-
 fn process_id_from_ffi(
     pid: &MtproxyProcessId,
 ) -> mtproxy_core::runtime::net::tcp_rpc_common::ProcessId {
@@ -519,11 +511,16 @@ pub(super) fn tcp_rpc_server_default_execute_should_pong_impl(
     op: i32,
     raw_total_bytes: i32,
 ) -> i32 {
-    i32::from(op == RPC_PACKET_PING && raw_total_bytes == 12)
+    i32::from(
+        mtproxy_core::runtime::net::tcp_rpc_server::default_execute_should_pong(
+            op,
+            raw_total_bytes,
+        ),
+    )
 }
 
 pub(super) fn tcp_rpc_server_default_execute_set_pong_impl(packet_words: &mut [i32; 3]) {
-    packet_words[0] = RPC_PACKET_PONG;
+    mtproxy_core::runtime::net::tcp_rpc_server::default_execute_set_pong(packet_words);
 }
 
 pub(super) fn tcp_rpc_server_build_handshake_packet_impl(
@@ -535,7 +532,7 @@ pub(super) fn tcp_rpc_server_build_handshake_packet_impl(
     use mtproxy_core::runtime::net::tcp_rpc_common::{HandshakePacket, PacketSerialization};
 
     let packet = HandshakePacket::new(
-        crypto_flags & RPCF_USE_CRC32C,
+        crypto_flags & mtproxy_core::runtime::net::tcp_rpc_server::RPCF_USE_CRC32C,
         process_id_from_ffi(sender_pid),
         process_id_from_ffi(peer_pid),
     );
@@ -569,16 +566,12 @@ pub(super) fn tcp_rpc_server_validate_handshake_header_impl(
     packet_len: i32,
     handshake_packet_len: i32,
 ) -> i32 {
-    if packet_num != -1
-        || packet_type
-            != mtproxy_core::runtime::net::tcp_rpc_common::RpcPacketType::Handshake as i32
-    {
-        return -2;
-    }
-    if packet_len != handshake_packet_len {
-        return -3;
-    }
-    0
+    mtproxy_core::runtime::net::tcp_rpc_server::validate_handshake_header(
+        packet_num,
+        packet_type,
+        packet_len,
+        handshake_packet_len,
+    )
 }
 
 pub(super) fn tcp_rpc_server_validate_handshake_impl(
@@ -588,14 +581,18 @@ pub(super) fn tcp_rpc_server_validate_handshake_impl(
     default_rpc_flags: i32,
     out_enable_crc32c: &mut i32,
 ) -> i32 {
-    if peer_pid_matches == 0 && ignore_pid == 0 {
-        return -4;
+    match mtproxy_core::runtime::net::tcp_rpc_server::validate_handshake(
+        packet_flags,
+        peer_pid_matches != 0,
+        ignore_pid != 0,
+        default_rpc_flags,
+    ) {
+        Ok(enable_crc32c) => {
+            *out_enable_crc32c = i32::from(enable_crc32c);
+            0
+        }
+        Err(code) => code,
     }
-    if (packet_flags & 0xff) != 0 {
-        return -7;
-    }
-    *out_enable_crc32c = i32::from((packet_flags & default_rpc_flags & RPCF_USE_CRC32C) != 0);
-    0
 }
 
 pub(super) fn tcp_rpc_server_validate_nonce_header_impl(
@@ -605,31 +602,29 @@ pub(super) fn tcp_rpc_server_validate_nonce_header_impl(
     nonce_packet_min_len: i32,
     nonce_packet_max_len: i32,
 ) -> i32 {
-    if packet_num != -2
-        || packet_type != mtproxy_core::runtime::net::tcp_rpc_common::RpcPacketType::Nonce as i32
-    {
-        return -2;
-    }
-    if packet_len < nonce_packet_min_len || packet_len > nonce_packet_max_len {
-        return -3;
-    }
-    0
+    mtproxy_core::runtime::net::tcp_rpc_server::validate_nonce_header(
+        packet_num,
+        packet_type,
+        packet_len,
+        nonce_packet_min_len,
+        nonce_packet_max_len,
+    )
 }
 
 pub(super) fn tcp_rpc_server_should_notify_close_impl(has_rpc_close: i32) -> i32 {
-    i32::from(has_rpc_close != 0)
+    i32::from(mtproxy_core::runtime::net::tcp_rpc_server::should_notify_close(has_rpc_close != 0))
 }
 
 pub(super) fn tcp_rpc_server_do_wakeup_impl() -> i32 {
-    0
+    mtproxy_core::runtime::net::tcp_rpc_server::do_wakeup()
 }
 
 pub(super) fn tcp_rpc_server_should_set_wantwr_impl(out_total_bytes: i32) -> i32 {
-    i32::from(out_total_bytes > 0)
+    i32::from(mtproxy_core::runtime::net::tcp_rpc_server::should_set_wantwr(out_total_bytes))
 }
 
 pub(super) fn tcp_rpc_server_notification_pending_queries_impl() -> i32 {
-    0
+    mtproxy_core::runtime::net::tcp_rpc_server::notification_pending_queries()
 }
 
 pub(super) fn tcp_rpc_server_init_accepted_state_impl(
@@ -639,27 +634,28 @@ pub(super) fn tcp_rpc_server_init_accepted_state_impl(
     out_in_packet_num: &mut i32,
     out_out_packet_num: &mut i32,
 ) -> i32 {
-    if has_perm_callback != 0 {
-        let masked =
-            perm_flags & (RPCF_ALLOW_UNENC | RPCF_ALLOW_ENC | RPCF_REQ_DH | RPCF_ALLOW_SKIP_DH);
-        if (masked & (RPCF_ALLOW_UNENC | RPCF_ALLOW_ENC)) == 0 {
-            return -1;
+    match mtproxy_core::runtime::net::tcp_rpc_server::init_accepted_state(
+        has_perm_callback != 0,
+        perm_flags,
+    ) {
+        Ok((crypto_flags, in_packet_num, out_packet_num)) => {
+            *out_crypto_flags = crypto_flags;
+            *out_in_packet_num = in_packet_num;
+            *out_out_packet_num = out_packet_num;
+            0
         }
-        *out_crypto_flags = masked;
-    } else {
-        *out_crypto_flags = RPCF_ALLOW_UNENC;
+        Err(code) => code,
     }
-    *out_in_packet_num = -2;
-    *out_out_packet_num = -2;
-    0
 }
 
 pub(super) fn tcp_rpc_server_init_accepted_nohs_state_impl(
     out_crypto_flags: &mut i32,
     out_in_packet_num: &mut i32,
 ) -> i32 {
-    *out_crypto_flags = RPCF_QUICKACK | RPCF_ALLOW_UNENC;
-    *out_in_packet_num = -3;
+    let (crypto_flags, in_packet_num) =
+        mtproxy_core::runtime::net::tcp_rpc_server::init_accepted_nohs_state();
+    *out_crypto_flags = crypto_flags;
+    *out_in_packet_num = in_packet_num;
     0
 }
 
@@ -667,18 +663,17 @@ pub(super) fn tcp_rpc_server_init_fake_crypto_state_impl(
     crypto_flags: i32,
     out_crypto_flags: &mut i32,
 ) -> i32 {
-    if (crypto_flags & RPCF_ALLOW_UNENC) == 0 {
-        return -1;
+    match mtproxy_core::runtime::net::tcp_rpc_server::init_fake_crypto_state(crypto_flags) {
+        Ok(value) => {
+            *out_crypto_flags = value;
+            1
+        }
+        Err(code) => code,
     }
-    if (crypto_flags & (RPCF_ALLOW_ENC | RPCF_ENC_SENT)) != 0 {
-        return -1;
-    }
-    *out_crypto_flags = crypto_flags | RPCF_ENC_SENT;
-    1
 }
 
 pub(super) fn tcp_rpc_server_default_check_perm_impl(default_rpc_flags: i32) -> i32 {
-    RPCF_ALLOW_ENC | RPCF_REQ_DH | default_rpc_flags
+    mtproxy_core::runtime::net::tcp_rpc_server::default_check_perm(default_rpc_flags)
 }
 
 pub(super) fn tcp_rpc_parse_nonce_packet_impl(
@@ -1812,7 +1807,8 @@ pub(super) unsafe fn net_tcp_rpc_ext_add_grease_ffi(
         return -1;
     };
     let mut pos_mut = pos_usize;
-    let result = net_tcp_rpc_ext_add_grease_impl(buffer_slice, &mut pos_mut, greases_slice, num_usize);
+    let result =
+        net_tcp_rpc_ext_add_grease_impl(buffer_slice, &mut pos_mut, greases_slice, num_usize);
     if result == 0 {
         let Ok(new_pos) = i32::try_from(pos_mut) else {
             return -1;

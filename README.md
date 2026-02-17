@@ -1,6 +1,10 @@
 # MTProxy
 Simple MT-Proto proxy with a Rust-first runtime path.
 
+Current migration mode: dual-runtime transitional.
+- Canonical runtime: `mtproxy-rust` (`rust/mtproxy-bin/src/main.rs`).
+- Legacy C wrapper path is kept for compatibility during migration.
+
 ## Build
 ### Dependencies
 Install the usual C build tools plus Rust tooling (`cargo` is required by `make`).
@@ -61,6 +65,7 @@ cargo check --workspace
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
+./scripts/ffi_freeze_check.sh
 ```
 
 ## Running
@@ -141,6 +146,9 @@ systemctl enable MTProxy.service
 ```
 
 ## Additional docs
-- **C-to-Rust migration status**: `MIGRATION_STATUS.md`
+- **C-to-Rust migration status (Wave A)**: `docs/wave_a_status.md`
+- **Refactor manifest**: `docs/refactor_manifest.md`
+- **FFI symbol index**: `docs/ffi_symbol_index.csv`
+- **C-to-Rust dependency graph**: `docs/c_to_rust_dependency_graph.md`
 - Rust workspace notes: `rust/README.md`
 - FFI boundary contract: `rust/mtproxy-ffi/BOUNDARY.md`

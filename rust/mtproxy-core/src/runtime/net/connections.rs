@@ -69,10 +69,19 @@ const TARGET_LOOKUP_MISS_ASSERT_INVALID: i32 = 3;
 const TARGET_FREE_ACTION_REJECT: i32 = 0;
 const TARGET_FREE_ACTION_DELETE_IPV4: i32 = 1;
 const TARGET_FREE_ACTION_DELETE_IPV6: i32 = 2;
+const TARGET_JOB_DISPATCH_ERROR: i32 = 0;
+const TARGET_JOB_DISPATCH_RUN: i32 = 1;
+const TARGET_JOB_DISPATCH_ALARM: i32 = 2;
+const TARGET_JOB_DISPATCH_FINISH: i32 = 3;
 
 const CONN_JOB_RUN_SKIP: i32 = 0;
 const CONN_JOB_RUN_DO_READ_WRITE: i32 = 1;
 const CONN_JOB_RUN_HANDLE_READY_PENDING: i32 = 2;
+const CONNECTION_JOB_ACTION_ERROR: i32 = 0;
+const CONNECTION_JOB_ACTION_RUN: i32 = 1;
+const CONNECTION_JOB_ACTION_ALARM: i32 = 2;
+const CONNECTION_JOB_ACTION_ABORT: i32 = 3;
+const CONNECTION_JOB_ACTION_FINISH: i32 = 4;
 const SOCKET_GATEWAY_ABORT_NONE: i32 = 0;
 const SOCKET_GATEWAY_ABORT_EPOLLERR: i32 = 1;
 const SOCKET_GATEWAY_ABORT_DISCONNECT: i32 = 2;
@@ -510,6 +519,35 @@ pub fn conn_job_run_actions(flags: i32) -> i32 {
         CONN_JOB_RUN_DO_READ_WRITE | CONN_JOB_RUN_HANDLE_READY_PENDING
     } else {
         CONN_JOB_RUN_DO_READ_WRITE
+    }
+}
+
+/// Selects action for connection job by op code.
+///
+/// Returns:
+/// - `0`: `JOB_ERROR`
+/// - `1`: run path
+/// - `2`: alarm path
+/// - `3`: abort path
+/// - `4`: finish path
+#[must_use]
+pub fn connection_job_action(
+    op: i32,
+    js_run: i32,
+    js_alarm: i32,
+    js_abort: i32,
+    js_finish: i32,
+) -> i32 {
+    if op == js_run {
+        CONNECTION_JOB_ACTION_RUN
+    } else if op == js_alarm {
+        CONNECTION_JOB_ACTION_ALARM
+    } else if op == js_abort {
+        CONNECTION_JOB_ACTION_ABORT
+    } else if op == js_finish {
+        CONNECTION_JOB_ACTION_FINISH
+    } else {
+        CONNECTION_JOB_ACTION_ERROR
     }
 }
 
@@ -1057,6 +1095,39 @@ pub fn target_pick_should_select(
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TargetPickDecision {
+    SkipCandidate,
+    KeepSelected,
+    SelectCandidate,
+}
+
+/// Unified decision for target-pick callback branch policy.
+#[must_use]
+pub fn target_pick_decision(
+    allow_stopped: bool,
+    has_selected: bool,
+    selected_ready: i32,
+    candidate_ready: i32,
+    selected_unreliability: i32,
+    candidate_unreliability: i32,
+) -> TargetPickDecision {
+    if target_pick_should_skip(allow_stopped, has_selected, selected_ready) {
+        return TargetPickDecision::SkipCandidate;
+    }
+    if target_pick_should_select(
+        allow_stopped,
+        candidate_ready,
+        has_selected,
+        selected_unreliability,
+        candidate_unreliability,
+    ) {
+        TargetPickDecision::SelectCandidate
+    } else {
+        TargetPickDecision::KeepSelected
+    }
+}
+
 /// Computes outbound connection `ready` state from connection status.
 #[must_use]
 pub fn server_check_ready(status: i32, ready: i32) -> i32 {
@@ -1221,6 +1292,20 @@ pub fn target_ready_bucket(ready: i32) -> i32 {
     }
 }
 
+/// Converts `check_ready()` result into `(good_delta, stopped_delta, bad_delta)` counter deltas.
+///
+/// Returns `None` for invalid ready values.
+#[must_use]
+pub fn target_ready_bucket_deltas(ready: i32) -> Option<(i32, i32, i32)> {
+    match target_ready_bucket(ready) {
+        TARGET_READY_BUCKET_IGNORE => Some((0, 0, 0)),
+        TARGET_READY_BUCKET_GOOD => Some((1, 0, 0)),
+        TARGET_READY_BUCKET_STOPPED => Some((0, 1, 0)),
+        TARGET_READY_BUCKET_BAD => Some((0, 0, 1)),
+        _ => None,
+    }
+}
+
 /// Returns whether dead-connection scan should select this connection.
 #[must_use]
 pub fn target_find_bad_should_select(has_selected: bool, flags: i32) -> bool {
@@ -1243,10 +1328,25 @@ pub fn target_remove_dead_connection_deltas(flags: i32) -> (i32, i32) {
 /// - `1`: replace shared root and free old root ptr
 #[must_use]
 pub fn target_tree_update_action(tree_changed: bool) -> i32 {
+    match target_tree_update_decision(tree_changed) {
+        TargetTreeUpdateDecision::FreeSnapshotOnly => TARGET_TREE_UPDATE_FREE_ONLY,
+        TargetTreeUpdateDecision::ReplaceAndFreeOld => TARGET_TREE_UPDATE_REPLACE_AND_FREE_OLD,
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TargetTreeUpdateDecision {
+    FreeSnapshotOnly,
+    ReplaceAndFreeOld,
+}
+
+/// Selects tree update strategy after mutable target-tree operations.
+#[must_use]
+pub fn target_tree_update_decision(tree_changed: bool) -> TargetTreeUpdateDecision {
     if tree_changed {
-        TARGET_TREE_UPDATE_REPLACE_AND_FREE_OLD
+        TargetTreeUpdateDecision::ReplaceAndFreeOld
     } else {
-        TARGET_TREE_UPDATE_FREE_ONLY
+        TargetTreeUpdateDecision::FreeSnapshotOnly
     }
 }
 
@@ -1284,10 +1384,27 @@ pub fn target_pick_should_incref(has_selected: bool) -> bool {
 /// - `3`: invalid mode for match path (`mode > 0`)
 #[must_use]
 pub fn target_lookup_match_action(mode: i32) -> i32 {
+    match target_lookup_match_decision(mode) {
+        TargetLookupMatchDecision::RemoveAndReturn => TARGET_LOOKUP_MATCH_REMOVE_AND_RETURN,
+        TargetLookupMatchDecision::ReturnFound => TARGET_LOOKUP_MATCH_RETURN_FOUND,
+        TargetLookupMatchDecision::AssertInvalid => TARGET_LOOKUP_MATCH_ASSERT_INVALID,
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TargetLookupMatchDecision {
+    RemoveAndReturn,
+    ReturnFound,
+    AssertInvalid,
+}
+
+/// Selects behavior when target hash lookup found a matching entry.
+#[must_use]
+pub fn target_lookup_match_decision(mode: i32) -> TargetLookupMatchDecision {
     match mode.cmp(&0) {
-        core::cmp::Ordering::Less => TARGET_LOOKUP_MATCH_REMOVE_AND_RETURN,
-        core::cmp::Ordering::Equal => TARGET_LOOKUP_MATCH_RETURN_FOUND,
-        core::cmp::Ordering::Greater => TARGET_LOOKUP_MATCH_ASSERT_INVALID,
+        core::cmp::Ordering::Less => TargetLookupMatchDecision::RemoveAndReturn,
+        core::cmp::Ordering::Equal => TargetLookupMatchDecision::ReturnFound,
+        core::cmp::Ordering::Greater => TargetLookupMatchDecision::AssertInvalid,
     }
 }
 
@@ -1299,10 +1416,67 @@ pub fn target_lookup_match_action(mode: i32) -> i32 {
 /// - `3`: invalid miss path (`mode < 0`, delete expected found)
 #[must_use]
 pub fn target_lookup_miss_action(mode: i32) -> i32 {
+    match target_lookup_miss_decision(mode) {
+        TargetLookupMissDecision::InsertNew => TARGET_LOOKUP_MISS_INSERT_NEW,
+        TargetLookupMissDecision::ReturnNull => TARGET_LOOKUP_MISS_RETURN_NULL,
+        TargetLookupMissDecision::AssertInvalid => TARGET_LOOKUP_MISS_ASSERT_INVALID,
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TargetLookupMissDecision {
+    InsertNew,
+    ReturnNull,
+    AssertInvalid,
+}
+
+/// Selects behavior when target hash lookup missed all entries.
+#[must_use]
+pub fn target_lookup_miss_decision(mode: i32) -> TargetLookupMissDecision {
     match mode.cmp(&0) {
-        core::cmp::Ordering::Greater => TARGET_LOOKUP_MISS_INSERT_NEW,
-        core::cmp::Ordering::Equal => TARGET_LOOKUP_MISS_RETURN_NULL,
-        core::cmp::Ordering::Less => TARGET_LOOKUP_MISS_ASSERT_INVALID,
+        core::cmp::Ordering::Greater => TargetLookupMissDecision::InsertNew,
+        core::cmp::Ordering::Equal => TargetLookupMissDecision::ReturnNull,
+        core::cmp::Ordering::Less => TargetLookupMissDecision::AssertInvalid,
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TargetLookupDecision {
+    RemoveAndReturn,
+    ReturnFound,
+    InsertNew,
+    ReturnNull,
+    AssertInvalid,
+}
+
+/// Unified lookup decision for both match and miss paths.
+///
+/// `found == true` models the "entry matched" branch.
+/// `found == false` models the "entry not found" branch.
+#[must_use]
+pub fn target_lookup_decision(mode: i32, found: bool) -> TargetLookupDecision {
+    if found {
+        match target_lookup_match_decision(mode) {
+            TargetLookupMatchDecision::RemoveAndReturn => TargetLookupDecision::RemoveAndReturn,
+            TargetLookupMatchDecision::ReturnFound => TargetLookupDecision::ReturnFound,
+            TargetLookupMatchDecision::AssertInvalid => TargetLookupDecision::AssertInvalid,
+        }
+    } else {
+        match target_lookup_miss_decision(mode) {
+            TargetLookupMissDecision::InsertNew => TargetLookupDecision::InsertNew,
+            TargetLookupMissDecision::ReturnNull => TargetLookupDecision::ReturnNull,
+            TargetLookupMissDecision::AssertInvalid => TargetLookupDecision::AssertInvalid,
+        }
+    }
+}
+
+/// Validation guard for `TargetLookupDecision::AssertInvalid`.
+#[must_use]
+pub fn target_lookup_assert_mode_ok(mode: i32, found: bool) -> bool {
+    if found {
+        mode == 0
+    } else {
+        mode >= 0
     }
 }
 
@@ -1314,12 +1488,55 @@ pub fn target_lookup_miss_action(mode: i32) -> i32 {
 /// - `2`: remove from IPv6 bucket
 #[must_use]
 pub fn target_free_action(global_refcnt: i32, has_conn_tree: bool, has_ipv4_target: bool) -> i32 {
+    match target_free_decision(global_refcnt, has_conn_tree, has_ipv4_target) {
+        TargetFreeDecision::Reject => TARGET_FREE_ACTION_REJECT,
+        TargetFreeDecision::DeleteIpv4 => TARGET_FREE_ACTION_DELETE_IPV4,
+        TargetFreeDecision::DeleteIpv6 => TARGET_FREE_ACTION_DELETE_IPV6,
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TargetFreeDecision {
+    Reject,
+    DeleteIpv4,
+    DeleteIpv6,
+}
+
+/// Selects action for `free_target`.
+#[must_use]
+pub fn target_free_decision(
+    global_refcnt: i32,
+    has_conn_tree: bool,
+    has_ipv4_target: bool,
+) -> TargetFreeDecision {
     if global_refcnt > 0 || has_conn_tree {
-        TARGET_FREE_ACTION_REJECT
+        TargetFreeDecision::Reject
     } else if has_ipv4_target {
-        TARGET_FREE_ACTION_DELETE_IPV4
+        TargetFreeDecision::DeleteIpv4
     } else {
-        TARGET_FREE_ACTION_DELETE_IPV6
+        TargetFreeDecision::DeleteIpv6
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TargetCleanUnusedDecision {
+    Keep,
+    FailConnections,
+    RemoveTimer,
+}
+
+/// Selects cleanup action for `clean_unused_target`.
+#[must_use]
+pub fn target_clean_unused_decision(
+    global_refcnt: i32,
+    has_conn_tree: bool,
+) -> TargetCleanUnusedDecision {
+    if global_refcnt != 0 {
+        TargetCleanUnusedDecision::Keep
+    } else if has_conn_tree {
+        TargetCleanUnusedDecision::FailConnections
+    } else {
+        TargetCleanUnusedDecision::RemoveTimer
     }
 }
 
@@ -1350,6 +1567,22 @@ pub fn create_target_transition(target_found: bool, old_global_refcnt: i32) -> (
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CreateTargetLifecycleDecision {
+    ReuseExisting,
+    AllocateNew,
+}
+
+/// Selects lifecycle branch for `create_target` after lookup.
+#[must_use]
+pub fn create_target_lifecycle_decision(target_found: bool) -> CreateTargetLifecycleDecision {
+    if target_found {
+        CreateTargetLifecycleDecision::ReuseExisting
+    } else {
+        CreateTargetLifecycleDecision::AllocateNew
+    }
+}
+
 /// Returns timer delay used while epoll is not initialized.
 #[must_use]
 pub fn target_job_boot_delay() -> f64 {
@@ -1360,6 +1593,44 @@ pub fn target_job_boot_delay() -> f64 {
 #[must_use]
 pub fn target_job_retry_delay() -> f64 {
     TARGET_JOB_RETRY_DELAY
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TargetJobDispatch {
+    Run,
+    Alarm,
+    Finish,
+    Error,
+}
+
+/// Selects target-job dispatch branch by op code.
+#[must_use]
+pub fn target_job_dispatch(
+    op: i32,
+    js_run: i32,
+    js_alarm: i32,
+    js_finish: i32,
+) -> TargetJobDispatch {
+    if op == js_run {
+        TargetJobDispatch::Run
+    } else if op == js_alarm {
+        TargetJobDispatch::Alarm
+    } else if op == js_finish {
+        TargetJobDispatch::Finish
+    } else {
+        TargetJobDispatch::Error
+    }
+}
+
+/// Integer-compatible target-job dispatch mapping for transitional FFI/tests.
+#[must_use]
+pub fn target_job_dispatch_action(op: i32, js_run: i32, js_alarm: i32, js_finish: i32) -> i32 {
+    match target_job_dispatch(op, js_run, js_alarm, js_finish) {
+        TargetJobDispatch::Run => TARGET_JOB_DISPATCH_RUN,
+        TargetJobDispatch::Alarm => TARGET_JOB_DISPATCH_ALARM,
+        TargetJobDispatch::Finish => TARGET_JOB_DISPATCH_FINISH,
+        TargetJobDispatch::Error => TARGET_JOB_DISPATCH_ERROR,
+    }
 }
 
 /// Returns whether `JS_ALARM`/`JS_RUN` tick processing should continue.
@@ -1382,6 +1653,13 @@ pub fn target_job_update_mode(global_refcnt: i32) -> i32 {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TargetJobPostTick {
+    ReturnZero,
+    ScheduleRetry,
+    AttemptFree,
+}
+
 /// Selects post-update action for target job tick.
 ///
 /// Returns:
@@ -1394,13 +1672,33 @@ pub fn target_job_post_tick_action(
     global_refcnt: i32,
     has_conn_tree: bool,
 ) -> i32 {
-    if is_completed {
-        TARGET_JOB_POST_RETURN_ZERO
-    } else if global_refcnt != 0 || has_conn_tree {
-        TARGET_JOB_POST_SCHEDULE_RETRY
-    } else {
-        TARGET_JOB_POST_ATTEMPT_FREE
+    match target_job_post_tick_decision(is_completed, global_refcnt, has_conn_tree) {
+        TargetJobPostTick::ReturnZero => TARGET_JOB_POST_RETURN_ZERO,
+        TargetJobPostTick::ScheduleRetry => TARGET_JOB_POST_SCHEDULE_RETRY,
+        TargetJobPostTick::AttemptFree => TARGET_JOB_POST_ATTEMPT_FREE,
     }
+}
+
+/// Selects post-update action for target job tick.
+#[must_use]
+pub fn target_job_post_tick_decision(
+    is_completed: bool,
+    global_refcnt: i32,
+    has_conn_tree: bool,
+) -> TargetJobPostTick {
+    if is_completed {
+        TargetJobPostTick::ReturnZero
+    } else if global_refcnt != 0 || has_conn_tree {
+        TargetJobPostTick::ScheduleRetry
+    } else {
+        TargetJobPostTick::AttemptFree
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TargetJobFinalize {
+    Completed,
+    ScheduleRetry,
 }
 
 /// Finalizes free-target outcome decision.
@@ -1410,10 +1708,19 @@ pub fn target_job_post_tick_action(
 /// - `2`: schedule retry timer
 #[must_use]
 pub fn target_job_finalize_free_action(free_target_rc: i32) -> i32 {
+    match target_job_finalize_decision(free_target_rc) {
+        TargetJobFinalize::Completed => TARGET_JOB_FINALIZE_COMPLETED,
+        TargetJobFinalize::ScheduleRetry => TARGET_JOB_FINALIZE_SCHEDULE_RETRY,
+    }
+}
+
+/// Finalizes free-target outcome decision.
+#[must_use]
+pub fn target_job_finalize_decision(free_target_rc: i32) -> TargetJobFinalize {
     if free_target_rc >= 0 {
-        TARGET_JOB_FINALIZE_COMPLETED
+        TargetJobFinalize::Completed
     } else {
-        TARGET_JOB_FINALIZE_SCHEDULE_RETRY
+        TargetJobFinalize::ScheduleRetry
     }
 }
 
@@ -1458,27 +1765,35 @@ mod tests {
         conn_job_abort_has_error, conn_job_abort_should_close, conn_job_alarm_should_call,
         conn_job_ready_pending_cas_failure_expected, conn_job_ready_pending_should_promote_status,
         conn_job_run_actions, connection_event_should_release, connection_generation_matches,
-        connection_get_by_fd_action, connection_is_active, connection_timeout_action,
-        connection_write_close_action, create_target_transition, destroy_target_transition,
-        fail_connection_action, fail_socket_connection_action, free_connection_allocated_deltas,
-        listening_init_fd_action, listening_init_mode_policy, listening_init_update_max_connection,
-        listening_job_action, nat_add_rule, nat_translate_ip, server_check_ready, socket_free_plan,
+        connection_get_by_fd_action, connection_is_active, connection_job_action,
+        connection_timeout_action, connection_write_close_action, create_target_lifecycle_decision,
+        create_target_transition, destroy_target_transition, fail_connection_action,
+        fail_socket_connection_action, free_connection_allocated_deltas, listening_init_fd_action,
+        listening_init_mode_policy, listening_init_update_max_connection, listening_job_action,
+        nat_add_rule, nat_translate_ip, server_check_ready, socket_free_plan,
         socket_gateway_abort_action, socket_gateway_clear_flags, socket_job_abort_error,
         socket_job_action, socket_job_aux_should_update_epoll,
         socket_job_run_should_call_read_write, socket_job_run_should_signal_aux,
         socket_read_write_connect_action, socket_reader_io_action, socket_reader_should_run,
         socket_writer_io_action, socket_writer_should_abort_on_stop,
         socket_writer_should_call_ready_to_write, socket_writer_should_run, target_bucket_ipv4,
-        target_bucket_ipv6, target_connect_socket_action, target_create_insert_should_insert,
-        target_find_bad_should_select, target_free_action, target_job_boot_delay,
-        target_job_finalize_free_action, target_job_post_tick_action, target_job_retry_delay,
-        target_job_should_run_tick, target_job_update_mode, target_lookup_match_action,
-        target_lookup_miss_action, target_needed_connections,
+        target_bucket_ipv6, target_clean_unused_decision, target_connect_socket_action,
+        target_create_insert_should_insert, target_find_bad_should_select, target_free_action,
+        target_free_decision, target_job_boot_delay, target_job_dispatch,
+        target_job_dispatch_action, target_job_finalize_decision, target_job_finalize_free_action,
+        target_job_post_tick_action, target_job_post_tick_decision, target_job_retry_delay,
+        target_job_should_run_tick, target_job_update_mode, target_lookup_assert_mode_ok,
+        target_lookup_decision, target_lookup_match_action, target_lookup_match_decision,
+        target_lookup_miss_action, target_lookup_miss_decision, target_needed_connections,
         target_pick_allow_stopped_should_select, target_pick_allow_stopped_should_skip,
-        target_pick_basic_should_select, target_pick_basic_should_skip, target_pick_should_incref,
-        target_pick_should_select, target_pick_should_skip, target_ready_bucket,
-        target_ready_transition, target_remove_dead_connection_deltas,
-        target_should_attempt_reconnect, target_tree_update_action, NatAddRuleError,
+        target_pick_basic_should_select, target_pick_basic_should_skip, target_pick_decision,
+        target_pick_should_incref, target_pick_should_select, target_pick_should_skip,
+        target_ready_bucket, target_ready_bucket_deltas, target_ready_transition,
+        target_remove_dead_connection_deltas, target_should_attempt_reconnect,
+        target_tree_update_action, target_tree_update_decision, CreateTargetLifecycleDecision,
+        NatAddRuleError, TargetCleanUnusedDecision, TargetFreeDecision, TargetJobDispatch,
+        TargetJobFinalize, TargetJobPostTick, TargetLookupDecision, TargetLookupMatchDecision,
+        TargetLookupMissDecision, TargetPickDecision, TargetTreeUpdateDecision,
         ALLOC_CONNECTION_FAILURE_ACTION_DEC_JOBS_ACTIVE,
         ALLOC_CONNECTION_FAILURE_ACTION_FREE_RAWMSG,
         ALLOC_CONNECTION_FAILURE_ACTION_INC_ACCEPT_INIT_FAILED,
@@ -1683,6 +1998,11 @@ mod tests {
             SOCKET_JOB_ACTION_ERROR
         );
         assert_eq!(socket_job_abort_error(), -200);
+        assert_eq!(connection_job_action(21, 21, 22, 23, 24), 1);
+        assert_eq!(connection_job_action(22, 21, 22, 23, 24), 2);
+        assert_eq!(connection_job_action(23, 21, 22, 23, 24), 3);
+        assert_eq!(connection_job_action(24, 21, 22, 23, 24), 4);
+        assert_eq!(connection_job_action(25, 21, 22, 23, 24), 0);
 
         let connected = i32::from_ne_bytes(C_CONNECTED.to_ne_bytes());
         let (flags_connected, epoll_connected, delta_connected) =
@@ -1732,6 +2052,11 @@ mod tests {
         assert_eq!(target_ready_bucket(CR_BUSY), TARGET_READY_BUCKET_IGNORE);
         assert_eq!(target_ready_bucket(4), TARGET_READY_BUCKET_BAD);
         assert_eq!(target_ready_bucket(99), -1);
+        assert_eq!(target_ready_bucket_deltas(0), Some((0, 0, 0)));
+        assert_eq!(target_ready_bucket_deltas(1), Some((1, 0, 0)));
+        assert_eq!(target_ready_bucket_deltas(2), Some((0, 1, 0)));
+        assert_eq!(target_ready_bucket_deltas(4), Some((0, 0, 1)));
+        assert_eq!(target_ready_bucket_deltas(99), None);
 
         let error = i32::from_ne_bytes(C_ERROR.to_ne_bytes());
         let connected = i32::from_ne_bytes(C_CONNECTED.to_ne_bytes());
@@ -1749,6 +2074,14 @@ mod tests {
         assert_eq!(
             target_tree_update_action(true),
             TARGET_TREE_UPDATE_REPLACE_AND_FREE_OLD
+        );
+        assert_eq!(
+            target_tree_update_decision(false),
+            TargetTreeUpdateDecision::FreeSnapshotOnly
+        );
+        assert_eq!(
+            target_tree_update_decision(true),
+            TargetTreeUpdateDecision::ReplaceAndFreeOld
         );
 
         assert_eq!(
@@ -1777,12 +2110,64 @@ mod tests {
             target_lookup_match_action(1),
             TARGET_LOOKUP_MATCH_ASSERT_INVALID
         );
+        assert_eq!(
+            target_lookup_match_decision(-1),
+            TargetLookupMatchDecision::RemoveAndReturn
+        );
+        assert_eq!(
+            target_lookup_match_decision(0),
+            TargetLookupMatchDecision::ReturnFound
+        );
+        assert_eq!(
+            target_lookup_match_decision(1),
+            TargetLookupMatchDecision::AssertInvalid
+        );
         assert_eq!(target_lookup_miss_action(1), TARGET_LOOKUP_MISS_INSERT_NEW);
         assert_eq!(target_lookup_miss_action(0), TARGET_LOOKUP_MISS_RETURN_NULL);
         assert_eq!(
             target_lookup_miss_action(-1),
             TARGET_LOOKUP_MISS_ASSERT_INVALID
         );
+        assert_eq!(
+            target_lookup_miss_decision(1),
+            TargetLookupMissDecision::InsertNew
+        );
+        assert_eq!(
+            target_lookup_miss_decision(0),
+            TargetLookupMissDecision::ReturnNull
+        );
+        assert_eq!(
+            target_lookup_miss_decision(-1),
+            TargetLookupMissDecision::AssertInvalid
+        );
+        assert_eq!(
+            target_lookup_decision(-1, true),
+            TargetLookupDecision::RemoveAndReturn
+        );
+        assert_eq!(
+            target_lookup_decision(0, true),
+            TargetLookupDecision::ReturnFound
+        );
+        assert_eq!(
+            target_lookup_decision(1, true),
+            TargetLookupDecision::AssertInvalid
+        );
+        assert_eq!(
+            target_lookup_decision(1, false),
+            TargetLookupDecision::InsertNew
+        );
+        assert_eq!(
+            target_lookup_decision(0, false),
+            TargetLookupDecision::ReturnNull
+        );
+        assert_eq!(
+            target_lookup_decision(-1, false),
+            TargetLookupDecision::AssertInvalid
+        );
+        assert!(target_lookup_assert_mode_ok(0, true));
+        assert!(!target_lookup_assert_mode_ok(1, true));
+        assert!(target_lookup_assert_mode_ok(0, false));
+        assert!(!target_lookup_assert_mode_ok(-1, false));
 
         assert_eq!(
             target_free_action(1, false, true),
@@ -1796,6 +2181,30 @@ mod tests {
         assert_eq!(
             target_free_action(0, false, false),
             TARGET_FREE_ACTION_DELETE_IPV6
+        );
+        assert_eq!(
+            target_free_decision(1, false, true),
+            TargetFreeDecision::Reject
+        );
+        assert_eq!(
+            target_free_decision(0, false, true),
+            TargetFreeDecision::DeleteIpv4
+        );
+        assert_eq!(
+            target_free_decision(0, false, false),
+            TargetFreeDecision::DeleteIpv6
+        );
+        assert_eq!(
+            target_clean_unused_decision(1, false),
+            TargetCleanUnusedDecision::Keep
+        );
+        assert_eq!(
+            target_clean_unused_decision(0, true),
+            TargetCleanUnusedDecision::FailConnections
+        );
+        assert_eq!(
+            target_clean_unused_decision(0, false),
+            TargetCleanUnusedDecision::RemoveTimer
         );
     }
 
@@ -2012,6 +2421,19 @@ mod tests {
         assert!(target_pick_should_select(true, 2, false, 0, 7));
         assert!(target_pick_should_select(true, 2, true, 5, 2));
         assert!(!target_pick_should_select(true, 2, true, 2, 5));
+
+        assert_eq!(
+            target_pick_decision(false, true, 2, 1, 0, 0),
+            TargetPickDecision::SkipCandidate
+        );
+        assert_eq!(
+            target_pick_decision(true, true, 2, 2, 2, 5),
+            TargetPickDecision::KeepSelected
+        );
+        assert_eq!(
+            target_pick_decision(true, true, 2, 2, 5, 2),
+            TargetPickDecision::SelectCandidate
+        );
     }
 
     #[test]
@@ -2176,12 +2598,41 @@ mod tests {
         assert_eq!(create_target_transition(false, 0), (1, 0, 1));
         assert_eq!(create_target_transition(true, 0), (1, -1, 2));
         assert_eq!(create_target_transition(true, 5), (0, 0, 0));
+        assert_eq!(
+            create_target_lifecycle_decision(true),
+            CreateTargetLifecycleDecision::ReuseExisting
+        );
+        assert_eq!(
+            create_target_lifecycle_decision(false),
+            CreateTargetLifecycleDecision::AllocateNew
+        );
     }
 
     #[test]
     fn target_job_delays_match_c_values() {
         assert!((target_job_boot_delay() - 0.01).abs() < f64::EPSILON);
         assert!((target_job_retry_delay() - 0.1).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn target_job_dispatch_matches_c_rules() {
+        assert_eq!(target_job_dispatch(10, 10, 11, 12), TargetJobDispatch::Run);
+        assert_eq!(
+            target_job_dispatch(11, 10, 11, 12),
+            TargetJobDispatch::Alarm
+        );
+        assert_eq!(
+            target_job_dispatch(12, 10, 11, 12),
+            TargetJobDispatch::Finish
+        );
+        assert_eq!(
+            target_job_dispatch(13, 10, 11, 12),
+            TargetJobDispatch::Error
+        );
+        assert_eq!(target_job_dispatch_action(10, 10, 11, 12), 1);
+        assert_eq!(target_job_dispatch_action(11, 10, 11, 12), 2);
+        assert_eq!(target_job_dispatch_action(12, 10, 11, 12), 3);
+        assert_eq!(target_job_dispatch_action(13, 10, 11, 12), 0);
     }
 
     #[test]
@@ -2203,6 +2654,18 @@ mod tests {
         assert_eq!(target_job_post_tick_action(false, 1, false), 1);
         assert_eq!(target_job_post_tick_action(false, 0, true), 1);
         assert_eq!(target_job_post_tick_action(false, 0, false), 2);
+        assert_eq!(
+            target_job_post_tick_decision(true, 1, true),
+            TargetJobPostTick::ReturnZero
+        );
+        assert_eq!(
+            target_job_post_tick_decision(false, 1, false),
+            TargetJobPostTick::ScheduleRetry
+        );
+        assert_eq!(
+            target_job_post_tick_decision(false, 0, false),
+            TargetJobPostTick::AttemptFree
+        );
     }
 
     #[test]
@@ -2210,5 +2673,13 @@ mod tests {
         assert_eq!(target_job_finalize_free_action(0), 1);
         assert_eq!(target_job_finalize_free_action(5), 1);
         assert_eq!(target_job_finalize_free_action(-1), 2);
+        assert_eq!(
+            target_job_finalize_decision(0),
+            TargetJobFinalize::Completed
+        );
+        assert_eq!(
+            target_job_finalize_decision(-1),
+            TargetJobFinalize::ScheduleRetry
+        );
     }
 }

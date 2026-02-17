@@ -114,6 +114,11 @@ const SOCKET_JOB_ACTION_ABORT: c_int = 1;
 const SOCKET_JOB_ACTION_RUN: c_int = 2;
 const SOCKET_JOB_ACTION_AUX: c_int = 3;
 const SOCKET_JOB_ACTION_FINISH: c_int = 4;
+const CONNECTION_JOB_ACTION_ERROR: c_int = 0;
+const CONNECTION_JOB_ACTION_RUN: c_int = 1;
+const CONNECTION_JOB_ACTION_ALARM: c_int = 2;
+const CONNECTION_JOB_ACTION_ABORT: c_int = 3;
+const CONNECTION_JOB_ACTION_FINISH: c_int = 4;
 const LISTENING_JOB_ACTION_RUN: c_int = 1;
 const LISTENING_JOB_ACTION_AUX: c_int = 2;
 const LISTENING_INIT_FD_OK: c_int = 0;
@@ -123,22 +128,8 @@ const LISTENING_MODE_SPECIAL: c_int = 1 << 1;
 const LISTENING_MODE_NOQACK: c_int = 1 << 2;
 const LISTENING_MODE_IPV6: c_int = 1 << 3;
 const LISTENING_MODE_RAWMSG: c_int = 1 << 4;
-const TARGET_LOOKUP_MATCH_REMOVE_AND_RETURN: c_int = 1;
-const TARGET_LOOKUP_MATCH_RETURN_FOUND: c_int = 2;
-const TARGET_LOOKUP_MATCH_ASSERT_INVALID: c_int = 3;
-const TARGET_LOOKUP_MISS_INSERT_NEW: c_int = 1;
-const TARGET_LOOKUP_MISS_RETURN_NULL: c_int = 2;
-const TARGET_LOOKUP_MISS_ASSERT_INVALID: c_int = 3;
-const TARGET_FREE_ACTION_REJECT: c_int = 0;
-const TARGET_FREE_ACTION_DELETE_IPV4: c_int = 1;
-const TARGET_FREE_ACTION_DELETE_IPV6: c_int = 2;
 const TARGET_JOB_UPDATE_INACTIVE_CLEANUP: c_int = 0;
 const TARGET_JOB_UPDATE_CREATE_CONNECTIONS: c_int = 1;
-const TARGET_JOB_POST_RETURN_ZERO: c_int = 0;
-const TARGET_JOB_POST_SCHEDULE_RETRY: c_int = 1;
-const TARGET_JOB_POST_ATTEMPT_FREE: c_int = 2;
-const TARGET_JOB_FINALIZE_COMPLETED: c_int = 1;
-const TARGET_JOB_FINALIZE_SCHEDULE_RETRY: c_int = 2;
 const SOCKET_READ_WRITE_CONNECT_RETURN_ZERO: c_int = 0;
 const SOCKET_READ_WRITE_CONNECT_RETURN_COMPUTE_EVENTS: c_int = 1;
 const SOCKET_READ_WRITE_CONNECT_MARK_CONNECTED: c_int = 2;
@@ -1955,8 +1946,11 @@ pub(super) unsafe fn do_listening_connection_job_impl(
 pub(super) unsafe fn do_connection_job_impl(job: Job, op: c_int, _jt: *mut c_void) -> c_int {
     let c = job;
     let conn = unsafe { conn_info(c) };
+    let action = mtproxy_core::runtime::net::connections::connection_job_action(
+        op, JS_RUN, JS_ALARM, JS_ABORT, JS_FINISH,
+    );
 
-    if op == JS_RUN {
+    if action == CONNECTION_JOB_ACTION_RUN {
         let run_actions =
             mtproxy_core::runtime::net::connections::conn_job_run_actions(unsafe { (*conn).flags });
         if run_actions != 0 {
@@ -1999,7 +1993,7 @@ pub(super) unsafe fn do_connection_job_impl(job: Job, op: c_int, _jt: *mut c_voi
         return 0;
     }
 
-    if op == JS_ALARM {
+    if action == CONNECTION_JOB_ACTION_ALARM {
         let timer_check_ok = unsafe { job_timer_check(job) != 0 };
         if mtproxy_core::runtime::net::connections::conn_job_alarm_should_call(
             timer_check_ok,
@@ -2014,7 +2008,7 @@ pub(super) unsafe fn do_connection_job_impl(job: Job, op: c_int, _jt: *mut c_voi
         return 0;
     }
 
-    if op == JS_ABORT {
+    if action == CONNECTION_JOB_ACTION_ABORT {
         assert!(
             mtproxy_core::runtime::net::connections::conn_job_abort_has_error(unsafe {
                 (*conn).flags
@@ -2032,7 +2026,7 @@ pub(super) unsafe fn do_connection_job_impl(job: Job, op: c_int, _jt: *mut c_voi
         return JOB_COMPLETED;
     }
 
-    if op == JS_FINISH {
+    if action == CONNECTION_JOB_ACTION_FINISH {
         assert_eq!(unsafe { (*c.cast::<AsyncJob>()).j_refcnt }, 1);
         let type_ = unsafe { (*conn).type_ };
         assert!(!type_.is_null());
@@ -2042,6 +2036,7 @@ pub(super) unsafe fn do_connection_job_impl(job: Job, op: c_int, _jt: *mut c_voi
         return unsafe { mtproxy_ffi_net_connections_job_free(c) };
     }
 
+    assert_eq!(action, CONNECTION_JOB_ACTION_ERROR);
     JOB_ERROR
 }
 
@@ -2703,6 +2698,7 @@ pub(super) unsafe fn compute_next_reconnect_target_impl(ct: ConnTargetJob) {
 unsafe extern "C" fn target_pick_policy_callback(c: ConnectionJob, x: *mut c_void) {
     let ctx = x.cast::<ConnTargetPickCtx>();
     let selected_slot = unsafe { (*ctx).selected };
+    let allow_stopped = unsafe { (*ctx).allow_stopped != 0 };
     let has_selected = unsafe { !(*selected_slot).is_null() };
     let selected = if has_selected {
         unsafe { conn_info(*selected_slot) }
@@ -2714,13 +2710,6 @@ unsafe extern "C" fn target_pick_policy_callback(c: ConnectionJob, x: *mut c_voi
     } else {
         0
     };
-    if mtproxy_core::runtime::net::connections::target_pick_should_skip(
-        unsafe { (*ctx).allow_stopped != 0 },
-        has_selected,
-        selected_ready,
-    ) {
-        return;
-    }
 
     let candidate = unsafe { conn_info(c) };
     let type_ = unsafe { (*candidate).type_ };
@@ -2734,13 +2723,24 @@ unsafe extern "C" fn target_pick_policy_callback(c: ConnectionJob, x: *mut c_voi
     } else {
         0
     };
-    if mtproxy_core::runtime::net::connections::target_pick_should_select(
-        unsafe { (*ctx).allow_stopped != 0 },
-        candidate_ready,
+    let decision = mtproxy_core::runtime::net::connections::target_pick_decision(
+        allow_stopped,
         has_selected,
+        selected_ready,
+        candidate_ready,
         selected_unreliability,
         unsafe { (*candidate).unreliability },
-    ) {
+    );
+    if decision == mtproxy_core::runtime::net::connections::TargetPickDecision::SkipCandidate
+        || decision == mtproxy_core::runtime::net::connections::TargetPickDecision::KeepSelected
+    {
+        return;
+    }
+    assert_eq!(
+        decision,
+        mtproxy_core::runtime::net::connections::TargetPickDecision::SelectCandidate
+    );
+    {
         unsafe {
             *selected_slot = c;
         }
@@ -2759,20 +2759,13 @@ unsafe extern "C" fn target_count_connection_num_callback(
     let check_ready = unsafe { (*type_).check_ready };
     assert!(check_ready.is_some());
     let cr = unsafe { check_ready.unwrap()(c) };
-    let bucket = mtproxy_core::runtime::net::connections::target_ready_bucket(cr);
-    match bucket {
-        0 => {}
-        1 => unsafe {
-            *good_c.cast::<c_int>() += 1;
-        },
-        2 => unsafe {
-            *stopped_c.cast::<c_int>() += 1;
-        },
-        3 => unsafe {
-            *bad_c.cast::<c_int>() += 1;
-        },
-        -1 => assert!(false),
-        _ => assert!(false),
+    let deltas = mtproxy_core::runtime::net::connections::target_ready_bucket_deltas(cr);
+    assert!(deltas.is_some());
+    let (good_delta, stopped_delta, bad_delta) = deltas.unwrap_or((0, 0, 0));
+    unsafe {
+        *good_c.cast::<c_int>() += good_delta;
+        *stopped_c.cast::<c_int>() += stopped_delta;
+        *bad_c.cast::<c_int>() += bad_delta;
     }
 }
 
@@ -2823,37 +2816,36 @@ unsafe fn target_lookup_ipv4_impl(
                 && (*s).type_ == type_
                 && (*s).extra == extra
         } {
-            let match_action =
-                mtproxy_core::runtime::net::connections::target_lookup_match_action(mode);
-            assert!(
-                match_action == TARGET_LOOKUP_MATCH_REMOVE_AND_RETURN
-                    || match_action == TARGET_LOOKUP_MATCH_RETURN_FOUND
-                    || match_action == TARGET_LOOKUP_MATCH_ASSERT_INVALID
-            );
-            if match_action == TARGET_LOOKUP_MATCH_REMOVE_AND_RETURN {
+            let decision =
+                mtproxy_core::runtime::net::connections::target_lookup_decision(mode, true);
+            if decision
+                == mtproxy_core::runtime::net::connections::TargetLookupDecision::RemoveAndReturn
+            {
                 unsafe {
                     *prev = (*s).hnext;
                     (*s).hnext = ptr::null_mut();
                 }
                 return cur;
             }
-            if match_action == TARGET_LOOKUP_MATCH_RETURN_FOUND {
+            if decision
+                == mtproxy_core::runtime::net::connections::TargetLookupDecision::ReturnFound
+            {
                 return cur;
             }
-            assert_eq!(match_action, TARGET_LOOKUP_MATCH_ASSERT_INVALID);
-            assert!(mode == 0);
+            assert_eq!(
+                decision,
+                mtproxy_core::runtime::net::connections::TargetLookupDecision::AssertInvalid
+            );
+            assert!(
+                mtproxy_core::runtime::net::connections::target_lookup_assert_mode_ok(mode, true)
+            );
             return ptr::null_mut();
         }
         prev = unsafe { ptr::addr_of_mut!((*s).hnext) };
     }
 
-    let miss_action = mtproxy_core::runtime::net::connections::target_lookup_miss_action(mode);
-    assert!(
-        miss_action == TARGET_LOOKUP_MISS_INSERT_NEW
-            || miss_action == TARGET_LOOKUP_MISS_RETURN_NULL
-            || miss_action == TARGET_LOOKUP_MISS_ASSERT_INVALID
-    );
-    if miss_action == TARGET_LOOKUP_MISS_INSERT_NEW {
+    let decision = mtproxy_core::runtime::net::connections::target_lookup_decision(mode, false);
+    if decision == mtproxy_core::runtime::net::connections::TargetLookupDecision::InsertNew {
         let new_target_info = unsafe { conn_target_info(new_target) };
         unsafe {
             (*new_target_info).hnext = HTarget[bucket];
@@ -2861,11 +2853,14 @@ unsafe fn target_lookup_ipv4_impl(
         }
         return new_target;
     }
-    if miss_action == TARGET_LOOKUP_MISS_RETURN_NULL {
+    if decision == mtproxy_core::runtime::net::connections::TargetLookupDecision::ReturnNull {
         return ptr::null_mut();
     }
-    assert_eq!(miss_action, TARGET_LOOKUP_MISS_ASSERT_INVALID);
-    assert!(mode >= 0);
+    assert_eq!(
+        decision,
+        mtproxy_core::runtime::net::connections::TargetLookupDecision::AssertInvalid
+    );
+    assert!(mtproxy_core::runtime::net::connections::target_lookup_assert_mode_ok(mode, false));
     ptr::null_mut()
 }
 
@@ -2903,37 +2898,36 @@ unsafe fn target_lookup_ipv6_impl(
                 && (*s).target.s_addr == 0
                 && (*s).extra == extra
         } {
-            let match_action =
-                mtproxy_core::runtime::net::connections::target_lookup_match_action(mode);
-            assert!(
-                match_action == TARGET_LOOKUP_MATCH_REMOVE_AND_RETURN
-                    || match_action == TARGET_LOOKUP_MATCH_RETURN_FOUND
-                    || match_action == TARGET_LOOKUP_MATCH_ASSERT_INVALID
-            );
-            if match_action == TARGET_LOOKUP_MATCH_REMOVE_AND_RETURN {
+            let decision =
+                mtproxy_core::runtime::net::connections::target_lookup_decision(mode, true);
+            if decision
+                == mtproxy_core::runtime::net::connections::TargetLookupDecision::RemoveAndReturn
+            {
                 unsafe {
                     *prev = (*s).hnext;
                     (*s).hnext = ptr::null_mut();
                 }
                 return cur;
             }
-            if match_action == TARGET_LOOKUP_MATCH_RETURN_FOUND {
+            if decision
+                == mtproxy_core::runtime::net::connections::TargetLookupDecision::ReturnFound
+            {
                 return cur;
             }
-            assert_eq!(match_action, TARGET_LOOKUP_MATCH_ASSERT_INVALID);
-            assert!(mode == 0);
+            assert_eq!(
+                decision,
+                mtproxy_core::runtime::net::connections::TargetLookupDecision::AssertInvalid
+            );
+            assert!(
+                mtproxy_core::runtime::net::connections::target_lookup_assert_mode_ok(mode, true)
+            );
             return ptr::null_mut();
         }
         prev = unsafe { ptr::addr_of_mut!((*s).hnext) };
     }
 
-    let miss_action = mtproxy_core::runtime::net::connections::target_lookup_miss_action(mode);
-    assert!(
-        miss_action == TARGET_LOOKUP_MISS_INSERT_NEW
-            || miss_action == TARGET_LOOKUP_MISS_RETURN_NULL
-            || miss_action == TARGET_LOOKUP_MISS_ASSERT_INVALID
-    );
-    if miss_action == TARGET_LOOKUP_MISS_INSERT_NEW {
+    let decision = mtproxy_core::runtime::net::connections::target_lookup_decision(mode, false);
+    if decision == mtproxy_core::runtime::net::connections::TargetLookupDecision::InsertNew {
         let new_target_info = unsafe { conn_target_info(new_target) };
         unsafe {
             (*new_target_info).hnext = HTarget[bucket];
@@ -2941,11 +2935,14 @@ unsafe fn target_lookup_ipv6_impl(
         }
         return new_target;
     }
-    if miss_action == TARGET_LOOKUP_MISS_RETURN_NULL {
+    if decision == mtproxy_core::runtime::net::connections::TargetLookupDecision::ReturnNull {
         return ptr::null_mut();
     }
-    assert_eq!(miss_action, TARGET_LOOKUP_MISS_ASSERT_INVALID);
-    assert!(mode >= 0);
+    assert_eq!(
+        decision,
+        mtproxy_core::runtime::net::connections::TargetLookupDecision::AssertInvalid
+    );
+    assert!(mtproxy_core::runtime::net::connections::target_lookup_assert_mode_ok(mode, false));
     ptr::null_mut()
 }
 
@@ -3010,13 +3007,18 @@ pub(super) unsafe fn destroy_dead_target_connections_impl(ctj: ConnTargetJob) {
         mtproxy_ffi_net_connections_stats_add_ready(ready_outbound_delta, ready_targets_delta);
     }
 
-    let tree_update_action = mtproxy_core::runtime::net::connections::target_tree_update_action(
+    let tree_update_decision = mtproxy_core::runtime::net::connections::target_tree_update_decision(
         tree != unsafe { (*target).conn_tree },
     );
-    assert!(tree_update_action == 0 || tree_update_action == 1);
-    if tree_update_action == 0 {
+    if tree_update_decision
+        == mtproxy_core::runtime::net::connections::TargetTreeUpdateDecision::FreeSnapshotOnly
+    {
         unsafe { tree_free_connection(tree) };
     } else {
+        assert_eq!(
+            tree_update_decision,
+            mtproxy_core::runtime::net::connections::TargetTreeUpdateDecision::ReplaceAndFreeOld
+        );
         let old = unsafe { (*target).conn_tree };
         unsafe {
             (*target).conn_tree = tree;
@@ -3030,13 +3032,23 @@ pub(super) unsafe fn clean_unused_target_impl(ctj: ConnTargetJob) -> c_int {
     assert!(!ctj.is_null());
     let target = unsafe { conn_target_info(ctj) };
     assert!(!unsafe { (*target).type_ }.is_null());
-    if unsafe { (*target).global_refcnt } != 0 {
+    let decision = mtproxy_core::runtime::net::connections::target_clean_unused_decision(
+        unsafe { (*target).global_refcnt },
+        unsafe { !(*target).conn_tree.is_null() },
+    );
+    if decision == mtproxy_core::runtime::net::connections::TargetCleanUnusedDecision::Keep {
         return 0;
     }
-    if unsafe { !(*target).conn_tree.is_null() } {
+    if decision
+        == mtproxy_core::runtime::net::connections::TargetCleanUnusedDecision::FailConnections
+    {
         unsafe { tree_act_connection((*target).conn_tree, Some(target_fail_connection_callback)) };
         return 0;
     }
+    assert_eq!(
+        decision,
+        mtproxy_core::runtime::net::connections::TargetCleanUnusedDecision::RemoveTimer
+    );
     unsafe { job_timer_remove(ctj) };
     0
 }
@@ -3135,13 +3147,19 @@ pub(super) unsafe fn create_new_connections_impl(ctj: ConnTargetJob) -> c_int {
             }
         }
 
-        let tree_update_action = mtproxy_core::runtime::net::connections::target_tree_update_action(
-            tree != unsafe { (*target).conn_tree },
-        );
-        assert!(tree_update_action == 0 || tree_update_action == 1);
-        if tree_update_action == 0 {
+        let tree_update_decision =
+            mtproxy_core::runtime::net::connections::target_tree_update_decision(
+                tree != unsafe { (*target).conn_tree },
+            );
+        if tree_update_decision
+            == mtproxy_core::runtime::net::connections::TargetTreeUpdateDecision::FreeSnapshotOnly
+        {
             unsafe { tree_free_connection(tree) };
         } else {
+            assert_eq!(
+                tree_update_decision,
+                mtproxy_core::runtime::net::connections::TargetTreeUpdateDecision::ReplaceAndFreeOld
+            );
             let old = unsafe { (*target).conn_tree };
             unsafe {
                 (*target).conn_tree = tree;
@@ -3222,7 +3240,11 @@ pub(super) unsafe fn create_target_impl(
         }
     };
 
-    let out = if !t.is_null() {
+    let lifecycle_decision =
+        mtproxy_core::runtime::net::connections::create_target_lifecycle_decision(!t.is_null());
+    let out = if lifecycle_decision
+        == mtproxy_core::runtime::net::connections::CreateTargetLifecycleDecision::ReuseExisting
+    {
         let t_info = unsafe { conn_target_info(t) };
         unsafe {
             (*t_info).min_connections = source_ref.min_connections;
@@ -3253,6 +3275,10 @@ pub(super) unsafe fn create_target_impl(
         }
         t
     } else {
+        assert_eq!(
+            lifecycle_decision,
+            mtproxy_core::runtime::net::connections::CreateTargetLifecycleDecision::AllocateNew
+        );
         let job_signals = jsc_allow(JC_EPOLL, JS_RUN)
             | jsc_allow(JC_EPOLL, JS_ABORT)
             | jsc_allow(JC_EPOLL, JS_ALARM)
@@ -3335,17 +3361,12 @@ pub(super) unsafe fn free_target_impl(ctj: ConnTargetJob) -> c_int {
     assert_eq!(lock_rc, 0);
 
     let target = unsafe { conn_target_info(ctj) };
-    let free_action = mtproxy_core::runtime::net::connections::target_free_action(
+    let free_action = mtproxy_core::runtime::net::connections::target_free_decision(
         unsafe { (*target).global_refcnt },
         unsafe { !(*target).conn_tree.is_null() },
         unsafe { (*target).target.s_addr != 0 },
     );
-    assert!(
-        free_action == TARGET_FREE_ACTION_REJECT
-            || free_action == TARGET_FREE_ACTION_DELETE_IPV4
-            || free_action == TARGET_FREE_ACTION_DELETE_IPV6
-    );
-    if free_action == TARGET_FREE_ACTION_REJECT {
+    if free_action == mtproxy_core::runtime::net::connections::TargetFreeDecision::Reject {
         let unlock_rc = unsafe { libc::pthread_mutex_unlock(ptr::addr_of_mut!(TargetsLock)) };
         assert_eq!(unlock_rc, 0);
         return -1;
@@ -3356,7 +3377,7 @@ pub(super) unsafe fn free_target_impl(ctj: ConnTargetJob) -> c_int {
     assert_eq!(unsafe { (*target).global_refcnt }, 0);
     assert!(unsafe { (*target).conn_tree.is_null() });
 
-    if free_action == TARGET_FREE_ACTION_DELETE_IPV4 {
+    if free_action == mtproxy_core::runtime::net::connections::TargetFreeDecision::DeleteIpv4 {
         let ad = unsafe { (*target).target };
         let port = unsafe { (*target).port };
         let type_ = unsafe { (*target).type_ };
@@ -3372,7 +3393,10 @@ pub(super) unsafe fn free_target_impl(ctj: ConnTargetJob) -> c_int {
             unsafe { target_lookup_ipv4_impl(ad.s_addr, port, type_, extra, -1, ptr::null_mut()) };
         assert_eq!(removed, ctj);
     } else {
-        assert_eq!(free_action, TARGET_FREE_ACTION_DELETE_IPV6);
+        assert_eq!(
+            free_action,
+            mtproxy_core::runtime::net::connections::TargetFreeDecision::DeleteIpv6
+        );
         let ad_ipv6 = unsafe { (*target).target_ipv6 };
         let port = unsafe { (*target).port };
         let type_ = unsafe { (*target).type_ };
@@ -3413,67 +3437,66 @@ pub(super) unsafe fn do_conn_target_job_impl(job: Job, op: c_int, _jt: *mut c_vo
 
     let ctj = job;
     let target = unsafe { conn_target_info(ctj) };
-
-    if op == JS_ALARM || op == JS_RUN {
-        let timer_check_ok = if op == JS_ALARM {
+    let dispatch = mtproxy_core::runtime::net::connections::target_job_dispatch(
+        op, JS_RUN, JS_ALARM, JS_FINISH,
+    );
+    if dispatch == mtproxy_core::runtime::net::connections::TargetJobDispatch::Run
+        || dispatch == mtproxy_core::runtime::net::connections::TargetJobDispatch::Alarm
+    {
+        let is_alarm =
+            dispatch == mtproxy_core::runtime::net::connections::TargetJobDispatch::Alarm;
+        let timer_check_ok = if is_alarm {
             unsafe { job_timer_check(job) != 0 }
         } else {
             true
         };
-        let should_run = mtproxy_core::runtime::net::connections::target_job_should_run_tick(
-            op == JS_ALARM,
+        if !mtproxy_core::runtime::net::connections::target_job_should_run_tick(
+            is_alarm,
             timer_check_ok,
-        );
-        if !should_run {
+        ) {
             return 0;
         }
 
         let update_mode = mtproxy_core::runtime::net::connections::target_job_update_mode(unsafe {
             (*target).global_refcnt
         });
-        assert!(
-            update_mode == TARGET_JOB_UPDATE_INACTIVE_CLEANUP
-                || update_mode == TARGET_JOB_UPDATE_CREATE_CONNECTIONS
-        );
         if update_mode == TARGET_JOB_UPDATE_INACTIVE_CLEANUP {
             unsafe { destroy_dead_target_connections_impl(ctj) };
             unsafe { clean_unused_target_impl(ctj) };
             unsafe { compute_next_reconnect_target_impl(ctj) };
         } else {
+            assert_eq!(update_mode, TARGET_JOB_UPDATE_CREATE_CONNECTIONS);
             unsafe { create_new_connections_impl(ctj) };
         }
 
-        let post_action = mtproxy_core::runtime::net::connections::target_job_post_tick_action(
+        let post_action = mtproxy_core::runtime::net::connections::target_job_post_tick_decision(
             (unsafe { (*ctj.cast::<AsyncJob>()).j_flags } & JF_COMPLETED) != 0,
             unsafe { (*target).global_refcnt },
             unsafe { !(*target).conn_tree.is_null() },
         );
-        assert!(
-            post_action == TARGET_JOB_POST_RETURN_ZERO
-                || post_action == TARGET_JOB_POST_SCHEDULE_RETRY
-                || post_action == TARGET_JOB_POST_ATTEMPT_FREE
-        );
-        if post_action == TARGET_JOB_POST_RETURN_ZERO {
+        if post_action == mtproxy_core::runtime::net::connections::TargetJobPostTick::ReturnZero {
             return 0;
         }
 
         let retry_delay = mtproxy_core::runtime::net::connections::target_job_retry_delay();
-        if post_action == TARGET_JOB_POST_SCHEDULE_RETRY {
+        if post_action == mtproxy_core::runtime::net::connections::TargetJobPostTick::ScheduleRetry
+        {
             unsafe {
                 job_timer_insert(ctj, mtproxy_ffi_net_connections_precise_now() + retry_delay);
             }
             return 0;
         }
 
+        assert_eq!(
+            post_action,
+            mtproxy_core::runtime::net::connections::TargetJobPostTick::AttemptFree
+        );
         let finalize_action =
-            mtproxy_core::runtime::net::connections::target_job_finalize_free_action(unsafe {
+            mtproxy_core::runtime::net::connections::target_job_finalize_decision(unsafe {
                 mtproxy_ffi_net_connections_free_target(ctj)
             });
-        assert!(
-            finalize_action == TARGET_JOB_FINALIZE_COMPLETED
-                || finalize_action == TARGET_JOB_FINALIZE_SCHEDULE_RETRY
-        );
-        if finalize_action == TARGET_JOB_FINALIZE_COMPLETED {
+        if finalize_action == mtproxy_core::runtime::net::connections::TargetJobFinalize::Completed
+        {
             return JOB_COMPLETED;
         }
         unsafe {
@@ -3482,7 +3505,7 @@ pub(super) unsafe fn do_conn_target_job_impl(job: Job, op: c_int, _jt: *mut c_vo
         return 0;
     }
 
-    if op == JS_FINISH {
+    if dispatch == mtproxy_core::runtime::net::connections::TargetJobDispatch::Finish {
         assert!((unsafe { (*ctj.cast::<AsyncJob>()).j_flags } & JF_COMPLETED) != 0);
         unsafe {
             mtproxy_ffi_net_connections_stat_add_allocated_targets(-1);
@@ -3490,6 +3513,10 @@ pub(super) unsafe fn do_conn_target_job_impl(job: Job, op: c_int, _jt: *mut c_vo
         }
     }
 
+    assert_eq!(
+        dispatch,
+        mtproxy_core::runtime::net::connections::TargetJobDispatch::Error
+    );
     JOB_ERROR
 }
 

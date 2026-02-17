@@ -2,6 +2,7 @@
 
 /// RPC packet types used in protocol.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(i32)]
 pub enum RpcPacketType {
     /// Encryption negotiation packet.
     Nonce = 0x7acb_87aa,
@@ -10,9 +11,9 @@ pub enum RpcPacketType {
     /// Handshake error response.
     HandshakeError = 0x6a27_beda,
     /// Ping request.
-    Ping = 0x7bde_f2a4,
-    /// Pong response (`0x8bde_f3a5` as `i32` = `-1948322907`).
-    Pong = -1_948_322_907,
+    Ping = 1_462_805_215,
+    /// Pong response (`0x8430_eaa7` as `i32`).
+    Pong = -2_077_168_985,
 }
 
 impl RpcPacketType {
@@ -23,8 +24,8 @@ impl RpcPacketType {
             0x7acb_87aa => Some(Self::Nonce),
             0x7682_eef5 => Some(Self::Handshake),
             0x6a27_beda => Some(Self::HandshakeError),
-            0x7bde_f2a4 => Some(Self::Ping),
-            -1_948_322_907 => Some(Self::Pong), // 0x8bde_f3a5 as i32
+            1_462_805_215 => Some(Self::Ping),
+            -2_077_168_985 => Some(Self::Pong),
             _ => None,
         }
     }
@@ -881,7 +882,7 @@ pub fn set_default_rpc_flags(and_flags: u32, or_flags: u32) -> u32 {
         Some((old & and_flags) | or_flags)
     }) {
         Ok(old) => (old & and_flags) | or_flags, // Return the new value
-        Err(_) => unreachable!(), // fetch_update with Some never fails
+        Err(_) => unreachable!(),                // fetch_update with Some never fails
     }
 }
 
@@ -899,7 +900,7 @@ static MAX_DH_ACCEPT_RATE: AtomicU32 = AtomicU32::new(0);
 /// Sets the maximum DH accept rate (rate per second).
 ///
 /// This mirrors the C function `tcp_set_max_dh_accept_rate`.
-/// 
+///
 /// NOTE: This Rust implementation provides a simplified version of DH rate limiting.
 /// The C implementation uses thread-local state which cannot be directly replicated
 /// in a no_std environment. The FFI layer should maintain thread-local state if needed.
@@ -1063,13 +1064,13 @@ mod tests {
             Some(RpcPacketType::HandshakeError)
         );
         assert_eq!(
-            RpcPacketType::from_i32(0x7bde_f2a4),
+            RpcPacketType::from_i32(0x5730_a2df_u32 as i32),
             Some(RpcPacketType::Ping)
         );
         assert_eq!(
-            RpcPacketType::from_i32(-1_948_322_907),
+            RpcPacketType::from_i32(0x8430_eaa7_u32 as i32),
             Some(RpcPacketType::Pong)
-        ); // 0x8bde_f3a5
+        );
         assert_eq!(RpcPacketType::from_i32(0), None);
     }
 
@@ -1249,13 +1250,15 @@ mod tests {
         let ping_id = 0x0123_4567_89AB_CDEF_i64;
         let packet = construct_ping_packet(ping_id);
 
-        // First 4 bytes should be RPC_PING (0x7bdef2a4)
+        // First 4 bytes should be RPC_PING (0x5730a2df)
         let op = i32::from_le_bytes([packet[0], packet[1], packet[2], packet[3]]);
-        assert_eq!(op, 0x7bde_f2a4);
+        assert_eq!(op, 0x5730_a2df_u32 as i32);
 
         // Next 8 bytes should be the ping_id
-        let id =
-            i64::from_le_bytes([packet[4], packet[5], packet[6], packet[7], packet[8], packet[9], packet[10], packet[11]]);
+        let id = i64::from_le_bytes([
+            packet[4], packet[5], packet[6], packet[7], packet[8], packet[9], packet[10],
+            packet[11],
+        ]);
         assert_eq!(id, ping_id);
     }
 
@@ -1268,7 +1271,7 @@ mod tests {
         // When max rate is 0, always allow
         let result = add_dh_accept(state, 0, 1.0);
         assert!(result.is_ok());
-        
+
         let result = add_dh_accept(state, 0, 2.0);
         assert!(result.is_ok());
     }

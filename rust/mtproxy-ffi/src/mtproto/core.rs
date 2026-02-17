@@ -610,7 +610,14 @@ unsafe extern "C" {
     fn engine_set_http_fallback(http_type: *mut c_void, http_functions: *mut c_void);
     fn tcp_rpc_add_proxy_domain(domain: *const c_char);
     fn tcp_rpcs_set_ext_secret(secret: *mut u8);
-    fn parse_option(name: *const c_char, arg: c_int, var: *mut c_int, val: c_int, help: *const c_char, ...);
+    fn parse_option(
+        name: *const c_char,
+        arg: c_int,
+        var: *mut c_int,
+        val: c_int,
+        help: *const c_char,
+        ...
+    );
     fn parse_usage() -> c_int;
     fn usage();
     fn reopen_logs_ext(slave_mode: c_int);
@@ -992,7 +999,8 @@ pub(super) unsafe fn mtproto_remove_ext_connection_runtime_ffi(
     unsafe { mtproto_notify_ext_connection_runtime_ffi(&cur, send_notifications) };
 
     let mut removed = MtproxyMtprotoExtConnection::default();
-    let remove_rc = unsafe { mtproto_ext_conn_remove_by_out_conn_id_ffi(cur.out_conn_id, &mut removed) };
+    let remove_rc =
+        unsafe { mtproto_ext_conn_remove_by_out_conn_id_ffi(cur.out_conn_id, &mut removed) };
     assert!(remove_rc >= 0);
 }
 
@@ -1292,7 +1300,10 @@ pub(super) unsafe fn mtproto_http_send_message_ffi(
     1
 }
 
-pub(super) unsafe fn mtproto_finish_postponed_http_response_ffi(data: *mut c_void, len: c_int) -> c_int {
+pub(super) unsafe fn mtproto_finish_postponed_http_response_ffi(
+    data: *mut c_void,
+    len: c_int,
+) -> c_int {
     assert!(len == saturating_i32_from_usize(core::mem::size_of::<ConnectionJob>()));
     let conn_ptr = data.cast::<ConnectionJob>();
     assert!(!conn_ptr.is_null());
@@ -2391,7 +2402,8 @@ pub(super) unsafe fn mtproto_callback_job_run_ffi(
                 return JOB_ERROR;
             };
             let custom_bytes = unsafe { (*job_prefix).j_custom_bytes };
-            let payload_offset = saturating_i32_from_usize(core::mem::size_of::<MtprotoJobCallbackFn>());
+            let payload_offset =
+                saturating_i32_from_usize(core::mem::size_of::<MtprotoJobCallbackFn>());
             assert!(custom_bytes >= payload_offset);
             let data_ptr = unsafe { d.cast::<u8>().add(payload_offset as usize).cast::<c_void>() };
             func(data_ptr, custom_bytes - payload_offset)
@@ -2625,7 +2637,8 @@ pub(super) unsafe fn mtproto_rpcc_execute_ffi(
                 | mtproto_jsc_allow(JC_ENGINE, JS_ABORT)
                 | mtproto_jsc_allow(JC_ENGINE, JS_ALARM)
                 | mtproto_jsc_allow(JC_ENGINE, JS_FINISH);
-            let custom_bytes = saturating_i32_from_usize(core::mem::size_of::<MtprotoClientPacketInfo>());
+            let custom_bytes =
+                saturating_i32_from_usize(core::mem::size_of::<MtprotoClientPacketInfo>());
             let job = unsafe {
                 create_async_job(
                     Some(mtproto_client_packet_job_run_bridge),
@@ -2805,9 +2818,7 @@ pub(super) unsafe fn mtproto_ext_rpc_close_ffi(c: *mut c_void, who: c_int) -> c_
     if unsafe { verbosity } >= 3 {
         unsafe {
             kprintf(
-                b"ext_rpc connection closing (%d) by %d\n\0"
-                    .as_ptr()
-                    .cast(),
+                b"ext_rpc connection closing (%d) by %d\n\0".as_ptr().cast(),
                 fd,
                 who,
             );
@@ -2911,7 +2922,9 @@ pub(super) unsafe fn mtproto_proxy_rpc_close_ffi(c: *mut c_void, who: c_int) -> 
     if unsafe { verbosity } >= 3 {
         unsafe {
             kprintf(
-                b"proxy_rpc connection closing (%d) by %d\n\0".as_ptr().cast(),
+                b"proxy_rpc connection closing (%d) by %d\n\0"
+                    .as_ptr()
+                    .cast(),
                 fd,
                 who,
             );
@@ -3172,7 +3185,10 @@ pub(super) unsafe fn mtproto_check_conn_buffers_runtime_ffi(c: *mut c_void) -> c
         return -1;
     }
     let tot_used_bytes = unsafe {
-        (*conn).in_.total_bytes + (*conn).in_u.total_bytes + (*conn).out.total_bytes + (*conn).out_p.total_bytes
+        (*conn).in_.total_bytes
+            + (*conn).in_u.total_bytes
+            + (*conn).out.total_bytes
+            + (*conn).out_p.total_bytes
     };
     if tot_used_bytes > MAX_CONNECTION_BUFFER_SPACE {
         if unsafe { verbosity } >= 2 {

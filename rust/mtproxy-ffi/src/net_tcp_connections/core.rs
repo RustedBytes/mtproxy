@@ -328,7 +328,8 @@ pub(super) unsafe fn cpu_tcp_server_writer_impl(c: ConnectionJob) -> c_int {
             mpq_push_w((*io).out_packet_queue, raw.cast(), 0);
         }
         if stop {
-            unsafe { atomic_i32(ptr::addr_of_mut!((*io).flags)) }.fetch_or(C_STOPWRITE, Ordering::SeqCst);
+            unsafe { atomic_i32(ptr::addr_of_mut!((*io).flags)) }
+                .fetch_or(C_STOPWRITE, Ordering::SeqCst);
         }
         unsafe { job_signal_create_pass((*conn).io_conn, JS_RUN) };
     } else {
@@ -531,7 +532,13 @@ pub(super) unsafe fn cpu_tcp_aes_crypto_ctr128_encrypt_output_impl(c: Connection
 
         if (unsafe { (*conn).flags } & C_IS_TLS) != 0 {
             assert!(unsafe { (*conn).left_tls_packet_length >= 0 });
-            let header = [0x17_u8, 0x03_u8, 0x03_u8, (len >> 8) as u8, (len & 0xff) as u8];
+            let header = [
+                0x17_u8,
+                0x03_u8,
+                0x03_u8,
+                (len >> 8) as u8,
+                (len & 0xff) as u8,
+            ];
             assert_eq!(
                 unsafe {
                     rwm_push_data(
@@ -595,7 +602,8 @@ pub(super) unsafe fn cpu_tcp_aes_crypto_ctr128_decrypt_input_impl(c: ConnectionJ
                     c_int::try_from(header.len()).unwrap_or(0)
                 );
 
-                let Some(payload_len) = tcp_connections_core::tls_header_payload_len(&header) else {
+                let Some(payload_len) = tcp_connections_core::tls_header_payload_len(&header)
+                else {
                     if unsafe { verbosity } >= 1 {
                         unsafe { kprintf(TLS_HEADER_ERR_FMT.as_ptr().cast()) };
                     }
@@ -608,31 +616,26 @@ pub(super) unsafe fn cpu_tcp_aes_crypto_ctr128_decrypt_input_impl(c: ConnectionJ
                 }
                 if unsafe { verbosity } >= 2 {
                     unsafe {
-                        kprintf(
-                            TLS_RECV_FMT.as_ptr().cast(),
-                            (*conn).left_tls_packet_length,
-                        )
+                        kprintf(TLS_RECV_FMT.as_ptr().cast(), (*conn).left_tls_packet_length)
                     };
                 }
-                assert_eq!(unsafe { rwm_skip_data(ptr::addr_of_mut!((*conn).in_u), 5) }, 5);
+                assert_eq!(
+                    unsafe { rwm_skip_data(ptr::addr_of_mut!((*conn).in_u), 5) },
+                    5
+                );
                 len -= 5;
             }
 
-            len =
-                tcp_connections_core::tls_decrypt_chunk_len(len, unsafe { (*conn).left_tls_packet_length });
+            len = tcp_connections_core::tls_decrypt_chunk_len(len, unsafe {
+                (*conn).left_tls_packet_length
+            });
             unsafe {
                 (*conn).left_tls_packet_length -= len;
             }
         }
 
         if unsafe { verbosity } >= 2 {
-            unsafe {
-                kprintf(
-                    TLS_READ_FMT.as_ptr().cast(),
-                    len,
-                    (*conn).in_u.total_bytes,
-                )
-            };
+            unsafe { kprintf(TLS_READ_FMT.as_ptr().cast(), len, (*conn).in_u.total_bytes) };
         }
         assert_eq!(
             unsafe {

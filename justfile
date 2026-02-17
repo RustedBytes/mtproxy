@@ -39,6 +39,12 @@ ci:
 inventory:
   make step15-inventory
 
+manifest:
+  ./scripts/generate_refactor_manifest.sh
+
+ffi-freeze:
+  ./scripts/ffi_freeze_check.sh
+
 c-format:
   rg --files -g '*.c' -g '*.h' common crypto engine jobs mtproto net vv | xargs -r clang-format -style=file -i
 
@@ -49,5 +55,6 @@ format:
   just c-format
 
 format-check:
+  just ffi-freeze
   just rust-format-check
   just c-format-check

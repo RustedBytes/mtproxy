@@ -78,7 +78,8 @@ static mut TL_GET_OP_FUNCTION: TlGetOpFn = None;
 static mut TL_STAT_FUNCTION: TlStatFn = None;
 static mut TL_AIO_TIMEOUT: c_double = 0.0;
 static mut TL_QUERY_RESULT_TABLE_ALLOCATED: bool = false;
-static mut TL_QUERY_RESULT_FUNCTIONS: [TlQueryResultFn; QUERY_RESULT_TYPES] = [None; QUERY_RESULT_TYPES];
+static mut TL_QUERY_RESULT_FUNCTIONS: [TlQueryResultFn; QUERY_RESULT_TYPES] =
+    [None; QUERY_RESULT_TYPES];
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -320,8 +321,10 @@ pub(super) struct AsyncJob {
 }
 
 unsafe extern "C" {
-    fn mtproxy_ffi_engine_rpc_query_job_dispatch_decision(op: c_int, has_custom_tree: c_int)
-    -> c_int;
+    fn mtproxy_ffi_engine_rpc_query_job_dispatch_decision(
+        op: c_int,
+        has_custom_tree: c_int,
+    ) -> c_int;
     fn mtproxy_ffi_engine_rpc_query_result_type_id_from_qid(qid: c_longlong) -> c_int;
     fn mtproxy_ffi_engine_rpc_query_result_dispatch_decision(
         has_table: c_int,
@@ -406,7 +409,7 @@ unsafe extern "C" {
         tlio_out: *mut c_void,
         errnum: c_int,
         format: *const c_char,
-        ...,
+        ...
     ) -> c_int;
     #[link_name = "tls_get_ptr_rust"]
     fn c_tls_get_ptr_rust(tlio_out: *mut c_void, size: c_int) -> *mut c_void;
@@ -565,7 +568,10 @@ unsafe fn copy_tcp_remote_pid(conn: *mut c_void, pid: *mut ProcessId) {
 }
 
 #[inline]
-unsafe fn call_default_parse_function(tlio_in: *mut TlInState, actor_id: c_longlong) -> *mut TlActExtra {
+unsafe fn call_default_parse_function(
+    tlio_in: *mut TlInState,
+    actor_id: c_longlong,
+) -> *mut TlActExtra {
     unsafe { mtproxy_ffi_engine_rpc_call_default_parse_function(tlio_in, actor_id) }
 }
 
@@ -768,7 +774,12 @@ pub(super) unsafe fn process_query_custom_subjob_impl(
         let io = unsafe { c_tl_in_state_alloc() }.cast::<TlInState>();
         assert!(!io.is_null());
         unsafe {
-            c_tlf_init_raw_message(io.cast(), (&raw mut (*p).src).cast(), (*p).src.total_bytes, 0);
+            c_tlf_init_raw_message(
+                io.cast(),
+                (&raw mut (*p).src).cast(),
+                (*p).src.total_bytes,
+                0,
+            );
             query_act_custom_impl(io, p);
             c_tl_in_state_free(io.cast());
             c_job_timer_remove(job.cast());
@@ -848,13 +859,22 @@ pub(super) unsafe fn process_parse_subjob_impl(job: Job, op: c_int, jt: *mut c_v
             assert!(!io.is_null());
 
             let rc = unsafe {
-                c_tlf_init_raw_message(io.cast(), (&raw mut (*p).src).cast(), (*p).src.total_bytes, 0);
+                c_tlf_init_raw_message(
+                    io.cast(),
+                    (&raw mut (*p).src).cast(),
+                    (*p).src.total_bytes,
+                    0,
+                );
                 fetch_all_queries_impl(job, io)
             };
             unsafe {
                 c_tl_in_state_free(io.cast());
             }
-            if rc < 0 { 1 << JS_ABORT } else { 0 }
+            if rc < 0 {
+                1 << JS_ABORT
+            } else {
+                0
+            }
         }
         JS_ABORT | JS_ALARM | JS_FINISH => unsafe { process_query_job_impl(job, op, jt) },
         _ => JOB_ERROR,
@@ -1100,19 +1120,11 @@ unsafe extern "C" fn process_act_atom_subjob_callback(
     unsafe { process_act_atom_subjob_impl(job.cast::<AsyncJob>(), op, jt) }
 }
 
-unsafe extern "C" fn process_query_job_callback(
-    job: Job,
-    op: c_int,
-    jt: *mut c_void,
-) -> c_int {
+unsafe extern "C" fn process_query_job_callback(job: Job, op: c_int, jt: *mut c_void) -> c_int {
     unsafe { process_query_job_impl(job, op, jt) }
 }
 
-unsafe extern "C" fn process_parse_subjob_callback(
-    job: Job,
-    op: c_int,
-    jt: *mut c_void,
-) -> c_int {
+unsafe extern "C" fn process_parse_subjob_callback(job: Job, op: c_int, jt: *mut c_void) -> c_int {
     unsafe { process_parse_subjob_impl(job, op, jt) }
 }
 
@@ -1408,8 +1420,7 @@ pub(super) unsafe fn process_query_job_impl(job: Job, op: c_int, _jt: *mut c_voi
             if unsafe { (*p).answer_sent } == 0 {
                 if unsafe { (*p).fd } != 0 && unsafe { (*p).type_ } == TL_TYPE_RAW_MSG {
                     let c = unsafe { connection_get_by_fd((*p).fd) };
-                    if !c.is_null() && unsafe { conn_generation(c) } != unsafe { (*p).generation }
-                    {
+                    if !c.is_null() && unsafe { conn_generation(c) } != unsafe { (*p).generation } {
                         unsafe {
                             c_job_decref(1, c);
                         }
@@ -1473,10 +1484,8 @@ pub(super) unsafe fn process_query_job_impl(job: Job, op: c_int, _jt: *mut c_voi
                 return 0;
             }
             if unsafe { (*p).answer_sent } == 0 {
-                io = unsafe {
-                    c_tl_aio_init_store((*p).type_, &raw mut (*p).pid, (*(*p).h).qid)
-                }
-                .cast::<TlOutState>();
+                io = unsafe { c_tl_aio_init_store((*p).type_, &raw mut (*p).pid, (*(*p).h).qid) }
+                    .cast::<TlOutState>();
             }
             if !io.is_null() {
                 if unsafe { (*p).error_code } != 0 {
@@ -1528,10 +1537,8 @@ pub(super) unsafe fn process_query_job_impl(job: Job, op: c_int, _jt: *mut c_voi
         }
         JS_ABORT => {
             if unsafe { (*p).answer_sent } == 0 {
-                io = unsafe {
-                    c_tl_aio_init_store((*p).type_, &raw mut (*p).pid, (*(*p).h).qid)
-                }
-                .cast::<TlOutState>();
+                io = unsafe { c_tl_aio_init_store((*p).type_, &raw mut (*p).pid, (*(*p).h).qid) }
+                    .cast::<TlOutState>();
             }
             if !io.is_null() {
                 if unsafe { (*p).error_code } != 0 {
@@ -1611,7 +1618,12 @@ pub(super) unsafe fn query_job_run_impl(job: Job, fd: c_int, generation: c_int) 
     let io = unsafe { c_tl_in_state_alloc() }.cast::<TlInState>();
     assert!(!io.is_null());
     unsafe {
-        c_tlf_init_raw_message(io.cast(), (&raw mut (*q).raw).cast(), (*q).raw.total_bytes, 0);
+        c_tlf_init_raw_message(
+            io.cast(),
+            (&raw mut (*q).raw).cast(),
+            (*q).raw.total_bytes,
+            0,
+        );
     }
 
     let op = unsafe { tlf_lookup_int_rust(io.cast()) };

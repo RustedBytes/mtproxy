@@ -10,6 +10,14 @@ use super::tcp_rpc_common::{
 
 const PACKET_HEADER_INVALID_MASK: i32 = i32::from_ne_bytes(0xc000_0003_u32.to_ne_bytes());
 
+pub const RPCF_ALLOW_UNENC: i32 = 1;
+pub const RPCF_ALLOW_ENC: i32 = 2;
+pub const RPCF_REQ_DH: i32 = 4;
+pub const RPCF_ALLOW_SKIP_DH: i32 = 8;
+pub const RPCF_ENC_SENT: i32 = 16;
+pub const RPCF_QUICKACK: i32 = 512;
+pub const RPCF_USE_CRC32C: i32 = 2048;
+
 /// Connection state for RPC server.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ServerState {
@@ -166,6 +174,8 @@ impl RpcServerData {
                 }
                 if allow_unencrypted {
                     super::tcp_rpc_common::CryptoSchema::None
+                } else if allow_encrypted {
+                    super::tcp_rpc_common::CryptoSchema::Aes
                 } else {
                     return Err(ServerError::UnexpectedNonce);
                 }
@@ -173,9 +183,6 @@ impl RpcServerData {
             super::tcp_rpc_common::CryptoSchema::Aes
             | super::tcp_rpc_common::CryptoSchema::AesExt
             | super::tcp_rpc_common::CryptoSchema::AesDh => {
-                if packet.key_select == 0 {
-                    return Err(ServerError::UnexpectedNonce);
-                }
                 if allow_encrypted {
                     packet.crypto_schema
                 } else if allow_unencrypted {
@@ -512,6 +519,120 @@ pub fn validate_packet_type(
         }
         _ => Err(ServerError::InvalidPacketType(packet_type)),
     }
+}
+
+#[must_use]
+pub fn default_execute_should_pong(op: i32, raw_total_bytes: i32) -> bool {
+    op == RpcPacketType::Ping as i32 && raw_total_bytes == 12
+}
+
+pub fn default_execute_set_pong(packet_words: &mut [i32; 3]) {
+    packet_words[0] = RpcPacketType::Pong as i32;
+}
+
+#[must_use]
+pub fn validate_handshake_header(
+    packet_num: i32,
+    packet_type: i32,
+    packet_len: i32,
+    handshake_packet_len: i32,
+) -> i32 {
+    if packet_num != -1 || packet_type != RpcPacketType::Handshake as i32 {
+        return -2;
+    }
+    if packet_len != handshake_packet_len {
+        return -3;
+    }
+    0
+}
+
+#[must_use]
+pub fn validate_nonce_header(
+    packet_num: i32,
+    packet_type: i32,
+    packet_len: i32,
+    nonce_packet_min_len: i32,
+    nonce_packet_max_len: i32,
+) -> i32 {
+    if packet_num != -2 || packet_type != RpcPacketType::Nonce as i32 {
+        return -2;
+    }
+    if packet_len < nonce_packet_min_len || packet_len > nonce_packet_max_len {
+        return -3;
+    }
+    0
+}
+
+pub fn validate_handshake(
+    packet_flags: i32,
+    peer_pid_matches: bool,
+    ignore_pid: bool,
+    default_rpc_flags: i32,
+) -> Result<bool, i32> {
+    if !peer_pid_matches && !ignore_pid {
+        return Err(-4);
+    }
+    if (packet_flags & 0xff) != 0 {
+        return Err(-7);
+    }
+    Ok((packet_flags & default_rpc_flags & RPCF_USE_CRC32C) != 0)
+}
+
+#[must_use]
+pub const fn should_set_wantwr(out_total_bytes: i32) -> bool {
+    out_total_bytes > 0
+}
+
+#[must_use]
+pub const fn should_notify_close(has_rpc_close: bool) -> bool {
+    has_rpc_close
+}
+
+#[must_use]
+pub const fn do_wakeup() -> i32 {
+    0
+}
+
+#[must_use]
+pub const fn notification_pending_queries() -> i32 {
+    0
+}
+
+pub fn init_accepted_state(
+    has_perm_callback: bool,
+    perm_flags: i32,
+) -> Result<(i32, i32, i32), i32> {
+    let crypto_flags = if has_perm_callback {
+        let masked =
+            perm_flags & (RPCF_ALLOW_UNENC | RPCF_ALLOW_ENC | RPCF_REQ_DH | RPCF_ALLOW_SKIP_DH);
+        if (masked & (RPCF_ALLOW_UNENC | RPCF_ALLOW_ENC)) == 0 {
+            return Err(-1);
+        }
+        masked
+    } else {
+        RPCF_ALLOW_UNENC
+    };
+    Ok((crypto_flags, -2, -2))
+}
+
+#[must_use]
+pub const fn init_accepted_nohs_state() -> (i32, i32) {
+    (RPCF_QUICKACK | RPCF_ALLOW_UNENC, -3)
+}
+
+pub fn init_fake_crypto_state(crypto_flags: i32) -> Result<i32, i32> {
+    if (crypto_flags & RPCF_ALLOW_UNENC) == 0 {
+        return Err(-1);
+    }
+    if (crypto_flags & (RPCF_ALLOW_ENC | RPCF_ENC_SENT)) != 0 {
+        return Err(-1);
+    }
+    Ok(crypto_flags | RPCF_ENC_SENT)
+}
+
+#[must_use]
+pub const fn default_check_perm(default_rpc_flags: i32) -> i32 {
+    RPCF_ALLOW_ENC | RPCF_REQ_DH | default_rpc_flags
 }
 
 #[cfg(test)]

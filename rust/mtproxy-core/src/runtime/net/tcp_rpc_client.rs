@@ -9,6 +9,21 @@ pub const PACKET_LEN_STATE_SKIP: i32 = 0;
 pub const PACKET_LEN_STATE_READY: i32 = 1;
 pub const PACKET_LEN_STATE_INVALID: i32 = -1;
 pub const PACKET_LEN_STATE_SHORT: i32 = -2;
+pub const RPCF_ALLOW_UNENC: i32 = 1;
+pub const RPCF_ALLOW_ENC: i32 = 2;
+pub const RPCF_REQ_DH: i32 = 4;
+pub const RPCF_ALLOW_SKIP_DH: i32 = 8;
+pub const RPCF_ENC_SENT: i32 = 16;
+pub const RPCF_USE_CRC32C: i32 = 2048;
+
+const RPCF_PERM_MASK: i32 = RPCF_ALLOW_UNENC | RPCF_ALLOW_ENC | RPCF_REQ_DH | RPCF_ALLOW_SKIP_DH;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DefaultReadyState {
+    NotYet,
+    Ok,
+    Fail(i32),
+}
 
 /// RPC crypto flags for client connections.
 ///
@@ -236,7 +251,7 @@ impl RpcClientData {
         }
 
         let sent_nonce_time = self.nonce_time.trunc();
-        if (f64::from(packet.crypto_ts) - sent_nonce_time).abs() > 30.0 {
+        if sent_nonce_time != 0.0 && (f64::from(packet.crypto_ts) - sent_nonce_time).abs() > 30.0 {
             return Err(ClientError::CryptoNegotiationFailed);
         }
 
@@ -254,9 +269,6 @@ impl RpcClientData {
             super::tcp_rpc_common::CryptoSchema::Aes
             | super::tcp_rpc_common::CryptoSchema::AesExt
             | super::tcp_rpc_common::CryptoSchema::AesDh => {
-                if packet.key_select == 0 {
-                    return Err(ClientError::CryptoNegotiationFailed);
-                }
                 if !self.crypto_flags.allow_encrypted {
                     return Err(ClientError::CryptoNegotiationFailed);
                 }
@@ -439,6 +451,129 @@ pub fn packet_len_state(packet_len: i32, max_packet_len: i32) -> i32 {
     PACKET_LEN_STATE_READY
 }
 
+#[must_use]
+pub fn validate_nonce_header(
+    packet_num: i32,
+    packet_type: i32,
+    packet_len: i32,
+    nonce_packet_min_len: i32,
+    nonce_packet_max_len: i32,
+) -> i32 {
+    if packet_num != -2 || packet_type != RpcPacketType::Nonce as i32 {
+        return -2;
+    }
+    if packet_len < nonce_packet_min_len || packet_len > nonce_packet_max_len {
+        return -3;
+    }
+    0
+}
+
+#[must_use]
+pub fn validate_handshake_header(
+    packet_num: i32,
+    packet_type: i32,
+    packet_len: i32,
+    handshake_packet_len: i32,
+) -> i32 {
+    if packet_num != -1 || packet_type != RpcPacketType::Handshake as i32 {
+        return -2;
+    }
+    if packet_len != handshake_packet_len {
+        return -3;
+    }
+    0
+}
+
+pub fn validate_handshake(
+    packet_flags: i32,
+    sender_pid_matches: bool,
+    ignore_pid: bool,
+    peer_pid_matches: bool,
+    default_rpc_flags: i32,
+) -> Result<bool, i32> {
+    if !sender_pid_matches && !ignore_pid {
+        return Err(-6);
+    }
+    if !peer_pid_matches {
+        return Err(-4);
+    }
+    if (packet_flags & 0xff) != 0 {
+        return Err(-7);
+    }
+    if (packet_flags & RPCF_USE_CRC32C) != 0 && (default_rpc_flags & RPCF_USE_CRC32C) == 0 {
+        return Err(-8);
+    }
+    Ok((packet_flags & RPCF_USE_CRC32C) != 0)
+}
+
+#[must_use]
+pub fn normalize_perm_flags(raw_flags: i32) -> Option<i32> {
+    let normalized = raw_flags & RPCF_PERM_MASK;
+    if (normalized & (RPCF_ALLOW_UNENC | RPCF_ALLOW_ENC)) == 0 {
+        None
+    } else {
+        Some(normalized)
+    }
+}
+
+#[must_use]
+pub const fn default_connected_crypto_flags() -> i32 {
+    RPCF_ALLOW_ENC | RPCF_ALLOW_UNENC
+}
+
+#[must_use]
+pub const fn default_outbound_crypto_flags() -> i32 {
+    RPCF_ALLOW_UNENC
+}
+
+#[must_use]
+pub const fn requires_dh_accept(crypto_flags: i32) -> bool {
+    (crypto_flags & RPCF_REQ_DH) != 0
+}
+
+#[must_use]
+pub const fn default_check_perm(default_rpc_flags: i32) -> i32 {
+    RPCF_ALLOW_ENC | default_rpc_flags
+}
+
+pub fn init_fake_crypto_state(crypto_flags: i32) -> Result<i32, i32> {
+    if (crypto_flags & RPCF_ALLOW_UNENC) == 0 {
+        return Err(-1);
+    }
+    if (crypto_flags & (RPCF_ALLOW_ENC | RPCF_ENC_SENT)) != 0 {
+        return Err(-1);
+    }
+    Ok(crypto_flags | RPCF_ENC_SENT)
+}
+
+#[must_use]
+pub fn default_check_ready(
+    conn_has_error: bool,
+    conn_is_connecting: bool,
+    in_packet_num: i32,
+    last_query_sent_time: f64,
+    now: f64,
+    connect_timeout: f64,
+    conn_is_working: bool,
+) -> DefaultReadyState {
+    if conn_has_error {
+        return DefaultReadyState::Fail(0);
+    }
+
+    if conn_is_connecting || in_packet_num < 0 {
+        if last_query_sent_time < now - connect_timeout {
+            return DefaultReadyState::Fail(-6);
+        }
+        return DefaultReadyState::NotYet;
+    }
+
+    if conn_is_working {
+        return DefaultReadyState::Ok;
+    }
+
+    DefaultReadyState::Fail(-7)
+}
+
 /// C-compat nonce packet policy for `net-tcp-rpc-client.c`.
 ///
 /// Return codes:
@@ -551,9 +686,13 @@ pub fn validate_packet_type(
 #[cfg(test)]
 mod tests {
     use super::{
-        packet_len_state, process_nonce_packet_for_compat, ClientError, ClientState, CryptoFlags,
-        ProcessId, RpcClientData, PACKET_LEN_STATE_INVALID, PACKET_LEN_STATE_READY,
-        PACKET_LEN_STATE_SHORT, PACKET_LEN_STATE_SKIP,
+        default_check_perm, default_check_ready, default_connected_crypto_flags,
+        default_outbound_crypto_flags, init_fake_crypto_state, normalize_perm_flags,
+        packet_len_state, process_nonce_packet_for_compat, requires_dh_accept, ClientError,
+        ClientState, CryptoFlags, DefaultReadyState, ProcessId, RpcClientData,
+        PACKET_LEN_STATE_INVALID, PACKET_LEN_STATE_READY, PACKET_LEN_STATE_SHORT,
+        PACKET_LEN_STATE_SKIP, RPCF_ALLOW_ENC, RPCF_ALLOW_SKIP_DH, RPCF_ALLOW_UNENC, RPCF_ENC_SENT,
+        RPCF_REQ_DH,
     };
     use crate::runtime::net::tcp_rpc_common::{
         CryptoSchema, HandshakePacket, NoncePacket, PacketSerialization,
@@ -787,5 +926,63 @@ mod tests {
         assert_eq!(out_schema, CryptoSchema::Aes.to_i32());
         assert_eq!(out_key_select, 12345);
         assert_eq!(out_has_dh_params, 0);
+    }
+
+    #[test]
+    fn normalizes_permission_flags_and_requires_allow_bit() {
+        assert_eq!(
+            normalize_perm_flags(RPCF_ALLOW_UNENC | RPCF_REQ_DH | 0x4000),
+            Some(RPCF_ALLOW_UNENC | RPCF_REQ_DH)
+        );
+        assert_eq!(normalize_perm_flags(RPCF_ALLOW_SKIP_DH), None);
+    }
+
+    #[test]
+    fn default_permission_and_crypto_flag_helpers_match_legacy_policy() {
+        assert_eq!(
+            default_connected_crypto_flags(),
+            RPCF_ALLOW_UNENC | RPCF_ALLOW_ENC
+        );
+        assert_eq!(default_outbound_crypto_flags(), RPCF_ALLOW_UNENC);
+        assert_eq!(default_check_perm(0x2000), RPCF_ALLOW_ENC | 0x2000);
+        assert!(requires_dh_accept(RPCF_REQ_DH));
+        assert!(!requires_dh_accept(RPCF_ALLOW_UNENC));
+    }
+
+    #[test]
+    fn fake_crypto_state_requires_unencrypted_only() {
+        assert_eq!(
+            init_fake_crypto_state(RPCF_ALLOW_UNENC),
+            Ok(RPCF_ALLOW_UNENC | RPCF_ENC_SENT)
+        );
+        assert_eq!(init_fake_crypto_state(RPCF_ALLOW_ENC), Err(-1));
+        assert_eq!(
+            init_fake_crypto_state(RPCF_ALLOW_UNENC | RPCF_ALLOW_ENC),
+            Err(-1)
+        );
+    }
+
+    #[test]
+    fn default_check_ready_matches_legacy_decision_tree() {
+        assert_eq!(
+            default_check_ready(true, false, 0, 10.0, 11.0, 3.0, false),
+            DefaultReadyState::Fail(0)
+        );
+        assert_eq!(
+            default_check_ready(false, true, -2, 10.0, 12.0, 3.0, false),
+            DefaultReadyState::NotYet
+        );
+        assert_eq!(
+            default_check_ready(false, true, -2, 10.0, 14.0, 3.0, false),
+            DefaultReadyState::Fail(-6)
+        );
+        assert_eq!(
+            default_check_ready(false, false, 0, 10.0, 11.0, 3.0, true),
+            DefaultReadyState::Ok
+        );
+        assert_eq!(
+            default_check_ready(false, false, 0, 10.0, 11.0, 3.0, false),
+            DefaultReadyState::Fail(-7)
+        );
     }
 }

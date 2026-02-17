@@ -214,9 +214,41 @@ pub fn set_signal_handlers() -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use core::sync::atomic::AtomicBool;
+
+    static TEST_LOCK: AtomicBool = AtomicBool::new(false);
+
+    struct TestGuard;
+
+    impl TestGuard {
+        fn acquire() -> Self {
+            while TEST_LOCK
+                .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+                .is_err()
+            {
+                core::hint::spin_loop();
+            }
+            Self
+        }
+    }
+
+    impl Drop for TestGuard {
+        fn drop(&mut self) {
+            TEST_LOCK.store(false, Ordering::Release);
+        }
+    }
+
+    fn reset_signal_runtime_state() {
+        PENDING_SIGNALS.store(0, Ordering::SeqCst);
+        ALLOWED_SIGNALS.store(0, Ordering::SeqCst);
+        INSTALLED_SIGNALS.store(0, Ordering::SeqCst);
+        SIGNAL_HANDLERS_INITIALIZED.store(false, Ordering::SeqCst);
+    }
 
     #[test]
     fn test_sig_to_int() {
+        let _guard = TestGuard::acquire();
+        reset_signal_runtime_state();
         assert_eq!(sig_to_int(0), 1);
         assert_eq!(sig_to_int(1), 2);
         assert_eq!(sig_to_int(2), 4);
@@ -225,6 +257,8 @@ mod tests {
 
     #[test]
     fn test_signal_pending() {
+        let _guard = TestGuard::acquire();
+        reset_signal_runtime_state();
         // Clear any pending signals first
         PENDING_SIGNALS.store(0, Ordering::SeqCst);
 
@@ -237,6 +271,8 @@ mod tests {
 
     #[test]
     fn test_set_signal_handlers() {
+        let _guard = TestGuard::acquire();
+        reset_signal_runtime_state();
         let result = set_signal_handlers();
         assert!(result.is_ok());
         assert!(signal_handlers_initialized());
@@ -246,6 +282,8 @@ mod tests {
 
     #[test]
     fn test_process_pending_signals_only_drains_allowed() {
+        let _guard = TestGuard::acquire();
+        reset_signal_runtime_state();
         assert!(set_signal_handlers().is_ok());
         PENDING_SIGNALS.store(0, Ordering::SeqCst);
         signal_set_pending(SIGTERM);
@@ -259,6 +297,9 @@ mod tests {
 
     #[test]
     fn test_register_runtime_signal() {
+        let _guard = TestGuard::acquire();
+        reset_signal_runtime_state();
+        assert!(set_signal_handlers().is_ok());
         assert!(register_runtime_signal(12).is_ok());
         assert_ne!(installed_signals_mask() & sig_to_int(12), 0);
         assert_ne!(allowed_signals_mask() & sig_to_int(12), 0);
@@ -266,6 +307,8 @@ mod tests {
 
     #[test]
     fn test_engine_process_signals_allowed_with_uses_explicit_mask() {
+        let _guard = TestGuard::acquire();
+        reset_signal_runtime_state();
         PENDING_SIGNALS.store(0, Ordering::SeqCst);
         signal_set_pending(SIGTERM);
         signal_set_pending(SIGUSR1);
@@ -285,6 +328,8 @@ mod tests {
 
     #[test]
     fn test_engine_process_signals_forbids_double_processing_in_single_pass() {
+        let _guard = TestGuard::acquire();
+        reset_signal_runtime_state();
         assert!(set_signal_handlers().is_ok());
         assert!(register_runtime_signal(SIGUSR1).is_ok());
         PENDING_SIGNALS.store(0, Ordering::SeqCst);

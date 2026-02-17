@@ -3,6 +3,25 @@
 use core::ffi::{c_char, c_double, c_int, c_long, c_uint, c_void};
 use core::mem::{size_of, MaybeUninit};
 use core::ptr;
+use mtproxy_core::runtime::net::tcp_rpc_common::{
+    parse_handshake_packet, parse_nonce_packet, HandshakeErrorPacket, HandshakePacket,
+    PacketSerialization, ProcessId as CoreProcessId,
+};
+use mtproxy_core::runtime::net::tcp_rpc_server::{
+    default_check_perm as core_default_check_perm,
+    default_execute_set_pong as core_default_execute_set_pong,
+    default_execute_should_pong as core_default_execute_should_pong, do_wakeup as core_do_wakeup,
+    init_accepted_nohs_state as core_init_accepted_nohs_state,
+    init_accepted_state as core_init_accepted_state,
+    init_fake_crypto_state as core_init_fake_crypto_state,
+    notification_pending_queries as core_notification_pending_queries,
+    packet_header_malformed as core_packet_header_malformed,
+    packet_len_state as core_packet_len_state, process_nonce_packet_for_compat,
+    should_notify_close as core_should_notify_close, should_set_wantwr as core_should_set_wantwr,
+    validate_handshake as core_validate_handshake,
+    validate_handshake_header as core_validate_handshake_header,
+    validate_nonce_header as core_validate_nonce_header,
+};
 
 pub(super) type ConnectionJob = *mut c_void;
 
@@ -40,7 +59,6 @@ const NONCE_PACKET_LEN: usize = size_of::<TcpRpcNoncePacket>();
 const NONCE_DH_PACKET_MIN_LEN: usize = size_of::<TcpRpcNonceDhPacket>() - 4 * RPC_MAX_EXTRA_KEYS;
 const NONCE_DH_PACKET_MAX_LEN: usize = size_of::<TcpRpcNonceDhPacket>();
 const HANDSHAKE_PACKET_LEN: usize = size_of::<TcpRpcHandshakePacket>();
-const HANDSHAKE_ERROR_PACKET_LEN: usize = size_of::<TcpRpcHandshakeErrorPacket>();
 
 const HTTP_HEAD_WORD: c_int = i32::from_ne_bytes(*b"HEAD");
 const HTTP_POST_WORD: c_int = i32::from_ne_bytes(*b"POST");
@@ -237,13 +255,6 @@ struct TcpRpcHandshakePacket {
 }
 
 #[repr(C)]
-struct TcpRpcHandshakeErrorPacket {
-    pub type_: c_int,
-    pub error_code: c_int,
-    pub sender_pid: ProcessId,
-}
-
-#[repr(C)]
 struct AesSecret {
     pub refcnt: c_int,
     pub secret_len: c_int,
@@ -417,6 +428,26 @@ fn is_http_fallback_prefix(packet_len: c_int) -> bool {
         || packet_len == HTTP_OPTI_WORD
 }
 
+#[inline]
+fn ffi_pid_to_core(pid: ProcessId) -> CoreProcessId {
+    CoreProcessId {
+        ip: pid.ip,
+        port: pid.port,
+        pid: pid.pid,
+        utime: pid.utime,
+    }
+}
+
+#[inline]
+fn core_pid_to_ffi(pid: CoreProcessId) -> ProcessId {
+    ProcessId {
+        ip: pid.ip,
+        port: pid.port,
+        pid: pid.pid,
+        utime: pid.utime,
+    }
+}
+
 pub(super) unsafe fn tcp_rpcs_default_execute_impl(
     c: ConnectionJob,
     op: c_int,
@@ -424,12 +455,7 @@ pub(super) unsafe fn tcp_rpcs_default_execute_impl(
 ) -> c_int {
     let conn = unsafe { conn_info(c) };
 
-    let should_pong = unsafe {
-        crate::mtproxy_ffi_tcp_rpc_server_default_execute_should_pong(op, (*raw).total_bytes)
-    };
-    assert!(should_pong == 0 || should_pong == 1);
-
-    if should_pong != 0 {
+    if core_default_execute_should_pong(op, unsafe { (*raw).total_bytes }) {
         unsafe {
             (*conn).last_response_time = precise_now_value();
         }
@@ -438,12 +464,7 @@ pub(super) unsafe fn tcp_rpcs_default_execute_impl(
             unsafe { rwm_fetch_data(raw, words.as_mut_ptr().cast(), 12) },
             12
         );
-        assert_eq!(
-            unsafe {
-                crate::mtproxy_ffi_tcp_rpc_server_default_execute_set_pong(words.as_mut_ptr(), 3)
-            },
-            0
-        );
+        core_default_execute_set_pong(&mut words);
         unsafe { send_data(c, words.as_ptr().cast(), 12) };
     }
 
@@ -462,7 +483,7 @@ unsafe fn tcp_rpcs_process_nonce_packet_impl(c: ConnectionJob, msg: *mut RawMess
     );
     let packet_len = unsafe { (*msg).total_bytes };
 
-    let nonce_header_state = crate::mtproxy_ffi_tcp_rpc_server_validate_nonce_header(
+    let nonce_header_state = core_validate_nonce_header(
         packet_num,
         packet_type,
         packet_len,
@@ -479,53 +500,30 @@ unsafe fn tcp_rpcs_process_nonce_packet_impl(c: ConnectionJob, msg: *mut RawMess
         packet_len
     );
 
-    let mut parsed_schema = 0;
-    let mut parsed_key_select = 0;
-    let mut parsed_crypto_ts = 0;
-    let mut parsed_nonce = [0_u8; 16];
-    let mut parsed_extra_keys_count = 0;
-    let mut parsed_extra_key_signatures = [0_i32; RPC_MAX_EXTRA_KEYS];
-    let mut parsed_dh_params_select = 0;
-    let mut parsed_has_dh_params = 0;
-
-    if unsafe {
-        crate::mtproxy_ffi_tcp_rpc_parse_nonce_packet(
-            packet.as_ptr(),
-            packet_len,
-            ptr::addr_of_mut!(parsed_schema),
-            ptr::addr_of_mut!(parsed_key_select),
-            ptr::addr_of_mut!(parsed_crypto_ts),
-            parsed_nonce.as_mut_ptr(),
-            c_int::try_from(parsed_nonce.len()).unwrap_or(c_int::MAX),
-            ptr::addr_of_mut!(parsed_extra_keys_count),
-            parsed_extra_key_signatures.as_mut_ptr(),
-            c_int::try_from(parsed_extra_key_signatures.len()).unwrap_or(c_int::MAX),
-            ptr::addr_of_mut!(parsed_dh_params_select),
-            ptr::addr_of_mut!(parsed_has_dh_params),
-        )
-    } < 0
-    {
+    let packet_len_usize = match usize::try_from(packet_len) {
+        Ok(v) => v,
+        Err(_) => return -3,
+    };
+    let packet_slice = &packet[..packet_len_usize];
+    let Some(parsed) = parse_nonce_packet(packet_slice) else {
         return -3;
-    }
+    };
 
-    let mut processed_schema = parsed_schema;
-    let mut processed_key_select = parsed_key_select;
+    let mut processed_schema = parsed.crypto_schema.to_i32();
+    let mut processed_key_select = parsed.key_select;
     let mut processed_has_dh_params = 0;
 
-    if unsafe {
-        crate::mtproxy_ffi_tcp_rpc_server_process_nonce_packet(
-            packet.as_ptr(),
-            packet_len,
-            (*data).crypto_flags & RPCF_ALLOW_UNENC,
-            (*data).crypto_flags & RPCF_ALLOW_ENC,
-            now_or_unix_time(),
-            main_secret.secret_len,
-            main_secret_key_signature(),
-            ptr::addr_of_mut!(processed_schema),
-            ptr::addr_of_mut!(processed_key_select),
-            ptr::addr_of_mut!(processed_has_dh_params),
-        )
-    } < 0
+    if process_nonce_packet_for_compat(
+        packet_slice,
+        (unsafe { (*data).crypto_flags } & RPCF_ALLOW_UNENC) != 0,
+        (unsafe { (*data).crypto_flags } & RPCF_ALLOW_ENC) != 0,
+        now_or_unix_time(),
+        main_secret.secret_len,
+        main_secret_key_signature(),
+        &mut processed_schema,
+        &mut processed_key_select,
+        &mut processed_has_dh_params,
+    ) < 0
     {
         return -3;
     }
@@ -552,8 +550,8 @@ unsafe fn tcp_rpcs_process_nonce_packet_impl(c: ConnectionJob, msg: *mut RawMess
                 let _ = unsafe { init_dh_params() };
             }
             if processed_has_dh_params != 0
-                && parsed_dh_params_select != 0
-                && parsed_dh_params_select == unsafe { dh_params_select }
+                && parsed.dh_params_select != 0
+                && parsed.dh_params_select == unsafe { dh_params_select }
             {
                 dh_ok = true;
             }
@@ -608,49 +606,22 @@ unsafe fn tcp_rpcs_process_nonce_packet_impl(c: ConnectionJob, msg: *mut RawMess
 
 unsafe fn tcp_rpcs_send_handshake_packet_impl(c: ConnectionJob) -> c_int {
     let data = unsafe { rpc_data(c) };
-    let mut packet = [0_u8; HANDSHAKE_PACKET_LEN];
+    let packet = HandshakePacket::new(
+        unsafe { (*data).crypto_flags } & RPCF_USE_CRC32C,
+        ffi_pid_to_core(unsafe { PID }),
+        ffi_pid_to_core(unsafe { (*data).remote_pid }),
+    );
+    let bytes = packet.to_bytes();
 
-    let packet_len = unsafe {
-        crate::mtproxy_ffi_tcp_rpc_server_build_handshake_packet(
-            (*data).crypto_flags,
-            ptr::addr_of!(PID),
-            ptr::addr_of!((*data).remote_pid),
-            packet.as_mut_ptr(),
-            c_int::try_from(packet.len()).unwrap_or(c_int::MAX),
-        )
-    };
-    if packet_len < 0 {
-        return -1;
-    }
-
-    let Ok(packet_len_usize) = usize::try_from(packet_len) else {
-        return -1;
-    };
-
-    unsafe { send_data_im(c, packet.as_ptr(), packet_len_usize) };
+    unsafe { send_data_im(c, bytes.as_ptr(), bytes.len()) };
     0
 }
 
 unsafe fn tcp_rpcs_send_handshake_error_packet_impl(c: ConnectionJob, error_code: c_int) -> c_int {
-    let mut packet = [0_u8; HANDSHAKE_ERROR_PACKET_LEN];
+    let packet = HandshakeErrorPacket::new(error_code, ffi_pid_to_core(unsafe { PID }));
+    let bytes = packet.to_bytes();
 
-    let packet_len = unsafe {
-        crate::mtproxy_ffi_tcp_rpc_server_build_handshake_error_packet(
-            error_code,
-            ptr::addr_of!(PID),
-            packet.as_mut_ptr(),
-            c_int::try_from(packet.len()).unwrap_or(c_int::MAX),
-        )
-    };
-    if packet_len < 0 {
-        return -1;
-    }
-
-    let Ok(packet_len_usize) = usize::try_from(packet_len) else {
-        return -1;
-    };
-
-    unsafe { send_data(c, packet.as_ptr(), packet_len_usize) };
+    unsafe { send_data(c, bytes.as_ptr(), bytes.len()) };
     0
 }
 
@@ -676,13 +647,12 @@ unsafe fn tcp_rpcs_process_handshake_packet_impl(c: ConnectionJob, msg: *mut Raw
     );
     let packet_len = unsafe { (*msg).total_bytes };
 
-    let handshake_header_state = crate::mtproxy_ffi_tcp_rpc_server_validate_handshake_header(
+    let handshake_header_state = core_validate_handshake_header(
         packet_num,
         packet_type,
         packet_len,
         c_int::try_from(HANDSHAKE_PACKET_LEN).unwrap_or(c_int::MAX),
     );
-
     if handshake_header_state == -2 {
         return -2;
     }
@@ -691,38 +661,31 @@ unsafe fn tcp_rpcs_process_handshake_packet_impl(c: ConnectionJob, msg: *mut Raw
         return -3;
     }
 
-    assert_eq!(handshake_header_state, 0);
-
     let mut packet = [0_u8; HANDSHAKE_PACKET_LEN];
     assert_eq!(
         unsafe { rwm_fetch_data(msg, packet.as_mut_ptr().cast(), packet_len) },
         packet_len
     );
 
-    let mut packet_flags = 0;
-    let mut sender_pid = ProcessId::default();
-    let mut peer_pid = ProcessId::default();
-    if unsafe {
-        crate::mtproxy_ffi_tcp_rpc_parse_handshake_packet(
-            packet.as_ptr(),
-            packet_len,
-            ptr::addr_of_mut!(packet_flags),
-            ptr::addr_of_mut!(sender_pid),
-            ptr::addr_of_mut!(peer_pid),
-        )
-    } < 0
-    {
+    let packet_len_usize = match usize::try_from(packet_len) {
+        Ok(v) => v,
+        Err(_) => {
+            let _ = unsafe { tcp_rpcs_send_handshake_error_packet_impl(c, -3) };
+            return -3;
+        }
+    };
+    let Some(parsed) = parse_handshake_packet(&packet[..packet_len_usize]) else {
         let _ = unsafe { tcp_rpcs_send_handshake_error_packet_impl(c, -3) };
         return -3;
-    }
+    };
 
     unsafe {
-        (*data).remote_pid = sender_pid;
+        (*data).remote_pid = core_pid_to_ffi(parsed.sender_pid);
     }
 
-    let mut enable_crc32c = 0;
+    let enable_crc32c;
     let mut local_pid = unsafe { PID };
-    let mut expected_peer_pid = peer_pid;
+    let mut expected_peer_pid = core_pid_to_ffi(parsed.peer_pid);
     let peer_pid_matches = unsafe {
         matches_pid(
             ptr::addr_of_mut!(local_pid),
@@ -730,19 +693,20 @@ unsafe fn tcp_rpcs_process_handshake_packet_impl(c: ConnectionJob, msg: *mut Raw
         )
     };
 
-    let handshake_state = unsafe {
-        crate::mtproxy_ffi_tcp_rpc_server_validate_handshake(
-            packet_flags,
-            peer_pid_matches,
-            (*funcs).mode_flags & TCP_RPC_IGNORE_PID,
-            tcp_get_default_rpc_flags() as c_int,
-            ptr::addr_of_mut!(enable_crc32c),
-        )
-    };
-
-    if handshake_state < 0 {
-        let _ = unsafe { tcp_rpcs_send_handshake_error_packet_impl(c, handshake_state) };
-        return handshake_state;
+    let packet_flags = parsed.flags;
+    match core_validate_handshake(
+        packet_flags,
+        peer_pid_matches != 0,
+        (unsafe { (*funcs).mode_flags } & TCP_RPC_IGNORE_PID) != 0,
+        unsafe { tcp_get_default_rpc_flags() as c_int },
+    ) {
+        Ok(value) => {
+            enable_crc32c = i32::from(value);
+        }
+        Err(code) => {
+            let _ = unsafe { tcp_rpcs_send_handshake_error_packet_impl(c, code) };
+            return code;
+        }
     }
 
     if enable_crc32c != 0 {
@@ -794,7 +758,7 @@ pub(super) unsafe fn tcp_rpcs_parse_execute_impl(c: ConnectionJob) -> c_int {
             packet_len &= !RPC_F_QUICKACK;
         }
 
-        if crate::mtproxy_ffi_tcp_rpc_server_packet_header_malformed(packet_len) != 0 {
+        if core_packet_header_malformed(packet_len) != 0 {
             if unsafe { (*data).in_packet_num } <= -2
                 && is_http_fallback_prefix(packet_len)
                 && !unsafe { (*funcs).http_fallback_type.is_null() }
@@ -832,9 +796,8 @@ pub(super) unsafe fn tcp_rpcs_parse_execute_impl(c: ConnectionJob) -> c_int {
             return 0;
         }
 
-        let packet_len_state = unsafe {
-            crate::mtproxy_ffi_tcp_rpc_server_packet_len_state(packet_len, (*funcs).max_packet_len)
-        };
+        let packet_len_state =
+            core_packet_len_state(packet_len, unsafe { (*funcs).max_packet_len });
 
         if packet_len_state == -1 {
             unsafe { fail_connection(c, -1) };
@@ -981,16 +944,12 @@ pub(super) unsafe fn tcp_rpcs_wakeup_impl(c: ConnectionJob) -> c_int {
 
     unsafe { notification_event_insert_tcp_conn_wakeup(c) };
 
-    let should_set_wantwr =
-        unsafe { crate::mtproxy_ffi_tcp_rpc_server_should_set_wantwr((*conn).out_p.total_bytes) };
-    assert!(should_set_wantwr == 0 || should_set_wantwr == 1);
-
-    if should_set_wantwr != 0 {
+    if core_should_set_wantwr(unsafe { (*conn).out_p.total_bytes }) {
         unsafe { mtproxy_ffi_net_tcp_rpc_server_flags_or(c, C_WANTWR) };
     }
 
     unsafe {
-        (*conn).pending_queries = crate::mtproxy_ffi_tcp_rpc_server_notification_pending_queries();
+        (*conn).pending_queries = core_notification_pending_queries();
     }
 
     0
@@ -1001,16 +960,12 @@ pub(super) unsafe fn tcp_rpcs_alarm_impl(c: ConnectionJob) -> c_int {
 
     unsafe { notification_event_insert_tcp_conn_alarm(c) };
 
-    let should_set_wantwr =
-        unsafe { crate::mtproxy_ffi_tcp_rpc_server_should_set_wantwr((*conn).out_p.total_bytes) };
-    assert!(should_set_wantwr == 0 || should_set_wantwr == 1);
-
-    if should_set_wantwr != 0 {
+    if core_should_set_wantwr(unsafe { (*conn).out_p.total_bytes }) {
         unsafe { mtproxy_ffi_net_tcp_rpc_server_flags_or(c, C_WANTWR) };
     }
 
     unsafe {
-        (*conn).pending_queries = crate::mtproxy_ffi_tcp_rpc_server_notification_pending_queries();
+        (*conn).pending_queries = core_notification_pending_queries();
     }
 
     0
@@ -1019,12 +974,7 @@ pub(super) unsafe fn tcp_rpcs_alarm_impl(c: ConnectionJob) -> c_int {
 pub(super) unsafe fn tcp_rpcs_close_connection_impl(c: ConnectionJob, who: c_int) -> c_int {
     let funcs = unsafe { rpc_funcs(c) };
 
-    if unsafe {
-        crate::mtproxy_ffi_tcp_rpc_server_should_notify_close(i32::from(
-            (*funcs).rpc_close.is_some(),
-        ))
-    } != 0
-    {
+    if core_should_notify_close(unsafe { (*funcs).rpc_close.is_some() }) {
         unsafe { notification_event_insert_tcp_conn_close(c) };
     }
 
@@ -1032,7 +982,7 @@ pub(super) unsafe fn tcp_rpcs_close_connection_impl(c: ConnectionJob, who: c_int
 }
 
 pub(super) unsafe fn tcp_rpcs_do_wakeup_impl(_c: ConnectionJob) -> c_int {
-    crate::mtproxy_ffi_tcp_rpc_server_do_wakeup()
+    core_do_wakeup()
 }
 
 pub(super) unsafe fn tcp_rpcs_init_accepted_impl(c: ConnectionJob) -> c_int {
@@ -1055,17 +1005,13 @@ pub(super) unsafe fn tcp_rpcs_init_accepted_impl(c: ConnectionJob) -> c_int {
         }
     }
 
-    let init_state = unsafe {
-        crate::mtproxy_ffi_tcp_rpc_server_init_accepted_state(
-            has_perm_callback,
-            perm_flags,
-            ptr::addr_of_mut!((*data).crypto_flags),
-            ptr::addr_of_mut!((*data).in_packet_num),
-            ptr::addr_of_mut!((*data).out_packet_num),
-        )
-    };
-    if init_state < 0 {
-        return init_state;
+    match core_init_accepted_state(has_perm_callback != 0, perm_flags) {
+        Ok((crypto_flags, in_packet_num, out_packet_num)) => unsafe {
+            (*data).crypto_flags = crypto_flags;
+            (*data).in_packet_num = in_packet_num;
+            (*data).out_packet_num = out_packet_num;
+        },
+        Err(code) => return code,
     }
 
     0
@@ -1075,14 +1021,10 @@ pub(super) unsafe fn tcp_rpcs_init_accepted_nohs_impl(c: ConnectionJob) -> c_int
     let funcs = unsafe { rpc_funcs(c) };
     let data = unsafe { rpc_data(c) };
 
-    let init_state = unsafe {
-        crate::mtproxy_ffi_tcp_rpc_server_init_accepted_nohs_state(
-            ptr::addr_of_mut!((*data).crypto_flags),
-            ptr::addr_of_mut!((*data).in_packet_num),
-        )
-    };
-    if init_state < 0 {
-        return init_state;
+    let (crypto_flags, in_packet_num) = core_init_accepted_nohs_state();
+    unsafe {
+        (*data).crypto_flags = crypto_flags;
+        (*data).in_packet_num = in_packet_num;
     }
 
     unsafe {
@@ -1099,16 +1041,11 @@ pub(super) unsafe fn tcp_rpcs_init_accepted_nohs_impl(c: ConnectionJob) -> c_int
 unsafe fn tcp_rpcs_init_fake_crypto_impl(c: ConnectionJob) -> c_int {
     let data = unsafe { rpc_data(c) };
 
-    let mut updated_crypto_flags = 0;
-    let init_state = unsafe {
-        crate::mtproxy_ffi_tcp_rpc_server_init_fake_crypto_state(
-            (*data).crypto_flags,
-            ptr::addr_of_mut!(updated_crypto_flags),
-        )
+    let current_flags = unsafe { (*data).crypto_flags };
+    let updated_flags = match core_init_fake_crypto_state(current_flags) {
+        Ok(value) => value,
+        Err(code) => return code,
     };
-    if init_state < 0 {
-        return init_state;
-    }
 
     let packet = TcpRpcNoncePacket {
         type_: RPC_NONCE,
@@ -1119,18 +1056,16 @@ unsafe fn tcp_rpcs_init_fake_crypto_impl(c: ConnectionJob) -> c_int {
     };
 
     unsafe {
-        (*data).crypto_flags = updated_crypto_flags;
+        (*data).crypto_flags = updated_flags;
     }
 
     unsafe { send_data_init(c, ptr::addr_of!(packet).cast::<u8>(), NONCE_PACKET_LEN) };
 
-    init_state
+    1
 }
 
 pub(super) unsafe fn tcp_rpcs_default_check_perm_impl(_c: ConnectionJob) -> c_int {
-    unsafe {
-        crate::mtproxy_ffi_tcp_rpc_server_default_check_perm(tcp_get_default_rpc_flags() as c_int)
-    }
+    core_default_check_perm(unsafe { tcp_get_default_rpc_flags() as c_int })
 }
 
 pub(super) unsafe fn tcp_rpcs_init_crypto_impl(

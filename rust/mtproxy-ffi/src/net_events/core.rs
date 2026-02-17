@@ -16,7 +16,6 @@ pub(super) const EVT_CLOSED: c_int = 0x40;
 pub(super) const EVT_IN_EPOLL: c_int = 0x20;
 pub(super) const EVT_NEW: c_int = 0x100;
 pub(super) const EVT_NOHUP: c_int = 0x200;
-pub(super) const EVT_FROM_EPOLL: c_int = 0x400;
 
 pub(super) const EVA_CONTINUE: c_int = 0;
 pub(super) const EVA_RERUN: c_int = -2;
@@ -32,13 +31,6 @@ pub(super) const SM_UDP: c_int = 1;
 pub(super) const SM_IPV6: c_int = 2;
 pub(super) const SM_IPV6_ONLY: c_int = 4;
 pub(super) const SM_REUSE: c_int = 16;
-
-pub(super) const EPOLLIN: u32 = 0x001;
-pub(super) const EPOLLPRI: u32 = 0x002;
-pub(super) const EPOLLOUT: u32 = 0x004;
-pub(super) const EPOLLERR: u32 = 0x008;
-pub(super) const EPOLLRDHUP: u32 = 0x2000;
-pub(super) const EPOLLET: u32 = 0x8000_0000;
 
 pub(super) const IPV6_ADDR_LEN: usize = 16;
 pub(super) const CONV_ADDR_BUF_LEN: usize = 64;
@@ -159,45 +151,12 @@ pub(super) unsafe fn term_signal_received() -> bool {
 
 #[inline]
 pub(super) fn epoll_conv_flags_local(flags: c_int) -> c_int {
-    if flags == 0 {
-        return 0;
-    }
-
-    let flags_u = i32_to_u32_bits(flags);
-    let mut out = EPOLLERR;
-
-    if (flags_u & i32_to_u32_bits(EVT_READ)) != 0 {
-        out |= EPOLLIN;
-    }
-    if (flags_u & i32_to_u32_bits(EVT_WRITE)) != 0 {
-        out |= EPOLLOUT;
-    }
-    if (flags_u & i32_to_u32_bits(EVT_SPEC)) != 0 {
-        out |= EPOLLRDHUP | EPOLLPRI;
-    }
-    if (flags_u & i32_to_u32_bits(EVT_LEVEL)) == 0 {
-        out |= EPOLLET;
-    }
-
-    u32_to_i32_bits(out)
+    mtproxy_core::runtime::net::events::epoll_conv_flags(flags)
 }
 
 #[inline]
 pub(super) fn epoll_unconv_flags_local(epoll_flags: c_int) -> c_int {
-    let flags_u = i32_to_u32_bits(epoll_flags);
-    let mut out = i32_to_u32_bits(EVT_FROM_EPOLL);
-
-    if (flags_u & (EPOLLIN | EPOLLERR)) != 0 {
-        out |= i32_to_u32_bits(EVT_READ);
-    }
-    if (flags_u & EPOLLOUT) != 0 {
-        out |= i32_to_u32_bits(EVT_WRITE);
-    }
-    if (flags_u & (EPOLLRDHUP | EPOLLPRI)) != 0 {
-        out |= i32_to_u32_bits(EVT_SPEC);
-    }
-
-    u32_to_i32_bits(out)
+    mtproxy_core::runtime::net::events::epoll_unconv_flags(epoll_flags)
 }
 
 pub(super) unsafe fn greater_ev(ev1: *mut EventDescr, ev2: *mut EventDescr) -> c_int {
@@ -1410,7 +1369,11 @@ pub(super) unsafe fn epoll_work_ffi(_timeout: c_int) -> c_int {
         let _ = epoll_runqueue_impl();
         let timeout2 = thread_run_timers();
 
-        if !((timeout2 <= 0 || ev_heap_size != 0) && !term_signal_received()) {
+        if !mtproxy_core::runtime::net::events::should_continue_work_loop(
+            timeout2,
+            ev_heap_size,
+            term_signal_received(),
+        ) {
             break;
         }
     }
@@ -1428,15 +1391,16 @@ pub(super) unsafe fn epoll_work_ffi(_timeout: c_int) -> c_int {
     a_idle_time += epoll_wait_time;
 
     let current_now = set_now_from_time();
-    if current_now > PREV_NOW && current_now < PREV_NOW + 60 {
-        while PREV_NOW < current_now {
-            a_idle_time *= 100.0 / 101.0;
-            a_idle_quotient = a_idle_quotient * (100.0 / 101.0) + 1.0;
-            PREV_NOW += 1;
-        }
-    } else {
-        PREV_NOW = current_now;
-    }
+    let (next_prev_now, next_a_idle_time, next_a_idle_quotient) =
+        mtproxy_core::runtime::net::events::apply_idle_decay(
+            PREV_NOW,
+            current_now,
+            a_idle_time,
+            a_idle_quotient,
+        );
+    PREV_NOW = next_prev_now;
+    a_idle_time = next_a_idle_time;
+    a_idle_quotient = next_a_idle_quotient;
 
     let _ = thread_run_timers();
     jobs_check_all_timers();

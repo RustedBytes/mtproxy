@@ -108,12 +108,16 @@ pub unsafe extern "C" fn mtproxy_ffi_engine_set_epoll_wait_timeout(epoll_wait_ti
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_engine_precise_cron_function_insert(ev: *mut EventPreciseCron) {
+pub unsafe extern "C" fn mtproxy_ffi_engine_precise_cron_function_insert(
+    ev: *mut EventPreciseCron,
+) {
     unsafe { precise_cron_function_insert_impl(ev) };
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_engine_precise_cron_function_remove(ev: *mut EventPreciseCron) {
+pub unsafe extern "C" fn mtproxy_ffi_engine_precise_cron_function_remove(
+    ev: *mut EventPreciseCron,
+) {
     unsafe { precise_cron_function_remove_impl(ev) };
 }
 
