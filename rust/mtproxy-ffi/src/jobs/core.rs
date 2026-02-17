@@ -20,6 +20,7 @@ pub(super) const JTS_RUNNING: i32 = 2;
 pub(super) const JTS_CREATED: i32 = 1;
 pub(super) const JTS_PERFORMING: i32 = 4;
 pub(super) const JC_MAIN: i32 = 3;
+pub(super) const JC_ENGINE: i32 = 8;
 pub(super) const JC_MASK: i32 = 0x0f;
 pub(super) const JC_MAX: usize = 0x0f;
 pub(super) const MAX_JOB_THREADS: usize = 256;
@@ -47,6 +48,7 @@ pub(super) type JobExecuteFn = Option<unsafe extern "C" fn(JobT, i32, *mut JobTh
 pub(super) type JobMessageDestructorFn = Option<unsafe extern "C" fn(*mut JobMessage)>;
 pub(super) type JobMessageReceiveFn =
     Option<unsafe extern "C" fn(JobT, *mut JobMessage, *mut c_void) -> i32>;
+pub(super) type JobListNodeTypeFn = Option<unsafe extern "C" fn(JobT, i32, *mut JobListNode) -> i32>;
 
 #[repr(C, align(128))]
 pub struct JobThread {
@@ -114,6 +116,12 @@ pub struct JobSubclass {
     pub(super) processed_jobs: i32,
     pub(super) locked: i32,
     pub(super) job_queue: *mut MpQueue,
+}
+
+#[repr(C)]
+pub struct ThreadCallback {
+    pub next: *mut ThreadCallback,
+    pub new_thread: Option<unsafe extern "C" fn()>,
 }
 
 #[repr(C)]
@@ -200,6 +208,20 @@ pub struct JobMessageQueue {
     pub(super) payload_magic: u32,
 }
 
+#[repr(C)]
+pub struct JobListNode {
+    pub(super) jl_next: *mut JobListNode,
+    pub(super) jl_type: JobListNodeTypeFn,
+    pub(super) jl_custom: [i32; 0],
+}
+
+#[repr(C)]
+pub struct JobListParams {
+    pub(super) timer: EventTimer,
+    pub(super) first: *mut JobListNode,
+    pub(super) last: *mut JobListNode,
+}
+
 unsafe extern "C" {
     pub(super) fn jobs_get_this_job_thread_c_impl() -> *mut JobThread;
 
@@ -218,11 +240,13 @@ unsafe extern "C" {
     pub(super) fn jobs_get_current_thread_subclass_count_c_impl() -> i32;
     pub(super) fn jobs_set_this_job_thread_c_impl(thread: *mut JobThread);
     pub(super) fn jobs_get_module_stat_tls_c_impl() -> *mut JobsModuleStat;
+    pub(super) fn jobs_set_module_stat_tls_c_impl(stat: *mut JobsModuleStat);
     pub(super) fn jobs_set_job_interrupt_signal_handler_c_impl();
     pub(super) fn jobs_seed_thread_rand_c_impl(thread: *mut JobThread);
 
     pub(super) fn malloc(size: usize) -> *mut c_void;
     pub(super) fn free(ptr: *mut c_void);
+    pub(super) fn calloc(nmemb: usize, size: usize) -> *mut c_void;
     pub(super) fn memcpy(dst: *mut c_void, src: *const c_void, n: usize) -> *mut c_void;
     pub(super) fn rwm_free(raw: *mut RawMessage) -> i32;
     pub(super) fn rwm_clone(dest_raw: *mut RawMessage, src_raw: *mut RawMessage);
@@ -236,6 +260,18 @@ unsafe extern "C" {
     pub(super) fn process_one_job(job_tag_int: i32, job: JobT, thread_class: i32);
     pub(super) fn job_message_queue_get(job: JobT) -> *mut JobMessageQueue;
     pub(super) fn complete_job(job: JobT);
+    pub(super) fn complete_subjob(job: JobT, parent_tag_int: i32, parent: JobT, status: i32);
+    pub(super) fn process_job_list(job: JobT, op: i32, thread: *mut JobThread) -> i32;
+    pub(super) fn job_list_node_wakeup(list_job: JobT, op: i32, node: *mut JobListNode) -> i32;
+    pub(super) fn init_main_pthread_id();
+    pub(super) fn init_mp_queue_w(queue: *mut MpQueue);
+    pub(super) fn jobs_main_queue_magic_c_impl() -> i32;
+    pub(super) fn jobs_read_proc_utime_stime_c_impl(
+        pid: i32,
+        tid: i32,
+        utime: *mut libc::c_ulong,
+        stime: *mut libc::c_ulong,
+    );
     pub(super) fn job_decref(job_tag_int: i32, job: JobT);
     pub(super) fn job_signal(job_tag_int: i32, job: JobT, signo: i32);
     pub(super) fn job_free(job_tag_int: i32, job: JobT) -> i32;
@@ -244,10 +280,24 @@ unsafe extern "C" {
     pub(super) fn do_immediate_timer_insert(job: JobT);
     pub(super) fn job_timer_wakeup_gateway(et: *mut EventTimer) -> i32;
     pub(super) fn wakeup_main_thread();
+    pub(super) fn jobs_run_thread_callbacks_c_impl();
+    pub(super) fn jobs_update_thread_now_c_impl() -> i32;
+    pub(super) fn jobs_precise_now_c_impl() -> f64;
+    pub(super) fn jobs_lrand48_thread_r_c_impl() -> libc::c_long;
+    pub(super) fn jobs_mrand48_thread_r_c_impl() -> libc::c_long;
+    pub(super) fn jobs_drand48_thread_r_c_impl() -> f64;
+    pub(super) fn jobs_sem_post_subclass_list_c_impl(list: *mut JobSubclassList, count: i32);
+    pub(super) fn job_thread(arg: *mut c_void) -> *mut c_void;
+    pub(super) fn job_thread_sub(arg: *mut c_void) -> *mut c_void;
+    pub(super) fn create_job_class(job_class: i32, min_threads: i32, max_threads: i32, excl: i32) -> i32;
+    pub(super) fn insert_event_timer(et: *mut EventTimer) -> i32;
+    pub(super) fn remove_event_timer(et: *mut EventTimer) -> i32;
+    pub(super) fn thread_run_timers() -> i32;
+    pub(super) fn timers_get_first() -> f64;
+    pub(super) fn alloc_timer_manager(thread_class: i32) -> JobT;
     pub(super) fn alloc_mp_queue_w() -> *mut MpQueue;
     pub(super) fn check_main_thread();
     pub(super) fn get_this_thread_id() -> i32;
-    pub(super) fn rdtsc() -> i64;
     pub(super) fn lrand48() -> libc::c_long;
     pub(super) fn pthread_create(
         thread: *mut usize,
@@ -260,20 +310,24 @@ unsafe extern "C" {
     pub(super) fn pthread_attr_destroy(attr: *mut libc::pthread_attr_t) -> i32;
     pub(super) fn strerror(errnum: i32) -> *const c_char;
     pub(super) fn kprintf(fmt: *const c_char, ...);
+    pub(super) fn kwrite(fd: i32, buf: *const c_void, count: i32) -> i32;
     pub(super) fn sb_printf(sb: *mut StatsBuffer, fmt: *const c_char, ...);
     pub(super) fn get_utime_monotonic() -> f64;
     pub(super) fn sysconf(name: i32) -> libc::c_long;
     pub(super) fn time(tloc: *mut libc::time_t) -> libc::time_t;
 
     pub(super) static mut main_thread_interrupt_status: i32;
+    pub(super) static mut verbosity: i32;
     pub(super) static mut a_idle_time: f64;
     pub(super) static mut a_idle_quotient: f64;
     pub(super) static mut tot_idle_time: f64;
     pub(super) static mut start_time: i32;
     pub(super) static mut max_job_thread_id: i32;
     pub(super) static mut cur_job_threads: i32;
+    pub(super) static mut main_pthread_id_initialized: i32;
     pub(super) static mut main_pthread_id: usize;
     pub(super) static mut main_job_thread: *mut JobThread;
+    pub(super) static mut jobs_cb_list: *mut ThreadCallback;
     pub(super) static mut JobThreads: [JobThread; MAX_JOB_THREADS];
     pub(super) static mut JobThreadsStats: [JobThreadStat; MAX_JOB_THREADS];
     pub(super) static mut JobClasses: [JobClass; JC_MAX + 1];

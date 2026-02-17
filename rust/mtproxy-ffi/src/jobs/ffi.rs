@@ -8,6 +8,8 @@ use libc::pthread_attr_t;
 
 const JOB_SUBCLASS_OFFSET: i32 = 3;
 const JOB_THREAD_STACK_SIZE: usize = 4 << 20;
+const JOB_THREAD_REFRESH_RDTSC_DELTA: i64 = 1_000_000;
+const NOTIFY_SUBSCRIBE_TYPE: u32 = 0x8934_a894;
 
 #[inline]
 fn safe_div(x: f64, y: f64) -> f64 {
@@ -27,6 +29,1101 @@ const fn jf_queued_class(class: i32) -> i32 {
 #[inline]
 fn max_double(lhs: f64, rhs: f64) -> f64 {
     if lhs > rhs { lhs } else { rhs }
+}
+
+#[inline]
+fn rdtsc_ticks() -> i64 {
+    #[cfg(target_arch = "x86_64")]
+    {
+        // SAFETY: intrinsic reads CPU TSC and has no memory safety preconditions.
+        unsafe { core::arch::x86_64::_rdtsc() as i64 }
+    }
+    #[cfg(target_arch = "x86")]
+    {
+        // SAFETY: intrinsic reads CPU TSC and has no memory safety preconditions.
+        unsafe { core::arch::x86::_rdtsc() as i64 }
+    }
+    #[cfg(not(any(target_arch = "x86_64", target_arch = "x86")))]
+    {
+        0
+    }
+}
+
+#[repr(C)]
+struct NotifyJobSubscriber {
+    next: *mut NotifyJobSubscriber,
+    job: JobT,
+}
+
+#[repr(C)]
+struct NotifyJobExtra {
+    message_queue: *mut JobMessageQueue,
+    result: i32,
+    first: *mut NotifyJobSubscriber,
+    last: *mut NotifyJobSubscriber,
+}
+
+#[repr(C)]
+struct JobListJobNode {
+    jl_next: *mut JobListNode,
+    jl_type: JobListNodeTypeFn,
+    jl_job: JobT,
+    jl_flags: i32,
+}
+
+#[inline]
+unsafe fn timer_check_and_remove(job: JobT) -> bool {
+    abort_if(job.is_null());
+    abort_if((unsafe { (*job).j_type as u64 } & JT_HAVE_TIMER) == 0);
+    let ev = unsafe { (*job).j_custom.as_mut_ptr().cast::<EventTimer>() };
+    if unsafe { (*ev).real_wakeup_time } == 0.0
+        || unsafe { (*ev).real_wakeup_time } != unsafe { (*ev).wakeup_time }
+    {
+        return false;
+    }
+    unsafe { mtproxy_ffi_jobs_job_timer_insert(job, 0.0) };
+    true
+}
+
+unsafe extern "C" fn notify_job_receive_message_rust(
+    nj: JobT,
+    message: *mut JobMessage,
+    _extra: *mut c_void,
+) -> i32 {
+    abort_if(nj.is_null() || message.is_null());
+    let notify = unsafe { (*nj).j_custom.as_mut_ptr().cast::<NotifyJobExtra>() };
+    abort_if(notify.is_null());
+
+    match unsafe { (*message).type_ } {
+        NOTIFY_SUBSCRIBE_TYPE => {
+            let src = unsafe { (*message).src };
+            unsafe {
+                (*message).src = ptr::null_mut();
+            }
+            if unsafe { (*notify).result } != 0 {
+                unsafe { complete_subjob(nj, 1, src, 7) };
+                return 1;
+            }
+
+            let subscriber = unsafe { malloc(mem::size_of::<NotifyJobSubscriber>()) }
+                .cast::<NotifyJobSubscriber>();
+            abort_if(subscriber.is_null());
+
+            unsafe {
+                (*subscriber).job = src;
+                (*subscriber).next = ptr::null_mut();
+            }
+
+            if unsafe { !(*notify).last.is_null() } {
+                unsafe {
+                    (*(*notify).last).next = subscriber;
+                    (*notify).last = subscriber;
+                }
+            } else {
+                unsafe {
+                    (*notify).first = subscriber;
+                    (*notify).last = subscriber;
+                }
+            }
+            1
+        }
+        other => {
+            unsafe {
+                kprintf(
+                    c"notify_job_receive_message_rust: unknown message type 0x%08x\n".as_ptr(),
+                    other,
+                );
+            }
+            abort_if(true);
+            1
+        }
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_jobs_notify_job_run(
+    nj: JobT,
+    op: i32,
+    _thread: *mut JobThread,
+) -> i32 {
+    if op == JS_MSG {
+        unsafe {
+            mtproxy_ffi_jobs_job_message_queue_work(
+                nj,
+                Some(notify_job_receive_message_rust),
+                ptr::null_mut(),
+                0x00ff_ffff,
+            );
+        }
+        return 0;
+    }
+
+    if op == JS_RUN || op == JS_ABORT {
+        abort_if(nj.is_null());
+        let notify = unsafe { (*nj).j_custom.as_mut_ptr().cast::<NotifyJobExtra>() };
+        abort_if(notify.is_null());
+        while unsafe { !(*notify).first.is_null() } {
+            let subscriber = unsafe { (*notify).first };
+            unsafe {
+                (*notify).first = (*subscriber).next;
+                if (*notify).first.is_null() {
+                    (*notify).last = ptr::null_mut();
+                }
+                complete_subjob(
+                    nj,
+                    1,
+                    (*subscriber).job,
+                    7,
+                );
+                free(subscriber.cast::<c_void>());
+            }
+        }
+        return 0;
+    }
+
+    if op == JS_FINISH {
+        return unsafe { job_free(1, nj) };
+    }
+
+    JOB_ERROR
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_jobs_job_interrupt_signal_handler(_sig: i32) {
+    if unsafe { verbosity } < 2 {
+        return;
+    }
+    let thread = unsafe { jobs_get_this_job_thread_c_impl() };
+    let thread_id = if thread.is_null() { -1 } else { unsafe { (*thread).id } };
+    let current_job = if thread.is_null() {
+        ptr::null_mut::<c_void>()
+    } else {
+        unsafe { (*thread).current_job.cast::<c_void>() }
+    };
+    unsafe {
+        kprintf(
+            c"SIGRTMAX-7 (JOB INTERRUPT) caught in thread #%d running job %p.\n".as_ptr(),
+            thread_id,
+            current_job,
+        );
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_jobs_set_job_interrupt_signal_handler() {
+    let mut act: libc::sigaction = unsafe { mem::zeroed() };
+    unsafe {
+        libc::sigemptyset(&raw mut act.sa_mask);
+        act.sa_flags = 0;
+        act.sa_sigaction = mtproxy_ffi_jobs_job_interrupt_signal_handler as usize;
+    }
+    let rc = unsafe { libc::sigaction(libc::SIGRTMAX() - 7, &raw const act, ptr::null_mut()) };
+    if rc != 0 {
+        let msg = b"failed sigaction\n";
+        unsafe {
+            kwrite(2, msg.as_ptr().cast::<c_void>(), msg.len() as i32);
+            libc::_exit(libc::EXIT_FAILURE);
+        }
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_jobs_init_main_pthread_id() {
+    let self_id = unsafe { libc::pthread_self() };
+    if unsafe { main_pthread_id_initialized } != 0 {
+        abort_if(unsafe { libc::pthread_equal(main_pthread_id as libc::pthread_t, self_id) } == 0);
+    } else {
+        unsafe {
+            main_pthread_id = self_id as usize;
+            main_pthread_id_initialized = 1;
+        }
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_jobs_lrand48_j() -> libc::c_long {
+    let thread = unsafe { jobs_get_this_job_thread_c_impl() };
+    if thread.is_null() {
+        return unsafe { libc::lrand48() };
+    }
+    unsafe { jobs_lrand48_thread_r_c_impl() }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_jobs_mrand48_j() -> libc::c_long {
+    let thread = unsafe { jobs_get_this_job_thread_c_impl() };
+    if thread.is_null() {
+        return unsafe { libc::mrand48() };
+    }
+    unsafe { jobs_mrand48_thread_r_c_impl() }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_jobs_drand48_j() -> f64 {
+    let thread = unsafe { jobs_get_this_job_thread_c_impl() };
+    if thread.is_null() {
+        return unsafe { libc::drand48() };
+    }
+    unsafe { jobs_drand48_thread_r_c_impl() }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_jobs_prepare_async_create(custom_bytes: i32) -> *mut JobThread {
+    abort_if(custom_bytes < 0);
+    let module_stat_tls = unsafe { jobs_get_module_stat_tls_c_impl() };
+    abort_if(module_stat_tls.is_null());
+    unsafe {
+        (*module_stat_tls).jobs_allocated_memory += mem::size_of::<AsyncJob>() as i64 + i64::from(custom_bytes);
+    }
+    let thread = unsafe { jobs_get_this_job_thread_c_impl() };
+    abort_if(thread.is_null());
+    unsafe {
+        (*thread).jobs_created += 1;
+        (*thread).jobs_active += 1;
+    }
+    thread
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_jobs_get_current_thread_subclass_count() -> i32 {
+    let thread = unsafe { jobs_get_this_job_thread_c_impl() };
+    abort_if(thread.is_null());
+    let class = unsafe { (*thread).job_class };
+    if class.is_null() {
+        return -1;
+    }
+    let subclasses = unsafe { (*class).subclasses };
+    if subclasses.is_null() {
+        return -1;
+    }
+    unsafe { (*subclasses).subclass_cnt }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_jobs_module_thread_init() {
+    let id = unsafe { get_this_thread_id() };
+    abort_if(id < 0 || id >= MAX_JOB_THREADS as i32);
+    let stat = unsafe { calloc(1, mem::size_of::<JobsModuleStat>()) }.cast::<JobsModuleStat>();
+    abort_if(stat.is_null());
+    unsafe {
+        jobs_set_module_stat_tls_c_impl(stat);
+        jobs_module_stat_array[id as usize] = stat;
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_jobs_update_all_thread_stats() {
+    let pid = unsafe { libc::getpid() };
+    let max_id = unsafe { max_job_thread_id };
+    let mut i = 1_i32;
+    while i <= max_id {
+        let tid = unsafe { JobThreads[i as usize].thread_system_id };
+        unsafe {
+            mtproxy_ffi_jobs_update_thread_stat(pid, tid, i);
+        }
+        i += 1;
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_jobs_create_job_thread(thread_class: i32) -> i32 {
+    abort_if(thread_class < 0 || thread_class > JC_MAX as i32);
+    let class = unsafe { &mut JobClasses[thread_class as usize] };
+    let thread_work: Option<unsafe extern "C" fn(*mut c_void) -> *mut c_void> = if class.subclasses.is_null() {
+        Some(job_thread as unsafe extern "C" fn(*mut c_void) -> *mut c_void)
+    } else {
+        Some(job_thread_sub as unsafe extern "C" fn(*mut c_void) -> *mut c_void)
+    };
+    unsafe { mtproxy_ffi_jobs_create_job_thread_ex(thread_class, thread_work) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_jobs_register_thread_callback(cb: *mut ThreadCallback) {
+    abort_if(cb.is_null());
+    unsafe {
+        (*cb).next = jobs_cb_list;
+        jobs_cb_list = cb;
+    }
+    let new_thread = unsafe { (*cb).new_thread };
+    if let Some(f) = new_thread {
+        unsafe { f() };
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_jobs_process_one_job(
+    job_tag_int: i32,
+    job: JobT,
+    _thread_class: i32,
+) {
+    let thread = unsafe { jobs_get_this_job_thread_c_impl() };
+    abort_if(thread.is_null() || job.is_null());
+    let queued_flag = unsafe { (*job).j_flags & 0xffff & (*thread).job_class_mask };
+    if unsafe { try_lock_job(job, 0, queued_flag) } != 0 {
+        unsafe {
+            unlock_job(job_tag_int, job);
+        }
+        return;
+    }
+
+    unsafe {
+        jobs_atomic_fetch_and_c_impl(&raw mut (*job).j_flags, !queued_flag);
+    }
+    if unsafe { try_lock_job(job, 0, 0) } != 0 {
+        unsafe {
+            unlock_job(job_tag_int, job);
+        }
+    } else {
+        unsafe {
+            job_decref(job_tag_int, job);
+        }
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_jobs_try_lock_job(
+    job: JobT,
+    set_flags: i32,
+    clear_flags: i32,
+) -> i32 {
+    abort_if(job.is_null());
+    loop {
+        let flags = unsafe { (*job).j_flags };
+        if (flags & JF_LOCKED) != 0 {
+            return 0;
+        }
+        let new_flags = (flags & !clear_flags) | set_flags | JF_LOCKED;
+        if unsafe { jobs_atomic_cas_c_impl(&raw mut (*job).j_flags, flags, new_flags) } != 0 {
+            unsafe {
+                (*job).j_thread = jobs_get_this_job_thread_c_impl();
+            }
+            return 1;
+        }
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_jobs_complete_job(job: JobT) {
+    abort_if(job.is_null());
+    abort_if((unsafe { (*job).j_flags } & JF_LOCKED) == 0);
+    if (unsafe { (*job).j_flags } & JF_COMPLETED) != 0 {
+        return;
+    }
+    unsafe {
+        jobs_atomic_fetch_or_c_impl(&raw mut (*job).j_flags, JF_COMPLETED);
+    }
+    let parent = unsafe { (*job).j_parent };
+    if parent.is_null() {
+        return;
+    }
+    unsafe {
+        (*job).j_parent = ptr::null_mut();
+        complete_subjob(job, 1, parent, (*job).j_status);
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_jobs_create_job_class_threads(job_class: i32) -> i32 {
+    abort_if(job_class == JC_MAIN);
+    abort_if(!(1..=JC_MAX as i32).contains(&job_class));
+    let class = unsafe { &mut JobClasses[job_class as usize] };
+    abort_if(class.min_threads > class.max_threads);
+    unsafe { check_main_thread() };
+
+    let mut created = 0_i32;
+    while unsafe { class.cur_threads < class.min_threads && cur_job_threads < MAX_JOB_THREADS as i32 } {
+        abort_if(unsafe { mtproxy_ffi_jobs_create_job_thread(job_class) } < 0);
+        created += 1;
+    }
+    created
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_jobs_create_job_class_sub(
+    job_class: i32,
+    min_threads: i32,
+    max_threads: i32,
+    excl: i32,
+    subclass_cnt: i32,
+) -> i32 {
+    abort_if(job_class < 1 || job_class > JC_MAX as i32);
+    abort_if(min_threads < 0 || max_threads < min_threads);
+    abort_if(subclass_cnt < 0);
+
+    let list = unsafe { calloc(1, mem::size_of::<JobSubclassList>()) }.cast::<JobSubclassList>();
+    abort_if(list.is_null());
+    unsafe {
+        (*list).subclass_cnt = subclass_cnt;
+    }
+
+    let subclasses =
+        unsafe { calloc((subclass_cnt as usize) + 2, mem::size_of::<JobSubclass>()) }
+            .cast::<JobSubclass>();
+    abort_if(subclasses.is_null());
+    unsafe {
+        (*list).subclasses = subclasses.add(2);
+    }
+
+    let mut i = -2_i32;
+    while i < subclass_cnt {
+        let subclass = unsafe { (*list).subclasses.offset(i as isize) };
+        abort_if(subclass.is_null());
+        unsafe {
+            (*subclass).job_queue = alloc_mp_queue_w();
+            (*subclass).subclass_id = i;
+        }
+        i += 1;
+    }
+
+    unsafe {
+        jobs_sem_post_subclass_list_c_impl(list, MAX_SUBCLASS_THREADS);
+        JobClasses[job_class as usize].subclasses = list;
+    }
+
+    unsafe { create_job_class(job_class, min_threads, max_threads, excl) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_jobs_init_async_jobs() -> i32 {
+    unsafe { init_main_pthread_id() };
+
+    if unsafe { jobs_main_queue_magic_c_impl() } == 0 {
+        let main_queue = ptr::addr_of_mut!(MainJobQueue);
+        unsafe {
+            init_mp_queue_w(main_queue);
+        }
+        let mut i = 0_usize;
+        while i <= JC_MAX {
+            unsafe {
+                JobClasses[i].job_queue = main_queue;
+            }
+            i += 1;
+        }
+    }
+
+    if unsafe { cur_job_threads } == 0 {
+        abort_if(unsafe { mtproxy_ffi_jobs_create_job_thread(JC_MAIN) } < 0);
+    }
+    unsafe { cur_job_threads }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_jobs_update_thread_stat(pid: i32, tid: i32, id: i32) {
+    abort_if(id < 0 || id >= MAX_JOB_THREADS as i32);
+    let thread_tid = if tid == 0 { pid } else { tid };
+    let mut utime: libc::c_ulong = 0;
+    let mut stime: libc::c_ulong = 0;
+    unsafe {
+        jobs_read_proc_utime_stime_c_impl(pid, thread_tid, &raw mut utime, &raw mut stime);
+    }
+    let stat = unsafe { &mut JobThreadsStats[id as usize] };
+    stat.recent_sys = stime.wrapping_sub(stat.tot_sys);
+    stat.recent_user = utime.wrapping_sub(stat.tot_user);
+    stat.tot_sys = stime;
+    stat.tot_user = utime;
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_jobs_create_job_list() -> JobT {
+    let job = unsafe {
+        create_async_job(
+            Some(process_job_list),
+            jsc_allow(8, JS_RUN) | jsc_allow(8, JS_ABORT) | jsc_allow(8, JS_FINISH),
+            0,
+            mem::size_of::<JobListParams>() as i32,
+            JT_HAVE_TIMER,
+            1,
+            ptr::null_mut(),
+        )
+    };
+    abort_if(job.is_null());
+    let params = unsafe { (*job).j_custom.as_mut_ptr().cast::<JobListParams>() };
+    abort_if(params.is_null());
+    unsafe {
+        (*params).first = ptr::null_mut();
+        (*params).last = ptr::null_mut();
+        (*params).timer.wakeup = None;
+        unlock_job(1, job_incref(job));
+    }
+    job
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_jobs_insert_node_into_job_list(
+    list_job: JobT,
+    node: *mut JobListNode,
+) -> i32 {
+    abort_if(list_job.is_null() || node.is_null());
+    abort_if((unsafe { (*list_job).j_flags } & (JF_LOCKED | JF_COMPLETED)) != 0);
+    abort_if(unsafe { mtproxy_ffi_jobs_try_lock_job(list_job, 0, 0) } == 0);
+
+    unsafe {
+        (*node).jl_next = ptr::null_mut();
+    }
+    let params = unsafe { (*list_job).j_custom.as_mut_ptr().cast::<JobListParams>() };
+    abort_if(params.is_null());
+    if unsafe { (*params).first.is_null() } {
+        unsafe {
+            (*params).first = node;
+            (*params).last = node;
+        }
+    } else {
+        unsafe {
+            (*(*params).last).jl_next = node;
+            (*params).last = node;
+        }
+    }
+    unsafe {
+        unlock_job(1, job_incref(list_job));
+    }
+    1
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_jobs_insert_job_into_job_list(
+    list_job: JobT,
+    job_tag_int: i32,
+    job: JobT,
+    mode: i32,
+) -> i32 {
+    let thread = unsafe { jobs_get_this_job_thread_c_impl() };
+    abort_if(thread.is_null());
+    abort_if((unsafe { (*thread).job_class_mask } & (1 << JC_ENGINE)) == 0);
+
+    if (mode & JSP_PARENT_WAKEUP as i32) != 0 {
+        unsafe {
+            jobs_atomic_fetch_add_c_impl(&raw mut (*job).j_children, 1);
+        }
+    }
+
+    let node = unsafe { malloc(mem::size_of::<JobListJobNode>()) }.cast::<JobListJobNode>();
+    abort_if(node.is_null());
+    unsafe {
+        (*node).jl_next = ptr::null_mut();
+        (*node).jl_type = Some(job_list_node_wakeup);
+        (*node).jl_job = job;
+        (*node).jl_flags = mode;
+    }
+    let _ = job_tag_int;
+    unsafe { mtproxy_ffi_jobs_insert_node_into_job_list(list_job, node.cast::<JobListNode>()) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_jobs_process_job_list(
+    job: JobT,
+    op: i32,
+    _thread: *mut JobThread,
+) -> i32 {
+    abort_if(job.is_null());
+    abort_if(unsafe { (*job).j_custom_bytes as usize } != mem::size_of::<JobListParams>());
+    let params = unsafe { (*job).j_custom.as_mut_ptr().cast::<JobListParams>() };
+    abort_if(params.is_null());
+
+    if op == JS_FINISH {
+        abort_if(unsafe { (*job).j_refcnt } != 1);
+        abort_if((unsafe { (*job).j_flags } & JF_COMPLETED) == 0);
+        unsafe {
+            mtproxy_ffi_jobs_job_timer_remove(job);
+        }
+        return unsafe { job_free(1, job) };
+    }
+
+    if op == JS_ABORT && unsafe { (*job).j_error } == 0 {
+        unsafe {
+            (*job).j_error = libc::ECANCELED;
+        }
+    }
+    if (op == JS_ABORT || op == JS_ALARM) && unsafe { (*job).j_error } == 0 {
+        unsafe {
+            (*job).j_error = libc::ETIMEDOUT;
+        }
+    }
+
+    abort_if((unsafe { (*job).j_flags } & JF_COMPLETED) != 0);
+    let mut node = unsafe { (*params).first };
+    while !node.is_null() {
+        let next = unsafe { (*node).jl_next };
+        unsafe {
+            (*node).jl_next = ptr::null_mut();
+        }
+        let Some(handler) = (unsafe { (*node).jl_type }) else {
+            abort_if(true);
+            return JOB_ERROR;
+        };
+        unsafe {
+            handler(job, op, node);
+        }
+        node = next;
+    }
+
+    unsafe {
+        (*params).first = ptr::null_mut();
+        (*params).last = ptr::null_mut();
+        (*job).j_status &= !((jss_allow(JS_RUN) | jss_allow(JS_ABORT)) as i32);
+    }
+    JOB_COMPLETED
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_jobs_alloc_timer_manager(thread_class: i32) -> JobT {
+    if thread_class == JC_MAIN && !unsafe { timer_manager_job }.is_null() {
+        return unsafe { job_incref(timer_manager_job) };
+    }
+
+    let timer_manager = unsafe {
+        create_async_job(
+            Some(mtproxy_ffi_jobs_do_timer_manager_job),
+            jsc_allow(thread_class, JS_RUN)
+                | jsc_allow(thread_class, JS_AUX)
+                | jsc_allow(thread_class, JS_FINISH),
+            0,
+            mem::size_of::<JobTimerManagerExtra>() as i32,
+            0,
+            1,
+            ptr::null_mut(),
+        )
+    };
+    abort_if(timer_manager.is_null());
+
+    unsafe {
+        (*timer_manager).j_refcnt = 1;
+    }
+    let extra = unsafe { (*timer_manager).j_custom.as_mut_ptr().cast::<JobTimerManagerExtra>() };
+    abort_if(extra.is_null());
+
+    let queue_id = mtproxy_ffi_jobs_tokio_timer_queue_create();
+    if queue_id <= 0 {
+        unsafe {
+            kprintf(
+                c"fatal: rust tokio timer queue create failed (rc=%d)\n".as_ptr(),
+                queue_id,
+            );
+        }
+        abort_if(true);
+    }
+    unsafe {
+        (*extra).tokio_queue_id = queue_id;
+        unlock_job(1, job_incref(timer_manager));
+    }
+
+    if thread_class == JC_MAIN {
+        unsafe {
+            timer_manager_job = job_incref(timer_manager);
+        }
+    }
+
+    timer_manager
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_jobs_job_timer_alloc(
+    thread_class: i32,
+    alarm: Option<unsafe extern "C" fn(*mut c_void) -> f64>,
+    extra: *mut c_void,
+) -> JobT {
+    abort_if(thread_class <= 0 || thread_class > 0x0f);
+    let timer_job = unsafe {
+        create_async_job(
+            Some(mtproxy_ffi_jobs_do_timer_job),
+            jsc_allow(thread_class, JS_ABORT) | jsc_allow(thread_class, JS_ALARM) | jss_fast(JS_FINISH) as u64,
+            0,
+            mem::size_of::<JobTimerInfo>() as i32,
+            JT_HAVE_TIMER,
+            1,
+            ptr::null_mut(),
+        )
+    };
+    abort_if(timer_job.is_null());
+    unsafe {
+        (*timer_job).j_refcnt = 1;
+    }
+    let info = unsafe { (*timer_job).j_custom.as_mut_ptr().cast::<JobTimerInfo>() };
+    abort_if(info.is_null());
+    unsafe {
+        (*info).wakeup = alarm;
+        (*info).extra = extra;
+        unlock_job(1, job_incref(timer_job));
+    }
+    let module_stat_tls = unsafe { jobs_get_module_stat_tls_c_impl() };
+    if !module_stat_tls.is_null() {
+        unsafe {
+            (*module_stat_tls).job_timers_allocated += 1;
+        }
+    }
+    timer_job
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_jobs_job_timer_check(job: JobT) -> i32 {
+    abort_if(job.is_null());
+    abort_if((unsafe { (*job).j_type as u64 } & JT_HAVE_TIMER) == 0);
+    let ev = unsafe { (*job).j_custom.as_mut_ptr().cast::<EventTimer>() };
+    if unsafe { (*ev).real_wakeup_time == 0.0 || (*ev).real_wakeup_time != (*ev).wakeup_time } {
+        return 0;
+    }
+    unsafe {
+        mtproxy_ffi_jobs_job_timer_insert(job, 0.0);
+    }
+    1
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_jobs_job_timer_remove(job: JobT) {
+    abort_if(job.is_null());
+    abort_if((unsafe { (*job).j_type as u64 } & JT_HAVE_TIMER) == 0);
+    unsafe {
+        mtproxy_ffi_jobs_job_timer_insert(job, 0.0);
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_jobs_job_timer_active(job: JobT) -> i32 {
+    abort_if(job.is_null());
+    abort_if((unsafe { (*job).j_type as u64 } & JT_HAVE_TIMER) == 0);
+    let ev = unsafe { (*job).j_custom.as_mut_ptr().cast::<EventTimer>() };
+    if unsafe { (*ev).real_wakeup_time > 0.0 } { 1 } else { 0 }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_jobs_job_timer_wakeup_time(job: JobT) -> f64 {
+    abort_if(job.is_null());
+    abort_if((unsafe { (*job).j_type as u64 } & JT_HAVE_TIMER) == 0);
+    let ev = unsafe { (*job).j_custom.as_mut_ptr().cast::<EventTimer>() };
+    unsafe { (*ev).real_wakeup_time }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_jobs_job_timer_init(job: JobT) {
+    abort_if(job.is_null());
+    abort_if((unsafe { (*job).j_type as u64 } & JT_HAVE_TIMER) == 0);
+    unsafe {
+        ptr::write_bytes(
+            (*job).j_custom.as_mut_ptr().cast::<u8>(),
+            0,
+            mem::size_of::<EventTimer>(),
+        );
+    }
+}
+
+#[inline]
+unsafe fn job_message_queue_slot(job: JobT) -> *mut *mut JobMessageQueue {
+    abort_if(job.is_null());
+    abort_if((unsafe { (*job).j_type as u64 } & JT_HAVE_MSG_QUEUE) == 0);
+    if (unsafe { (*job).j_type as u64 } & JT_HAVE_TIMER) != 0 {
+        unsafe {
+            (*job)
+                .j_custom
+                .as_mut_ptr()
+                .cast::<u8>()
+                .add(mem::size_of::<EventTimer>())
+                .cast::<*mut JobMessageQueue>()
+        }
+    } else {
+        unsafe { (*job).j_custom.as_mut_ptr().cast::<*mut JobMessageQueue>() }
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_jobs_job_message_queue_get(job: JobT) -> *mut JobMessageQueue {
+    let slot = unsafe { job_message_queue_slot(job) };
+    abort_if(slot.is_null());
+    unsafe { *slot }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_jobs_job_message_queue_set(
+    job: JobT,
+    queue: *mut JobMessageQueue,
+) {
+    let qptr = unsafe { job_message_queue_slot(job) };
+    abort_if(qptr.is_null());
+    abort_if(unsafe { !(*qptr).is_null() });
+    unsafe {
+        *qptr = queue;
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_jobs_job_message_queue_init(job: JobT) {
+    let queue = unsafe { calloc(1, mem::size_of::<JobMessageQueue>()) }.cast::<JobMessageQueue>();
+    abort_if(queue.is_null());
+    let qid = mtproxy_ffi_jobs_tokio_message_queue_create();
+    if qid <= 0 {
+        unsafe {
+            kprintf(
+                c"fatal: rust tokio message queue create failed (rc=%d)\n".as_ptr(),
+                qid,
+            );
+        }
+        abort_if(true);
+    }
+    unsafe {
+        (*queue).tokio_queue_id = qid;
+        mtproxy_ffi_jobs_job_message_queue_set(job, queue);
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_jobs_check_all_timers() {
+    let precise_now = unsafe { jobs_precise_now_c_impl() };
+    let max_id = unsafe { max_job_thread_id };
+    let mut i = 1_i32;
+    while i <= max_id {
+        let thread = unsafe { &mut JobThreads[i as usize] };
+        if !thread.timer_manager.is_null() && thread.wakeup_time > 0.0 && thread.wakeup_time <= precise_now {
+            unsafe {
+                let manager = job_incref(thread.timer_manager);
+                job_signal(1, manager, JS_AUX);
+            }
+        }
+        i += 1;
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_jobs_do_immediate_timer_insert(job: JobT) {
+    abort_if(job.is_null());
+    let module_stat_tls = unsafe { jobs_get_module_stat_tls_c_impl() };
+    if !module_stat_tls.is_null() {
+        unsafe {
+            (*module_stat_tls).timer_ops += 1;
+        }
+    }
+
+    let ev = unsafe { (*job).j_custom.as_mut_ptr().cast::<EventTimer>() };
+    let active = unsafe { (*ev).h_idx > 0 };
+    let wakeup_at = unsafe { (*ev).real_wakeup_time };
+
+    if wakeup_at > 0.0 {
+        unsafe {
+            (*ev).wakeup_time = wakeup_at;
+            insert_event_timer(ev);
+            let wakeup_matches = (*ev)
+                .wakeup
+                .map(|wakeup| {
+                    core::ptr::fn_addr_eq(
+                        wakeup,
+                        job_timer_wakeup_gateway as unsafe extern "C" fn(*mut EventTimer) -> i32,
+                    )
+                })
+                .unwrap_or(false);
+            abort_if(!wakeup_matches);
+            if !active {
+                job_incref(job);
+            }
+        }
+    } else {
+        unsafe {
+            (*ev).wakeup_time = 0.0;
+            remove_event_timer(ev);
+            if active {
+                job_decref(1, job);
+            }
+        }
+    }
+
+    let this_thread = unsafe { jobs_get_this_job_thread_c_impl() };
+    if !this_thread.is_null() {
+        unsafe {
+            (*this_thread).wakeup_time = timers_get_first();
+        }
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_jobs_do_timer_manager_job(
+    job: JobT,
+    op: i32,
+    thread: *mut JobThread,
+) -> i32 {
+    if op != JS_RUN && op != JS_AUX {
+        return JOB_ERROR;
+    }
+
+    if op == JS_AUX {
+        abort_if(thread.is_null());
+        unsafe {
+            thread_run_timers();
+            (*thread).wakeup_time = timers_get_first();
+        }
+        return 0;
+    }
+
+    abort_if(job.is_null());
+    let extra = unsafe { (*job).j_custom.as_mut_ptr().cast::<JobTimerManagerExtra>() };
+    abort_if(extra.is_null());
+    let queue_id = unsafe { (*extra).tokio_queue_id };
+    abort_if(queue_id <= 0);
+
+    loop {
+        let mut queued_job: *mut c_void = ptr::null_mut();
+        let rc = unsafe { mtproxy_ffi_jobs_tokio_timer_queue_pop(queue_id, &raw mut queued_job) };
+        if rc < 0 {
+            unsafe {
+                kprintf(
+                    c"fatal: rust tokio timer queue pop failed (qid=%d rc=%d)\n".as_ptr(),
+                    queue_id,
+                    rc,
+                );
+            }
+            abort_if(true);
+        }
+        if rc == 0 || queued_job.is_null() {
+            break;
+        }
+        unsafe {
+            mtproxy_ffi_jobs_do_immediate_timer_insert(queued_job.cast::<AsyncJob>());
+            job_decref(1, queued_job.cast::<AsyncJob>());
+        }
+    }
+
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_jobs_do_timer_job(
+    job: JobT,
+    op: i32,
+    _thread: *mut JobThread,
+) -> i32 {
+    if op == JS_ALARM {
+        if unsafe { !timer_check_and_remove(job) } {
+            return 0;
+        }
+        if (unsafe { (*job).j_flags } & JF_COMPLETED) != 0 {
+            return 0;
+        }
+
+        let info = unsafe { (*job).j_custom.as_mut_ptr().cast::<JobTimerInfo>() };
+        abort_if(info.is_null());
+        let wakeup = unsafe { (*info).wakeup };
+        let timeout = wakeup.map_or(0.0, |wakeup_fn| unsafe { wakeup_fn((*info).extra) });
+        if timeout > 0.0 {
+            unsafe { mtproxy_ffi_jobs_job_timer_insert(job, timeout) };
+        } else if timeout < 0.0 {
+            unsafe { job_decref(1, job) };
+        }
+        return 0;
+    }
+
+    if op == JS_ABORT {
+        unsafe { mtproxy_ffi_jobs_job_timer_insert(job, 0.0) };
+        return JOB_COMPLETED;
+    }
+
+    if op == JS_FINISH {
+        let module_stat_tls = unsafe { jobs_get_module_stat_tls_c_impl() };
+        if !module_stat_tls.is_null() {
+            unsafe {
+                (*module_stat_tls).job_timers_allocated -= 1;
+            }
+        }
+        return unsafe { job_free(1, job) };
+    }
+
+    JOB_ERROR
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_jobs_job_thread_ex(
+    arg: *mut c_void,
+    work_one: Option<unsafe extern "C" fn(*mut c_void, i32)>,
+) -> *mut c_void {
+    abort_if(arg.is_null());
+    let Some(work_one) = work_one else {
+        abort_if(true);
+        return ptr::null_mut();
+    };
+
+    let thread = arg.cast::<JobThread>();
+    unsafe {
+        jobs_set_this_job_thread_c_impl(thread);
+    }
+    abort_if(unsafe { (*thread).thread_class } == 0);
+    abort_if((unsafe { (*thread).thread_class } & !JC_MASK) != 0);
+
+    unsafe {
+        get_this_thread_id();
+        (*thread).thread_system_id = libc::syscall(libc::SYS_gettid as libc::c_long) as i32;
+        jobs_set_job_interrupt_signal_handler_c_impl();
+        jobs_run_thread_callbacks_c_impl();
+        (*thread).status |= JTS_RUNNING;
+    }
+
+    let thread_class = unsafe { (*thread).thread_class };
+    let job_class = unsafe { (*thread).job_class };
+    if !job_class.is_null() && unsafe { (*job_class).max_threads == 1 } {
+        unsafe {
+            (*thread).timer_manager = alloc_timer_manager(thread_class);
+        }
+    }
+
+    let mut prev_now = 0_i32;
+    let mut last_rdtsc = 0_i64;
+
+    loop {
+        let mut job: *mut c_void = ptr::null_mut();
+        let mut rc = unsafe { mtproxy_ffi_jobs_tokio_dequeue_class(thread_class, 0, &raw mut job) };
+        if rc <= 0 || job.is_null() {
+            let wait_start = unsafe { get_utime_monotonic() };
+            let module_stat_tls = unsafe { jobs_get_module_stat_tls_c_impl() };
+            abort_if(module_stat_tls.is_null());
+            unsafe {
+                (*module_stat_tls).locked_since = wait_start;
+            }
+            rc = unsafe { mtproxy_ffi_jobs_tokio_dequeue_class(thread_class, 1, &raw mut job) };
+            let wait_time = unsafe { get_utime_monotonic() } - wait_start;
+            unsafe {
+                (*module_stat_tls).locked_since = 0.0;
+                (*module_stat_tls).tot_idle_time += wait_time;
+                (*module_stat_tls).a_idle_time += wait_time;
+            }
+        }
+        if rc < 0 {
+            unsafe {
+                kprintf(
+                    c"fatal: rust tokio class dequeue failed (class=%d rc=%d)\n".as_ptr(),
+                    thread_class,
+                    rc,
+                );
+            }
+            abort_if(true);
+        }
+        if job.is_null() {
+            continue;
+        }
+
+        let new_rdtsc = rdtsc_ticks();
+        if new_rdtsc - last_rdtsc > JOB_THREAD_REFRESH_RDTSC_DELTA {
+            let module_stat_tls = unsafe { jobs_get_module_stat_tls_c_impl() };
+            abort_if(module_stat_tls.is_null());
+            let current_now = unsafe {
+                get_utime_monotonic();
+                jobs_update_thread_now_c_impl()
+            };
+            if current_now > prev_now && current_now < prev_now + 60 {
+                while prev_now < current_now {
+                    unsafe {
+                        (*module_stat_tls).a_idle_time *= 100.0 / 101.0;
+                        (*module_stat_tls).a_idle_quotient = a_idle_quotient * (100.0 / 101.0) + 1.0;
+                    }
+                    prev_now += 1;
+                }
+            } else {
+                if current_now >= prev_now + 60 {
+                    unsafe {
+                        (*module_stat_tls).a_idle_time = (*module_stat_tls).a_idle_quotient;
+                    }
+                }
+                prev_now = current_now;
+            }
+            last_rdtsc = new_rdtsc;
+        }
+
+        unsafe {
+            work_one(job, thread_class);
+        }
+    }
 }
 
 #[no_mangle]
@@ -272,8 +1369,8 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_prepare_stat(sb: *mut StatsBuffer) -> 
         return -1;
     }
 
-    let now = unsafe { time(ptr::null_mut()) } as i64;
-    let uptime = (now - i64::from(unsafe { start_time })) as i32;
+    let wall_now = unsafe { time(ptr::null_mut()) } as i64;
+    let uptime = (wall_now - i64::from(unsafe { start_time })) as i32;
     let tm = unsafe { get_utime_monotonic() };
 
     let mut tot_recent_idle = [0.0_f64; JOB_CLASS_COUNT];
@@ -1236,13 +2333,13 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_job_message_queue_work(
 pub unsafe extern "C" fn mtproxy_ffi_jobs_job_message_queue_free(job: JobT) {
     abort_if(job.is_null());
     abort_if((unsafe { (*job).j_type as u64 } & JT_HAVE_MSG_QUEUE) == 0);
-    let queue_slot = unsafe { job_message_queue_get(job) };
+    let queue_slot = unsafe { job_message_queue_slot(job) };
     abort_if(queue_slot.is_null());
     if queue_slot.is_null() {
         return;
     }
 
-    let queue = queue_slot;
+    let queue = unsafe { *queue_slot };
     if queue.is_null() {
         return;
     }
@@ -1272,6 +2369,7 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_job_message_queue_free(job: JobT) {
     abort_if(destroy_rc < 0);
     unsafe {
         free(queue.cast::<c_void>());
+        *queue_slot = ptr::null_mut();
     }
 }
 
