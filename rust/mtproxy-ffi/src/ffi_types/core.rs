@@ -579,12 +579,7 @@ unsafe extern "C" {
     pub(crate) static mut default_cfg_min_connections: c_int;
     pub(crate) static mut default_cfg_max_connections: c_int;
     pub(crate) static mut default_cfg_ct: MtproxyConnTargetInfo;
-    pub(crate) static mut cfg_cur: *mut c_char;
-    pub(crate) static mut cfg_end: *mut c_char;
-    pub(crate) static mut cfg_lno: c_int;
-    pub(crate) static mut cfg_lex: c_int;
     pub(crate) static mut config_filename: *mut c_char;
-    pub(crate) static mut config_bytes: c_int;
     pub(crate) static mut CurConf: *mut MtproxyMfConfig;
     pub(crate) static mut NextConf: *mut MtproxyMfConfig;
     pub(crate) static mut verbosity: c_int;

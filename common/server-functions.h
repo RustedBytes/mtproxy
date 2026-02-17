@@ -36,19 +36,9 @@
 extern "C" {
 #endif
 
-#ifdef __LP64__
-enum { PTR_BITS = 64 };
-static const char BITS_STR[] = "64";
-#else
-enum { PTR_BITS = 32 };
-static const char BITS_STR[] = "32";
-#endif
-
 enum {
   MAX_ENGINE_OPTIONS = 1000,
 };
-extern int engine_options_num;
-extern char *engine_options[MAX_ENGINE_OPTIONS];
 
 int change_user(const char *username);
 int change_user_group(const char *username, const char *groupname);
@@ -59,8 +49,6 @@ void ksignal(int sig, void (*handler)(int));
 void set_debug_handlers(void);
 
 extern int start_time;
-extern int daemonize;
-extern const char *username, *progname, *groupname;
 
 /* keep mask defines */
 enum {
@@ -107,19 +95,6 @@ void remove_parse_option(int val);
 long long parse_memory_limit(const char *s);
 
 void add_builtin_parse_options(void);
-
-static inline void barrier(void) { asm volatile("" : : : "memory"); }
-
-static inline void mfence(void) { asm volatile("mfence" : : : "memory"); }
-
-// extern struct multicast_host multicast_hosts[];
-// extern int multicast_hosts_num;
-
-enum {
-  DEFAULT_BACKLOG = 8192,
-};
-
-static const char DEFAULT_ENGINE_USER[] = "mtproxy";
 
 #ifdef __cplusplus
 }

@@ -1,5 +1,29 @@
 use crate::*;
 
+#[no_mangle]
+pub static mut config_buff: *mut c_char = core::ptr::null_mut();
+
+#[no_mangle]
+pub static mut config_name: *mut c_char = core::ptr::null_mut();
+
+#[no_mangle]
+pub static mut cfg_start: *mut c_char = core::ptr::null_mut();
+
+#[no_mangle]
+pub static mut cfg_end: *mut c_char = core::ptr::null_mut();
+
+#[no_mangle]
+pub static mut cfg_cur: *mut c_char = core::ptr::null_mut();
+
+#[no_mangle]
+pub static mut config_bytes: c_int = 0;
+
+#[no_mangle]
+pub static mut cfg_lno: c_int = 0;
+
+#[no_mangle]
+pub static mut cfg_lex: c_int = -1;
+
 #[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
 fn rdtsc() -> i64 {
     #[cfg(target_arch = "x86_64")]
@@ -985,12 +1009,6 @@ pub unsafe extern "C" fn mtproxy_ffi_cfg_gethost_ex(verb: i32) -> *mut c_void {
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_cfg_gethost() -> *mut c_void {
     unsafe { cfg_gethost_impl(0) }.cast()
-}
-
-unsafe extern "C" {
-    static mut config_buff: *mut c_char;
-    static mut config_name: *mut c_char;
-    static mut cfg_start: *mut c_char;
 }
 
 const MAX_CONFIG_SIZE: i32 = 16 << 20;

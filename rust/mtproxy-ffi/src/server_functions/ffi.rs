@@ -9,6 +9,28 @@ unsafe extern "C" {
 }
 
 #[no_mangle]
+pub static mut engine_options_num: c_int = 0;
+
+#[no_mangle]
+pub static mut engine_options: [*mut c_char; MAX_ENGINE_OPTIONS] =
+    [core::ptr::null_mut(); MAX_ENGINE_OPTIONS];
+
+#[no_mangle]
+pub static mut start_time: c_int = 0;
+
+#[no_mangle]
+pub static mut daemonize: c_int = 0;
+
+#[no_mangle]
+pub static mut username: *const c_char = core::ptr::null();
+
+#[no_mangle]
+pub static mut progname: *const c_char = core::ptr::null();
+
+#[no_mangle]
+pub static mut groupname: *const c_char = core::ptr::null();
+
+#[no_mangle]
 pub unsafe extern "C" fn rust_sf_init_parse_options(
     keep_mask: u32,
     keep_options_custom_list: *const u32,
@@ -89,9 +111,9 @@ pub unsafe extern "C" fn rust_parse_memory_limit(s: *const c_char) -> c_longlong
 #[no_mangle]
 pub unsafe extern "C" fn rust_change_user_group(
     username_ptr: *const c_char,
-    groupname: *const c_char,
+    new_groupname: *const c_char,
 ) -> c_int {
-    unsafe { change_user_group_ffi(username_ptr, groupname) }
+    unsafe { change_user_group_ffi(username_ptr, new_groupname) }
 }
 
 #[no_mangle]

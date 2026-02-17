@@ -23,11 +23,9 @@
 #include <stdio.h>
 
 #include "common/parse-config.h"
-// parse-config runtime state lives here for C ABI compatibility.
-// Logic is implemented in rust/mtproxy-ffi/src/time_cfg_observability/core.rs.
-char *config_buff;
-char *config_name, *cfg_start, *cfg_end, *cfg_cur;
-int config_bytes, cfg_lno, cfg_lex = -1;
+// Parse-config state is owned by Rust now.
+// C keeps only variadic syntax() ABI shim.
+extern char *config_name;
 
 void syntax(const char *msg, ...) {
   if (!msg) {

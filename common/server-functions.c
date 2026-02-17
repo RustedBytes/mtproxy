@@ -44,14 +44,6 @@
 int default_parse_option_func(int a);
 void usage(void);
 
-int engine_options_num;
-char *engine_options[MAX_ENGINE_OPTIONS];
-
-int start_time;
-
-int daemonize = 0;
-const char *username, *progname, *groupname;
-
 void parse_option_ex(const char *name, int arg, int *var, int val,
                      unsigned flags, int (*func)(int), const char *help, ...) {
   (void)var;
