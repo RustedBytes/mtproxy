@@ -31,15 +31,9 @@ struct tree_connection;
 struct rpc_target_info {
   struct event_timer timer;
   int a, b;
-  // connection_job_t first, last;
-  // conn_target_job_t target;
   struct tree_connection *conn_tree;
   struct process_id PID;
 };
-
-static inline struct rpc_target_info *RPC_TARGET_INFO(rpc_target_job_t c) {
-  return (struct rpc_target_info *)c->j_custom;
-}
 
 rpc_target_job_t rpc_target_lookup(struct process_id *PID);
 

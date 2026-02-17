@@ -27,7 +27,6 @@
 #include <pthread.h>
 #include <semaphore.h>
 #include <stdlib.h>
-#include <string.h>
 
 #define __joblocked
 #define __jobref

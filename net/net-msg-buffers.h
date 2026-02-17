@@ -26,7 +26,6 @@
 #pragma once
 
 #include "common/mp-queue.h"
-#include <assert.h>
 #include <stdint.h>
 #include <stddef.h>
 

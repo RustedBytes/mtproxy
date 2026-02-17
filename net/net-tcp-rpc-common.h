@@ -30,7 +30,6 @@
 
 #include "common/rust-crc-compat.h"
 #include "net/net-connections.h"
-#include "pid.h"
 
 extern void mtproxy_ffi_net_tcp_rpc_common_conn_send(int32_t c_tag_int,
                                                      connection_job_t c,
@@ -65,13 +64,6 @@ extern uint32_t mtproxy_ffi_net_tcp_rpc_common_get_default_rpc_flags(void);
 extern void mtproxy_ffi_net_tcp_rpc_common_set_max_dh_accept_rate(int32_t rate);
 extern int32_t mtproxy_ffi_net_tcp_rpc_common_add_dh_accept(void);
 
-struct tcp_message {
-  connection_job_t c;
-  int op;
-  int packet_num;
-  struct raw_message raw;
-};
-
 #pragma pack(push, 4)
 struct tcp_rpc_nonce_packet {
   int type;
@@ -83,43 +75,6 @@ struct tcp_rpc_nonce_packet {
 
 enum {
   RPC_MAX_EXTRA_KEYS = 8,
-};
-
-struct tcp_rpc_nonce_ext_packet {
-  int type;          /* type = RPC_NONCE */
-  int key_select;    /* least significant 32 bits of key to use */
-  int crypto_schema; /* 2 = AES+extra keys */
-  int crypto_ts;
-  char crypto_nonce[16];
-  int extra_keys_count;
-  int extra_key_select[RPC_MAX_EXTRA_KEYS];
-};
-
-struct tcp_rpc_nonce_dh_packet {
-  int type;          /* type = RPC_NONCE */
-  int key_select;    /* least significant 32 bits of key to use */
-  int crypto_schema; /* 3 = AES+extra keys+DH */
-  int crypto_ts;
-  char crypto_nonce[16];
-  int extra_keys_count;
-  int extra_key_select[RPC_MAX_EXTRA_KEYS];
-  int dh_params_select; /* least significant 32 bits of SHA1 of DH params :
-                           g:int p:string */
-  unsigned char g_a[256];
-};
-
-struct tcp_rpc_handshake_packet {
-  int type;
-  int flags;
-  struct process_id sender_pid;
-  struct process_id peer_pid;
-  /* more ints? */
-};
-
-struct tcp_rpc_handshake_error_packet {
-  int type;
-  int error_code;
-  struct process_id sender_pid;
 };
 #pragma pack(pop)
 
@@ -158,10 +113,6 @@ enum {
 
 /* in conn->custom_data */
 struct tcp_rpc_data {
-  // int packet_len;
-  // int packet_num;
-  // int packet_type;
-  // int packet_crc32;
   int flags;
   int in_packet_num;
   int out_packet_num;
@@ -182,9 +133,6 @@ struct tcp_rpc_data {
   crc32_partial_func_t custom_crc_partial;
 };
 
-// extern int default_rpc_flags;  /* 0 = compatibility mode, RPC_USE_CRC32C =
-// allow both CRC32C and CRC32 */
-
 enum {
   RPC_NONCE = 0x7acb87aa,
   RPC_HANDSHAKE = 0x7682eef5,
@@ -197,15 +145,6 @@ enum {
   RPC_CRYPTO_AES_EXT = 2,
   RPC_CRYPTO_AES_DH = 3,
 };
-
-static inline struct tcp_rpc_data *TCP_RPC_DATA(connection_job_t c) {
-  // tcp_rpc_data is stored in custom_data[] (byte array), so align manually
-  // before casting to avoid UB on platforms/runtimes that enforce alignment.
-  const uintptr_t base = (uintptr_t)CONN_INFO(c)->custom_data;
-  const uintptr_t align = (uintptr_t)__alignof__(struct tcp_rpc_data);
-  const uintptr_t aligned = (base + align - 1) & ~(align - 1);
-  return (struct tcp_rpc_data *)aligned;
-}
 
 int tcp_rpc_flush_packet(connection_job_t C);
 int tcp_rpc_write_packet(connection_job_t C, struct raw_message *raw);

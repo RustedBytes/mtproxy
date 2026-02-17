@@ -24,7 +24,6 @@
 
 #pragma once
 
-#include <assert.h>
 #include <string.h>
 
 #include "jobs/jobs.h"

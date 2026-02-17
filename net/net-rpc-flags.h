@@ -28,9 +28,5 @@ enum {
 
 /* Shared rpc mode flags used by client/server function tables. */
 enum {
-  RPC_MF_COMPACT_ALLOW = 1,
-  RPC_MF_COMPACT_FORCE = 2,
-  RPC_MF_IGNORE_PID = 4,
-  RPC_MF_OPPORT_CRYPTO = 8,
-  TCP_RPC_IGNORE_PID = RPC_MF_IGNORE_PID,
+  TCP_RPC_IGNORE_PID = 4,
 };
