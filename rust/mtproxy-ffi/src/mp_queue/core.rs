@@ -1,16 +1,64 @@
 use crate::ffi_util::mut_ref_from_ptr;
-use core::ffi::c_void;
+use core::ffi::{c_int, c_long, c_void};
 use core::ptr;
 use mtproxy_core::runtime::jobs::mp_queue::{self, MpQueue, MpQueueError};
+use std::cell::Cell;
+use std::sync::atomic::{AtomicI32, Ordering};
 
 const MPQ_FFI_ERR_INVALID_ARGS: i32 = -1;
 const MPQ_FFI_ERR_NOT_WAITABLE: i32 = -2;
 const MPQ_FFI_ERR_NULL_VALUE: i32 = -3;
 
 type MpQueueValue = usize;
+const MAX_JOB_THREADS: i32 = 256;
+
+// struct mp_queue {
+//   struct mp_queue_block *mq_head __attribute__((aligned(64)));
+//   int mq_magic;
+//   struct mp_queue_block *mq_tail __attribute__((aligned(64)));
+// };
+#[repr(C, align(64))]
+struct MpQueueC {
+    mq_head: *mut c_void,
+    mq_magic: c_int,
+    _pad: [u8; 64 - core::mem::size_of::<*mut c_void>() - core::mem::size_of::<c_int>()],
+    mq_tail: *mut c_void,
+}
+
+thread_local! {
+    static MPQ_THIS_THREAD_ID: Cell<i32> = const { Cell::new(0) };
+}
+
+static MPQ_THREADS: AtomicI32 = AtomicI32::new(0);
+static MPQ_ACTIVE: AtomicI32 = AtomicI32::new(0);
+static MPQ_ALLOCATED: AtomicI32 = AtomicI32::new(0);
 
 struct MpQueueHandle {
     queue: MpQueue<MpQueueValue>,
+}
+
+#[repr(C)]
+struct MpQueueStatsBufferC {
+    buff: *mut i8,
+    pos: c_int,
+    size: c_int,
+    flags: c_int,
+}
+
+unsafe extern "C" {
+    fn abort() -> !;
+    fn posix_memalign(memptr: *mut *mut c_void, alignment: usize, size: usize) -> c_int;
+    fn free(ptr: *mut c_void);
+
+    fn mpq_rust_init_queue(mq: *mut MpQueueC, waitable: c_int) -> c_int;
+    fn mpq_rust_clear_queue(mq: *mut MpQueueC);
+    fn mpq_rust_queue_attached(mq: *mut MpQueueC) -> c_int;
+    fn mpq_rust_queue_waitable(mq: *mut MpQueueC) -> c_int;
+    fn mpq_rust_is_empty(mq: *mut MpQueueC) -> c_int;
+    fn mpq_rust_push_w(mq: *mut MpQueueC, value: *mut c_void, flags: c_int) -> c_long;
+    fn mpq_rust_pop_nw(mq: *mut MpQueueC, flags: c_int) -> *mut c_void;
+
+    static mpq_rust_attached_queues: c_int;
 }
 
 #[inline]
@@ -282,6 +330,184 @@ pub unsafe extern "C" fn mtproxy_ffi_mpq_handle_pop_nw(
         }
         Ok(None) => 0,
         Err(error) => map_waitable_error(error),
+    }
+}
+
+#[inline]
+unsafe fn abort_if(condition: bool) {
+    if condition {
+        // SAFETY: immediate process abort preserves C-side assert semantics.
+        unsafe { abort() };
+    }
+}
+
+#[inline]
+unsafe fn queue_ref<'a>(mq: *mut c_void) -> &'a mut MpQueueC {
+    // SAFETY: C ABI contract requires valid pointer; violations abort.
+    unsafe { abort_if(mq.is_null()) };
+    // SAFETY: validated above.
+    unsafe { &mut *mq.cast::<MpQueueC>() }
+}
+
+#[inline]
+unsafe fn append_stats_line(sb: *mut c_void, line: &str) {
+    if sb.is_null() {
+        return;
+    }
+    // SAFETY: caller provides valid stats buffer pointer by ABI contract.
+    let sb_ref = unsafe { &mut *sb.cast::<MpQueueStatsBufferC>() };
+    if sb_ref.buff.is_null() || sb_ref.size <= 0 || sb_ref.pos >= sb_ref.size {
+        return;
+    }
+    let line_bytes = line.as_bytes();
+    let remaining = (sb_ref.size - sb_ref.pos) as usize;
+    let to_copy = remaining.saturating_sub(1).min(line_bytes.len());
+    if to_copy == 0 {
+        return;
+    }
+    // SAFETY: destination range is in-bounds and non-overlapping with source.
+    unsafe {
+        core::ptr::copy_nonoverlapping(
+            line_bytes.as_ptr(),
+            sb_ref.buff.add(sb_ref.pos as usize).cast::<u8>(),
+            to_copy,
+        );
+    }
+    sb_ref.pos += to_copy as c_int;
+    if sb_ref.pos < sb_ref.size {
+        // SAFETY: `pos < size` checked above.
+        unsafe {
+            *sb_ref.buff.add(sb_ref.pos as usize) = 0;
+        }
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn get_this_thread_id() -> c_int {
+    let cached = MPQ_THIS_THREAD_ID.with(Cell::get);
+    if cached != 0 {
+        return cached;
+    }
+    let id = MPQ_THREADS.fetch_add(1, Ordering::AcqRel) + 1;
+    // SAFETY: preserve old C assert bound checks.
+    unsafe { abort_if(id <= 0 || id >= MAX_JOB_THREADS) };
+    MPQ_THIS_THREAD_ID.with(|cell| cell.set(id));
+    id
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn init_mp_queue_w(mq: *mut c_void) {
+    // SAFETY: assert legacy pointer contract before calling C bridge.
+    let mq = unsafe { queue_ref(mq) };
+    MPQ_ACTIVE.fetch_add(1, Ordering::AcqRel);
+    // SAFETY: C bridge validates queue state and initializes handle.
+    let rc = unsafe { mpq_rust_init_queue(mq, 1) };
+    unsafe { abort_if(rc < 0) };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn alloc_mp_queue_w() -> *mut c_void {
+    let mut out: *mut c_void = ptr::null_mut();
+    // SAFETY: writes allocated pointer to `out`.
+    let alloc_rc = unsafe {
+        posix_memalign(
+            &raw mut out,
+            64,
+            core::mem::size_of::<MpQueueC>(),
+        )
+    };
+    unsafe { abort_if(alloc_rc != 0 || out.is_null()) };
+    // SAFETY: newly allocated memory is writable for full object size.
+    unsafe {
+        ptr::write_bytes(out.cast::<u8>(), 0, core::mem::size_of::<MpQueueC>());
+    }
+    MPQ_ALLOCATED.fetch_add(1, Ordering::AcqRel);
+    let mq = out.cast::<MpQueueC>();
+    // SAFETY: queue pointer came from successful allocation.
+    unsafe { init_mp_queue_w(mq.cast::<c_void>()) };
+    mq.cast::<c_void>()
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn clear_mp_queue(mq: *mut c_void) {
+    // SAFETY: assert legacy pointer contract before bridge calls.
+    let mq = unsafe { queue_ref(mq) };
+    // SAFETY: C bridge only reads queue metadata.
+    if unsafe { mpq_rust_queue_waitable(mq) } != 0 {
+        MPQ_ACTIVE.fetch_sub(1, Ordering::AcqRel);
+    }
+    // SAFETY: maintain legacy assert that queue must be attached.
+    unsafe { abort_if(mpq_rust_queue_attached(mq) == 0) };
+    // SAFETY: bridge detaches and destroys underlying Rust handle.
+    unsafe { mpq_rust_clear_queue(mq) };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn free_mp_queue(mq: *mut c_void) {
+    MPQ_ALLOCATED.fetch_sub(1, Ordering::AcqRel);
+    // SAFETY: preserves previous behavior: clear then free.
+    unsafe { clear_mp_queue(mq) };
+    // SAFETY: pointer originates from posix_memalign in alloc_mp_queue_w.
+    unsafe { free(mq) };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mpq_is_empty(mq: *mut c_void) -> c_int {
+    // SAFETY: assert legacy pointer contract before bridge calls.
+    let mq = unsafe { queue_ref(mq) };
+    // SAFETY: maintain legacy assert that queue must be attached.
+    unsafe { abort_if(mpq_rust_queue_attached(mq) == 0) };
+    // SAFETY: bridge reads queue state and returns 0/1.
+    unsafe { mpq_rust_is_empty(mq) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mpq_pop_nw(mq: *mut c_void, flags: c_int) -> *mut c_void {
+    // SAFETY: assert legacy pointer contract before bridge calls.
+    let mq = unsafe { queue_ref(mq) };
+    // SAFETY: maintain legacy assert that queue must be attached.
+    unsafe { abort_if(mpq_rust_queue_attached(mq) == 0) };
+    // SAFETY: bridge executes non-blocking pop for waitable queue.
+    unsafe { mpq_rust_pop_nw(mq, flags) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mpq_push_w(mq: *mut c_void, value: *mut c_void, flags: c_int) -> c_long {
+    // SAFETY: assert legacy pointer contract before bridge calls.
+    let mq = unsafe { queue_ref(mq) };
+    // SAFETY: maintain legacy assert that queue must be attached.
+    unsafe { abort_if(mpq_rust_queue_attached(mq) == 0) };
+    // SAFETY: bridge executes waitable push.
+    unsafe { mpq_rust_push_w(mq, value, flags) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mp_queue_prepare_stat(sb: *mut c_void) -> c_int {
+    // SAFETY: volatile read mirrors C-side access semantics.
+    let attached = unsafe { core::ptr::read_volatile(&raw const mpq_rust_attached_queues) };
+    let active = MPQ_ACTIVE.load(Ordering::Acquire);
+    let allocated = MPQ_ALLOCATED.load(Ordering::Acquire);
+
+    let header = ">>>>>>mp_queue>>>>>>\tstart\n";
+    let attached_line = format!("mpq_rust_attached_queues\t{attached}\n");
+    let active_line = format!("mpq_active\t{active}\n");
+    let allocated_line = format!("mpq_allocated\t{allocated}\n");
+    let footer = "<<<<<<mp_queue<<<<<<\tend\n";
+
+    // SAFETY: appender guards all bounds and null-pointer checks.
+    unsafe {
+        append_stats_line(sb, header);
+        append_stats_line(sb, &attached_line);
+        append_stats_line(sb, &active_line);
+        append_stats_line(sb, &allocated_line);
+        append_stats_line(sb, footer);
+    }
+
+    if sb.is_null() {
+        0
+    } else {
+        // SAFETY: checked above.
+        unsafe { (*sb.cast::<MpQueueStatsBufferC>()).pos }
     }
 }
 

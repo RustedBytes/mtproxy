@@ -48,7 +48,7 @@ DEPENDENCE_RUST	:=	$(subst ${OBJ}/,${DEP}/,$(patsubst %.o,%.d,${RUST_OBJECTS}))
 LIB_OBJS_NORMAL := \
 	${OBJ}/common/resolver.o \
 	${OBJ}/common/parse-config.o \
-	${OBJ}/jobs/jobs.o ${OBJ}/common/mp-queue.o \
+	${OBJ}/jobs/jobs.o \
 	${OBJ}/common/mp-queue-rust.o \
 	${OBJ}/net/net-events.o ${OBJ}/net/net-msg.o ${OBJ}/net/net-msg-buffers.o \
 	${OBJ}/net/net-config.o ${OBJ}/net/net-crypto-aes.o ${OBJ}/net/net-crypto-dh.o \

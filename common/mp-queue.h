@@ -35,9 +35,7 @@ struct mp_queue {
 /* initialize this thread id and return it */
 int get_this_thread_id(void);
 
-/* functions for mp_queue */
-void init_mp_queue(struct mp_queue *MQ);
-struct mp_queue *alloc_mp_queue(void);
+/* functions for waitable mp_queue */
 struct mp_queue *alloc_mp_queue_w(void);
 void init_mp_queue_w(struct mp_queue *MQ);
 void clear_mp_queue(struct mp_queue *MQ); // invoke only if nobody else is
@@ -51,10 +49,6 @@ enum {
   MPQF_MAX_ITERATIONS = MPQF_STORE_PTR - 1,
 };
 
-long mpq_push(struct mp_queue *MQ, mqn_value_t val, int flags);
-mqn_value_t mpq_pop(struct mp_queue *MQ, int flags);
 int mpq_is_empty(struct mp_queue *MQ);
-
 long mpq_push_w(struct mp_queue *MQ, mqn_value_t val, int flags);
-mqn_value_t mpq_pop_w(struct mp_queue *MQ, int flags);
 mqn_value_t mpq_pop_nw(struct mp_queue *MQ, int flags);
