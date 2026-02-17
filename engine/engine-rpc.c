@@ -36,14 +36,7 @@ extern void mtproxy_ffi_engine_rpc_register_custom_op_cb(
     void (*func)(struct tl_in_state *tlio_in, struct query_work_params *params));
 extern void mtproxy_ffi_engine_rpc_engine_work_rpc_req_result(
     struct tl_in_state *tlio_in, struct query_work_params *params);
-extern int32_t mtproxy_ffi_engine_rpc_tl_result_new_flags(int32_t old_flags);
-extern int32_t mtproxy_ffi_engine_rpc_tl_result_get_header_len(
-    struct tl_query_header *h);
-extern int32_t mtproxy_ffi_engine_rpc_tl_result_make_header(
-    int32_t *ptr, struct tl_query_header *h);
 extern void mtproxy_ffi_engine_rpc_tl_default_act_free(
-    struct tl_act_extra *extra);
-extern struct tl_act_extra *mtproxy_ffi_engine_rpc_tl_default_act_dup(
     struct tl_act_extra *extra);
 extern void mtproxy_ffi_engine_rpc_tl_query_result_fun_set(
     void (*func)(struct tl_in_state *tlio_in, struct tl_query_header *h),
@@ -64,8 +57,6 @@ extern int64_t mtproxy_ffi_engine_rpc_tl_generate_next_qid(
 extern int32_t mtproxy_ffi_engine_rpc_create_query_custom_job(
     job_t job, struct raw_message *raw, double timeout, int32_t fd,
     int32_t generation);
-extern int32_t mtproxy_ffi_engine_rpc_do_create_query_job(
-    struct raw_message *raw, int32_t type, struct process_id *pid, void *conn);
 extern int32_t mtproxy_ffi_engine_rpc_default_tl_close_conn(void *c,
                                                              int32_t who);
 extern int32_t mtproxy_ffi_engine_rpc_default_tl_tcp_rpcs_execute(
@@ -91,24 +82,8 @@ struct tl_act_extra *mtproxy_ffi_engine_rpc_call_default_parse_function(
   return tl_default_parse_function(tlio_in, actor_id);
 }
 
-int tl_result_new_flags(int old_flags) {
-  return mtproxy_ffi_engine_rpc_tl_result_new_flags(old_flags);
-}
-
-int tl_result_get_header_len(struct tl_query_header *h) {
-  return mtproxy_ffi_engine_rpc_tl_result_get_header_len(h);
-}
-
-int tl_result_make_header(int *ptr, struct tl_query_header *h) {
-  return mtproxy_ffi_engine_rpc_tl_result_make_header(ptr, h);
-}
-
 void tl_default_act_free(struct tl_act_extra *extra) {
   mtproxy_ffi_engine_rpc_tl_default_act_free(extra);
-}
-
-struct tl_act_extra *tl_default_act_dup(struct tl_act_extra *extra) {
-  return mtproxy_ffi_engine_rpc_tl_default_act_dup(extra);
 }
 
 void tl_query_result_fun_set(tl_query_result_fun_t func, int query_type_id) {
@@ -144,11 +119,6 @@ int create_query_custom_job(job_t job, struct raw_message *raw, double timeout,
 
 int query_job_run(job_t job, int fd, int generation) {
   return mtproxy_ffi_engine_rpc_query_job_run(job, fd, generation);
-}
-
-int do_create_query_job(struct raw_message *raw, int type,
-                        struct process_id *pid, void *conn) {
-  return mtproxy_ffi_engine_rpc_do_create_query_job(raw, type, pid, conn);
 }
 
 int default_tl_close_conn(connection_job_t c, [[maybe_unused]] int who) {

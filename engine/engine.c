@@ -40,42 +40,25 @@
 
 #include "engine/engine.h"
 
-#include "jobs/jobs.h"
-
 #include "net/net-connections.h"
 
 extern void mtproxy_ffi_engine_init(const char *pwd_filename,
                                     int32_t do_not_open_port);
-extern void mtproxy_ffi_engine_default_engine_server_start(void);
 extern int32_t mtproxy_ffi_engine_default_main(server_functions_t *F, int32_t argc,
                                                char **argv);
 extern void mtproxy_ffi_engine_create_main_thread_pipe(int32_t *pipe_read_end,
                                                        int32_t *pipe_write_end);
 extern void mtproxy_ffi_engine_wakeup_main_thread(int32_t pipe_write_end);
-extern void mtproxy_ffi_engine_server_exit(void);
-extern void mtproxy_ffi_engine_startup(engine_t *E, server_functions_t *F);
 extern void mtproxy_ffi_engine_add_engine_parse_options(void);
 extern int32_t mtproxy_ffi_engine_default_parse_option_func(int32_t a);
 extern void mtproxy_ffi_engine_server_init(void *listen_connection_type,
                                            void *listen_connection_extra,
                                            int32_t pipe_read_end);
-extern int32_t mtproxy_ffi_engine_prepare_stats(void);
 extern void mtproxy_ffi_engine_rpc_stats(struct tl_out_state *tlio_out);
 extern void mtproxy_ffi_engine_default_parse_extra_args(int32_t argc,
                                                         char **argv);
-extern void mtproxy_ffi_engine_default_cron(void);
 extern void mtproxy_ffi_engine_set_signals_handlers(void);
 extern void mtproxy_ffi_engine_set_epoll_wait_timeout(int32_t epoll_wait_timeout);
-extern void mtproxy_ffi_engine_precise_cron_function_insert(
-    struct event_precise_cron *ev);
-extern void mtproxy_ffi_engine_precise_cron_function_remove(
-    struct event_precise_cron *ev);
-extern double mtproxy_ffi_engine_update_job_stats_gw(void *ex);
-extern int32_t mtproxy_ffi_engine_precise_cron_job_run(void *job, int32_t op,
-                                                       void *jt);
-extern int32_t mtproxy_ffi_engine_terminate_job_run(void *job, int32_t op,
-                                                    void *jt);
-extern int32_t mtproxy_ffi_engine_default_get_op(struct tl_in_state *tlio_in);
 
 int32_t mtproxy_ffi_engine_check_conn_functions_bridge(void *conn_type) {
   return check_conn_functions(conn_type, 1);
@@ -94,10 +77,6 @@ double precise_now_diff;
 engine_t *engine_state;
 
 unsigned char server_ipv6[16];
-
-void default_cron(void) {
-  mtproxy_ffi_engine_default_cron();
-}
 
 void set_signals_handlers(void) {
   mtproxy_ffi_engine_set_signals_handlers();
@@ -141,53 +120,11 @@ void server_init(conn_type_t *listen_connection_type,
                                  pipe_read_end);
 }
 
-void server_exit(void) {
-  mtproxy_ffi_engine_server_exit();
-}
-
 struct event_precise_cron precise_cron_events = {.next = &precise_cron_events,
                                                  .prev = &precise_cron_events};
 
-void precise_cron_function_insert(struct event_precise_cron *ev) {
-  mtproxy_ffi_engine_precise_cron_function_insert(ev);
-}
-
-void precise_cron_function_remove(struct event_precise_cron *ev) {
-  mtproxy_ffi_engine_precise_cron_function_remove(ev);
-}
-
-double update_job_stats_gw([[maybe_unused]] void *ex) {
-  return mtproxy_ffi_engine_update_job_stats_gw(ex);
-}
-
-int precise_cron_job_run(job_t job, int op,
-                         [[maybe_unused]] struct job_thread *JT) {
-  return mtproxy_ffi_engine_precise_cron_job_run(job, op, JT);
-}
-
-int terminate_job_run([[maybe_unused]] job_t job, int op,
-                      [[maybe_unused]] struct job_thread *JT) {
-  return mtproxy_ffi_engine_terminate_job_run(job, op, JT);
-}
-
-void default_engine_server_start(void) {
-  mtproxy_ffi_engine_default_engine_server_start();
-}
-
-int engine_prepare_stats(void) {
-  return mtproxy_ffi_engine_prepare_stats();
-}
-
 void engine_rpc_stats(struct tl_out_state *tlio_out) {
   mtproxy_ffi_engine_rpc_stats(tlio_out);
-}
-
-int default_get_op(struct tl_in_state *tlio_in) {
-  return mtproxy_ffi_engine_default_get_op(tlio_in);
-}
-
-void engine_startup(engine_t *E, server_functions_t *F) {
-  mtproxy_ffi_engine_startup(E, F);
 }
 
 int default_main(server_functions_t *F, int argc, char *argv[]) {

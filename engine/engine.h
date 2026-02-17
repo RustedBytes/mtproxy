@@ -154,9 +154,6 @@ typedef struct event_precise_cron {
   void (*wakeup)(struct event_precise_cron *arg);
 } event_precise_cron_t;
 
-void precise_cron_function_insert(struct event_precise_cron *ev);
-void precise_cron_function_remove(struct event_precise_cron *ev);
-
 void set_signals_handlers(void);
 void engine_init(const char *const pwd_filename, int do_not_open_port);
 void engine_set_epoll_wait_timeout(int epoll_wait_timeout);
