@@ -54,9 +54,5 @@ void mtproxy_ffi_net_connections_job_thread_dec_jobs_active(void) {
   JT->jobs_active--;
 }
 
-/* CONN TARGETS {{{ */
-
 conn_target_job_t HTarget[PRIME_TARGETS];
 pthread_mutex_t TargetsLock = PTHREAD_MUTEX_INITIALIZER;
-
-// -----

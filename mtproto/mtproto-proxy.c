@@ -63,18 +63,8 @@ const char FullVersionStr[] =
 // #define DEFAULT_OUTBOUND_CONNECTION_CREATION_RATE	1000000
 
 enum mtproxy_constants {
-  EXT_CONN_TABLE_SIZE = 1 << 22,
-  EXT_CONN_HASH_SHIFT = 20,
-  EXT_CONN_HASH_SIZE = 1 << EXT_CONN_HASH_SHIFT,
   MAX_HTTP_LISTEN_PORTS = 128,
-  RESPONSE_FAIL_TIMEOUT = 5,
-  CONNECT_TIMEOUT = 3,
   MAX_POST_SIZE = 262144 * 4 - 4096,
-  DEFAULT_WINDOW_CLAMP = 131072,
-  MAX_CONNECTION_BUFFER_SPACE = 1 << 25,
-  PROXY_MODE_OUT = 2,
-  TL_HTTP_QUERY_INFO = (int)0xd45ab381u,
-  TL_PROXY_TAG = (int)0xdb1e26aeu,
   STATS_BUFF_SIZE = 1 << 20,
   DEFAULT_CFG_MIN_CONNECTIONS = 4,
   DEFAULT_CFG_MAX_CONNECTIONS = 8,
@@ -101,9 +91,6 @@ char stats_buff[STATS_BUFF_SIZE];
 char cur_http_origin[1024], cur_http_referer[1024], cur_http_user_agent[1024];
 int cur_http_origin_len, cur_http_referer_len, cur_http_user_agent_len;
 
-int check_conn_buffers(connection_job_t c);
-void lru_insert_conn(connection_job_t c);
-
 /*
  *
  *	CONFIGURATION PARSER SETUP
@@ -123,21 +110,6 @@ struct conn_target_info default_cfg_ct = {
     .type = &ct_tcp_rpc_client_mtfront,
     .extra = (void *)&mtfront_rpc_client,
     .reconnect_timeout = 17};
-
-/*
- *
- *		EXTERNAL CONNECTIONS TABLE
- *
- */
-
-typedef mtproxy_ffi_mtproto_ext_connection_t ext_connection_t;
-
-static inline void check_engine_class(void) { check_thread_class(JC_ENGINE); }
-
-void remove_ext_connection(const ext_connection_t *Ex, int send_notifications) {
-  check_engine_class();
-  mtproxy_ffi_mtproto_remove_ext_connection_runtime(Ex, send_notifications);
-}
 
 /*
  *
@@ -223,96 +195,22 @@ void mtfront_prepare_stats(stats_buffer_t *sb) {
 
 /*
  *
- *      JOB UTILS
- *
- */
-
-typedef int (*job_callback_func_t)(void *data, int len);
-void schedule_job_callback(int context, job_callback_func_t func, void *data,
-                           int len);
-
-struct job_callback_info {
-  job_callback_func_t func;
-  void *data[0];
-};
-
-int callback_job_run(job_t job, int op, struct job_thread *JT) {
-  return mtproxy_ffi_mtproto_callback_job_run(job, op, JT);
-}
-
-void schedule_job_callback(int context, job_callback_func_t func, void *data,
-                           int len) {
-  job_t job = create_async_job(
-      callback_job_run,
-      JSP_PARENT_RWE | JSC_ALLOW(context, JS_RUN) | JSIG_FAST(JS_FINISH), -2,
-      offsetof(struct job_callback_info, data) + len, 0, JOB_REF_NULL);
-  assert(job);
-  struct job_callback_info *D = (struct job_callback_info *)(job->j_custom);
-  D->func = func;
-  memcpy(D->data, data, len);
-  schedule_job(JOB_REF_PASS(job));
-}
-
-/*
- *
  *	RPC CLIENT
  *
  */
 
-int client_send_message(JOB_REF_ARG(C), long long in_conn_id,
-                        struct tl_in_state *tlio_in, int flags);
-
-int mtfront_client_ready(connection_job_t C);
-int mtfront_client_close(connection_job_t C, int who);
-int rpcc_execute(connection_job_t C, int op, struct raw_message *msg);
-int tcp_rpcc_check_ready(connection_job_t C);
-
 struct tcp_rpc_client_functions mtfront_rpc_client = {
-    .execute = rpcc_execute,
+    .execute = (int (*)(connection_job_t, int, struct raw_message *))
+        mtproxy_ffi_mtproto_rpcc_execute,
     .check_ready = tcp_rpcc_default_check_ready,
     .flush_packet = tcp_rpc_flush_packet,
     .rpc_check_perm = tcp_rpcc_default_check_perm,
     .rpc_init_crypto = tcp_rpcc_init_crypto,
     .rpc_start_crypto = tcp_rpcc_start_crypto,
-    .rpc_ready = mtfront_client_ready,
-    .rpc_close = mtfront_client_close};
+    .rpc_ready = (int (*)(connection_job_t))mtproxy_ffi_mtproto_mtfront_client_ready,
+    .rpc_close = (int (*)(connection_job_t, int))mtproxy_ffi_mtproto_mtfront_client_close};
 
 int rpcc_exists;
-
-void push_rpc_confirmation(JOB_REF_ARG(C), int confirm) {
-  mtproxy_ffi_mtproto_push_rpc_confirmation_runtime(C_tag_int, C, confirm);
-}
-
-struct client_packet_info {
-  struct event_timer ev;
-  struct raw_message msg;
-  connection_job_t conn;
-};
-
-extern int32_t mtproxy_ffi_mtproto_process_client_packet_runtime(void *tlio_in,
-                                                                 void *c);
-
-int process_client_packet(struct tl_in_state *tlio_in, connection_job_t C) {
-  return mtproxy_ffi_mtproto_process_client_packet_runtime(tlio_in, C);
-}
-
-int client_packet_job_run(job_t job, int op, struct job_thread *JT) {
-  return mtproxy_ffi_mtproto_client_packet_job_run(job, op, JT);
-}
-
-int rpcc_execute(connection_job_t C, int op, struct raw_message *msg) {
-  return mtproxy_ffi_mtproto_rpcc_execute(C, op, msg);
-}
-
-int mtfront_client_ready(connection_job_t C) {
-  check_engine_class();
-  return mtproxy_ffi_mtproto_mtfront_client_ready(C);
-}
-
-int mtfront_client_close(connection_job_t C, int who) {
-  check_engine_class();
-  return mtproxy_ffi_mtproto_mtfront_client_close(C, who);
-}
 
 /*
  *
@@ -320,65 +218,27 @@ int mtfront_client_close(connection_job_t C, int who) {
  *
  */
 
-int hts_execute(connection_job_t C, struct raw_message *msg, int op);
-int mtproto_http_alarm(connection_job_t C);
-int mtproto_http_close(connection_job_t C, int who);
+struct http_server_functions http_methods = {
+    .execute = (int (*)(connection_job_t, struct raw_message *, int))
+        mtproxy_ffi_mtproto_hts_execute,
+    .ht_alarm = (int (*)(connection_job_t))mtproxy_ffi_mtproto_http_alarm,
+    .ht_close = (int (*)(connection_job_t, int))mtproxy_ffi_mtproto_http_close};
 
-int hts_stats_execute(connection_job_t C, struct raw_message *msg, int op);
-
-struct http_server_functions http_methods = {.execute = hts_execute,
-                                             .ht_alarm = mtproto_http_alarm,
-                                             .ht_close = mtproto_http_close};
-
-struct http_server_functions http_methods_stats = {.execute =
-                                                       hts_stats_execute};
-
-int ext_rpcs_execute(connection_job_t C, int op, struct raw_message *msg);
-
-int mtproto_ext_rpc_ready(connection_job_t C);
-int mtproto_ext_rpc_close(connection_job_t C, int who);
+struct http_server_functions http_methods_stats = {
+    .execute = (int (*)(connection_job_t, struct raw_message *, int))
+        mtproxy_ffi_mtproto_hts_stats_execute};
 
 struct tcp_rpc_server_functions ext_rpc_methods = {
-    .execute = ext_rpcs_execute,
+    .execute = (int (*)(connection_job_t, int, struct raw_message *))
+        mtproxy_ffi_mtproto_ext_rpcs_execute,
     .check_ready = server_check_ready,
     .flush_packet = tcp_rpc_flush_packet,
-    .rpc_ready = mtproto_ext_rpc_ready,
-    .rpc_close = mtproto_ext_rpc_close,
+    .rpc_ready = (int (*)(connection_job_t))mtproxy_ffi_mtproto_ext_rpc_ready,
+    .rpc_close = (int (*)(connection_job_t, int))mtproxy_ffi_mtproto_ext_rpc_close,
     //.http_fallback_type = &ct_http_server_mtfront,
     //.http_fallback_extra = &http_methods,
     .max_packet_len = MAX_POST_SIZE,
 };
-
-int mtproto_proxy_rpc_ready(connection_job_t C);
-int mtproto_proxy_rpc_close(connection_job_t C, int who);
-
-// ENGINE context
-int do_close_in_ext_conn(void *_data, int s_len) {
-  return mtproxy_ffi_mtproto_do_close_in_ext_conn(_data, s_len);
-}
-
-// NET_CPU context
-int mtproto_http_close(connection_job_t C, int who) {
-  return mtproxy_ffi_mtproto_http_close(C, who);
-}
-
-int mtproto_ext_rpc_ready(connection_job_t C) {
-  return mtproxy_ffi_mtproto_ext_rpc_ready(C);
-}
-
-int mtproto_ext_rpc_close(connection_job_t C, int who) {
-  return mtproxy_ffi_mtproto_ext_rpc_close(C, who);
-}
-
-int mtproto_proxy_rpc_ready(connection_job_t C) {
-  check_engine_class();
-  return mtproxy_ffi_mtproto_proxy_rpc_ready(C);
-}
-
-int mtproto_proxy_rpc_close(connection_job_t C, int who) {
-  check_engine_class();
-  return mtproxy_ffi_mtproto_proxy_rpc_close(C, who);
-}
 
 char mtproto_cors_http_headers[] =
     "Access-Control-Allow-Origin: *\r\n"
@@ -386,150 +246,7 @@ char mtproto_cors_http_headers[] =
     "Access-Control-Allow-Headers: origin, content-type\r\n"
     "Access-Control-Max-Age: 1728000\r\n";
 
-extern int32_t mtproxy_ffi_mtproto_forward_tcp_query(
-    void *tlio_in, void *c, void *target, int32_t flags, int64_t auth_key_id,
-    const int32_t *remote_ip_port, const int32_t *our_ip_port);
-extern int32_t
-mtproxy_ffi_mtproto_forward_mtproto_packet(void *tlio_in, void *c, int32_t len,
-                                           const int32_t *remote_ip_port,
-                                           int32_t rpc_flags);
-extern void *mtproxy_ffi_mtproto_choose_proxy_target(int32_t target_dc);
-
-int forward_mtproto_packet(struct tl_in_state *tlio_in, connection_job_t C,
-                           int len, int remote_ip_port[5], int rpc_flags);
-int forward_tcp_query(struct tl_in_state *tlio_in, connection_job_t C,
-                      conn_target_job_t S, int flags, long long auth_key_id,
-                      int remote_ip_port[5], int our_ip_port[5]);
-
-struct http_query_info {
-  struct event_timer ev;
-  connection_job_t conn;
-  struct raw_message msg;
-  int conn_fd;
-  int conn_generation;
-  int flags;
-  int query_type;
-  int header_size;
-  int data_size;
-  int first_line_size;
-  int host_offset;
-  int host_size;
-  int uri_offset;
-  int uri_size;
-  char header[0];
-};
-
-int process_http_query(struct tl_in_state *tlio_in, job_t HQJ) {
-  return mtproxy_ffi_mtproto_process_http_query(tlio_in, HQJ);
-}
-
-int http_query_job_run(job_t job, int op, struct job_thread *JT) {
-  return mtproxy_ffi_mtproto_http_query_job_run(job, op, JT);
-}
-
-int hts_stats_execute(connection_job_t c, struct raw_message *msg, int op) {
-  return mtproxy_ffi_mtproto_hts_stats_execute(c, msg, op);
-}
-
-// NET-CPU context
-int hts_execute(connection_job_t c, struct raw_message *msg, int op) {
-  return mtproxy_ffi_mtproto_hts_execute(c, msg, op);
-}
-
-struct rpcs_exec_data {
-  struct raw_message msg;
-  connection_job_t conn;
-  int op;
-  int rpc_flags;
-};
-
-int do_rpcs_execute(void *_data, int s_len) {
-  return mtproxy_ffi_mtproto_do_rpcs_execute(_data, s_len);
-}
-
-int ext_rpcs_execute(connection_job_t c, int op, struct raw_message *msg) {
-  return mtproxy_ffi_mtproto_ext_rpcs_execute(c, op, msg);
-}
-
-// NET-CPU context
-int mtproto_http_alarm(connection_job_t C) {
-  return mtproxy_ffi_mtproto_http_alarm(C);
-}
-
-// NET-CPU context
-int finish_postponed_http_response(void *_data, int len) {
-  return mtproxy_ffi_mtproto_finish_postponed_http_response(_data, len);
-}
-
-// ENGINE context
-// problem: mtproto_http_alarm() may be invoked in parallel in NET-CPU context
-int http_send_message(JOB_REF_ARG(C), struct tl_in_state *tlio_in, int flags) {
-  return mtproxy_ffi_mtproto_http_send_message(C, tlio_in, flags);
-}
-
-int client_send_message(JOB_REF_ARG(C), long long in_conn_id,
-                        struct tl_in_state *tlio_in, int flags) {
-  return mtproxy_ffi_mtproto_client_send_message_runtime(
-      C_tag_int, C, in_conn_id, tlio_in, flags);
-}
-
-/* ------------- process normal (encrypted) packet ----------------- */
-
-// connection_job_t get_target_connection (conn_target_job_t S, int rotate);
-
-conn_target_job_t choose_proxy_target(int target_dc) {
-  return mtproxy_ffi_mtproto_choose_proxy_target(target_dc);
-}
-
-int forward_mtproto_packet(struct tl_in_state *tlio_in, connection_job_t C,
-                           int len, int remote_ip_port[5], int rpc_flags) {
-  return mtproxy_ffi_mtproto_forward_mtproto_packet(tlio_in, C, len,
-                                                    remote_ip_port, rpc_flags);
-}
-
-/*
- *
- *	QUERY FORWARDING
- *
- */
-
-/* ----------- query rpc forwarding ------------ */
-
-int forward_tcp_query(struct tl_in_state *tlio_in, connection_job_t c,
-                      conn_target_job_t S, int flags, long long auth_key_id,
-                      int remote_ip_port[5], int our_ip_port[5]) {
-  return mtproxy_ffi_mtproto_forward_tcp_query(
-      tlio_in, c, S, flags, auth_key_id, remote_ip_port, our_ip_port);
-}
-
 /* -------------------------- EXTERFACE ---------------------------- */
-
-struct tl_act_extra *mtfront_parse_function(struct tl_in_state *tlio_in,
-                                            long long actor_id) {
-  return (struct tl_act_extra *)
-      mtproxy_ffi_mtproto_mtfront_parse_function_runtime(tlio_in, actor_id);
-}
-
-/* ------------------------ FLOOD CONTROL -------------------------- */
-
-void lru_delete_conn(connection_job_t c) {
-  int32_t rc = mtproxy_ffi_mtproto_ext_conn_lru_delete(CONN_INFO(c)->fd);
-  assert(rc >= 0);
-}
-
-void lru_insert_conn(connection_job_t c) {
-  int32_t rc = mtproxy_ffi_mtproto_ext_conn_lru_insert(
-      CONN_INFO(c)->fd, CONN_INFO(c)->generation);
-  assert(rc >= 0);
-}
-
-void check_all_conn_buffers(void) {
-  mtproxy_ffi_mtproto_check_all_conn_buffers();
-}
-
-int check_conn_buffers(connection_job_t c) {
-  return mtproxy_ffi_mtproto_check_conn_buffers_runtime(c);
-}
 
 // invoked in NET-CPU context!
 int mtfront_data_received(connection_job_t c, int bytes_received) {
@@ -564,22 +281,8 @@ void init_ct_server_mtfront(void) {
  *
  */
 
-static void kill_children(int signal) {
-  mtproxy_ffi_mtproto_kill_children(signal);
-}
-
 // SIGCHLD
 void on_child_termination(void) {}
-
-void check_children_status(void) {
-  mtproxy_ffi_mtproto_check_children_status();
-}
-
-void check_special_connections_overflow(void) {
-  mtproxy_ffi_mtproto_check_special_connections_overflow();
-}
-
-void cron(void) { mtproxy_ffi_mtproto_cron(); }
 
 int sfd;
 int http_ports_num;
@@ -591,16 +294,7 @@ int secret_count;
 // int outbound_connections_per_second =
 // DEFAULT_OUTBOUND_CONNECTION_CREATION_RATE;
 
-void mtfront_pre_loop(void) { mtproxy_ffi_mtproto_mtfront_pre_loop(); }
-
 void precise_cron(void) { update_local_stats(); }
-
-void mtfront_sigusr1_handler(void) {
-  reopen_logs_ext(slave_mode);
-  if (workers) {
-    kill_children(SIGUSR1);
-  }
-}
 
 /*
  *
@@ -610,40 +304,23 @@ void mtfront_sigusr1_handler(void) {
 
 void usage(void) { mtproxy_ffi_mtproto_usage(); }
 
-server_functions_t mtproto_front_functions;
-int f_parse_option(int val) { return mtproxy_ffi_mtproto_f_parse_option(val); }
-
-void mtfront_prepare_parse_options(void) {
-  mtproxy_ffi_mtproto_mtfront_prepare_parse_options();
-}
-
-void mtfront_parse_extra_args(int argc, char *argv[]) {
-  mtproxy_ffi_mtproto_mtfront_parse_extra_args(argc, argv);
-}
-
-// executed BEFORE dropping privileges
-void mtfront_pre_init(void) { mtproxy_ffi_mtproto_mtfront_pre_init(); }
-
-void mtfront_pre_start(void) { mtproxy_ffi_mtproto_mtfront_pre_start(); }
-
-void mtfront_on_exit(void) { mtproxy_ffi_mtproto_mtfront_on_exit(); }
-
 server_functions_t mtproto_front_functions = {
     .default_modules_disabled = 0,
-    .cron = cron,
+    .cron = mtproxy_ffi_mtproto_cron,
     .precise_cron = precise_cron,
-    .pre_init = mtfront_pre_init,
-    .pre_start = mtfront_pre_start,
-    .pre_loop = mtfront_pre_loop,
-    .on_exit = mtfront_on_exit,
+    .pre_init = mtproxy_ffi_mtproto_mtfront_pre_init,
+    .pre_start = mtproxy_ffi_mtproto_mtfront_pre_start,
+    .pre_loop = mtproxy_ffi_mtproto_mtfront_pre_loop,
+    .on_exit = mtproxy_ffi_mtproto_mtfront_on_exit,
     .prepare_stats = mtfront_prepare_stats,
-    .parse_option = f_parse_option,
-    .prepare_parse_options = mtfront_prepare_parse_options,
-    .parse_extra_args = mtfront_parse_extra_args,
+    .parse_option = mtproxy_ffi_mtproto_f_parse_option,
+    .prepare_parse_options = mtproxy_ffi_mtproto_mtfront_prepare_parse_options,
+    .parse_extra_args = mtproxy_ffi_mtproto_mtfront_parse_extra_args,
     .epoll_timeout = 1,
     .FullVersionStr = FullVersionStr,
     .ShortVersionStr = "mtproxy",
-    .parse_function = mtfront_parse_function,
+    .parse_function = (struct tl_act_extra * (*)(struct tl_in_state *, long long))
+        mtproxy_ffi_mtproto_mtfront_parse_function_runtime,
     .flags = ENGINE_NO_PORT
     //.http_functions = &http_methods_stats
 };
@@ -651,6 +328,7 @@ server_functions_t mtproto_front_functions = {
 int main(int argc, char *argv[]) {
   mtproto_front_functions.allowed_signals |= SIG2INT(SIGCHLD);
   mtproto_front_functions.signal_handlers[SIGCHLD] = on_child_termination;
-  mtproto_front_functions.signal_handlers[SIGUSR1] = mtfront_sigusr1_handler;
+  mtproto_front_functions.signal_handlers[SIGUSR1] =
+      mtproxy_ffi_mtproto_mtfront_sigusr1_handler;
   return default_main(&mtproto_front_functions, argc, argv);
 }

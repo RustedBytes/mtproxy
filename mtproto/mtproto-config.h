@@ -29,7 +29,6 @@
 enum mtproto_config_limits {
   MAX_CFG_CLUSTERS = 1024,
   MAX_CFG_TARGETS = 4096,
-  MAX_CLUSTER_TARGETS = 1024,
 };
 
 struct mf_cluster {
@@ -58,7 +57,6 @@ struct mf_config {
   struct mf_cluster *default_cluster;
   conn_target_job_t targets[MAX_CFG_TARGETS];
   struct mf_cluster auth_cluster[MAX_CFG_CLUSTERS];
-  //  struct mf_cluster *clusters_by_hash[MAX_CFG_CLUSTERS*2];
 };
 
 extern struct mf_config *CurConf;
