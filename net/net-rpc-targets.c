@@ -26,7 +26,6 @@
 #include "net/net-rpc-targets.h"
 #include <assert.h>
 #include <stdint.h>
-#include <stdlib.h>
 #include <unistd.h>
 
 #include "net/net-connections.h"

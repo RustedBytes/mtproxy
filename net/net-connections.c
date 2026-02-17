@@ -47,13 +47,10 @@
 
 #include "common/mp-queue.h"
 #include "jobs/jobs.h"
-#include "kprintf.h"
 #include "net/net-connections.h"
 #include "net/net-events.h"
 #include "precise-time.h"
 #include "vv/vv-tree.h"
-
-#include "net/net-msg-buffers.h"
 
 #include "common/common-stats.h"
 
@@ -828,14 +825,6 @@ int mtproxy_ffi_net_connections_rwm_union(struct raw_message *raw,
 }
 
 socket_connection_job_t alloc_new_socket_connection(connection_job_t C);
-
-static inline int compute_conn_events(socket_connection_job_t c) {
-  struct socket_connection_info *s = SOCKET_CONN_INFO(c);
-  int32_t events =
-      mtproxy_ffi_net_compute_conn_events(s->flags, CONNECTIONS_USE_EPOLLET);
-  assert(events == 0 || events == (EVT_READ | EVT_WRITE | EVT_SPEC));
-  return events;
-}
 
 void connection_write_close(connection_job_t C) {
   mtproxy_ffi_net_connections_connection_write_close(C);
