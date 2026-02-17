@@ -1,5 +1,10 @@
 use crate::*;
 
+unsafe extern "C" {
+    fn mtproxy_ffi_precise_time_set_tls(precise_now_value: f64, precise_now_rdtsc_value: i64);
+    fn mtproxy_ffi_precise_time_set_global(precise_time_value: i64, precise_time_rdtsc_value: i64);
+}
+
 #[no_mangle]
 pub static mut config_buff: *mut c_char = core::ptr::null_mut();
 
@@ -156,6 +161,37 @@ pub extern "C" fn mtproxy_ffi_precise_time_value() -> i64 {
 #[no_mangle]
 pub extern "C" fn mtproxy_ffi_precise_time_rdtsc_value() -> i64 {
     PRECISE_TIME_RDTSC.load(Ordering::Relaxed)
+}
+
+/// Legacy precise-time ABI entrypoint used by C and Rust extern callsites.
+#[no_mangle]
+pub unsafe extern "C" fn get_utime_monotonic() -> f64 {
+    let res = mtproxy_ffi_get_utime_monotonic();
+    let mut precise_now = mtproxy_ffi_precise_now_value();
+    let precise_now_rdtsc = mtproxy_ffi_precise_now_rdtsc_value();
+    if precise_now <= 0.0 {
+        precise_now = res;
+    }
+    unsafe { mtproxy_ffi_precise_time_set_tls(precise_now, precise_now_rdtsc) };
+    precise_now
+}
+
+/// Legacy precise-time ABI entrypoint used by C and Rust extern callsites.
+#[no_mangle]
+pub extern "C" fn get_double_time() -> f64 {
+    mtproxy_ffi_get_double_time()
+}
+
+/// Legacy precise-time ABI entrypoint used by C and Rust extern callsites.
+#[no_mangle]
+pub unsafe extern "C" fn get_utime(clock_id: c_int) -> f64 {
+    let res = mtproxy_ffi_get_utime(clock_id);
+    if clock_id == CLOCK_REALTIME_ID {
+        let precise_time = mtproxy_ffi_precise_time_value();
+        let precise_time_rdtsc = mtproxy_ffi_precise_time_rdtsc_value();
+        unsafe { mtproxy_ffi_precise_time_set_global(precise_time, precise_time_rdtsc) };
+    }
+    res
 }
 
 fn cfg_take_while<F>(bytes: &[u8], mut i: usize, mut f: F) -> usize

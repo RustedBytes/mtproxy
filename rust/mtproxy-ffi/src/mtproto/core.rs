@@ -623,15 +623,6 @@ unsafe extern "C" {
     fn signal_check_pending(sig: c_int) -> c_int;
     fn kprintf(format: *const c_char, ...);
     fn init_ct_server_mtfront();
-    fn rust_ffi_startup_check() -> c_int;
-    fn rust_ffi_check_concurrency_boundary() -> c_int;
-    fn rust_ffi_check_network_boundary() -> c_int;
-    fn rust_ffi_check_rpc_boundary() -> c_int;
-    fn rust_ffi_check_crypto_boundary() -> c_int;
-    fn rust_ffi_check_application_boundary() -> c_int;
-    fn rust_ffi_enable_concurrency_bridges() -> c_int;
-    fn rust_ffi_enable_crc32_bridge() -> c_int;
-    fn rust_ffi_enable_crc32c_bridge() -> c_int;
     fn tcp_rpc_init_proxy_domains();
     fn server_socket(port: c_int, in_addr: MtproxyInAddr, backlog: c_int, mode: c_int) -> c_int;
     fn kdb_load_hosts() -> c_int;
@@ -4422,15 +4413,15 @@ pub(super) unsafe fn mtproto_mtfront_pre_init_ffi() {
     }
 
     let checks: [unsafe extern "C" fn() -> c_int; 9] = [
-        rust_ffi_startup_check,
-        rust_ffi_check_concurrency_boundary,
-        rust_ffi_check_network_boundary,
-        rust_ffi_check_rpc_boundary,
-        rust_ffi_check_crypto_boundary,
-        rust_ffi_check_application_boundary,
-        rust_ffi_enable_concurrency_bridges,
-        rust_ffi_enable_crc32_bridge,
-        rust_ffi_enable_crc32c_bridge,
+        mtproxy_ffi_rust_bridge_startup_check,
+        mtproxy_ffi_rust_bridge_check_concurrency_boundary,
+        mtproxy_ffi_rust_bridge_check_network_boundary,
+        mtproxy_ffi_rust_bridge_check_rpc_boundary,
+        mtproxy_ffi_rust_bridge_check_crypto_boundary,
+        mtproxy_ffi_rust_bridge_check_application_boundary,
+        mtproxy_ffi_rust_bridge_enable_concurrency_bridges,
+        mtproxy_ffi_rust_bridge_enable_crc32_bridge,
+        mtproxy_ffi_rust_bridge_enable_crc32c_bridge,
     ];
     for check in checks {
         if unsafe { check() } < 0 {

@@ -20,7 +20,6 @@
 */
 
 #include "precise-time.h"
-#include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 
 __thread int now;
 __thread double precise_now;
@@ -28,23 +27,14 @@ __thread long long precise_now_rdtsc;
 long long precise_time;
 long long precise_time_rdtsc;
 
-double get_utime_monotonic(void) {
-  double res = mtproxy_ffi_get_utime_monotonic();
-  precise_now = mtproxy_ffi_precise_now_value();
-  precise_now_rdtsc = mtproxy_ffi_precise_now_rdtsc_value();
-  if (precise_now <= 0) {
-    precise_now = res;
-  }
-  return precise_now;
+void mtproxy_ffi_precise_time_set_tls(double precise_now_value,
+                                      long long precise_now_rdtsc_value) {
+  precise_now = precise_now_value;
+  precise_now_rdtsc = precise_now_rdtsc_value;
 }
 
-double get_double_time(void) { return mtproxy_ffi_get_double_time(); }
-
-double get_utime(int clock_id) {
-  double res = mtproxy_ffi_get_utime(clock_id);
-  if (clock_id == CLOCK_REALTIME) {
-    precise_time = mtproxy_ffi_precise_time_value();
-    precise_time_rdtsc = mtproxy_ffi_precise_time_rdtsc_value();
-  }
-  return res;
+void mtproxy_ffi_precise_time_set_global(long long precise_time_value,
+                                         long long precise_time_rdtsc_value) {
+  precise_time = precise_time_value;
+  precise_time_rdtsc = precise_time_rdtsc_value;
 }

@@ -514,6 +514,17 @@ uint32_t mtproxy_ffi_api_version(void);
 // Returns 0 on success, -1 on version mismatch.
 int32_t mtproxy_ffi_startup_handshake(uint32_t expected_api_version);
 
+// Rust-side implementations of legacy checks from common/rust-ffi-bridge.c.
+int32_t mtproxy_ffi_rust_bridge_startup_check(void);
+int32_t mtproxy_ffi_rust_bridge_check_concurrency_boundary(void);
+int32_t mtproxy_ffi_rust_bridge_check_network_boundary(void);
+int32_t mtproxy_ffi_rust_bridge_check_rpc_boundary(void);
+int32_t mtproxy_ffi_rust_bridge_check_crypto_boundary(void);
+int32_t mtproxy_ffi_rust_bridge_check_application_boundary(void);
+int32_t mtproxy_ffi_rust_bridge_enable_concurrency_bridges(void);
+int32_t mtproxy_ffi_rust_bridge_enable_crc32_bridge(void);
+int32_t mtproxy_ffi_rust_bridge_enable_crc32c_bridge(void);
+
 // Reports extracted Step 9 boundary contract for mp-queue/jobs operations.
 int32_t mtproxy_ffi_get_concurrency_boundary(mtproxy_ffi_concurrency_boundary_t *out);
 
@@ -561,6 +572,17 @@ int32_t mtproxy_ffi_mpq_handle_pop_w(void *handle, int32_t flags, void **out_val
 // Returns `1` when one value is dequeued, `0` when no value was produced.
 // Returns `-2` for non-waitable queue.
 int32_t mtproxy_ffi_mpq_handle_pop_nw(void *handle, int32_t flags, void **out_value);
+
+// Rust implementation of legacy `common/mp-queue-rust.c` helpers.
+int32_t mtproxy_ffi_mpq_rust_bridge_enable(void);
+int32_t mtproxy_ffi_mpq_rust_queue_attached(void *mq);
+int32_t mtproxy_ffi_mpq_rust_queue_waitable(void *mq);
+int32_t mtproxy_ffi_mpq_rust_init_queue(void *mq, int32_t waitable);
+void mtproxy_ffi_mpq_rust_clear_queue(void *mq);
+int32_t mtproxy_ffi_mpq_rust_is_empty(void *mq);
+long mtproxy_ffi_mpq_rust_push_w(void *mq, void *value, int32_t flags);
+void *mtproxy_ffi_mpq_rust_pop_nw(void *mq, int32_t flags);
+int32_t mtproxy_ffi_mpq_rust_attached_queues(void);
 
 // jobs helper: initializes Rust/Tokio main-queue bridge.
 int32_t mtproxy_ffi_jobs_tokio_init(void);
@@ -1757,6 +1779,9 @@ typedef struct mtproxy_ffi_am_memory_stat {
 
 // Stat function callback type
 typedef void (*mtproxy_ffi_stat_fun_t)(mtproxy_ffi_stats_buffer_t *sb);
+
+// TL parser stats formatter migrated from common/tl-parse.c
+int32_t mtproxy_ffi_tl_parse_prepare_stat(mtproxy_ffi_stats_buffer_t *sb);
 
 // Get memory usage for a process
 int32_t mtproxy_ffi_am_get_memory_usage(

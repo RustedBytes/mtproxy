@@ -37,6 +37,7 @@
 #include "net/net-connections.h"
 #include "net/net-events.h"
 #include "precise-time.h"
+#include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 #include "server-functions.h"
 #include "vv/vv-io.h"
 
@@ -44,7 +45,6 @@ int my_pid;
 
 int connections_prepare_stat(stats_buffer_t *sb);
 int udp_prepare_stat(stats_buffer_t *sb);
-int tl_parse_prepare_stat(stats_buffer_t *sb);
 int raw_msg_prepare_stat(stats_buffer_t *sb);
 int raw_msg_buffer_prepare_stat(stats_buffer_t *sb);
 int crypto_aes_prepare_stat(stats_buffer_t *sb);
@@ -102,7 +102,7 @@ int prepare_stats(char *buff, int buff_size) {
   connections_prepare_stat(&sb);
   raw_msg_prepare_stat(&sb);
   raw_msg_buffer_prepare_stat(&sb);
-  tl_parse_prepare_stat(&sb);
+  mtproxy_ffi_tl_parse_prepare_stat((mtproxy_ffi_stats_buffer_t *)&sb);
   crypto_aes_prepare_stat(&sb);
   crypto_dh_prepare_stat(&sb);
   jobs_prepare_stat(&sb);

@@ -8,6 +8,11 @@ use core::ptr::null_mut;
 unsafe extern "C" {
     fn gethostbyname(name: *const c_char) -> *mut libc::hostent;
     fn gethostbyname2(name: *const c_char, af: c_int) -> *mut libc::hostent;
+    fn jobs_enable_tokio_bridge() -> c_int;
+    fn crc32_partial_generic(data: *const c_void, len: c_long, crc: u32) -> u32;
+    fn crc32c_partial_four_tables(data: *const c_void, len: c_long, crc: u32) -> u32;
+    fn mtproxy_ffi_crc32_partial(data: *const u8, len: usize, crc: u32) -> u32;
+    fn mtproxy_ffi_crc32c_partial(data: *const u8, len: usize, crc: u32) -> u32;
 }
 
 #[no_mangle]
@@ -45,6 +50,383 @@ pub extern "C" fn mtproxy_ffi_api_version() -> u32 {
 #[no_mangle]
 pub extern "C" fn mtproxy_ffi_startup_handshake(expected_api_version: u32) -> i32 {
     startup_handshake_impl(expected_api_version)
+}
+
+#[inline]
+const fn has_required_ops(mask: u32, required: u32) -> bool {
+    (mask & required) == required
+}
+
+#[inline]
+const fn exceeds_contract(implemented: u32, contract: u32) -> bool {
+    (implemented & !contract) != 0
+}
+
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_rust_bridge_startup_check() -> i32 {
+    const RUST_FFI_EXPECTED_API_VERSION: u32 = 1;
+
+    let api_version = mtproxy_ffi_api_version();
+    if api_version != RUST_FFI_EXPECTED_API_VERSION {
+        return -1;
+    }
+    if mtproxy_ffi_startup_handshake(RUST_FFI_EXPECTED_API_VERSION) < 0 {
+        return -2;
+    }
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_rust_bridge_check_concurrency_boundary() -> i32 {
+    let mut boundary = MtproxyConcurrencyBoundary::default();
+    if unsafe { mtproxy_ffi_get_concurrency_boundary(&raw mut boundary) } < 0 {
+        return -1;
+    }
+    if boundary.boundary_version != CONCURRENCY_BOUNDARY_VERSION {
+        return -2;
+    }
+
+    const EXPECTED_MPQ: u32 = (1u32 << 0) | (1u32 << 1) | (1u32 << 2) | (1u32 << 3) | (1u32 << 4) | (1u32 << 5);
+    if !has_required_ops(boundary.mpq_contract_ops, EXPECTED_MPQ) {
+        return -3;
+    }
+
+    const EXPECTED_JOBS: u32 =
+        (1u32 << 0) | (1u32 << 1) | (1u32 << 2) | (1u32 << 3) | (1u32 << 4) | (1u32 << 5) | (1u32 << 6);
+    if !has_required_ops(boundary.jobs_contract_ops, EXPECTED_JOBS) {
+        return -4;
+    }
+
+    if exceeds_contract(boundary.mpq_implemented_ops, boundary.mpq_contract_ops) {
+        return -5;
+    }
+    if exceeds_contract(boundary.jobs_implemented_ops, boundary.jobs_contract_ops) {
+        return -6;
+    }
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_rust_bridge_check_network_boundary() -> i32 {
+    let mut boundary = MtproxyNetworkBoundary::default();
+    if unsafe { mtproxy_ffi_get_network_boundary(&raw mut boundary) } < 0 {
+        return -1;
+    }
+    if boundary.boundary_version != NETWORK_BOUNDARY_VERSION {
+        return -2;
+    }
+
+    const EXPECTED_EVENTS: u32 = (1u32 << 0) | (1u32 << 1);
+    if !has_required_ops(boundary.net_events_contract_ops, EXPECTED_EVENTS) {
+        return -3;
+    }
+
+    const EXPECTED_TIMERS: u32 = 1u32 << 0;
+    if !has_required_ops(boundary.net_timers_contract_ops, EXPECTED_TIMERS) {
+        return -4;
+    }
+
+    const EXPECTED_MSGBUFFERS: u32 = 1u32 << 0;
+    if !has_required_ops(boundary.net_msg_buffers_contract_ops, EXPECTED_MSGBUFFERS) {
+        return -5;
+    }
+
+    if exceeds_contract(
+        boundary.net_events_implemented_ops,
+        boundary.net_events_contract_ops,
+    ) {
+        return -6;
+    }
+    if exceeds_contract(
+        boundary.net_timers_implemented_ops,
+        boundary.net_timers_contract_ops,
+    ) {
+        return -7;
+    }
+    if exceeds_contract(
+        boundary.net_msg_buffers_implemented_ops,
+        boundary.net_msg_buffers_contract_ops,
+    ) {
+        return -8;
+    }
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_rust_bridge_check_rpc_boundary() -> i32 {
+    let mut boundary = MtproxyRpcBoundary::default();
+    if unsafe { mtproxy_ffi_get_rpc_boundary(&raw mut boundary) } < 0 {
+        return -1;
+    }
+    if boundary.boundary_version != RPC_BOUNDARY_VERSION {
+        return -2;
+    }
+
+    const EXPECTED_COMMON: u32 = 1u32 << 0;
+    if !has_required_ops(boundary.tcp_rpc_common_contract_ops, EXPECTED_COMMON) {
+        return -3;
+    }
+
+    const EXPECTED_CLIENT: u32 = (1u32 << 0) | (1u32 << 1) | (1u32 << 2);
+    if !has_required_ops(boundary.tcp_rpc_client_contract_ops, EXPECTED_CLIENT) {
+        return -4;
+    }
+
+    const EXPECTED_SERVER: u32 = (1u32 << 0) | (1u32 << 1) | (1u32 << 2) | (1u32 << 3) | (1u32 << 4);
+    if !has_required_ops(boundary.tcp_rpc_server_contract_ops, EXPECTED_SERVER) {
+        return -5;
+    }
+
+    const EXPECTED_TARGETS: u32 = 1u32 << 0;
+    if !has_required_ops(boundary.rpc_targets_contract_ops, EXPECTED_TARGETS) {
+        return -6;
+    }
+
+    if exceeds_contract(
+        boundary.tcp_rpc_common_implemented_ops,
+        boundary.tcp_rpc_common_contract_ops,
+    ) {
+        return -7;
+    }
+    if exceeds_contract(
+        boundary.tcp_rpc_client_implemented_ops,
+        boundary.tcp_rpc_client_contract_ops,
+    ) {
+        return -8;
+    }
+    if exceeds_contract(
+        boundary.tcp_rpc_server_implemented_ops,
+        boundary.tcp_rpc_server_contract_ops,
+    ) {
+        return -9;
+    }
+    if exceeds_contract(
+        boundary.rpc_targets_implemented_ops,
+        boundary.rpc_targets_contract_ops,
+    ) {
+        return -10;
+    }
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_rust_bridge_check_crypto_boundary() -> i32 {
+    let mut boundary = MtproxyCryptoBoundary::default();
+    if unsafe { mtproxy_ffi_get_crypto_boundary(&raw mut boundary) } < 0 {
+        return -1;
+    }
+    if boundary.boundary_version != CRYPTO_BOUNDARY_VERSION {
+        return -2;
+    }
+
+    const EXPECTED_AES: u32 = 1u32 << 0;
+    if !has_required_ops(boundary.net_crypto_aes_contract_ops, EXPECTED_AES) {
+        return -3;
+    }
+
+    const EXPECTED_DH: u32 = (1u32 << 0) | (1u32 << 1) | (1u32 << 2) | (1u32 << 3) | (1u32 << 4);
+    if !has_required_ops(boundary.net_crypto_dh_contract_ops, EXPECTED_DH) {
+        return -4;
+    }
+
+    const EXPECTED_AESNI: u32 = (1u32 << 0) | (1u32 << 1) | (1u32 << 2);
+    if !has_required_ops(boundary.aesni_contract_ops, EXPECTED_AESNI) {
+        return -5;
+    }
+
+    if exceeds_contract(
+        boundary.net_crypto_aes_implemented_ops,
+        boundary.net_crypto_aes_contract_ops,
+    ) {
+        return -6;
+    }
+    if exceeds_contract(
+        boundary.net_crypto_dh_implemented_ops,
+        boundary.net_crypto_dh_contract_ops,
+    ) {
+        return -7;
+    }
+    if exceeds_contract(boundary.aesni_implemented_ops, boundary.aesni_contract_ops) {
+        return -8;
+    }
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_rust_bridge_check_application_boundary() -> i32 {
+    let mut boundary = MtproxyApplicationBoundary::default();
+    if unsafe { mtproxy_ffi_get_application_boundary(&raw mut boundary) } < 0 {
+        return -1;
+    }
+    if boundary.boundary_version != APPLICATION_BOUNDARY_VERSION {
+        return -2;
+    }
+
+    const EXPECTED_ENGINE_RPC: u32 = (1u32 << 0) | (1u32 << 1);
+    if !has_required_ops(boundary.engine_rpc_contract_ops, EXPECTED_ENGINE_RPC) {
+        return -3;
+    }
+
+    const EXPECTED_MTPROTO_PROXY: u32 = (1u32 << 0) | (1u32 << 1);
+    if !has_required_ops(boundary.mtproto_proxy_contract_ops, EXPECTED_MTPROTO_PROXY) {
+        return -4;
+    }
+
+    if exceeds_contract(
+        boundary.engine_rpc_implemented_ops,
+        boundary.engine_rpc_contract_ops,
+    ) {
+        return -5;
+    }
+    if exceeds_contract(
+        boundary.mtproto_proxy_implemented_ops,
+        boundary.mtproto_proxy_contract_ops,
+    ) {
+        return -6;
+    }
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_rust_bridge_enable_concurrency_bridges() -> i32 {
+    let mut boundary = MtproxyConcurrencyBoundary::default();
+    if unsafe { mtproxy_ffi_get_concurrency_boundary(&raw mut boundary) } < 0 {
+        return -1;
+    }
+    if boundary.boundary_version != CONCURRENCY_BOUNDARY_VERSION {
+        return -2;
+    }
+    if unsafe { jobs_enable_tokio_bridge() } < 0 {
+        return -3;
+    }
+    if unsafe { mtproxy_ffi_mpq_rust_bridge_enable() } < 0 {
+        return -4;
+    }
+    0
+}
+
+unsafe fn rust_crc32_partial_adapter(data: *const u8, len: usize, crc: u32) -> u32 {
+    if len == 0 {
+        return crc;
+    }
+    unsafe { mtproxy_ffi_crc32_partial(data, len, crc) }
+}
+
+unsafe fn rust_crc32c_partial_adapter(data: *const u8, len: usize, crc: u32) -> u32 {
+    if len == 0 {
+        return crc;
+    }
+    unsafe { mtproxy_ffi_crc32c_partial(data, len, crc) }
+}
+
+unsafe fn rust_bridge_crc32_selfcheck() -> i32 {
+    let k_case_hello = *b"hello";
+    let k_case_numeric = *b"123456789";
+    let mut k_case_bytes = [0u8; 256];
+    for (i, b) in k_case_bytes.iter_mut().enumerate() {
+        *b = i as u8;
+    }
+
+    let cases: [(&[u8], u32); 4] = [
+        (&k_case_hello, 0xffff_ffff),
+        (&k_case_numeric, 0xffff_ffff),
+        (&k_case_numeric, 0x1234_5678),
+        (&[], 0xffff_ffff),
+    ];
+    for (case, seed) in cases {
+        let c_crc = unsafe { crc32_partial_generic(case.as_ptr().cast(), case.len() as c_long, seed) };
+        let r_crc = unsafe { rust_crc32_partial_adapter(case.as_ptr(), case.len(), seed) };
+        if c_crc != r_crc {
+            return -1;
+        }
+    }
+
+    let c_crc = unsafe { crc32_partial_generic(k_case_bytes.as_ptr().cast(), 256, 0x1234_5678) };
+    let r_crc = unsafe { rust_crc32_partial_adapter(k_case_bytes.as_ptr(), 256, 0x1234_5678) };
+    if c_crc != r_crc {
+        return -2;
+    }
+
+    let split = 73usize;
+    let mut c_split = unsafe { crc32_partial_generic(k_case_bytes.as_ptr().cast(), split as c_long, 0x89ab_cdef) };
+    c_split = unsafe {
+        crc32_partial_generic(
+            k_case_bytes.as_ptr().add(split).cast(),
+            (k_case_bytes.len() - split) as c_long,
+            c_split,
+        )
+    };
+    let mut r_split = unsafe { rust_crc32_partial_adapter(k_case_bytes.as_ptr(), split, 0x89ab_cdef) };
+    r_split =
+        unsafe { rust_crc32_partial_adapter(k_case_bytes.as_ptr().add(split), k_case_bytes.len() - split, r_split) };
+    if c_split != r_split {
+        return -3;
+    }
+    0
+}
+
+unsafe fn rust_bridge_crc32c_selfcheck() -> i32 {
+    let k_case_hello = *b"hello";
+    let k_case_numeric = *b"123456789";
+    let mut k_case_bytes = [0u8; 256];
+    for (i, b) in k_case_bytes.iter_mut().enumerate() {
+        *b = i as u8;
+    }
+
+    let cases: [(&[u8], u32); 4] = [
+        (&k_case_hello, 0xffff_ffff),
+        (&k_case_numeric, 0xffff_ffff),
+        (&k_case_numeric, 0x1234_5678),
+        (&[], 0xffff_ffff),
+    ];
+    for (case, seed) in cases {
+        let c_crc = unsafe { crc32c_partial_four_tables(case.as_ptr().cast(), case.len() as c_long, seed) };
+        let r_crc = unsafe { rust_crc32c_partial_adapter(case.as_ptr(), case.len(), seed) };
+        if c_crc != r_crc {
+            return -1;
+        }
+    }
+
+    let c_crc = unsafe { crc32c_partial_four_tables(k_case_bytes.as_ptr().cast(), 256, 0x1234_5678) };
+    let r_crc = unsafe { rust_crc32c_partial_adapter(k_case_bytes.as_ptr(), 256, 0x1234_5678) };
+    if c_crc != r_crc {
+        return -2;
+    }
+
+    let split = 73usize;
+    let mut c_split =
+        unsafe { crc32c_partial_four_tables(k_case_bytes.as_ptr().cast(), split as c_long, 0x89ab_cdef) };
+    c_split = unsafe {
+        crc32c_partial_four_tables(
+            k_case_bytes.as_ptr().add(split).cast(),
+            (k_case_bytes.len() - split) as c_long,
+            c_split,
+        )
+    };
+    let mut r_split = unsafe { rust_crc32c_partial_adapter(k_case_bytes.as_ptr(), split, 0x89ab_cdef) };
+    r_split = unsafe {
+        rust_crc32c_partial_adapter(k_case_bytes.as_ptr().add(split), k_case_bytes.len() - split, r_split)
+    };
+    if c_split != r_split {
+        return -3;
+    }
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_rust_bridge_enable_crc32_bridge() -> i32 {
+    if unsafe { rust_bridge_crc32_selfcheck() } < 0 {
+        return -1;
+    }
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_rust_bridge_enable_crc32c_bridge() -> i32 {
+    if unsafe { rust_bridge_crc32c_selfcheck() } < 0 {
+        return -1;
+    }
+    0
 }
 
 /// Returns extracted Step 9 boundary contract for mp-queue/jobs migration.

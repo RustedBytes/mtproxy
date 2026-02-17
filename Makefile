@@ -48,7 +48,6 @@ DEPENDENCE_RUST	:=	$(subst ${OBJ}/,${DEP}/,$(patsubst %.o,%.d,${RUST_OBJECTS}))
 LIB_OBJS_NORMAL := \
 	${OBJ}/common/parse-config.o \
 	${OBJ}/jobs/jobs.o \
-	${OBJ}/common/mp-queue-rust.o \
 	${OBJ}/net/net-events.o ${OBJ}/net/net-msg.o ${OBJ}/net/net-msg-buffers.o \
 	${OBJ}/net/net-config.o ${OBJ}/net/net-crypto-aes.o ${OBJ}/net/net-crypto-dh.o \
 	${OBJ}/net/net-connections.o \
@@ -63,7 +62,6 @@ LIB_OBJS_NORMAL := \
 	${OBJ}/net/net-thread.o ${OBJ}/net/net-stats.o \
 	${OBJ}/common/kprintf.o \
 	${OBJ}/common/precise-time.o \
-	${OBJ}/common/rust-ffi-bridge.o \
 
 LIB_OBJS := ${LIB_OBJS_NORMAL}
 
@@ -94,7 +92,7 @@ ${LIB_OBJS_NORMAL}: ${OBJ}/%.o: %.c | create_dirs_and_headers
 ${EXELIST}: ${LIBLIST}
 
 ${EXE}/mtproto-proxy: ${RUST_OBJECTS} ${LIB}/libkdb.a ${RUST_FFI_STATICLIB}
-	${CC} -o $@ ${RUST_OBJECTS} ${LIB}/libkdb.a ${RUST_FFI_STATICLIB} ${LIB}/libkdb.a ${RUST_FFI_STATICLIB} ${LDFLAGS} -ldl
+	${CC} -o $@ ${RUST_OBJECTS} ${LIB}/libkdb.a ${RUST_FFI_STATICLIB} ${LIB}/libkdb.a ${RUST_FFI_STATICLIB} ${LIB}/libkdb.a ${LDFLAGS} -ldl
 
 ${RUST_FFI_STATICLIB}: Cargo.toml Cargo.lock rust/mtproxy-core/Cargo.toml rust/mtproxy-ffi/Cargo.toml ${RUST_RS_SOURCES}
 	cargo build  -p mtproxy-ffi
@@ -109,7 +107,7 @@ release: ${ALLDIRS} ${RUST_RUNTIME_RELEASE}
 	cp ${RUST_RUNTIME_RELEASE} ${EXE}/mtproxy-rust
 
 release-legacy: ${ALLDIRS} ${RUST_OBJECTS} ${LIB}/libkdb.a ${RUST_FFI_STATICLIB_RELEASE}
-	${CC} -o ${EXE}/mtproto-proxy ${RUST_OBJECTS} ${LIB}/libkdb.a ${RUST_FFI_STATICLIB_RELEASE} ${LIB}/libkdb.a ${RUST_FFI_STATICLIB_RELEASE} ${LDFLAGS} -ldl
+	${CC} -o ${EXE}/mtproto-proxy ${RUST_OBJECTS} ${LIB}/libkdb.a ${RUST_FFI_STATICLIB_RELEASE} ${LIB}/libkdb.a ${RUST_FFI_STATICLIB_RELEASE} ${LIB}/libkdb.a ${LDFLAGS} -ldl
 
 ${LIB}/libkdb.a: ${LIB_OBJS}
 	rm -f $@ && ar rcs $@ $^

@@ -8,6 +8,9 @@ use std::sync::atomic::{AtomicI32, Ordering};
 const MPQ_FFI_ERR_INVALID_ARGS: i32 = -1;
 const MPQ_FFI_ERR_NOT_WAITABLE: i32 = -2;
 const MPQ_FFI_ERR_NULL_VALUE: i32 = -3;
+const MPQ_RUST_INIT_ERR_CREATE_FAILED: i32 = -2;
+const MQ_MAGIC_RUST: c_int = 0x53ed_7b41;
+const MQ_MAGIC_RUST_SEM: c_int = 0x53ed_7b42;
 
 type MpQueueValue = usize;
 const MAX_JOB_THREADS: i32 = 256;
@@ -32,6 +35,7 @@ thread_local! {
 static MPQ_THREADS: AtomicI32 = AtomicI32::new(0);
 static MPQ_ACTIVE: AtomicI32 = AtomicI32::new(0);
 static MPQ_ALLOCATED: AtomicI32 = AtomicI32::new(0);
+static MPQ_RUST_ATTACHED: AtomicI32 = AtomicI32::new(0);
 
 struct MpQueueHandle {
     queue: MpQueue<MpQueueValue>,
@@ -50,15 +54,6 @@ unsafe extern "C" {
     fn posix_memalign(memptr: *mut *mut c_void, alignment: usize, size: usize) -> c_int;
     fn free(ptr: *mut c_void);
 
-    fn mpq_rust_init_queue(mq: *mut MpQueueC, waitable: c_int) -> c_int;
-    fn mpq_rust_clear_queue(mq: *mut MpQueueC);
-    fn mpq_rust_queue_attached(mq: *mut MpQueueC) -> c_int;
-    fn mpq_rust_queue_waitable(mq: *mut MpQueueC) -> c_int;
-    fn mpq_rust_is_empty(mq: *mut MpQueueC) -> c_int;
-    fn mpq_rust_push_w(mq: *mut MpQueueC, value: *mut c_void, flags: c_int) -> c_long;
-    fn mpq_rust_pop_nw(mq: *mut MpQueueC, flags: c_int) -> *mut c_void;
-
-    static mpq_rust_attached_queues: c_int;
 }
 
 #[inline]
@@ -77,6 +72,143 @@ const fn map_waitable_error(error: MpQueueError) -> i32 {
 unsafe fn handle_ref<'a>(handle: *mut c_void) -> Option<&'a mut MpQueueHandle> {
     // SAFETY: caller validates `handle` and ownership contract.
     unsafe { mut_ref_from_ptr(handle.cast::<MpQueueHandle>()) }
+}
+
+#[inline]
+const fn is_rust_magic(magic: c_int) -> bool {
+    magic == MQ_MAGIC_RUST || magic == MQ_MAGIC_RUST_SEM
+}
+
+#[inline]
+unsafe fn queue_is_waitable(mq: &MpQueueC) -> bool {
+    mq.mq_magic == MQ_MAGIC_RUST_SEM
+}
+
+#[inline]
+unsafe fn queue_handle(mq: &mut MpQueueC) -> *mut c_void {
+    unsafe { abort_if(!is_rust_magic(mq.mq_magic)) };
+    unsafe { abort_if(mq.mq_head.is_null() || mq.mq_tail.is_null()) };
+    unsafe { abort_if(mq.mq_head != mq.mq_tail) };
+    mq.mq_head
+}
+
+/// Rust implementation of `common/mp-queue-rust.c:mpq_rust_bridge_enable`.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mpq_rust_bridge_enable() -> c_int {
+    0
+}
+
+/// Rust implementation of `common/mp-queue-rust.c:mpq_rust_queue_attached`.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mpq_rust_queue_attached(mq: *mut c_void) -> c_int {
+    let Some(mq_ref) = (unsafe { mut_ref_from_ptr(mq.cast::<MpQueueC>()) }) else {
+        return 0;
+    };
+    if is_rust_magic(mq_ref.mq_magic) { 1 } else { 0 }
+}
+
+/// Rust implementation of `common/mp-queue-rust.c:mpq_rust_queue_waitable`.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mpq_rust_queue_waitable(mq: *mut c_void) -> c_int {
+    let Some(mq_ref) = (unsafe { mut_ref_from_ptr(mq.cast::<MpQueueC>()) }) else {
+        return 0;
+    };
+    if unsafe { queue_is_waitable(mq_ref) } {
+        1
+    } else {
+        0
+    }
+}
+
+/// Rust implementation of `common/mp-queue-rust.c:mpq_rust_init_queue`.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mpq_rust_init_queue(mq: *mut c_void, waitable: c_int) -> c_int {
+    let Some(mq_ref) = (unsafe { mut_ref_from_ptr(mq.cast::<MpQueueC>()) }) else {
+        return MPQ_FFI_ERR_INVALID_ARGS;
+    };
+    unsafe { abort_if(is_rust_magic(mq_ref.mq_magic)) };
+
+    let mut handle: *mut c_void = ptr::null_mut();
+    let rc = unsafe { mtproxy_ffi_mpq_handle_create((waitable != 0).into(), &raw mut handle) };
+    if rc < 0 || handle.is_null() {
+        return MPQ_RUST_INIT_ERR_CREATE_FAILED;
+    }
+
+    unsafe { ptr::write_bytes(mq_ref as *mut MpQueueC as *mut u8, 0, core::mem::size_of::<MpQueueC>()) };
+    mq_ref.mq_head = handle;
+    mq_ref.mq_tail = handle;
+    mq_ref.mq_magic = if waitable != 0 {
+        MQ_MAGIC_RUST_SEM
+    } else {
+        MQ_MAGIC_RUST
+    };
+    MPQ_RUST_ATTACHED.fetch_add(1, Ordering::AcqRel);
+    0
+}
+
+/// Rust implementation of `common/mp-queue-rust.c:mpq_rust_clear_queue`.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mpq_rust_clear_queue(mq: *mut c_void) {
+    let Some(mq_ref) = (unsafe { mut_ref_from_ptr(mq.cast::<MpQueueC>()) }) else {
+        return;
+    };
+    if !is_rust_magic(mq_ref.mq_magic) {
+        return;
+    }
+
+    let handle = unsafe { queue_handle(mq_ref) };
+    let rc = unsafe { mtproxy_ffi_mpq_handle_destroy(handle) };
+    unsafe { abort_if(rc != 0) };
+
+    mq_ref.mq_head = ptr::null_mut();
+    mq_ref.mq_tail = ptr::null_mut();
+    mq_ref.mq_magic = 0;
+    MPQ_RUST_ATTACHED.fetch_sub(1, Ordering::AcqRel);
+}
+
+/// Rust implementation of `common/mp-queue-rust.c:mpq_rust_is_empty`.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mpq_rust_is_empty(mq: *mut c_void) -> c_int {
+    let mq_ref = unsafe { queue_ref(mq) };
+    let rc = unsafe { mtproxy_ffi_mpq_handle_is_empty(queue_handle(mq_ref)) };
+    unsafe { abort_if(rc != 0 && rc != 1) };
+    rc
+}
+
+/// Rust implementation of `common/mp-queue-rust.c:mpq_rust_push_w`.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mpq_rust_push_w(
+    mq: *mut c_void,
+    value: *mut c_void,
+    flags: c_int,
+) -> c_long {
+    let mq_ref = unsafe { queue_ref(mq) };
+    unsafe { abort_if(!queue_is_waitable(mq_ref)) };
+
+    let mut pos: i64 = -1;
+    let rc = unsafe { mtproxy_ffi_mpq_handle_push_w(queue_handle(mq_ref), value, flags, &raw mut pos) };
+    unsafe { abort_if(rc != 0) };
+    pos as c_long
+}
+
+/// Rust implementation of `common/mp-queue-rust.c:mpq_rust_pop_nw`.
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mpq_rust_pop_nw(
+    mq: *mut c_void,
+    flags: c_int,
+) -> *mut c_void {
+    let mq_ref = unsafe { queue_ref(mq) };
+    unsafe { abort_if(!queue_is_waitable(mq_ref)) };
+
+    let mut out: *mut c_void = ptr::null_mut();
+    let rc = unsafe { mtproxy_ffi_mpq_handle_pop_nw(queue_handle(mq_ref), flags, &raw mut out) };
+    unsafe { abort_if(rc != 0 && rc != 1) };
+    if rc == 1 { out } else { ptr::null_mut() }
+}
+
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_mpq_rust_attached_queues() -> c_int {
+    MPQ_RUST_ATTACHED.load(Ordering::Acquire)
 }
 
 /// Creates a Rust-backed MPQ handle.
@@ -399,9 +531,10 @@ pub unsafe extern "C" fn get_this_thread_id() -> c_int {
 pub unsafe extern "C" fn init_mp_queue_w(mq: *mut c_void) {
     // SAFETY: assert legacy pointer contract before calling C bridge.
     let mq = unsafe { queue_ref(mq) };
+    let mq_ptr = (mq as *mut MpQueueC).cast::<c_void>();
     MPQ_ACTIVE.fetch_add(1, Ordering::AcqRel);
     // SAFETY: C bridge validates queue state and initializes handle.
-    let rc = unsafe { mpq_rust_init_queue(mq, 1) };
+    let rc = unsafe { mtproxy_ffi_mpq_rust_init_queue(mq_ptr, 1) };
     unsafe { abort_if(rc < 0) };
 }
 
@@ -432,14 +565,15 @@ pub unsafe extern "C" fn alloc_mp_queue_w() -> *mut c_void {
 pub unsafe extern "C" fn clear_mp_queue(mq: *mut c_void) {
     // SAFETY: assert legacy pointer contract before bridge calls.
     let mq = unsafe { queue_ref(mq) };
+    let mq_ptr = (mq as *mut MpQueueC).cast::<c_void>();
     // SAFETY: C bridge only reads queue metadata.
-    if unsafe { mpq_rust_queue_waitable(mq) } != 0 {
+    if unsafe { mtproxy_ffi_mpq_rust_queue_waitable(mq_ptr) } != 0 {
         MPQ_ACTIVE.fetch_sub(1, Ordering::AcqRel);
     }
     // SAFETY: maintain legacy assert that queue must be attached.
-    unsafe { abort_if(mpq_rust_queue_attached(mq) == 0) };
+    unsafe { abort_if(mtproxy_ffi_mpq_rust_queue_attached(mq_ptr) == 0) };
     // SAFETY: bridge detaches and destroys underlying Rust handle.
-    unsafe { mpq_rust_clear_queue(mq) };
+    unsafe { mtproxy_ffi_mpq_rust_clear_queue(mq_ptr) };
 }
 
 #[no_mangle]
@@ -455,36 +589,38 @@ pub unsafe extern "C" fn free_mp_queue(mq: *mut c_void) {
 pub unsafe extern "C" fn mpq_is_empty(mq: *mut c_void) -> c_int {
     // SAFETY: assert legacy pointer contract before bridge calls.
     let mq = unsafe { queue_ref(mq) };
+    let mq_ptr = (mq as *mut MpQueueC).cast::<c_void>();
     // SAFETY: maintain legacy assert that queue must be attached.
-    unsafe { abort_if(mpq_rust_queue_attached(mq) == 0) };
+    unsafe { abort_if(mtproxy_ffi_mpq_rust_queue_attached(mq_ptr) == 0) };
     // SAFETY: bridge reads queue state and returns 0/1.
-    unsafe { mpq_rust_is_empty(mq) }
+    unsafe { mtproxy_ffi_mpq_rust_is_empty(mq_ptr) }
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn mpq_pop_nw(mq: *mut c_void, flags: c_int) -> *mut c_void {
     // SAFETY: assert legacy pointer contract before bridge calls.
     let mq = unsafe { queue_ref(mq) };
+    let mq_ptr = (mq as *mut MpQueueC).cast::<c_void>();
     // SAFETY: maintain legacy assert that queue must be attached.
-    unsafe { abort_if(mpq_rust_queue_attached(mq) == 0) };
+    unsafe { abort_if(mtproxy_ffi_mpq_rust_queue_attached(mq_ptr) == 0) };
     // SAFETY: bridge executes non-blocking pop for waitable queue.
-    unsafe { mpq_rust_pop_nw(mq, flags) }
+    unsafe { mtproxy_ffi_mpq_rust_pop_nw(mq_ptr, flags) }
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn mpq_push_w(mq: *mut c_void, value: *mut c_void, flags: c_int) -> c_long {
     // SAFETY: assert legacy pointer contract before bridge calls.
     let mq = unsafe { queue_ref(mq) };
+    let mq_ptr = (mq as *mut MpQueueC).cast::<c_void>();
     // SAFETY: maintain legacy assert that queue must be attached.
-    unsafe { abort_if(mpq_rust_queue_attached(mq) == 0) };
+    unsafe { abort_if(mtproxy_ffi_mpq_rust_queue_attached(mq_ptr) == 0) };
     // SAFETY: bridge executes waitable push.
-    unsafe { mpq_rust_push_w(mq, value, flags) }
+    unsafe { mtproxy_ffi_mpq_rust_push_w(mq_ptr, value, flags) }
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn mp_queue_prepare_stat(sb: *mut c_void) -> c_int {
-    // SAFETY: volatile read mirrors C-side access semantics.
-    let attached = unsafe { core::ptr::read_volatile(&raw const mpq_rust_attached_queues) };
+    let attached = mtproxy_ffi_mpq_rust_attached_queues();
     let active = MPQ_ACTIVE.load(Ordering::Acquire);
     let allocated = MPQ_ALLOCATED.load(Ordering::Acquire);
 

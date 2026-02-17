@@ -1,6 +1,7 @@
 use super::abi as tl_abi;
 use crate::MtproxyProcessId;
 use core::ffi::{c_char, c_int, c_void};
+use core::ptr;
 use core::sync::atomic::{AtomicI32, AtomicI64, Ordering};
 
 pub use tl_abi::{RawMessage, TlInMethods, TlInState, TlOutMethods, TlOutState, TlQueryHeader};
@@ -16,6 +17,14 @@ static TL_OUT_ALLOCATED: AtomicI32 = AtomicI32::new(0);
 const TL_TYPE_NONE: c_int = 0;
 const TL_TYPE_RAW_MSG: c_int = 2;
 const TL_TYPE_TCP_RAW_MSG: c_int = 3;
+
+#[repr(C)]
+pub struct TlParseStatsBuffer {
+    pub buff: *mut c_char,
+    pub pos: c_int,
+    pub size: c_int,
+    pub flags: c_int,
+}
 
 #[no_mangle]
 pub static tl_in_raw_msg_methods: TlInMethods = tl_abi::TL_IN_RAW_MSG_METHODS;
@@ -39,6 +48,42 @@ unsafe extern "C" {
         out_pid: *mut MtproxyProcessId,
     ) -> c_int;
     fn mtproxy_ffi_rpc_target_choose_connection_by_pid(pid: *mut MtproxyProcessId) -> *mut c_void;
+    static mut start_time: c_int;
+    fn tcp_get_default_rpc_flags() -> u32;
+}
+
+unsafe fn append_to_sb(sb: *mut TlParseStatsBuffer, text: &str) {
+    if sb.is_null() {
+        return;
+    }
+
+    let sb_ref = unsafe { &mut *sb };
+    if sb_ref.buff.is_null() || sb_ref.size <= 0 || sb_ref.pos >= sb_ref.size {
+        return;
+    }
+
+    let remaining = (sb_ref.size - sb_ref.pos) as usize;
+    if remaining <= 1 {
+        return;
+    }
+
+    let bytes = text.as_bytes();
+    let to_copy = core::cmp::min(remaining - 1, bytes.len());
+    if to_copy == 0 {
+        return;
+    }
+
+    let dest = unsafe { sb_ref.buff.add(sb_ref.pos as usize) as *mut u8 };
+    unsafe { core::ptr::copy_nonoverlapping(bytes.as_ptr(), dest, to_copy) };
+    sb_ref.pos += to_copy as c_int;
+    if sb_ref.pos < sb_ref.size {
+        unsafe { *sb_ref.buff.add(sb_ref.pos as usize) = 0 };
+    }
+}
+
+#[inline]
+fn safe_div(x: f64, y: f64) -> f64 {
+    if y > 0.0 { x / y } else { 0.0 }
 }
 
 #[no_mangle]
@@ -1075,41 +1120,39 @@ pub extern "C" fn mtproxy_ffi_tl_parse_note_tl_out_alloc_delta(delta: c_int) {
 }
 
 #[no_mangle]
-pub extern "C" fn mtproxy_ffi_tl_parse_rpc_queries_received() -> i64 {
-    TL_RPC_QUERIES_RECEIVED.load(Ordering::Relaxed)
-}
+pub unsafe extern "C" fn mtproxy_ffi_tl_parse_prepare_stat(
+    sb: *mut TlParseStatsBuffer,
+) -> c_int {
+    if sb.is_null() {
+        return -1;
+    }
 
-#[no_mangle]
-pub extern "C" fn mtproxy_ffi_tl_parse_rpc_answers_error() -> i64 {
-    TL_RPC_ANSWERS_ERROR.load(Ordering::Relaxed)
-}
+    let rpc_queries_received = TL_RPC_QUERIES_RECEIVED.load(Ordering::Relaxed);
+    let rpc_answers_error = TL_RPC_ANSWERS_ERROR.load(Ordering::Relaxed);
+    let rpc_answers_received = TL_RPC_ANSWERS_RECEIVED.load(Ordering::Relaxed);
+    let rpc_sent_errors = TL_RPC_SENT_ERRORS.load(Ordering::Relaxed);
+    let rpc_sent_answers = TL_RPC_SENT_ANSWERS.load(Ordering::Relaxed);
+    let rpc_sent_queries = TL_RPC_SENT_QUERIES.load(Ordering::Relaxed);
+    let tl_in_allocated = TL_IN_ALLOCATED.load(Ordering::Relaxed);
+    let tl_out_allocated = TL_OUT_ALLOCATED.load(Ordering::Relaxed);
 
-#[no_mangle]
-pub extern "C" fn mtproxy_ffi_tl_parse_rpc_answers_received() -> i64 {
-    TL_RPC_ANSWERS_RECEIVED.load(Ordering::Relaxed)
-}
+    let now = libc::time(ptr::null_mut()) as i64;
+    let uptime = (now - i64::from(unsafe { start_time })) as f64;
+    let default_rpc_flags = unsafe { tcp_get_default_rpc_flags() };
+    let rpc_qps = safe_div(rpc_queries_received as f64, uptime);
 
-#[no_mangle]
-pub extern "C" fn mtproxy_ffi_tl_parse_rpc_sent_errors() -> i64 {
-    TL_RPC_SENT_ERRORS.load(Ordering::Relaxed)
-}
-
-#[no_mangle]
-pub extern "C" fn mtproxy_ffi_tl_parse_rpc_sent_answers() -> i64 {
-    TL_RPC_SENT_ANSWERS.load(Ordering::Relaxed)
-}
-
-#[no_mangle]
-pub extern "C" fn mtproxy_ffi_tl_parse_rpc_sent_queries() -> i64 {
-    TL_RPC_SENT_QUERIES.load(Ordering::Relaxed)
-}
-
-#[no_mangle]
-pub extern "C" fn mtproxy_ffi_tl_parse_tl_in_allocated() -> c_int {
-    TL_IN_ALLOCATED.load(Ordering::Relaxed)
-}
-
-#[no_mangle]
-pub extern "C" fn mtproxy_ffi_tl_parse_tl_out_allocated() -> c_int {
-    TL_OUT_ALLOCATED.load(Ordering::Relaxed)
+    let formatted = format!(
+        "rpc_queries_received\t{rpc_queries_received}\n\
+rpc_answers_error\t{rpc_answers_error}\n\
+rpc_answers_received\t{rpc_answers_received}\n\
+rpc_sent_errors\t{rpc_sent_errors}\n\
+rpc_sent_answers\t{rpc_sent_answers}\n\
+rpc_sent_queries\t{rpc_sent_queries}\n\
+tl_in_allocated\t{tl_in_allocated}\n\
+tl_out_allocated\t{tl_out_allocated}\n\
+rpc_qps\t{rpc_qps:.6}\n\
+default_rpc_flags\t{default_rpc_flags}\n"
+    );
+    unsafe { append_to_sb(sb, &formatted) };
+    unsafe { (*sb).pos }
 }
