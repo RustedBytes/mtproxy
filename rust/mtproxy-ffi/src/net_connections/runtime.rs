@@ -491,7 +491,6 @@ unsafe extern "C" {
     #[allow(clashing_extern_declarations)]
     fn job_timer_init(job: Job);
     fn mtproxy_ffi_net_connections_job_free(job: Job) -> c_int;
-    fn mtproxy_ffi_net_connections_conn_job_ready_pending_activate(c: ConnectionJob);
 
     fn kprintf(format: *const c_char, ...);
     fn show_ipv6(ipv6: *const u8) -> *const c_char;
@@ -1958,6 +1957,19 @@ pub(super) unsafe fn do_listening_connection_job_impl(
     JOB_ERROR
 }
 
+#[inline]
+unsafe fn conn_job_ready_pending_activate(c: ConnectionJob) {
+    let conn = unsafe { conn_info(c) };
+    unsafe { atomic_i32(ptr::addr_of_mut!((*conn).flags)) }.fetch_and(!C_READY_PENDING, Ordering::SeqCst);
+    unsafe { mtproxy_ffi_net_connections_stats_add_close_basic(0, 0, 1, 0, 1) };
+    let target_job = unsafe { (*conn).target };
+    if !target_job.is_null() {
+        let target = unsafe { conn_target_info(target_job) };
+        unsafe { atomic_i32(ptr::addr_of_mut!((*target).active_outbound_connections)) }
+            .fetch_add(1, Ordering::SeqCst);
+    }
+}
+
 pub(super) unsafe fn do_connection_job_impl(job: Job, op: c_int, _jt: *mut c_void) -> c_int {
     let c = job;
     let conn = unsafe { conn_info(c) };
@@ -1971,7 +1983,7 @@ pub(super) unsafe fn do_connection_job_impl(job: Job, op: c_int, _jt: *mut c_voi
         if run_actions != 0 {
             if (run_actions & CONN_JOB_RUN_HANDLE_READY_PENDING) != 0 {
                 assert!((unsafe { (*conn).flags } & C_CONNECTED) != 0);
-                unsafe { mtproxy_ffi_net_connections_conn_job_ready_pending_activate(c) };
+                unsafe { conn_job_ready_pending_activate(c) };
 
                 if mtproxy_core::runtime::net::connections::conn_job_ready_pending_should_promote_status(
                     unsafe { (*conn).status },
