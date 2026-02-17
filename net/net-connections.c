@@ -40,8 +40,8 @@ int active_special_connections, max_special_connections = MAX_CONNECTIONS;
 
 void assert_net_cpu_thread(void) {}
 void assert_engine_thread(void) {
-  assert(this_job_thread && (this_job_thread->thread_class == JC_ENGINE ||
-                             this_job_thread->thread_class == JC_MAIN));
+  struct job_thread *JT = jobs_get_this_job_thread();
+  assert(JT && (JT->thread_class == JC_ENGINE || JT->thread_class == JC_MAIN));
 }
 
 double mtproxy_ffi_net_connections_precise_now(void) { return precise_now; }
@@ -49,7 +49,9 @@ int mtproxy_ffi_net_connections_job_free(job_t job) {
   return job_free(JOB_REF_PASS(job));
 }
 void mtproxy_ffi_net_connections_job_thread_dec_jobs_active(void) {
-  this_job_thread->jobs_active--;
+  struct job_thread *JT = jobs_get_this_job_thread();
+  assert(JT);
+  JT->jobs_active--;
 }
 
 /* CONN TARGETS {{{ */

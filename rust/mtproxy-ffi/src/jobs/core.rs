@@ -224,25 +224,10 @@ pub struct JobListParams {
 }
 
 unsafe extern "C" {
-    pub(super) fn jobs_get_this_job_thread_c_impl() -> *mut JobThread;
-
-    pub(super) fn jobs_async_job_header_size_c_impl() -> usize;
-    pub(super) fn jobs_prepare_async_create_c_impl(custom_bytes: i32) -> *mut JobThread;
     pub(super) fn jobs_interrupt_thread_c_impl(thread: *mut JobThread) -> i32;
 
-    pub(super) fn jobs_atomic_fetch_add_c_impl(ptr: *mut i32, delta: i32) -> i32;
     pub(super) fn jobs_atomic_fetch_or_c_impl(ptr: *mut i32, mask: i32) -> i32;
-    pub(super) fn jobs_atomic_fetch_and_c_impl(ptr: *mut i32, mask: i32) -> i32;
-    pub(super) fn jobs_atomic_cas_c_impl(ptr: *mut i32, expect: i32, value: i32) -> i32;
     pub(super) fn jobs_atomic_load_c_impl(ptr: *const i32) -> i32;
-    pub(super) fn jobs_atomic_store_c_impl(ptr: *mut i32, value: i32);
-    pub(super) fn jobs_get_current_thread_class_c_impl() -> i32;
-    pub(super) fn jobs_get_current_thread_subclass_count_c_impl() -> i32;
-    pub(super) fn jobs_set_this_job_thread_c_impl(thread: *mut JobThread);
-    pub(super) fn jobs_get_module_stat_tls_c_impl() -> *mut JobsModuleStat;
-    pub(super) fn jobs_set_module_stat_tls_c_impl(stat: *mut JobsModuleStat);
-    pub(super) fn jobs_set_job_interrupt_signal_handler_c_impl();
-    pub(super) fn jobs_seed_thread_rand_c_impl(thread: *mut JobThread);
 
     pub(super) fn malloc(size: usize) -> *mut c_void;
     pub(super) fn free(ptr: *mut c_void);
@@ -256,22 +241,8 @@ unsafe extern "C" {
     pub(super) fn unlock_job(job_tag_int: i32, job: JobT) -> i32;
     pub(super) fn process_one_job(job_tag_int: i32, job: JobT, thread_class: i32);
     pub(super) fn init_mp_queue_w(queue: *mut MpQueue);
-    pub(super) fn jobs_main_queue_magic_c_impl() -> i32;
-    pub(super) fn jobs_read_proc_utime_stime_c_impl(
-        pid: i32,
-        tid: i32,
-        utime: *mut libc::c_ulong,
-        stime: *mut libc::c_ulong,
-    );
 
     pub(super) fn wakeup_main_thread();
-    pub(super) fn jobs_run_thread_callbacks_c_impl();
-    pub(super) fn jobs_update_thread_now_c_impl() -> i32;
-    pub(super) fn jobs_precise_now_c_impl() -> f64;
-    pub(super) fn jobs_lrand48_thread_r_c_impl() -> libc::c_long;
-    pub(super) fn jobs_mrand48_thread_r_c_impl() -> libc::c_long;
-    pub(super) fn jobs_drand48_thread_r_c_impl() -> f64;
-    pub(super) fn jobs_sem_post_subclass_list_c_impl(list: *mut JobSubclassList, count: i32);
     pub(super) fn insert_event_timer(et: *mut EventTimer) -> i32;
     pub(super) fn remove_event_timer(et: *mut EventTimer) -> i32;
     pub(super) fn thread_run_timers() -> i32;

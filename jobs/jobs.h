@@ -59,8 +59,7 @@ typedef struct async_job *job_t;
 
 typedef int (*job_function_t)(job_t job, int op, struct job_thread *JT);
 
-extern __thread struct job_thread *this_job_thread;
-extern __thread job_t this_job;
+struct job_thread *jobs_get_this_job_thread(void);
 
 enum {
   JOB_DESTROYED = (-0x7fffffff - 1),
@@ -405,7 +404,8 @@ double job_timer_wakeup_time(job_t job);
 void jobs_check_all_timers(void);
 
 static inline void check_thread_class(int class) {
-  assert(this_job_thread->job_class_mask & (1 << class));
+  struct job_thread *JT = jobs_get_this_job_thread();
+  assert(JT && (JT->job_class_mask & (1 << class)));
 }
 
 void job_message_send(JOB_REF_ARG(job), JOB_REF_ARG(src), unsigned int type,

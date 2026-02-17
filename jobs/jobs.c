@@ -20,13 +20,8 @@
               2014      Andrey Lopatin
 */
 
-#include <assert.h>
-#include <time.h>
-
 #include "jobs/jobs.h"
 #include "mp-queue.h"
-#include "precise-time.h"
-#include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 
 void mtproxy_ffi_jobs_module_thread_init(void);
 
@@ -52,7 +47,6 @@ struct jobs_module_stat {
 };
 
 struct jobs_module_stat *jobs_module_stat_array[MAX_JOB_THREADS];
-__thread struct jobs_module_stat *jobs_module_stat_tls;
 
 struct job_class JobClasses[JC_MAX + 1];
 
@@ -62,9 +56,6 @@ int cur_job_threads;
 int main_pthread_id_initialized;
 pthread_t main_pthread_id;
 struct job_thread *main_job_thread;
-
-__thread struct job_thread *this_job_thread;
-__thread job_t this_job;
 
 struct mp_queue MainJobQueue __attribute__((aligned(128)));
 struct thread_callback *jobs_cb_list;
@@ -79,58 +70,4 @@ static struct thread_callback jobs_module_thread_callback = {
 
 __attribute__((constructor)) static void jobs_module_register(void) {
   register_thread_callback(&jobs_module_thread_callback);
-}
-
-struct job_thread *jobs_get_this_job_thread_c_impl(void) {
-  return this_job_thread;
-}
-
-void jobs_set_this_job_thread_c_impl(struct job_thread *JT) {
-  this_job_thread = JT;
-}
-
-struct jobs_module_stat *jobs_get_module_stat_tls_c_impl(void) {
-  return jobs_module_stat_tls;
-}
-
-void jobs_set_module_stat_tls_c_impl(struct jobs_module_stat *stat) {
-  jobs_module_stat_tls = stat;
-}
-
-void jobs_seed_thread_rand_c_impl(struct job_thread *JT) {
-  assert(JT);
-  srand48_r(rdtsc() ^ lrand48(), &JT->rand_data);
-}
-
-int jobs_get_current_thread_class_c_impl(void) {
-  assert(this_job_thread);
-  return this_job_thread->thread_class;
-}
-
-int jobs_update_thread_now_c_impl(void) {
-  now = time(0);
-  return now;
-}
-
-double jobs_precise_now_c_impl(void) { return precise_now; }
-
-long int jobs_lrand48_thread_r_c_impl(void) {
-  assert(this_job_thread);
-  long int t;
-  lrand48_r(&this_job_thread->rand_data, &t);
-  return t;
-}
-
-long int jobs_mrand48_thread_r_c_impl(void) {
-  assert(this_job_thread);
-  long int t;
-  mrand48_r(&this_job_thread->rand_data, &t);
-  return t;
-}
-
-double jobs_drand48_thread_r_c_impl(void) {
-  assert(this_job_thread);
-  double t;
-  drand48_r(&this_job_thread->rand_data, &t);
-  return t;
 }

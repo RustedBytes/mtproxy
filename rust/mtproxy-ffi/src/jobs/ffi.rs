@@ -5,6 +5,7 @@ use core::ffi::{c_char, c_void};
 use core::mem;
 use core::ptr;
 use libc::pthread_attr_t;
+use std::cell::Cell;
 use std::sync::atomic::{AtomicI32, Ordering};
 
 const JOB_SUBCLASS_OFFSET: i32 = 3;
@@ -130,6 +131,21 @@ struct ProcStatsC {
 
 unsafe extern "C" {
     fn read_proc_stats(pid: i32, tid: i32, s: *mut ProcStatsC) -> i32;
+    fn mtproxy_ffi_precise_time_set_now(now_value: i32);
+    fn mtproxy_ffi_precise_time_get_precise_now() -> f64;
+    #[link_name = "srand48_r"]
+    fn libc_srand48_r(seedval: libc::c_long, buffer: *mut c_void) -> i32;
+    #[link_name = "lrand48_r"]
+    fn libc_lrand48_r(buffer: *mut c_void, result: *mut libc::c_long) -> i32;
+    #[link_name = "mrand48_r"]
+    fn libc_mrand48_r(buffer: *mut c_void, result: *mut libc::c_long) -> i32;
+    #[link_name = "drand48_r"]
+    fn libc_drand48_r(buffer: *mut c_void, result: *mut f64) -> i32;
+}
+
+thread_local! {
+    static JOBS_TLS_THREAD: Cell<*mut JobThread> = const { Cell::new(ptr::null_mut()) };
+    static JOBS_TLS_MODULE_STAT: Cell<*mut JobsModuleStat> = const { Cell::new(ptr::null_mut()) };
 }
 
 #[inline]
@@ -152,6 +168,56 @@ unsafe extern "C" fn process_one_sublist_gw(id_ptr: *mut c_void, class: i32) {
     unsafe {
         mtproxy_ffi_jobs_process_one_sublist(id_ptr as usize, class);
     }
+}
+
+#[inline]
+fn jobs_tls_thread_get() -> *mut JobThread {
+    JOBS_TLS_THREAD.with(Cell::get)
+}
+
+#[inline]
+fn jobs_tls_thread_set(thread: *mut JobThread) {
+    JOBS_TLS_THREAD.with(|slot| slot.set(thread));
+}
+
+#[inline]
+fn jobs_tls_module_stat_get() -> *mut JobsModuleStat {
+    JOBS_TLS_MODULE_STAT.with(Cell::get)
+}
+
+#[inline]
+fn jobs_tls_module_stat_set(stat: *mut JobsModuleStat) {
+    JOBS_TLS_MODULE_STAT.with(|slot| slot.set(stat));
+}
+
+#[inline]
+unsafe fn thread_rand_data_ptr(thread: *mut JobThread) -> *mut c_void {
+    (*thread).rand_data.as_mut_ptr().cast::<c_void>()
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn jobs_get_this_job_thread() -> *mut JobThread {
+    jobs_tls_thread_get()
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn jobs_get_this_job_thread_c_impl() -> *mut JobThread {
+    jobs_tls_thread_get()
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn jobs_set_this_job_thread_c_impl(thread: *mut JobThread) {
+    jobs_tls_thread_set(thread);
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn jobs_get_module_stat_tls_c_impl() -> *mut JobsModuleStat {
+    jobs_tls_module_stat_get()
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn jobs_set_module_stat_tls_c_impl(stat: *mut JobsModuleStat) {
+    jobs_tls_module_stat_set(stat);
 }
 
 #[no_mangle]
@@ -214,6 +280,21 @@ pub unsafe extern "C" fn jobs_set_job_interrupt_signal_handler_c_impl() {
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn jobs_seed_thread_rand_c_impl(thread: *mut JobThread) {
+    abort_if(thread.is_null());
+    let seed = (rdtsc_ticks() ^ unsafe { libc::lrand48() as i64 }) as libc::c_long;
+    let rc = unsafe { libc_srand48_r(seed, thread_rand_data_ptr(thread)) };
+    abort_if(rc != 0);
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn jobs_get_current_thread_class_c_impl() -> i32 {
+    let thread = jobs_tls_thread_get();
+    abort_if(thread.is_null());
+    unsafe { (*thread).thread_class }
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn jobs_get_current_thread_subclass_count_c_impl() -> i32 {
     unsafe { mtproxy_ffi_jobs_get_current_thread_subclass_count() }
 }
@@ -234,6 +315,48 @@ pub unsafe extern "C" fn jobs_main_queue_magic_c_impl() -> i32 {
     let base = ptr::addr_of!(MainJobQueue).cast::<u8>();
     let magic_ptr = unsafe { base.add(mem::size_of::<*mut c_void>()).cast::<i32>() };
     unsafe { *magic_ptr }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn jobs_update_thread_now_c_impl() -> i32 {
+    let now_value = unsafe { libc::time(ptr::null_mut()) as i32 };
+    unsafe { mtproxy_ffi_precise_time_set_now(now_value) };
+    now_value
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn jobs_precise_now_c_impl() -> f64 {
+    unsafe { mtproxy_ffi_precise_time_get_precise_now() }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn jobs_lrand48_thread_r_c_impl() -> libc::c_long {
+    let thread = jobs_tls_thread_get();
+    abort_if(thread.is_null());
+    let mut value: libc::c_long = 0;
+    let rc = unsafe { libc_lrand48_r(thread_rand_data_ptr(thread), &raw mut value) };
+    abort_if(rc != 0);
+    value
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn jobs_mrand48_thread_r_c_impl() -> libc::c_long {
+    let thread = jobs_tls_thread_get();
+    abort_if(thread.is_null());
+    let mut value: libc::c_long = 0;
+    let rc = unsafe { libc_mrand48_r(thread_rand_data_ptr(thread), &raw mut value) };
+    abort_if(rc != 0);
+    value
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn jobs_drand48_thread_r_c_impl() -> f64 {
+    let thread = jobs_tls_thread_get();
+    abort_if(thread.is_null());
+    let mut value: f64 = 0.0;
+    let rc = unsafe { libc_drand48_r(thread_rand_data_ptr(thread), &raw mut value) };
+    abort_if(rc != 0);
+    value
 }
 
 #[no_mangle]
