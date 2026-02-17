@@ -99,7 +99,7 @@ ${LIB_OBJS_NORMAL}: ${OBJ}/%.o: %.c | create_dirs_and_headers
 ${EXELIST}: ${LIBLIST}
 
 ${EXE}/mtproto-proxy: ${RUST_OBJECTS} ${LIB}/libkdb.a ${RUST_FFI_STATICLIB}
-	${CC} -o $@ ${RUST_OBJECTS} ${LIB}/libkdb.a ${RUST_FFI_STATICLIB} ${LIB}/libkdb.a ${LDFLAGS} -ldl
+	${CC} -o $@ ${RUST_OBJECTS} ${LIB}/libkdb.a ${RUST_FFI_STATICLIB} ${LIB}/libkdb.a ${RUST_FFI_STATICLIB} ${LDFLAGS} -ldl
 
 ${RUST_FFI_STATICLIB}: Cargo.toml Cargo.lock rust/mtproxy-core/Cargo.toml rust/mtproxy-ffi/Cargo.toml ${RUST_RS_SOURCES}
 	cargo build -p mtproxy-ffi
@@ -114,7 +114,7 @@ release: ${ALLDIRS} ${RUST_RUNTIME_RELEASE}
 	cp ${RUST_RUNTIME_RELEASE} ${EXE}/mtproxy-rust
 
 release-legacy: ${ALLDIRS} ${RUST_OBJECTS} ${LIB}/libkdb.a ${RUST_FFI_STATICLIB_RELEASE}
-	${CC} -o ${EXE}/mtproto-proxy ${RUST_OBJECTS} ${LIB}/libkdb.a ${RUST_FFI_STATICLIB_RELEASE} ${LIB}/libkdb.a ${LDFLAGS} -ldl
+	${CC} -o ${EXE}/mtproto-proxy ${RUST_OBJECTS} ${LIB}/libkdb.a ${RUST_FFI_STATICLIB_RELEASE} ${LIB}/libkdb.a ${RUST_FFI_STATICLIB_RELEASE} ${LDFLAGS} -ldl
 
 ${LIB}/libkdb.a: ${LIB_OBJS}
 	rm -f $@ && ar rcs $@ $^
