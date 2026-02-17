@@ -56,8 +56,6 @@ extern void mtproxy_ffi_engine_server_init(void *listen_connection_type,
                                            void *listen_connection_extra,
                                            int32_t pipe_read_end);
 extern void mtproxy_ffi_engine_rpc_stats(struct tl_out_state *tlio_out);
-extern void
-mtproxy_ffi_engine_set_epoll_wait_timeout(int32_t epoll_wait_timeout);
 
 int32_t mtproxy_ffi_engine_check_conn_functions_bridge(void *conn_type) {
   return check_conn_functions(conn_type, 1);

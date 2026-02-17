@@ -234,3 +234,22 @@ pub unsafe extern "C" fn mtproxy_ffi_engine_rpc_do_query_job_run(
 ) -> c_int {
     unsafe { do_query_job_run_impl(job.cast::<AsyncJob>(), op, jt) }
 }
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_engine_rpc_call_default_parse_function(
+    tlio_in: *mut TlInState,
+    actor_id: c_longlong,
+) -> *mut TlActExtra {
+    unsafe { default_parse_function_impl(tlio_in, actor_id) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn tl_default_parse_function(
+    tlio_in: *mut TlInState,
+    actor_id: c_longlong,
+) -> *mut TlActExtra {
+    unsafe { default_parse_function_impl(tlio_in, actor_id) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn paramed_type_free(_p: *mut c_void) {}

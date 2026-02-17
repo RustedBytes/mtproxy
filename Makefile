@@ -51,7 +51,6 @@ LIB_OBJS_NORMAL := \
 	${OBJ}/net/net-connections.o \
 	${OBJ}/common/tl-parse.o ${OBJ}/common/common-stats.o \
 	${OBJ}/engine/engine.o \
-	${OBJ}/engine/engine-rpc-common.o \
 	${OBJ}/common/kprintf.o \
 	${OBJ}/common/precise-time.o \
 

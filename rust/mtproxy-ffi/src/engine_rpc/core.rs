@@ -24,6 +24,7 @@ const JT_HAVE_TIMER: u64 = 1;
 
 const TL_TYPE_RAW_MSG: c_int = 2;
 const TL_TYPE_TCP_RAW_MSG: c_int = 3;
+const TL_TRUE: c_int = 0x3fedd339_u32 as c_int;
 
 const TL_ERROR_UNKNOWN_FUNCTION_ID: c_int = -2000;
 const TL_ERROR_AIO_TIMEOUT: c_int = -3005;
@@ -332,10 +333,6 @@ unsafe extern "C" {
     fn mtproxy_ffi_engine_rpc_tcp_should_hold_conn(op: c_int) -> c_int;
     fn mtproxy_ffi_engine_rpc_custom_op_insert(op: c_uint, entry: *mut c_void) -> c_int;
     fn mtproxy_ffi_engine_rpc_custom_op_lookup(op: c_uint) -> *mut c_void;
-    fn mtproxy_ffi_engine_rpc_call_default_parse_function(
-        tlio_in: *mut TlInState,
-        actor_id: c_longlong,
-    ) -> *mut TlActExtra;
 
     fn tl_query_header_dup(h: *mut TlQueryHeader) -> *mut TlQueryHeader;
     fn prepare_stats(buff: *mut c_char, buff_size: c_int) -> c_int;
@@ -344,6 +341,8 @@ unsafe extern "C" {
 
     fn tlf_error_rust(tlio_in: *mut c_void) -> c_int;
     fn tlf_set_error(tlio_in: *mut c_void, errnum: c_int, s: *const c_char) -> c_int;
+    fn tlf_int_rust(tlio_in: *mut c_void) -> c_int;
+    fn tlf_end_rust(tlio_in: *mut c_void) -> c_int;
     fn tlf_lookup_int_rust(tlio_in: *mut c_void) -> c_int;
     #[link_name = "tlf_query_answer_header"]
     fn c_tlf_query_answer_header(tlio_in: *mut c_void, header: *mut TlQueryHeader) -> c_int;
@@ -548,7 +547,72 @@ unsafe fn call_default_parse_function(
     tlio_in: *mut TlInState,
     actor_id: c_longlong,
 ) -> *mut TlActExtra {
-    unsafe { mtproxy_ffi_engine_rpc_call_default_parse_function(tlio_in, actor_id) }
+    unsafe { default_parse_function_impl(tlio_in, actor_id) }
+}
+
+unsafe extern "C" fn default_tl_act_nop(_job: Job, extra: *mut TlActExtra) -> c_int {
+    assert!(!extra.is_null());
+    unsafe {
+        c_tls_int_rust((*extra).tlio_out.cast(), TL_TRUE);
+    }
+    0
+}
+
+unsafe extern "C" fn default_tl_act_stat(_job: Job, extra: *mut TlActExtra) -> c_int {
+    assert!(!extra.is_null());
+    unsafe {
+        tl_engine_store_stats_impl((*extra).tlio_out.cast());
+    }
+    0
+}
+
+unsafe fn default_tl_simple_parse_function(
+    tlio_in: *mut TlInState,
+    act: TlActFn,
+) -> *mut TlActExtra {
+    unsafe {
+        tlf_int_rust(tlio_in.cast());
+        tlf_end_rust(tlio_in.cast());
+    }
+    if unsafe { tlf_error_rust(tlio_in.cast()) } != 0 {
+        return ptr::null_mut();
+    }
+
+    let extra = unsafe { libc::calloc(1, size_of::<TlActExtra>()) }.cast::<TlActExtra>();
+    if extra.is_null() {
+        return ptr::null_mut();
+    }
+
+    unsafe {
+        (*extra).flags = 3;
+        (*extra).start_rdtsc = rdtsc_now();
+        (*extra).size = size_of::<TlActExtra>() as c_int;
+        (*extra).act = act;
+        (*extra).type_ = mtproxy_core::runtime::engine::rpc_common::default_query_type_mask();
+    }
+
+    extra
+}
+
+pub(super) unsafe fn default_parse_function_impl(
+    tlio_in: *mut TlInState,
+    actor_id: c_longlong,
+) -> *mut TlActExtra {
+    let op = unsafe { tlf_lookup_int_rust(tlio_in.cast()) };
+    if unsafe { tlf_error_rust(tlio_in.cast()) } != 0 {
+        return ptr::null_mut();
+    }
+
+    use mtproxy_core::runtime::engine::rpc_common::DefaultParseDecision;
+    match mtproxy_core::runtime::engine::rpc_common::default_parse_decision(actor_id, op) {
+        DefaultParseDecision::Stat => {
+            unsafe { default_tl_simple_parse_function(tlio_in, Some(default_tl_act_stat)) }
+        }
+        DefaultParseDecision::Nop => {
+            unsafe { default_tl_simple_parse_function(tlio_in, Some(default_tl_act_nop)) }
+        }
+        DefaultParseDecision::None => ptr::null_mut(),
+    }
 }
 
 #[inline]
