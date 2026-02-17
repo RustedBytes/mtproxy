@@ -576,8 +576,6 @@ unsafe extern "C" {
         was_created: *mut c_int,
     ) -> MtproxyConnTargetJob;
     pub(crate) fn create_all_outbound_connections() -> c_int;
-    pub(crate) fn kdb_load_hosts() -> c_int;
-
     pub(crate) static mut default_cfg_min_connections: c_int;
     pub(crate) static mut default_cfg_max_connections: c_int;
     pub(crate) static mut default_cfg_ct: MtproxyConnTargetInfo;

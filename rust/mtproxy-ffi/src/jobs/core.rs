@@ -272,10 +272,7 @@ unsafe extern "C" {
         utime: *mut libc::c_ulong,
         stime: *mut libc::c_ulong,
     );
-    pub(super) fn job_decref(job_tag_int: i32, job: JobT);
-    pub(super) fn job_signal(job_tag_int: i32, job: JobT, signo: i32);
     pub(super) fn job_free(job_tag_int: i32, job: JobT) -> i32;
-    pub(super) fn job_incref(job: JobT) -> JobT;
 
     pub(super) fn do_immediate_timer_insert(job: JobT);
     pub(super) fn job_timer_wakeup_gateway(et: *mut EventTimer) -> i32;
@@ -298,7 +295,6 @@ unsafe extern "C" {
     pub(super) fn alloc_mp_queue_w() -> *mut MpQueue;
     pub(super) fn check_main_thread();
     pub(super) fn get_this_thread_id() -> i32;
-    pub(super) fn lrand48() -> libc::c_long;
     pub(super) fn pthread_create(
         thread: *mut usize,
         attr: *const libc::pthread_attr_t,
