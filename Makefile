@@ -49,11 +49,10 @@ LIB_OBJS_NORMAL := \
 	${OBJ}/common/parse-config.o \
 	${OBJ}/jobs/jobs.o \
 	${OBJ}/net/net-connections.o \
-	${OBJ}/net/net-rpc-targets.o \
 	${OBJ}/common/tl-parse.o ${OBJ}/common/common-stats.o \
 	${OBJ}/engine/engine.o \
 	${OBJ}/engine/engine-rpc-common.o \
-	${OBJ}/net/net-thread.o ${OBJ}/net/net-stats.o \
+	${OBJ}/net/net-thread.o \
 	${OBJ}/common/kprintf.o \
 	${OBJ}/common/precise-time.o \
 

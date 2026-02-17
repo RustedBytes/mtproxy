@@ -78,6 +78,8 @@ mod net_msg;
 #[cfg(not(test))]
 mod net_msg_buffers;
 mod net_rpc_targets;
+mod net_rpc_targets_legacy;
+mod net_stats_legacy;
 mod net_tcp_connections;
 mod net_tcp_rpc_client;
 mod net_tcp_rpc_common;

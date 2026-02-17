@@ -51,3 +51,4 @@ double get_double_time(void);
 void mtproxy_ffi_precise_time_set_tls(double precise_now_value,
                                       long long precise_now_rdtsc_value);
 void mtproxy_ffi_precise_time_set_now(int now_value);
+int mtproxy_ffi_precise_time_get_now(void);
