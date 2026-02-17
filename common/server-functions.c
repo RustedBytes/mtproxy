@@ -38,7 +38,6 @@
 #include <string.h>
 
 #include "common/kprintf.h"
-#include "net/net-msg-buffers.h"
 #include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 
 #include "server-functions.h"
