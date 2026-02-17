@@ -79,6 +79,375 @@ struct JobListJobNode {
     jl_flags: i32,
 }
 
+type JobThreadWorkOneFn = Option<unsafe extern "C" fn(*mut c_void, i32)>;
+
+unsafe extern "C" fn process_one_job_gw(job_ptr: *mut c_void, thread_class: i32) {
+    unsafe {
+        process_one_job(1, job_ptr.cast::<AsyncJob>(), thread_class);
+    }
+}
+
+unsafe extern "C" fn process_one_sublist_gw(id_ptr: *mut c_void, class: i32) {
+    unsafe {
+        mtproxy_ffi_jobs_process_one_sublist(id_ptr as usize, class);
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn jobs_prepare_stat(sb: *mut StatsBuffer) -> i32 {
+    unsafe { mtproxy_ffi_jobs_prepare_stat(sb) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn update_all_thread_stats() {
+    unsafe { mtproxy_ffi_jobs_update_all_thread_stats() };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn init_main_pthread_id() {
+    unsafe { mtproxy_ffi_jobs_init_main_pthread_id() };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn check_main_thread() {
+    let self_id = unsafe { libc::pthread_self() };
+    abort_if(
+        unsafe { main_pthread_id_initialized } == 0
+            || unsafe {
+                libc::pthread_equal(main_pthread_id as libc::pthread_t, self_id)
+            } == 0,
+    );
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn lrand48_j() -> libc::c_long {
+    unsafe { mtproxy_ffi_jobs_lrand48_j() }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mrand48_j() -> libc::c_long {
+    unsafe { mtproxy_ffi_jobs_mrand48_j() }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn drand48_j() -> f64 {
+    unsafe { mtproxy_ffi_jobs_drand48_j() }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn create_job_thread_ex(
+    thread_class: i32,
+    thread_work: Option<unsafe extern "C" fn(*mut c_void) -> *mut c_void>,
+) -> i32 {
+    unsafe { mtproxy_ffi_jobs_create_job_thread_ex(thread_class, thread_work) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn create_job_thread(thread_class: i32) -> i32 {
+    unsafe { mtproxy_ffi_jobs_create_job_thread(thread_class) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn create_job_class_threads(job_class: i32) -> i32 {
+    unsafe { mtproxy_ffi_jobs_create_job_class_threads(job_class) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn init_async_jobs() -> i32 {
+    unsafe { mtproxy_ffi_jobs_init_async_jobs() }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn create_new_job_class(
+    job_class: i32,
+    min_threads: i32,
+    max_threads: i32,
+) -> i32 {
+    unsafe { create_job_class(job_class, min_threads, max_threads, 1) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn create_new_job_class_sub(
+    job_class: i32,
+    min_threads: i32,
+    max_threads: i32,
+    subclass_cnt: i32,
+) -> i32 {
+    unsafe { create_job_class_sub(job_class, min_threads, max_threads, 1, subclass_cnt) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn create_job_class(
+    job_class: i32,
+    min_threads: i32,
+    max_threads: i32,
+    excl: i32,
+) -> i32 {
+    abort_if(!(1..=JC_MAX as i32).contains(&job_class));
+    abort_if(min_threads < 0 || max_threads < min_threads);
+    let class = unsafe { &mut JobClasses[job_class as usize] };
+    abort_if(excl != 0 && class.min_threads != 0);
+    if min_threads < class.min_threads || class.min_threads == 0 {
+        class.min_threads = min_threads;
+    }
+    if max_threads > class.max_threads {
+        class.max_threads = max_threads;
+    }
+    abort_if(class.min_threads > class.max_threads);
+    if unsafe { jobs_main_queue_magic_c_impl() } != 0 {
+        unsafe { create_job_class_threads(job_class) }
+    } else {
+        0
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn create_job_class_sub(
+    job_class: i32,
+    min_threads: i32,
+    max_threads: i32,
+    excl: i32,
+    subclass_cnt: i32,
+) -> i32 {
+    unsafe { mtproxy_ffi_jobs_create_job_class_sub(job_class, min_threads, max_threads, excl, subclass_cnt) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn try_lock_job(job: JobT, set_flags: i32, clear_flags: i32) -> i32 {
+    unsafe { mtproxy_ffi_jobs_try_lock_job(job, set_flags, clear_flags) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn unlock_job(job_tag_int: i32, job: JobT) -> i32 {
+    unsafe { mtproxy_ffi_jobs_unlock_job(job_tag_int, job) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn process_one_job(job_tag_int: i32, job: JobT, thread_class: i32) {
+    unsafe { mtproxy_ffi_jobs_process_one_job(job_tag_int, job, thread_class) };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn complete_subjob(job: JobT, parent_tag_int: i32, parent: JobT, status: i32) {
+    unsafe { mtproxy_ffi_jobs_complete_subjob(job, parent_tag_int, parent, status) };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn complete_job(job: JobT) {
+    unsafe { mtproxy_ffi_jobs_complete_job(job) };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn job_thread_ex(arg: *mut c_void, work_one: JobThreadWorkOneFn) -> *mut c_void {
+    unsafe { mtproxy_ffi_jobs_job_thread_ex(arg, work_one) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn job_thread(arg: *mut c_void) -> *mut c_void {
+    unsafe { job_thread_ex(arg, Some(process_one_job_gw)) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn job_thread_sub(arg: *mut c_void) -> *mut c_void {
+    unsafe { job_thread_ex(arg, Some(process_one_sublist_gw)) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn job_timer_wakeup_gateway(et: *mut EventTimer) -> i32 {
+    unsafe { mtproxy_ffi_jobs_job_timer_wakeup_gateway(et) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn job_list_node_wakeup(
+    list_job: JobT,
+    _op: i32,
+    node: *mut JobListNode,
+) -> i32 {
+    abort_if(node.is_null());
+    let wakeup_node = node.cast::<JobListJobNode>();
+    unsafe {
+        complete_subjob(list_job, 1, (*wakeup_node).jl_job, (*wakeup_node).jl_flags);
+        free(wakeup_node.cast::<c_void>());
+    }
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn process_job_list(job: JobT, op: i32, thread: *mut JobThread) -> i32 {
+    unsafe { mtproxy_ffi_jobs_process_job_list(job, op, thread) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn create_job_list() -> JobT {
+    unsafe { mtproxy_ffi_jobs_create_job_list() }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn insert_node_into_job_list(list_job: JobT, node: *mut JobListNode) -> i32 {
+    unsafe { mtproxy_ffi_jobs_insert_node_into_job_list(list_job, node) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn insert_job_into_job_list(
+    list_job: JobT,
+    job_tag_int: i32,
+    job: JobT,
+    mode: i32,
+) -> i32 {
+    unsafe { mtproxy_ffi_jobs_insert_job_into_job_list(list_job, job_tag_int, job, mode) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn do_immediate_timer_insert(job: JobT) {
+    unsafe { mtproxy_ffi_jobs_do_immediate_timer_insert(job) };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn do_timer_manager_job(job: JobT, op: i32, thread: *mut JobThread) -> i32 {
+    unsafe { mtproxy_ffi_jobs_do_timer_manager_job(job, op, thread) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn jobs_check_all_timers() {
+    unsafe { mtproxy_ffi_jobs_check_all_timers() };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn alloc_timer_manager(thread_class: i32) -> JobT {
+    unsafe { mtproxy_ffi_jobs_alloc_timer_manager(thread_class) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn do_timer_job(job: JobT, op: i32, thread: *mut JobThread) -> i32 {
+    unsafe { mtproxy_ffi_jobs_do_timer_job(job, op, thread) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn job_timer_alloc(
+    thread_class: i32,
+    alarm: Option<unsafe extern "C" fn(*mut c_void) -> f64>,
+    extra: *mut c_void,
+) -> JobT {
+    unsafe { mtproxy_ffi_jobs_job_timer_alloc(thread_class, alarm, extra) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn job_timer_check(job: JobT) -> i32 {
+    unsafe { mtproxy_ffi_jobs_job_timer_check(job) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn job_timer_insert(job: JobT, timeout: f64) {
+    unsafe { mtproxy_ffi_jobs_job_timer_insert(job, timeout) };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn job_timer_remove(job: JobT) {
+    unsafe { mtproxy_ffi_jobs_job_timer_remove(job) };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn job_timer_active(job: JobT) -> i32 {
+    unsafe { mtproxy_ffi_jobs_job_timer_active(job) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn job_timer_wakeup_time(job: JobT) -> f64 {
+    unsafe { mtproxy_ffi_jobs_job_timer_wakeup_time(job) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn job_timer_init(job: JobT) {
+    unsafe { mtproxy_ffi_jobs_job_timer_init(job) };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn register_thread_callback(cb: *mut ThreadCallback) {
+    unsafe { mtproxy_ffi_jobs_register_thread_callback(cb) };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn job_message_queue_get(job: JobT) -> *mut JobMessageQueue {
+    unsafe { mtproxy_ffi_jobs_job_message_queue_get(job) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn job_message_queue_set(job: JobT, queue: *mut JobMessageQueue) {
+    unsafe { mtproxy_ffi_jobs_job_message_queue_set(job, queue) };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn job_message_queue_free(job: JobT) {
+    unsafe { mtproxy_ffi_jobs_job_message_queue_free(job) };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn job_message_queue_init(job: JobT) {
+    unsafe { mtproxy_ffi_jobs_job_message_queue_init(job) };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn job_message_free_default(message: *mut JobMessage) {
+    unsafe { mtproxy_ffi_jobs_job_message_free_default(message) };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn job_message_send(
+    job_tag_int: i32,
+    job: JobT,
+    src_tag_int: i32,
+    src: JobT,
+    type_: u32,
+    raw: *mut RawMessage,
+    dup: i32,
+    payload_ints: i32,
+    payload: *const u32,
+    flags: u32,
+    destroy: JobMessageDestructorFn,
+) {
+    let _ = job_tag_int;
+    let _ = src_tag_int;
+    unsafe {
+        mtproxy_ffi_jobs_job_message_send(
+            job,
+            src,
+            type_,
+            raw,
+            dup,
+            payload_ints,
+            payload,
+            flags,
+            destroy,
+        );
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn job_message_queue_work(
+    job: JobT,
+    receive_message: JobMessageReceiveFn,
+    extra: *mut c_void,
+    mask: u32,
+) {
+    unsafe { mtproxy_ffi_jobs_job_message_queue_work(job, receive_message, extra, mask) };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn job_free(job_tag_int: i32, job: JobT) -> i32 {
+    unsafe { mtproxy_ffi_jobs_job_free(job_tag_int, job) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn notify_job_run(job: JobT, op: i32, thread: *mut JobThread) -> i32 {
+    unsafe { mtproxy_ffi_jobs_notify_job_run(job, op, thread) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn jobs_notify_job_extra_size_c_impl() -> i32 {
+    mem::size_of::<NotifyJobExtra>() as i32
+}
+
+
 #[inline]
 unsafe fn timer_check_and_remove(job: JobT) -> bool {
     abort_if(job.is_null());

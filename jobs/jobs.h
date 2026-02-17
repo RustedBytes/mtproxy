@@ -465,28 +465,4 @@ struct thread_callback {
 void register_thread_callback(struct thread_callback *cb);
 job_t alloc_timer_manager(int thread_class);
 
-struct job_message_payload {
-  job_t job;
-  int message_class;
-  int payload_ints;
-  unsigned int payload[0];
-};
-
-static inline struct job_message_payload *
-job_message_payload_alloc(JOB_REF_ARG(job), int message_class, int payload_ints,
-                          unsigned int *payload) {
-  struct job_message_payload *P = malloc(sizeof(*P) + 4 * payload_ints);
-  P->message_class = message_class;
-  P->payload_ints = payload_ints;
-  P->job = PTR_MOVE(job);
-  memcpy(P->payload, payload, 4 * payload_ints);
-  return P;
-}
-
-unsigned int *payload_continuation_create(
-    unsigned int magic, int (*func)(job_t, struct job_message *, void *extra),
-    void *extra);
-#define PAYLOAD_CONTINUATION(_magic, _func, _extra)                            \
-  5, payload_continuation_create(_magic, _func, _extra)
-
 extern struct job_thread JobThreads[];
