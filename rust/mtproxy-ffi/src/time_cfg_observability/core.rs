@@ -987,6 +987,236 @@ pub unsafe extern "C" fn mtproxy_ffi_cfg_gethost() -> *mut c_void {
     unsafe { cfg_gethost_impl(0) }.cast()
 }
 
+unsafe extern "C" {
+    static mut config_buff: *mut c_char;
+    static mut config_name: *mut c_char;
+    static mut cfg_start: *mut c_char;
+}
+
+const MAX_CONFIG_SIZE: i32 = 16 << 20;
+
+fn cstr_lossy_or_default(ptr: *const c_char, default: &str) -> String {
+    if ptr.is_null() {
+        return default.to_owned();
+    }
+    // SAFETY: pointer comes from process-global config state and is expected to
+    // be NUL-terminated when present.
+    unsafe { CStr::from_ptr(ptr) }
+        .to_string_lossy()
+        .into_owned()
+}
+
+/// Legacy C ABI wrapper for `cfg_skipspc()`.
+///
+/// # Safety
+/// Uses and mutates process-global parser cursor state.
+#[export_name = "cfg_skipspc"]
+pub unsafe extern "C" fn c_cfg_skipspc() -> i32 {
+    unsafe { mtproxy_ffi_cfg_skipspc_global() }
+}
+
+/// Legacy C ABI wrapper for `cfg_skspc()`.
+///
+/// # Safety
+/// Uses and mutates process-global parser cursor state.
+#[export_name = "cfg_skspc"]
+pub unsafe extern "C" fn c_cfg_skspc() -> i32 {
+    unsafe { mtproxy_ffi_cfg_skspc_global() }
+}
+
+/// Legacy C ABI wrapper for `cfg_getlex()`.
+///
+/// # Safety
+/// Uses and mutates process-global parser cursor state.
+#[export_name = "cfg_getlex"]
+pub unsafe extern "C" fn c_cfg_getlex() -> i32 {
+    unsafe { mtproxy_ffi_cfg_getlex_global() }
+}
+
+/// Legacy C ABI wrapper for `cfg_getword()`.
+///
+/// # Safety
+/// Uses process-global parser cursor state.
+#[export_name = "cfg_getword"]
+pub unsafe extern "C" fn c_cfg_getword() -> i32 {
+    unsafe { mtproxy_ffi_cfg_getword_global() }
+}
+
+/// Legacy C ABI wrapper for `cfg_getstr()`.
+///
+/// # Safety
+/// Uses process-global parser cursor state.
+#[export_name = "cfg_getstr"]
+pub unsafe extern "C" fn c_cfg_getstr() -> i32 {
+    unsafe { mtproxy_ffi_cfg_getstr_global() }
+}
+
+/// Legacy C ABI wrapper for `cfg_getint()`.
+///
+/// # Safety
+/// Uses and mutates process-global parser cursor state.
+#[export_name = "cfg_getint"]
+pub unsafe extern "C" fn c_cfg_getint() -> i64 {
+    unsafe { mtproxy_ffi_cfg_getint_global() }
+}
+
+/// Legacy C ABI wrapper for `cfg_getint_zero()`.
+///
+/// # Safety
+/// Uses and mutates process-global parser cursor state.
+#[export_name = "cfg_getint_zero"]
+pub unsafe extern "C" fn c_cfg_getint_zero() -> i64 {
+    unsafe { mtproxy_ffi_cfg_getint_zero_global() }
+}
+
+/// Legacy C ABI wrapper for `cfg_getint_signed_zero()`.
+///
+/// # Safety
+/// Uses and mutates process-global parser cursor state.
+#[export_name = "cfg_getint_signed_zero"]
+pub unsafe extern "C" fn c_cfg_getint_signed_zero() -> i64 {
+    unsafe { mtproxy_ffi_cfg_getint_signed_zero_global() }
+}
+
+/// Legacy C ABI wrapper for `expect_lexem()`.
+///
+/// # Safety
+/// Uses process-global parser state and may call `syntax()`.
+#[export_name = "expect_lexem"]
+pub unsafe extern "C" fn c_expect_lexem(lexem: i32) -> i32 {
+    unsafe { mtproxy_ffi_cfg_expect_lexem(lexem) }
+}
+
+/// Legacy C ABI wrapper for `expect_word()`.
+///
+/// # Safety
+/// `name` must be valid for `len` readable bytes.
+#[export_name = "expect_word"]
+pub unsafe extern "C" fn c_expect_word(name: *const c_char, len: i32) -> i32 {
+    unsafe { mtproxy_ffi_cfg_expect_word(name, len) }
+}
+
+/// Legacy C ABI wrapper for `cfg_gethost_ex()`.
+///
+/// # Safety
+/// Uses and mutates process-global parser cursor state.
+#[export_name = "cfg_gethost_ex"]
+pub unsafe extern "C" fn c_cfg_gethost_ex(verb: i32) -> *mut libc::hostent {
+    unsafe { mtproxy_ffi_cfg_gethost_ex(verb).cast() }
+}
+
+/// Legacy C ABI wrapper for `cfg_gethost()`.
+///
+/// # Safety
+/// Uses and mutates process-global parser cursor state.
+#[export_name = "cfg_gethost"]
+pub unsafe extern "C" fn c_cfg_gethost() -> *mut libc::hostent {
+    unsafe { mtproxy_ffi_cfg_gethost().cast() }
+}
+
+/// Legacy C ABI wrapper for `reset_config()`.
+///
+/// # Safety
+/// Uses and mutates process-global parser state pointers.
+#[export_name = "reset_config"]
+pub unsafe extern "C" fn c_reset_config() {
+    let rc = unsafe {
+        mtproxy_ffi_cfg_reset_config(
+            config_buff,
+            config_bytes,
+            &raw mut cfg_start,
+            &raw mut cfg_end,
+            &raw mut cfg_cur,
+            &raw mut cfg_lno,
+        )
+    };
+    assert_eq!(rc, 0);
+}
+
+/// Legacy C ABI wrapper for `load_config()`.
+///
+/// # Safety
+/// `file` must be a valid C string when non-null.
+#[export_name = "load_config"]
+pub unsafe extern "C" fn c_load_config(file: *const c_char, fd: i32) -> i32 {
+    let rc = unsafe {
+        mtproxy_ffi_cfg_load_config(
+            file,
+            fd,
+            MAX_CONFIG_SIZE,
+            &raw mut config_buff,
+            &raw mut config_name,
+            &raw mut config_bytes,
+            &raw mut cfg_start,
+            &raw mut cfg_end,
+            &raw mut cfg_cur,
+            &raw mut cfg_lno,
+        )
+    };
+
+    if rc == -1 {
+        let file_name = cstr_lossy_or_default(file, "(null)");
+        eprintln!(
+            "Can not open file {file_name}: {}",
+            std::io::Error::last_os_error()
+        );
+        return -1;
+    }
+
+    if rc == -2 {
+        let file_name = cstr_lossy_or_default(unsafe { config_name }, "(unknown)");
+        eprintln!(
+            "error reading configuration file {file_name}: {}",
+            std::io::Error::last_os_error()
+        );
+        return -2;
+    }
+
+    if rc == -3 {
+        let file_name = cstr_lossy_or_default(unsafe { config_name }, "(unknown)");
+        eprintln!("configuration file {file_name} too long (max {MAX_CONFIG_SIZE} bytes)");
+        return -2;
+    }
+
+    if rc < 0 {
+        let file_name = cstr_lossy_or_default(unsafe { config_name }, "(unknown)");
+        eprintln!("error reading configuration file {file_name}");
+        return -2;
+    }
+
+    rc
+}
+
+/// Legacy C ABI wrapper for `md5_hex_config()`.
+///
+/// # Safety
+/// `out` must point to at least 32 writable bytes.
+#[export_name = "md5_hex_config"]
+pub unsafe extern "C" fn c_md5_hex_config(out: *mut c_char) {
+    let rc = unsafe { mtproxy_ffi_cfg_md5_hex_config(config_buff, config_bytes, out) };
+    assert_eq!(rc, 0);
+}
+
+/// Legacy C ABI wrapper for `close_config()`.
+///
+/// # Safety
+/// `fd` may be null; when non-null, it must be writable.
+#[export_name = "close_config"]
+pub unsafe extern "C" fn c_close_config(fd: *mut i32) {
+    let rc = unsafe {
+        mtproxy_ffi_cfg_close_config(
+            &raw mut config_buff,
+            &raw mut config_name,
+            &raw mut config_bytes,
+            &raw mut cfg_start,
+            &raw mut cfg_end,
+            &raw mut cfg_cur,
+            fd,
+        )
+    };
+    assert_eq!(rc, 0);
+}
+
 #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 fn copy_error_message(out: &mut MtproxyTlHeaderParseResult, message: &str) {
     let bytes = message.as_bytes();
@@ -1216,6 +1446,120 @@ pub unsafe extern "C" fn mtproxy_ffi_read_proc_stat_file(
     let out_ref = unsafe { &mut *out };
     *out_ref = parsed;
     0
+}
+
+/// C ABI mirror of `struct proc_stats` from `common/proc-stat.h`.
+#[repr(C)]
+pub struct ProcStats {
+    pub pid: i32,
+    pub comm: [c_char; 256],
+    pub state: c_char,
+    pub ppid: i32,
+    pub pgrp: i32,
+    pub session: i32,
+    pub tty_nr: i32,
+    pub tpgid: i32,
+    pub flags: libc::c_ulong,
+    pub minflt: libc::c_ulong,
+    pub cminflt: libc::c_ulong,
+    pub majflt: libc::c_ulong,
+    pub cmajflt: libc::c_ulong,
+    pub utime: libc::c_ulong,
+    pub stime: libc::c_ulong,
+    pub cutime: libc::c_long,
+    pub cstime: libc::c_long,
+    pub priority: libc::c_long,
+    pub nice: libc::c_long,
+    pub num_threads: libc::c_long,
+    pub itrealvalue: libc::c_long,
+    pub starttime: libc::c_ulong,
+    pub vsize: libc::c_ulong,
+    pub rss: libc::c_long,
+    pub rlim: libc::c_ulong,
+    pub startcode: libc::c_ulong,
+    pub endcode: libc::c_ulong,
+    pub startstack: libc::c_ulong,
+    pub kstkesp: libc::c_ulong,
+    pub kstkeip: libc::c_ulong,
+    pub signal: libc::c_ulong,
+    pub blocked: libc::c_ulong,
+    pub sigignore: libc::c_ulong,
+    pub sigcatch: libc::c_ulong,
+    pub wchan: libc::c_ulong,
+    pub nswap: libc::c_ulong,
+    pub cnswap: libc::c_ulong,
+    pub exit_signal: i32,
+    pub processor: i32,
+    pub rt_priority: libc::c_ulong,
+    pub policy: libc::c_ulong,
+    pub delayacct_blkio_ticks: libc::c_ulonglong,
+}
+
+fn copy_proc_stats_for_c(dst: &mut ProcStats, src: &MtproxyProcStats) {
+    *dst = ProcStats {
+        pid: src.pid,
+        comm: [0; 256],
+        state: src.state as c_char,
+        ppid: src.ppid,
+        pgrp: src.pgrp,
+        session: src.session,
+        tty_nr: src.tty_nr,
+        tpgid: src.tpgid,
+        flags: src.flags as libc::c_ulong,
+        minflt: src.minflt as libc::c_ulong,
+        cminflt: src.cminflt as libc::c_ulong,
+        majflt: src.majflt as libc::c_ulong,
+        cmajflt: src.cmajflt as libc::c_ulong,
+        utime: src.utime as libc::c_ulong,
+        stime: src.stime as libc::c_ulong,
+        cutime: src.cutime as libc::c_long,
+        cstime: src.cstime as libc::c_long,
+        priority: src.priority as libc::c_long,
+        nice: src.nice as libc::c_long,
+        num_threads: src.num_threads as libc::c_long,
+        itrealvalue: src.itrealvalue as libc::c_long,
+        starttime: src.starttime as libc::c_ulong,
+        vsize: src.vsize as libc::c_ulong,
+        rss: src.rss as libc::c_long,
+        rlim: src.rlim as libc::c_ulong,
+        startcode: src.startcode as libc::c_ulong,
+        endcode: src.endcode as libc::c_ulong,
+        startstack: src.startstack as libc::c_ulong,
+        kstkesp: src.kstkesp as libc::c_ulong,
+        kstkeip: src.kstkeip as libc::c_ulong,
+        signal: src.signal as libc::c_ulong,
+        blocked: src.blocked as libc::c_ulong,
+        sigignore: src.sigignore as libc::c_ulong,
+        sigcatch: src.sigcatch as libc::c_ulong,
+        wchan: src.wchan as libc::c_ulong,
+        nswap: src.nswap as libc::c_ulong,
+        cnswap: src.cnswap as libc::c_ulong,
+        exit_signal: src.exit_signal,
+        processor: src.processor,
+        rt_priority: src.rt_priority as libc::c_ulong,
+        policy: src.policy as libc::c_ulong,
+        delayacct_blkio_ticks: src.delayacct_blkio_ticks as libc::c_ulonglong,
+    };
+    let copy_len = dst.comm.len().saturating_sub(1);
+    dst.comm[..copy_len].copy_from_slice(&src.comm[..copy_len]);
+}
+
+/// Legacy C ABI shim for `read_proc_stats()` from `common/proc-stat.c`.
+///
+/// # Safety
+/// `s` must point to writable `struct proc_stats`.
+#[no_mangle]
+pub unsafe extern "C" fn read_proc_stats(pid: i32, tid: i32, s: *mut ProcStats) -> i32 {
+    if s.is_null() {
+        return 0;
+    }
+    let mut parsed = MtproxyProcStats::default();
+    if unsafe { mtproxy_ffi_read_proc_stat_file(pid, tid, &raw mut parsed) } != 0 {
+        return 0;
+    }
+    let out_ref = unsafe { &mut *s };
+    copy_proc_stats_for_c(out_ref, &parsed);
+    1
 }
 
 fn parse_statm_impl(text: &str, m: usize, page_size: i64, out_values: &mut [i64]) -> Option<()> {

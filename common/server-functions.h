@@ -54,16 +54,11 @@ int change_user(const char *username);
 int change_user_group(const char *username, const char *groupname);
 int raise_file_rlimit(int maxfiles);
 
-int fast_backtrace(void **buffer, int size);
-
 void print_backtrace(void);
 void ksignal(int sig, void (*handler)(int));
 void set_debug_handlers(void);
 
-int adjust_oom_score(int oom_score_adj);
-
-extern int allow_core_dump;
-extern int quit_steps, start_time;
+extern int start_time;
 extern int daemonize;
 extern const char *username, *progname, *groupname;
 
@@ -112,9 +107,6 @@ void remove_parse_option(int val);
 long long parse_memory_limit(const char *s);
 
 void add_builtin_parse_options(void);
-
-typedef void (*extra_debug_handler_t)(void);
-extern extra_debug_handler_t extra_debug_handler;
 
 static inline void barrier(void) { asm volatile("" : : : "memory"); }
 

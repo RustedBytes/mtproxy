@@ -27,9 +27,16 @@ const O_RDWR: c_int = 2;
 const O_WRONLY: c_int = 1;
 const O_APPEND: c_int = 1024;
 const O_CREAT: c_int = 64;
+const DEFAULT_REINDEX_SPEED: f64 = 32.0 * ((1 << 20) as f64);
+
+#[export_name = "verbosity"]
+pub static mut KPRINTF_VERBOSITY: c_int = 0;
+
+#[export_name = "logname"]
+pub static mut KPRINTF_LOGNAME: *const c_char = core::ptr::null();
 
 /// Global reindex speed limit (bytes per second).
-static REINDEX_SPEED: AtomicU64 = AtomicU64::new(0);
+static REINDEX_SPEED: AtomicU64 = AtomicU64::new(DEFAULT_REINDEX_SPEED.to_bits());
 
 /// Non-checking write wrapper.
 ///
@@ -325,24 +332,24 @@ pub unsafe extern "C" fn mtproxy_ffi_kdb_write(
     let mut ptr = buf.cast::<u8>();
     let mut write_fail_count = 0;
 
-    let reindex_speed = f64::from_bits(REINDEX_SPEED.load(Ordering::Relaxed));
+    let speed_limit = f64::from_bits(REINDEX_SPEED.load(Ordering::Relaxed));
 
     while remaining > 0 {
-        let chunk_size = if reindex_speed == 0.0 {
+        let chunk_size = if speed_limit == 0.0 {
             remaining
         } else {
             remaining.min(1 << 20)
         };
 
-        if reindex_speed != 0.0 {
+        if speed_limit != 0.0 {
             let t = mtproxy_ffi_get_utime_monotonic();
             let last = f64::from_bits(LAST_TIME.load(Ordering::Relaxed));
             let mut total = f64::from_bits(TOTAL_COUNT.load(Ordering::Relaxed));
             total *= ((last - t) * 0.1).exp();
             LAST_TIME.store(t.to_bits(), Ordering::Relaxed);
 
-            if total > reindex_speed {
-                let k = (total / reindex_speed).ln() * 10.0;
+            if total > speed_limit {
+                let k = (total / speed_limit).ln() * 10.0;
                 if k >= 0.0 {
                     let ts = Timespec {
                         tv_sec: k as c_long,
@@ -388,7 +395,7 @@ pub unsafe extern "C" fn mtproxy_ffi_kdb_write(
         write_fail_count = 0;
         let written = w as usize;
 
-        if reindex_speed != 0.0 {
+        if speed_limit != 0.0 {
             let data = DATA_AFTER_FSYNC.fetch_add(written as i64, Ordering::Relaxed);
             if data + (written as i64) >= (1 << 20) {
                 if fsync(fd) < 0 {
@@ -436,4 +443,66 @@ pub extern "C" fn mtproxy_ffi_get_reindex_speed() -> f64 {
 #[no_mangle]
 pub extern "C" fn mtproxy_ffi_set_reindex_speed(speed: f64) {
     REINDEX_SPEED.store(speed.to_bits(), Ordering::Relaxed);
+}
+
+/// Legacy C ABI wrapper for `nck_write`.
+///
+/// # Safety
+/// `data` must point to `len` readable bytes when `len > 0`.
+#[no_mangle]
+pub unsafe extern "C" fn nck_write(fd: c_int, data: *const c_void, len: usize) {
+    unsafe { mtproxy_ffi_nck_write(fd, data, len) };
+}
+
+/// Legacy C ABI wrapper for `nck_pwrite`.
+///
+/// # Safety
+/// `data` must point to `len` readable bytes when `len > 0`.
+#[no_mangle]
+pub unsafe extern "C" fn nck_pwrite(fd: c_int, data: *const c_void, len: usize, offset: c_long) {
+    unsafe { mtproxy_ffi_nck_pwrite(fd, data, len, offset) };
+}
+
+/// Legacy C ABI wrapper for `hexdump`.
+///
+/// # Safety
+/// `start` and `end` must be valid pointers with `end >= start`.
+#[no_mangle]
+pub unsafe extern "C" fn hexdump(start: *const c_void, end: *const c_void) -> c_int {
+    unsafe { mtproxy_ffi_hexdump(start, end) }
+}
+
+/// Legacy C ABI wrapper for `kdb_write`.
+///
+/// # Safety
+/// `buf` must point to `count` readable bytes when `count > 0`.
+#[no_mangle]
+pub unsafe extern "C" fn kdb_write(
+    fd: c_int,
+    buf: *const c_void,
+    count: i64,
+    filename: *const c_char,
+) {
+    unsafe { mtproxy_ffi_kdb_write(fd, buf, count, filename) };
+}
+
+/// Legacy C ABI wrapper for `kwrite`.
+///
+/// # Safety
+/// `buf` must point to `count` readable bytes when `count > 0`.
+#[no_mangle]
+pub unsafe extern "C" fn kwrite(fd: c_int, buf: *const c_void, count: c_int) -> c_int {
+    unsafe { mtproxy_ffi_kwrite(fd, buf, count) }
+}
+
+/// Legacy C ABI wrapper for `reopen_logs`.
+#[no_mangle]
+pub extern "C" fn reopen_logs() {
+    mtproxy_ffi_reopen_logs();
+}
+
+/// Legacy C ABI wrapper for `reopen_logs_ext`.
+#[no_mangle]
+pub extern "C" fn reopen_logs_ext(slave_mode: c_int) {
+    unsafe { mtproxy_ffi_reopen_logs_ext(slave_mode) };
 }

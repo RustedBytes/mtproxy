@@ -36,8 +36,6 @@ void reopen_logs(void);
 void reopen_logs_ext(int slave_mode);
 int hexdump(const void *start, const void *end);
 
-extern double reindex_speed;
-
 // safely writes buf to fd, considering write speed limit
 void kdb_write(int fd, const void *buf, long long count, const char *filename);
 

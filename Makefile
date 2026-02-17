@@ -46,7 +46,6 @@ DEPENDENCE_STRANGE	:=	$(subst ${OBJ}/,${DEP}/,$(patsubst %.o,%.d,${OBJECTS_STRAN
 DEPENDENCE_RUST	:=	$(subst ${OBJ}/,${DEP}/,$(patsubst %.o,%.d,${RUST_OBJECTS}))
 
 LIB_OBJS_NORMAL := \
-	${OBJ}/common/pid.o \
 	${OBJ}/common/resolver.o \
 	${OBJ}/common/parse-config.o \
 	${OBJ}/jobs/jobs.o ${OBJ}/common/mp-queue.o \
@@ -62,7 +61,7 @@ LIB_OBJS_NORMAL := \
 	${OBJ}/engine/engine-net.o \
 	${OBJ}/engine/engine-rpc.o \
 	${OBJ}/engine/engine-rpc-common.o \
-	${OBJ}/net/net-thread.o ${OBJ}/net/net-stats.o ${OBJ}/common/proc-stat.o \
+	${OBJ}/net/net-thread.o ${OBJ}/net/net-stats.o \
 	${OBJ}/common/kprintf.o \
 	${OBJ}/common/precise-time.o \
 	${OBJ}/common/server-functions.o \

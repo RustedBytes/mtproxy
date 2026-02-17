@@ -26,7 +26,7 @@
 
 // Minimal C wrapper for kprintf: varargs support stays in C for ABI.
 // All other functions are implemented in Rust
-// (rust/mtproxy-ffi/src/kprintf.rs).
+// (rust/mtproxy-ffi/src/kprintf/core.rs).
 
 #include <assert.h>
 #include <errno.h>
@@ -40,58 +40,6 @@
 
 #include "kprintf.h"
 #include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
-
-extern int32_t mtproxy_ffi_format_log_prefix(int32_t pid, int32_t year,
-                                             int32_t mon, int32_t mday,
-                                             int32_t hour, int32_t min,
-                                             int32_t sec, int32_t usec,
-                                             char *out, size_t out_len);
-extern void mtproxy_ffi_nck_write(int fd, const void *data, size_t len);
-extern void mtproxy_ffi_nck_pwrite(int fd, const void *data, size_t len,
-                                   off_t offset);
-extern int mtproxy_ffi_hexdump(const void *start, const void *end);
-extern void mtproxy_ffi_kdb_write(int fd, const void *buf, long long count,
-                                  const char *filename);
-extern int mtproxy_ffi_kwrite(int fd, const void *buf, int count);
-extern void mtproxy_ffi_reopen_logs(void);
-extern void mtproxy_ffi_reopen_logs_ext(int slave_mode);
-extern void mtproxy_ffi_set_reindex_speed(double speed);
-
-int verbosity;
-const char *logname;
-
-constexpr double DEFAULT_REINDEX_SPEED = 32.0 * (1 << 20);
-double __attribute__((used)) reindex_speed = DEFAULT_REINDEX_SPEED;
-
-__attribute__((constructor)) static void init_reindex_speed() {
-  mtproxy_ffi_set_reindex_speed(DEFAULT_REINDEX_SPEED);
-}
-
-void nck_write(int fd, const void *data, size_t len) {
-  mtproxy_ffi_nck_write(fd, data, len);
-}
-
-void nck_pwrite(int fd, const void *data, size_t len, off_t offset) {
-  mtproxy_ffi_nck_pwrite(fd, data, len, offset);
-}
-
-int hexdump(const void *start, const void *end) {
-  return mtproxy_ffi_hexdump(start, end);
-}
-
-void kdb_write(int fd, const void *buf, long long count, const char *filename) {
-  mtproxy_ffi_kdb_write(fd, buf, count, filename);
-}
-
-int kwrite(int fd, const void *buf, int count) {
-  return mtproxy_ffi_kwrite(fd, buf, count);
-}
-
-void reopen_logs() { mtproxy_ffi_reopen_logs(); }
-
-void reopen_logs_ext(int slave_mode) {
-  mtproxy_ffi_reopen_logs_ext(slave_mode);
-}
 
 void kprintf(const char *format, ...) {
   const int old_errno = errno;

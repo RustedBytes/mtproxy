@@ -1379,6 +1379,70 @@ pub unsafe extern "C" fn mtproxy_ffi_process_id_is_newer(
     i32::from(delta != 0 && delta <= 0x3fff)
 }
 
+/// Process-global PID state matching `common/pid.h`.
+#[no_mangle]
+pub static mut PID: MtproxyProcessId = MtproxyProcessId {
+    ip: 0,
+    port: 0,
+    pid: 0,
+    utime: 0,
+};
+
+/// Legacy C ABI shim for `init_common_PID()`.
+///
+/// # Safety
+/// Mutates process-global `PID`.
+#[no_mangle]
+pub unsafe extern "C" fn init_common_PID() {
+    let rc = unsafe { mtproxy_ffi_pid_init_common(&raw mut PID) };
+    assert_eq!(rc, 0);
+}
+
+/// Legacy C ABI shim for `init_client_PID()`.
+///
+/// # Safety
+/// Mutates process-global `PID`.
+#[no_mangle]
+pub unsafe extern "C" fn init_client_PID(ip: u32) {
+    let rc = unsafe { mtproxy_ffi_pid_init_client(&raw mut PID, ip) };
+    assert_eq!(rc, 0);
+}
+
+/// Legacy C ABI shim for `init_server_PID()`.
+///
+/// # Safety
+/// Mutates process-global `PID`.
+#[no_mangle]
+pub unsafe extern "C" fn init_server_PID(ip: u32, port: i32) {
+    let rc = unsafe { mtproxy_ffi_pid_init_server(&raw mut PID, ip, port) };
+    assert_eq!(rc, 0);
+}
+
+/// Legacy C ABI shim for `matches_pid()`.
+///
+/// # Safety
+/// `x` and `y` must be valid pointers to readable `struct process_id`.
+#[no_mangle]
+pub unsafe extern "C" fn matches_pid(x: *mut MtproxyProcessId, y: *mut MtproxyProcessId) -> i32 {
+    let rc = unsafe { mtproxy_ffi_matches_pid(x.cast_const(), y.cast_const()) };
+    assert!((0..=2).contains(&rc));
+    rc
+}
+
+/// Legacy C ABI shim for `process_id_is_newer()`.
+///
+/// # Safety
+/// `a` and `b` must be valid pointers to readable `struct process_id`.
+#[no_mangle]
+pub unsafe extern "C" fn process_id_is_newer(
+    a: *mut MtproxyProcessId,
+    b: *mut MtproxyProcessId,
+) -> i32 {
+    let rc = unsafe { mtproxy_ffi_process_id_is_newer(a.cast_const(), b.cast_const()) };
+    assert!(rc == 0 || rc == 1);
+    rc
+}
+
 /// Fills CPUID fields equivalent to C `kdb_cpuid`.
 ///
 /// # Safety
