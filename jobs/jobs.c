@@ -43,7 +43,6 @@
 #include "common/proc-stat.h"
 #include "jobs/jobs.h"
 #include "mp-queue.h"
-#include "net/net-connections.h"
 #include "precise-time.h"
 #include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 
@@ -67,7 +66,6 @@ void mtproxy_ffi_jobs_process_one_job(int job_tag_int, job_t job,
                                       int thread_class);
 void mtproxy_ffi_jobs_complete_job(job_t job);
 job_t mtproxy_ffi_jobs_alloc_timer_manager(int thread_class);
-void mtproxy_ffi_jobs_update_thread_stat(int pid, int tid, int id);
 int mtproxy_ffi_jobs_try_lock_job(job_t job, int set_flags, int clear_flags);
 job_t mtproxy_ffi_jobs_create_job_list(void);
 int mtproxy_ffi_jobs_insert_node_into_job_list(job_t list_job,
@@ -141,22 +139,8 @@ __attribute__((constructor)) static void jobs_module_register(void) {
   register_thread_callback(&jobs_module_thread_callback);
 }
 
-static inline long long jobs_stat_sum_ll(size_t field_offset) {
-  return sb_sum_ll((void **)jobs_module_stat_array, max_job_thread_id + 1,
-                   field_offset);
-}
-
 int jobs_prepare_stat(stats_buffer_t *sb) {
   return mtproxy_ffi_jobs_prepare_stat(sb);
-}
-
-long long jobs_get_allocated_memoty(void) {
-  return jobs_stat_sum_ll(
-      offsetof(struct jobs_module_stat, jobs_allocated_memory));
-}
-
-void update_thread_stat(int pid, int tid, int id) {
-  mtproxy_ffi_jobs_update_thread_stat(pid, tid, id);
 }
 
 void update_all_thread_stats(void) {
@@ -496,12 +480,6 @@ int insert_node_into_job_list(job_t list_job, struct job_list_node *w) {
 int insert_job_into_job_list(job_t list_job, JOB_REF_ARG(job), int mode) {
   return mtproxy_ffi_jobs_insert_job_into_job_list(list_job, job_tag_int, job,
                                                     mode);
-}
-
-int insert_connection_into_job_list([[maybe_unused]] job_t list_job,
-                                    [[maybe_unused]] connection_job_t c) {
-  assert(0);
-  return 0;
 }
 
 struct job_timer_manager_extra {

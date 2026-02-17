@@ -483,8 +483,6 @@ job_message_payload_alloc(JOB_REF_ARG(job), int message_class, int payload_ints,
   return P;
 }
 
-long long jobs_get_allocated_memoty(void);
-
 unsigned int *payload_continuation_create(
     unsigned int magic, int (*func)(job_t, struct job_message *, void *extra),
     void *extra);
