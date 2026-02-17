@@ -12,12 +12,6 @@ extern "C" {
 
 typedef unsigned (*crc32_partial_func_t)(const void *data, long len,
                                          unsigned crc);
-typedef unsigned (*crc32_combine_func_t)(unsigned crc1, unsigned crc2,
-                                         int64_t len2);
-typedef uint64_t (*crc64_partial_func_t)(const void *data, long len,
-                                         uint64_t crc);
-typedef uint64_t (*crc64_combine_func_t)(uint64_t crc1, uint64_t crc2,
-                                         int64_t len2);
 
 unsigned crc32_partial(const void *data, long len, unsigned crc);
 uint64_t crc64_partial(const void *data, long len, uint64_t crc);
@@ -46,14 +40,6 @@ uint64_t gf32_combine_clmul(unsigned *powers, unsigned crc1, int64_t len2);
 
 static inline unsigned compute_crc32(const void *data, long len) {
   return crc32_partial(data, len, -1) ^ -1;
-}
-
-static inline unsigned compute_crc32c(const void *data, int len) {
-  return crc32c_partial(data, len, -1) ^ -1;
-}
-
-static inline uint64_t compute_crc64(const void *data, long len) {
-  return crc64_partial(data, len, -1LL) ^ -1LL;
 }
 
 #ifdef __cplusplus

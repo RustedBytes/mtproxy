@@ -130,7 +130,3 @@ enum {
 enum {
   TL_ERROR_UNKNOWN = -4000,
 };
-
-[[nodiscard]] static inline bool tl_is_user_error(const int error_code) {
-  return error_code <= -1000 && error_code > -3000;
-}

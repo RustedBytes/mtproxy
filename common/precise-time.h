@@ -50,10 +50,3 @@ extern long long precise_time_rdtsc; // when precise_time was obtained
 
 /* ??? */
 double get_double_time(void);
-
-static inline void precise_sleep(int seconds, int nanoseconds) {
-  struct timespec t;
-  t.tv_sec = seconds;
-  t.tv_nsec = nanoseconds;
-  nanosleep(&t, NULL);
-}
