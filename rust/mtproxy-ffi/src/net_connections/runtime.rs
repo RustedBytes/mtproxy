@@ -2395,6 +2395,19 @@ pub(super) unsafe fn cpu_server_close_connection_impl(c: ConnectionJob, _who: c_
     0
 }
 
+pub(super) unsafe fn cpu_server_read_write_impl(c: ConnectionJob) -> c_int {
+    let conn = unsafe { conn_info(c) };
+    let type_ = unsafe { (*conn).type_ };
+    assert!(!type_.is_null());
+    let reader = unsafe { (*type_).reader };
+    let writer = unsafe { (*type_).writer };
+    assert!(reader.is_some());
+    assert!(writer.is_some());
+    unsafe { reader.unwrap()(c) };
+    unsafe { writer.unwrap()(c) };
+    0
+}
+
 pub(super) unsafe fn connection_event_incref_impl(fd: c_int, val: c_longlong) {
     let fd_u = usize::try_from(fd).unwrap_or(MAX_EVENTS);
     assert!(fd_u < MAX_EVENTS);

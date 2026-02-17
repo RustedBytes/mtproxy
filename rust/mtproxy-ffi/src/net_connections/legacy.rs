@@ -1,21 +1,19 @@
 //! Legacy symbol glue for migrated `net/net-connections.c` wrappers.
 
 use super::runtime::*;
-use core::ffi::{c_char, c_double, c_int, c_longlong, c_uint, c_void};
-use core::sync::atomic::{AtomicI32, AtomicI64, Ordering};
+use core::ffi::{c_char, c_double, c_int, c_long, c_longlong, c_uint, c_void};
+use core::ptr;
+use core::sync::atomic::{AtomicI32, AtomicI64, AtomicU64, Ordering};
 
 unsafe extern "C" {
     fn mtproxy_ffi_net_add_nat_info(rule_text: *const c_char) -> c_int;
     fn mtproxy_ffi_net_translate_ip(local_ip: c_uint) -> c_uint;
     fn sb_printf(sb: *mut StatsBuffer, format: *const c_char, ...);
-    fn mtproxy_ffi_net_connections_accept_rate_get_max() -> c_int;
-    fn mtproxy_ffi_net_connections_accept_rate_get_state(
-        out_remaining: *mut c_double,
-        out_time: *mut c_double,
-    );
-    fn mtproxy_ffi_net_connections_get_max_connection_fd() -> c_int;
-    fn mtproxy_ffi_net_connections_get_max_connection() -> c_int;
-    fn get_cur_conn_generation() -> c_int;
+    fn mpq_push_w(mq: *mut MpQueue, val: *mut c_void, flags: c_int) -> c_long;
+    fn mpq_pop_nw(mq: *mut MpQueue, flags: c_int) -> *mut c_void;
+    fn rwm_union(raw: *mut RawMessage, tail: *mut RawMessage) -> c_int;
+    fn job_incref(job: *mut c_void) -> *mut c_void;
+    fn job_signal(job_tag_int: c_int, job: *mut c_void, signal: c_int);
     static mut active_special_connections: c_int;
     static mut max_special_connections: c_int;
 }
@@ -26,6 +24,21 @@ pub(super) struct StatsBuffer {
     pos: c_int,
     size: c_int,
     flags: c_int,
+}
+
+#[repr(C)]
+pub(super) struct MpQueue {
+    _priv: [u8; 0],
+}
+
+#[repr(C)]
+pub(super) struct RawMessage {
+    first: *mut c_void,
+    last: *mut c_void,
+    total_bytes: c_int,
+    magic: c_int,
+    first_offset: c_int,
+    last_offset: c_int,
 }
 
 #[repr(C)]
@@ -93,10 +106,37 @@ static TCP_READV_BYTES: AtomicI64 = AtomicI64::new(0);
 static TCP_WRITEV_BYTES: AtomicI64 = AtomicI64::new(0);
 static FREE_LATER_SIZE: AtomicI32 = AtomicI32::new(0);
 static FREE_LATER_TOTAL: AtomicI64 = AtomicI64::new(0);
+static MAX_ACCEPT_RATE: AtomicI32 = AtomicI32::new(0);
+static CUR_ACCEPT_RATE_REMAINING_BITS: AtomicU64 = AtomicU64::new(0);
+static CUR_ACCEPT_RATE_TIME_BITS: AtomicU64 = AtomicU64::new(0);
+static MAX_CONNECTION: AtomicI32 = AtomicI32::new(0);
+static CONN_GENERATION: AtomicI32 = AtomicI32::new(0);
+static MAX_CONNECTION_FD: AtomicI32 = AtomicI32::new(65_536);
+static SPECIAL_LISTEN_SOCKETS: AtomicI32 = AtomicI32::new(0);
+static SPECIAL_SOCKET_FD: [AtomicI32; 64] = [const { AtomicI32::new(0) }; 64];
+static SPECIAL_SOCKET_GENERATION: [AtomicI32; 64] = [const { AtomicI32::new(0) }; 64];
+
+const JS_AUX: c_int = 1;
+const MAX_SPECIAL_LISTEN_SOCKETS: usize = 64;
+
+#[inline]
+unsafe fn atomic_i32_ref(ptr: *mut c_int) -> &'static AtomicI32 {
+    unsafe { &*ptr.cast::<AtomicI32>() }
+}
 
 #[inline]
 unsafe fn atomic_i32_load(ptr: *mut c_int) -> c_int {
-    unsafe { (&*ptr.cast::<AtomicI32>()).load(Ordering::Relaxed) }
+    unsafe { atomic_i32_ref(ptr).load(Ordering::Relaxed) }
+}
+
+#[inline]
+fn atomic_f64_load(bits: &AtomicU64) -> c_double {
+    c_double::from_bits(bits.load(Ordering::Relaxed))
+}
+
+#[inline]
+fn atomic_f64_store(bits: &AtomicU64, value: c_double) {
+    bits.store(value.to_bits(), Ordering::Relaxed);
 }
 
 #[inline]
@@ -142,6 +182,11 @@ pub unsafe extern "C" fn cpu_server_free_connection(c: ConnectionJob) -> c_int {
 #[no_mangle]
 pub unsafe extern "C" fn cpu_server_close_connection(c: ConnectionJob, who: c_int) -> c_int {
     unsafe { cpu_server_close_connection_impl(c, who) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn cpu_server_read_write(c: ConnectionJob) -> c_int {
+    unsafe { cpu_server_read_write_impl(c) }
 }
 
 #[no_mangle]
@@ -388,16 +433,140 @@ pub unsafe extern "C" fn nat_translate_ip(local_ip: c_uint) -> c_uint {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn connections_prepare_stat(sb: *mut StatsBuffer) -> c_int {
-    let max_accept_rate = unsafe { mtproxy_ffi_net_connections_accept_rate_get_max() };
-    let mut cur_accept_rate_remaining = 0.0;
-    let mut cur_accept_rate_time = 0.0;
+pub extern "C" fn tcp_set_max_accept_rate(rate: c_int) {
+    MAX_ACCEPT_RATE.store(rate, Ordering::Relaxed);
+}
+
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_connections_accept_rate_get_max() -> c_int {
+    MAX_ACCEPT_RATE.load(Ordering::Relaxed)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_connections_accept_rate_get_state(
+    out_remaining: *mut c_double,
+    out_time: *mut c_double,
+) {
     unsafe {
-        mtproxy_ffi_net_connections_accept_rate_get_state(
-            &raw mut cur_accept_rate_remaining,
-            &raw mut cur_accept_rate_time,
-        )
-    };
+        if !out_remaining.is_null() {
+            *out_remaining = atomic_f64_load(&CUR_ACCEPT_RATE_REMAINING_BITS);
+        }
+        if !out_time.is_null() {
+            *out_time = atomic_f64_load(&CUR_ACCEPT_RATE_TIME_BITS);
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_connections_accept_rate_set_state(
+    remaining: c_double,
+    time: c_double,
+) {
+    atomic_f64_store(&CUR_ACCEPT_RATE_REMAINING_BITS, remaining);
+    atomic_f64_store(&CUR_ACCEPT_RATE_TIME_BITS, time);
+}
+
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_connections_get_max_connection_fd() -> c_int {
+    MAX_CONNECTION_FD.load(Ordering::Relaxed)
+}
+
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_connections_get_max_connection() -> c_int {
+    MAX_CONNECTION.load(Ordering::Relaxed)
+}
+
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_connections_set_max_connection(value: c_int) {
+    MAX_CONNECTION.store(value, Ordering::Relaxed);
+}
+
+#[no_mangle]
+pub extern "C" fn tcp_set_max_connections(maxconn: c_int) {
+    MAX_CONNECTION_FD.store(maxconn, Ordering::Relaxed);
+    unsafe {
+        let max_special = atomic_i32_ref(ptr::addr_of_mut!(max_special_connections));
+        let mut current = max_special.load(Ordering::SeqCst);
+        while current == 0 || current > maxconn {
+            match max_special.compare_exchange(
+                current,
+                maxconn,
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+            ) {
+                Ok(_) => break,
+                Err(actual) => current = actual,
+            }
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn new_conn_generation() -> c_int {
+    CONN_GENERATION.fetch_add(1, Ordering::SeqCst)
+}
+
+#[no_mangle]
+pub extern "C" fn get_cur_conn_generation() -> c_int {
+    CONN_GENERATION.load(Ordering::SeqCst)
+}
+
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_connections_register_special_listen_socket(
+    fd: c_int,
+    generation: c_int,
+) {
+    let idx = SPECIAL_LISTEN_SOCKETS.fetch_add(1, Ordering::SeqCst);
+    let idx_usize = usize::try_from(idx).unwrap_or(MAX_SPECIAL_LISTEN_SOCKETS);
+    assert!(idx_usize < MAX_SPECIAL_LISTEN_SOCKETS);
+    SPECIAL_SOCKET_FD[idx_usize].store(fd, Ordering::Relaxed);
+    SPECIAL_SOCKET_GENERATION[idx_usize].store(generation, Ordering::Relaxed);
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_connections_close_connection_signal_special_aux() {
+    let count = SPECIAL_LISTEN_SOCKETS.load(Ordering::SeqCst);
+    let limit = usize::try_from(count).unwrap_or(MAX_SPECIAL_LISTEN_SOCKETS);
+    let limit = limit.min(MAX_SPECIAL_LISTEN_SOCKETS);
+    for i in 0..limit {
+        let fd = SPECIAL_SOCKET_FD[i].load(Ordering::Relaxed);
+        let generation = SPECIAL_SOCKET_GENERATION[i].load(Ordering::Relaxed);
+        let lc = unsafe { connection_get_by_fd_generation(fd, generation) };
+        assert!(!lc.is_null());
+        let lc_ref = unsafe { job_incref(lc.cast::<c_void>()) };
+        unsafe { job_signal(1, lc_ref, JS_AUX) };
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_connections_mpq_push_w(
+    mq: *mut MpQueue,
+    x: *mut c_void,
+    flags: c_int,
+) {
+    let _ = unsafe { mpq_push_w(mq, x, flags) };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_connections_mpq_pop_nw(
+    mq: *mut MpQueue,
+    flags: c_int,
+) -> *mut c_void {
+    unsafe { mpq_pop_nw(mq, flags) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_net_connections_rwm_union(
+    raw: *mut RawMessage,
+    tail: *mut RawMessage,
+) -> c_int {
+    unsafe { rwm_union(raw, tail) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn connections_prepare_stat(sb: *mut StatsBuffer) -> c_int {
+    let max_accept_rate = MAX_ACCEPT_RATE.load(Ordering::Relaxed);
+    let cur_accept_rate_remaining = atomic_f64_load(&CUR_ACCEPT_RATE_REMAINING_BITS);
 
     unsafe {
         sb_print_i32_key(
@@ -488,14 +657,14 @@ pub unsafe extern "C" fn connections_prepare_stat(sb: *mut StatsBuffer) -> c_int
             FREE_TARGETS.load(Ordering::Relaxed),
         );
 
-        sb_printf(
-            sb,
-            c"max_connections\t%d\nactive_special_connections\t%d\nmax_special_connections\t%d\n"
-                .as_ptr(),
-            mtproxy_ffi_net_connections_get_max_connection_fd(),
-            atomic_i32_load(&raw mut active_special_connections),
-            atomic_i32_load(&raw mut max_special_connections),
-        );
+            sb_printf(
+                sb,
+                c"max_connections\t%d\nactive_special_connections\t%d\nmax_special_connections\t%d\n"
+                    .as_ptr(),
+                MAX_CONNECTION_FD.load(Ordering::Relaxed),
+                atomic_i32_load(&raw mut active_special_connections),
+                atomic_i32_load(&raw mut max_special_connections),
+            );
         sb_print_i32_key(sb, c"max_accept_rate".as_ptr(), max_accept_rate);
         sb_print_double_key(
             sb,
@@ -505,9 +674,9 @@ pub unsafe extern "C" fn connections_prepare_stat(sb: *mut StatsBuffer) -> c_int
         sb_print_i32_key(
             sb,
             c"max_connection".as_ptr(),
-            mtproxy_ffi_net_connections_get_max_connection(),
+            MAX_CONNECTION.load(Ordering::Relaxed),
         );
-        sb_print_i32_key(sb, c"conn_generation".as_ptr(), get_cur_conn_generation());
+        sb_print_i32_key(sb, c"conn_generation".as_ptr(), CONN_GENERATION.load(Ordering::SeqCst));
 
         sb_print_i32_key(
             sb,
