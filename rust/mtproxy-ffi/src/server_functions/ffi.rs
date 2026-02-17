@@ -6,7 +6,10 @@ unsafe extern "C" {
     fn kprintf(format: *const c_char, ...);
     fn engine_add_net_parse_options();
     fn engine_add_engine_parse_options();
+    fn default_parse_option_func(a: c_int) -> c_int;
 }
+
+const LONGOPT_CUSTOM_SET: u32 = 0x1000_0000;
 
 #[no_mangle]
 pub static mut engine_options_num: c_int = 0;
@@ -55,6 +58,57 @@ pub unsafe extern "C" fn rust_sf_parse_option_add(
     help: *const c_char,
 ) -> c_int {
     unsafe { sf_parse_option_add_ffi(name, arg, val, flags, func, help) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rust_sf_register_parse_option_ex_or_die(
+    name: *const c_char,
+    arg: c_int,
+    val: c_int,
+    flags: u32,
+    func: Option<unsafe extern "C" fn(c_int) -> c_int>,
+    help: *const c_char,
+) {
+    let effective_func = func.or(Some(default_parse_option_func));
+    if unsafe { rust_sf_parse_option_add(name, arg, val, flags, effective_func, help) } < 0 {
+        unsafe {
+            kprintf(
+                c"failed to register parse option %s (%d)\n".as_ptr(),
+                if name.is_null() { c"(null)".as_ptr() } else { name },
+                val,
+            );
+            usage();
+        }
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rust_sf_register_parse_option_or_die(
+    name: *const c_char,
+    arg: c_int,
+    val: c_int,
+    help: *const c_char,
+) {
+    if unsafe {
+        rust_sf_parse_option_add(
+            name,
+            arg,
+            val,
+            LONGOPT_CUSTOM_SET,
+            Some(default_parse_option_func),
+            help,
+        )
+    } < 0
+    {
+        unsafe {
+            kprintf(
+                c"failed to register custom parse option %s (%d)\n".as_ptr(),
+                if name.is_null() { c"(null)".as_ptr() } else { name },
+                val,
+            );
+            usage();
+        }
+    }
 }
 
 #[no_mangle]
@@ -263,3 +317,8 @@ pub extern "C" fn add_builtin_parse_options() {
         engine_add_engine_parse_options();
     }
 }
+
+// Default terminal reset hook used by immediate signal handlers.
+// Runtime-specific builds may provide their own implementation.
+#[no_mangle]
+pub extern "C" fn engine_set_terminal_attributes() {}

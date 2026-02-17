@@ -2,6 +2,7 @@ pub(super) use crate::ffi_util::{
     mut_ref_from_ptr, mut_slice_from_ptr, ref_from_ptr, slice_from_ptr,
 };
 use crate::*;
+use std::ffi::CString;
 
 pub(super) fn mtproto_proxy_collect_argv(
     argc: i32,
@@ -610,13 +611,11 @@ unsafe extern "C" {
     fn engine_set_http_fallback(http_type: *mut c_void, http_functions: *mut c_void);
     fn tcp_rpc_add_proxy_domain(domain: *const c_char);
     fn tcp_rpcs_set_ext_secret(secret: *mut u8);
-    fn parse_option(
+    fn rust_sf_register_parse_option_or_die(
         name: *const c_char,
         arg: c_int,
-        var: *mut c_int,
         val: c_int,
         help: *const c_char,
-        ...
     );
     fn parse_usage() -> c_int;
     fn usage();
@@ -3994,85 +3993,79 @@ pub(super) unsafe fn mtproto_http_alarm_ffi(c: *mut c_void) -> c_int {
 
 pub(super) unsafe fn mtproto_mtfront_prepare_parse_options_ffi() {
     unsafe {
-        parse_option(
+        rust_sf_register_parse_option_or_die(
             b"http-stats\0".as_ptr().cast(),
             NO_ARGUMENT,
-            core::ptr::null_mut(),
             2000,
             b"allow http server to answer on stats queries\0"
                 .as_ptr()
                 .cast(),
         );
-        parse_option(
+        rust_sf_register_parse_option_or_die(
             b"mtproto-secret\0".as_ptr().cast(),
             REQUIRED_ARGUMENT,
-            core::ptr::null_mut(),
             OPT_S,
             b"16-byte secret in hex mode\0".as_ptr().cast(),
         );
-        parse_option(
+        rust_sf_register_parse_option_or_die(
             b"proxy-tag\0".as_ptr().cast(),
             REQUIRED_ARGUMENT,
-            core::ptr::null_mut(),
             OPT_P,
             b"16-byte proxy tag in hex mode to be passed along with all forwarded queries\0"
                 .as_ptr()
                 .cast(),
         );
-        parse_option(
+        rust_sf_register_parse_option_or_die(
             b"domain\0".as_ptr().cast(),
             REQUIRED_ARGUMENT,
-            core::ptr::null_mut(),
             OPT_D,
             b"adds allowed domain for TLS-transport mode, disables other transports; can be specified more than once\0"
                 .as_ptr()
                 .cast(),
         );
-        parse_option(
+        rust_sf_register_parse_option_or_die(
             b"max-special-connections\0".as_ptr().cast(),
             REQUIRED_ARGUMENT,
-            core::ptr::null_mut(),
             OPT_C,
             b"sets maximal number of accepted client connections per worker\0"
                 .as_ptr()
                 .cast(),
         );
-        parse_option(
+        rust_sf_register_parse_option_or_die(
             b"window-clamp\0".as_ptr().cast(),
             REQUIRED_ARGUMENT,
-            core::ptr::null_mut(),
             OPT_W,
             b"sets window clamp for client TCP connections\0"
                 .as_ptr()
                 .cast(),
         );
-        parse_option(
+        rust_sf_register_parse_option_or_die(
             b"http-ports\0".as_ptr().cast(),
             REQUIRED_ARGUMENT,
-            core::ptr::null_mut(),
             OPT_H,
             b"comma-separated list of client (HTTP) ports to listen\0"
                 .as_ptr()
                 .cast(),
         );
-        parse_option(
+        rust_sf_register_parse_option_or_die(
             b"slaves\0".as_ptr().cast(),
             REQUIRED_ARGUMENT,
-            core::ptr::null_mut(),
             OPT_M,
             b"spawn several slave workers; not recommended for TLS-transport mode for better replay protection\0"
                 .as_ptr()
                 .cast(),
         );
-        parse_option(
+        let ping_help = format!(
+            "sets ping interval in second for local TCP connections (default {:.3})",
+            DEFAULT_PING_INTERVAL
+        );
+        let ping_help_c = CString::new(ping_help)
+            .expect("ping option help must not contain interior NUL bytes");
+        rust_sf_register_parse_option_or_die(
             b"ping-interval\0".as_ptr().cast(),
             REQUIRED_ARGUMENT,
-            core::ptr::null_mut(),
             OPT_T,
-            b"sets ping interval in second for local TCP connections (default %.3lf)\0"
-                .as_ptr()
-                .cast(),
-            DEFAULT_PING_INTERVAL,
+            ping_help_c.as_ptr(),
         );
     }
 }

@@ -76,7 +76,6 @@ const CREATE_PIPE_READ_CLOSE_FMT: &[u8] = b"%s: closing #%d pipe read end file d
 const CREATE_PIPE_WRITE_CLOSE_FMT: &[u8] = b"%s: closing #%d pipe write end file descriptor.\n\0";
 const CREATE_PIPE_FUNC_NAME: &[u8] = b"create_main_thread_pipe\0";
 
-const OPTION_HELP_FMT: &[u8] = b"%s\0";
 const OPTION_CPU_THREADS_NAME: &[u8] = b"cpu-threads\0";
 const OPTION_CPU_THREADS_HELP: &[u8] = b"Number of CPU threads (1-64, default 8)\0";
 const OPTION_IO_THREADS_NAME: &[u8] = b"io-threads\0";
@@ -252,15 +251,13 @@ unsafe extern "C" {
     fn engine_set_http_fallback(http_type: *mut c_void, http_functions: *mut c_void);
     fn add_builtin_parse_options();
     fn parse_engine_options_long(argc: c_int, argv: *mut *mut c_char) -> c_int;
-    fn parse_option_ex(
+    fn rust_sf_register_parse_option_ex_or_die(
         name: *const c_char,
         arg: c_int,
-        var: *mut c_int,
         val: c_int,
         flags: c_uint,
         func: ParseOptionFn,
         help: *const c_char,
-        ...
     );
     fn mtproxy_ffi_engine_usage_bridge();
     fn engine_tl_init(
@@ -947,14 +944,12 @@ unsafe fn parse_option_engine_builtin(
     help: *const c_char,
 ) {
     unsafe {
-        parse_option_ex(
+        rust_sf_register_parse_option_ex_or_die(
             name,
             arg,
-            ptr::null_mut(),
             val,
             LONGOPT_JOBS_SET,
             Some(rust_parse_option_engine),
-            OPTION_HELP_FMT.as_ptr().cast(),
             help,
         );
     }

@@ -1,7 +1,7 @@
 //! FFI bindings for server-functions module.
 //!
-//! The C translation unit `common/server-functions.c` is now an ABI shim.
-//! The main behavior is implemented in this Rust module.
+//! Legacy C entry points are implemented by Rust FFI exports.
+//! The main behavior lives in this Rust module.
 
 pub(super) use core::ffi::{c_char, c_int, c_longlong, c_void};
 pub(super) use std::collections::HashSet;

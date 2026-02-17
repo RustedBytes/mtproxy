@@ -1911,6 +1911,20 @@ int32_t rust_sf_parse_option_add(
   int32_t (*func)(int32_t),
   const char *help
 );
+void rust_sf_register_parse_option_ex_or_die(
+  const char *name,
+  int32_t arg,
+  int32_t val,
+  uint32_t flags,
+  int32_t (*func)(int32_t),
+  const char *help
+);
+void rust_sf_register_parse_option_or_die(
+  const char *name,
+  int32_t arg,
+  int32_t val,
+  const char *help
+);
 int32_t rust_sf_parse_option_alias(const char *name, int32_t val);
 int32_t rust_sf_parse_option_long_alias(const char *name, const char *alias_name);
 int32_t rust_sf_remove_parse_option(int32_t val);
