@@ -1480,6 +1480,58 @@ pub fn target_lookup_assert_mode_ok(mode: i32, found: bool) -> bool {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TargetLookupFamily {
+    Ipv4,
+    Ipv6,
+}
+
+/// Selects target-hash lookup family (IPv4 vs IPv6).
+#[must_use]
+pub fn target_lookup_family(has_ipv4_target: bool) -> TargetLookupFamily {
+    if has_ipv4_target {
+        TargetLookupFamily::Ipv4
+    } else {
+        TargetLookupFamily::Ipv6
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TargetLookupMode {
+    RemoveAndReturn,
+    ReturnFound,
+    InsertNew,
+}
+
+/// Converts typed target-lookup mode into compatibility integer mode.
+#[must_use]
+pub const fn target_lookup_mode_value(mode: TargetLookupMode) -> i32 {
+    match mode {
+        TargetLookupMode::RemoveAndReturn => -1,
+        TargetLookupMode::ReturnFound => 0,
+        TargetLookupMode::InsertNew => 1,
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TargetLookupPlan {
+    pub family: TargetLookupFamily,
+    pub mode: TargetLookupMode,
+}
+
+/// Selects target-hash lookup family/mode for create-target paths.
+#[must_use]
+pub fn target_create_lookup_plan(has_ipv4_target: bool, insert_new: bool) -> TargetLookupPlan {
+    TargetLookupPlan {
+        family: target_lookup_family(has_ipv4_target),
+        mode: if insert_new {
+            TargetLookupMode::InsertNew
+        } else {
+            TargetLookupMode::ReturnFound
+        },
+    }
+}
+
 /// Selects action for `free_target`.
 ///
 /// Returns:
@@ -1515,6 +1567,22 @@ pub fn target_free_decision(
         TargetFreeDecision::DeleteIpv4
     } else {
         TargetFreeDecision::DeleteIpv6
+    }
+}
+
+/// Selects target-hash lookup family/mode for free-target removal path.
+#[must_use]
+pub fn target_free_lookup_plan(decision: TargetFreeDecision) -> Option<TargetLookupPlan> {
+    match decision {
+        TargetFreeDecision::Reject => None,
+        TargetFreeDecision::DeleteIpv4 => Some(TargetLookupPlan {
+            family: TargetLookupFamily::Ipv4,
+            mode: TargetLookupMode::RemoveAndReturn,
+        }),
+        TargetFreeDecision::DeleteIpv6 => Some(TargetLookupPlan {
+            family: TargetLookupFamily::Ipv6,
+            mode: TargetLookupMode::RemoveAndReturn,
+        }),
     }
 }
 
@@ -1778,13 +1846,15 @@ mod tests {
         socket_writer_io_action, socket_writer_should_abort_on_stop,
         socket_writer_should_call_ready_to_write, socket_writer_should_run, target_bucket_ipv4,
         target_bucket_ipv6, target_clean_unused_decision, target_connect_socket_action,
-        target_create_insert_should_insert, target_find_bad_should_select, target_free_action,
-        target_free_decision, target_job_boot_delay, target_job_dispatch,
+        target_create_insert_should_insert, target_create_lookup_plan,
+        target_find_bad_should_select, target_free_action, target_free_decision,
+        target_free_lookup_plan, target_job_boot_delay, target_job_dispatch,
         target_job_dispatch_action, target_job_finalize_decision, target_job_finalize_free_action,
         target_job_post_tick_action, target_job_post_tick_decision, target_job_retry_delay,
         target_job_should_run_tick, target_job_update_mode, target_lookup_assert_mode_ok,
-        target_lookup_decision, target_lookup_match_action, target_lookup_match_decision,
-        target_lookup_miss_action, target_lookup_miss_decision, target_needed_connections,
+        target_lookup_decision, target_lookup_family, target_lookup_match_action,
+        target_lookup_match_decision, target_lookup_miss_action, target_lookup_miss_decision,
+        target_lookup_mode_value, target_needed_connections,
         target_pick_allow_stopped_should_select, target_pick_allow_stopped_should_skip,
         target_pick_basic_should_select, target_pick_basic_should_skip, target_pick_decision,
         target_pick_should_incref, target_pick_should_select, target_pick_should_skip,
@@ -1792,9 +1862,9 @@ mod tests {
         target_remove_dead_connection_deltas, target_should_attempt_reconnect,
         target_tree_update_action, target_tree_update_decision, CreateTargetLifecycleDecision,
         NatAddRuleError, TargetCleanUnusedDecision, TargetFreeDecision, TargetJobDispatch,
-        TargetJobFinalize, TargetJobPostTick, TargetLookupDecision, TargetLookupMatchDecision,
-        TargetLookupMissDecision, TargetPickDecision, TargetTreeUpdateDecision,
-        ALLOC_CONNECTION_FAILURE_ACTION_DEC_JOBS_ACTIVE,
+        TargetJobFinalize, TargetJobPostTick, TargetLookupDecision, TargetLookupFamily,
+        TargetLookupMatchDecision, TargetLookupMissDecision, TargetLookupMode, TargetPickDecision,
+        TargetTreeUpdateDecision, ALLOC_CONNECTION_FAILURE_ACTION_DEC_JOBS_ACTIVE,
         ALLOC_CONNECTION_FAILURE_ACTION_FREE_RAWMSG,
         ALLOC_CONNECTION_FAILURE_ACTION_INC_ACCEPT_INIT_FAILED,
         ALLOC_CONNECTION_FAILURE_ACTION_SET_BASIC_TYPE_NONE,
@@ -2168,6 +2238,28 @@ mod tests {
         assert!(!target_lookup_assert_mode_ok(1, true));
         assert!(target_lookup_assert_mode_ok(0, false));
         assert!(!target_lookup_assert_mode_ok(-1, false));
+        assert_eq!(target_lookup_family(true), TargetLookupFamily::Ipv4);
+        assert_eq!(target_lookup_family(false), TargetLookupFamily::Ipv6);
+        assert_eq!(
+            target_lookup_mode_value(TargetLookupMode::RemoveAndReturn),
+            -1
+        );
+        assert_eq!(target_lookup_mode_value(TargetLookupMode::ReturnFound), 0);
+        assert_eq!(target_lookup_mode_value(TargetLookupMode::InsertNew), 1);
+        assert_eq!(
+            target_create_lookup_plan(true, false),
+            super::TargetLookupPlan {
+                family: TargetLookupFamily::Ipv4,
+                mode: TargetLookupMode::ReturnFound
+            }
+        );
+        assert_eq!(
+            target_create_lookup_plan(false, true),
+            super::TargetLookupPlan {
+                family: TargetLookupFamily::Ipv6,
+                mode: TargetLookupMode::InsertNew
+            }
+        );
 
         assert_eq!(
             target_free_action(1, false, true),
@@ -2193,6 +2285,21 @@ mod tests {
         assert_eq!(
             target_free_decision(0, false, false),
             TargetFreeDecision::DeleteIpv6
+        );
+        assert_eq!(target_free_lookup_plan(TargetFreeDecision::Reject), None);
+        assert_eq!(
+            target_free_lookup_plan(TargetFreeDecision::DeleteIpv4),
+            Some(super::TargetLookupPlan {
+                family: TargetLookupFamily::Ipv4,
+                mode: TargetLookupMode::RemoveAndReturn
+            })
+        );
+        assert_eq!(
+            target_free_lookup_plan(TargetFreeDecision::DeleteIpv6),
+            Some(super::TargetLookupPlan {
+                family: TargetLookupFamily::Ipv6,
+                mode: TargetLookupMode::RemoveAndReturn
+            })
         );
         assert_eq!(
             target_clean_unused_decision(1, false),

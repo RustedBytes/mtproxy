@@ -46,7 +46,6 @@ const RPCF_USE_CRC32C: c_int = 2048;
 const PORT_RANGE_MOD: c_int = 100;
 const RAISE_FILE_GAP: c_int = 16;
 const AES_LOAD_PWD_FILE_OPTIONAL_ERROR: c_int = i32::MIN;
-const ENGINE_EPOLL_SLEEP_NS_MULTITHREAD: c_int = 10_000;
 
 const REQUIRED_ARGUMENT: c_int = 1;
 const OPTIONAL_ARGUMENT: c_int = 2;
@@ -55,12 +54,6 @@ const EVT_READ: c_int = 4;
 const EVT_LEVEL: c_int = 8;
 const SM_IPV6: c_int = 2;
 const EVA_CONTINUE: c_int = 0;
-
-const ENGINE_OPT_CPU_THREADS: c_int = 227;
-const ENGINE_OPT_IO_THREADS: c_int = 228;
-const ENGINE_OPT_MULTITHREAD: c_int = 258;
-const ENGINE_OPT_TCP_CPU_THREADS: c_int = 301;
-const ENGINE_OPT_TCP_IO_THREADS: c_int = 302;
 
 const FATAL_CANNOT_LOAD_SECRET_FMT: &[u8] = b"fatal: cannot load secret definition file `%s'\n\0";
 const FATAL_CANNOT_CHANGE_USER_FMT: &[u8] = b"fatal: cannot change user to %s\n\0";
@@ -479,33 +472,56 @@ unsafe extern "C" fn rust_parse_option_engine(val: c_int) -> c_int {
         return -1;
     }
 
-    match val {
-        ENGINE_OPT_CPU_THREADS => unsafe {
-            (*e).required_cpu_threads = libc::atoi(optarg);
-            0
-        },
-        ENGINE_OPT_IO_THREADS => unsafe {
-            (*e).required_io_threads = libc::atoi(optarg);
-            0
-        },
-        ENGINE_OPT_MULTITHREAD => unsafe {
-            if !optarg.is_null() && libc::atoi(optarg) == 0 {
-                (*e).modules &= !ENGINE_ENABLE_MULTITHREAD;
-            } else {
-                (*e).modules |= ENGINE_ENABLE_MULTITHREAD;
-                epoll_sleep_ns = ENGINE_EPOLL_SLEEP_NS_MULTITHREAD;
+    let optarg_value = if unsafe { optarg }.is_null() {
+        None
+    } else {
+        Some(unsafe { libc::atoi(optarg) })
+    };
+
+    let decision = mtproxy_core::runtime::engine::engine_parse_option_decision(val, optarg_value);
+    match decision {
+        mtproxy_core::runtime::engine::EngineParseOptionDecision::Reject => -1,
+        mtproxy_core::runtime::engine::EngineParseOptionDecision::SetRequiredCpuThreads(v) => {
+            unsafe {
+                (*e).required_cpu_threads = v;
             }
             0
-        },
-        ENGINE_OPT_TCP_CPU_THREADS => unsafe {
-            (*e).required_tcp_cpu_threads = libc::atoi(optarg);
+        }
+        mtproxy_core::runtime::engine::EngineParseOptionDecision::SetRequiredIoThreads(v) => {
+            unsafe {
+                (*e).required_io_threads = v;
+            }
             0
-        },
-        ENGINE_OPT_TCP_IO_THREADS => unsafe {
-            (*e).required_tcp_io_threads = libc::atoi(optarg);
+        }
+        mtproxy_core::runtime::engine::EngineParseOptionDecision::SetRequiredTcpCpuThreads(v) => {
+            unsafe {
+                (*e).required_tcp_cpu_threads = v;
+            }
             0
-        },
-        _ => -1,
+        }
+        mtproxy_core::runtime::engine::EngineParseOptionDecision::SetRequiredTcpIoThreads(v) => {
+            unsafe {
+                (*e).required_tcp_io_threads = v;
+            }
+            0
+        }
+        mtproxy_core::runtime::engine::EngineParseOptionDecision::SetMultithread {
+            enable,
+            set_epoll_sleep_ns,
+        } => {
+            unsafe {
+                if enable {
+                    (*e).modules |= ENGINE_ENABLE_MULTITHREAD;
+                } else {
+                    (*e).modules &= !ENGINE_ENABLE_MULTITHREAD;
+                }
+                if set_epoll_sleep_ns {
+                    epoll_sleep_ns =
+                        mtproxy_core::runtime::engine::ENGINE_EPOLL_SLEEP_NS_MULTITHREAD;
+                }
+            }
+            0
+        }
     }
 }
 
@@ -776,39 +792,51 @@ pub(super) unsafe fn server_init_impl(
         }
     }
 
-    if unsafe { (*e).do_not_open_port } == 0 {
-        if unsafe { (*e).port } <= 0 {
-            unsafe {
-                kprintf(FATAL_PORT_UNDEFINED_FMT.as_ptr().cast());
-                libc::exit(1);
-            }
-        }
-        if unsafe { (*e).sfd } <= 0 {
-            assert!(unsafe { try_open_port((*e).port, 1) } >= 0);
-        }
+    let listen_plan = mtproxy_core::runtime::engine::engine_server_listen_plan(
+        unsafe { (*e).do_not_open_port != 0 },
+        unsafe { (*e).port },
+        unsafe { (*e).sfd },
+        unsafe { engine_tcp_enabled(e) },
+        unsafe { engine_ipv6_enabled(e) },
+    );
 
-        if unsafe { engine_tcp_enabled(e) } {
-            if unsafe { !engine_ipv6_enabled(e) } {
-                assert!(
-                    unsafe {
-                        init_listening_connection(
-                            (*e).sfd,
-                            listen_connection_type,
-                            listen_connection_extra,
-                        )
-                    } >= 0
-                );
-            } else {
-                assert!(
-                    unsafe {
-                        init_listening_tcpv6_connection(
-                            (*e).sfd,
-                            listen_connection_type,
-                            listen_connection_extra,
-                            SM_IPV6,
-                        )
-                    } >= 0
-                );
+    match listen_plan {
+        mtproxy_core::runtime::engine::EngineServerListenPlan::Skip => {}
+        mtproxy_core::runtime::engine::EngineServerListenPlan::FatalPortUndefined => unsafe {
+            kprintf(FATAL_PORT_UNDEFINED_FMT.as_ptr().cast());
+            libc::exit(1);
+        },
+        mtproxy_core::runtime::engine::EngineServerListenPlan::OpenAndInit {
+            open_socket,
+            init_listener,
+            ipv6_listener,
+        } => {
+            if open_socket {
+                assert!(unsafe { try_open_port((*e).port, 1) } >= 0);
+            }
+            if init_listener {
+                if ipv6_listener {
+                    assert!(
+                        unsafe {
+                            init_listening_tcpv6_connection(
+                                (*e).sfd,
+                                listen_connection_type,
+                                listen_connection_extra,
+                                SM_IPV6,
+                            )
+                        } >= 0
+                    );
+                } else {
+                    assert!(
+                        unsafe {
+                            init_listening_connection(
+                                (*e).sfd,
+                                listen_connection_type,
+                                listen_connection_extra,
+                            )
+                        } >= 0
+                    );
+                }
             }
         }
     }
@@ -936,31 +964,31 @@ pub(super) unsafe fn engine_add_engine_parse_options_impl() {
         parse_option_engine_builtin(
             OPTION_CPU_THREADS_NAME.as_ptr().cast(),
             REQUIRED_ARGUMENT,
-            ENGINE_OPT_CPU_THREADS,
+            mtproxy_core::runtime::engine::ENGINE_OPT_CPU_THREADS,
             OPTION_CPU_THREADS_HELP.as_ptr().cast(),
         );
         parse_option_engine_builtin(
             OPTION_IO_THREADS_NAME.as_ptr().cast(),
             REQUIRED_ARGUMENT,
-            ENGINE_OPT_IO_THREADS,
+            mtproxy_core::runtime::engine::ENGINE_OPT_IO_THREADS,
             OPTION_IO_THREADS_HELP.as_ptr().cast(),
         );
         parse_option_engine_builtin(
             OPTION_MULTITHREAD_NAME.as_ptr().cast(),
             OPTIONAL_ARGUMENT,
-            ENGINE_OPT_MULTITHREAD,
+            mtproxy_core::runtime::engine::ENGINE_OPT_MULTITHREAD,
             OPTION_MULTITHREAD_HELP.as_ptr().cast(),
         );
         parse_option_engine_builtin(
             OPTION_TCP_CPU_THREADS_NAME.as_ptr().cast(),
             REQUIRED_ARGUMENT,
-            ENGINE_OPT_TCP_CPU_THREADS,
+            mtproxy_core::runtime::engine::ENGINE_OPT_TCP_CPU_THREADS,
             OPTION_TCP_CPU_THREADS_HELP.as_ptr().cast(),
         );
         parse_option_engine_builtin(
             OPTION_TCP_IO_THREADS_NAME.as_ptr().cast(),
             REQUIRED_ARGUMENT,
-            ENGINE_OPT_TCP_IO_THREADS,
+            mtproxy_core::runtime::engine::ENGINE_OPT_TCP_IO_THREADS,
             OPTION_TCP_IO_THREADS_HELP.as_ptr().cast(),
         );
     }
@@ -994,10 +1022,10 @@ pub(super) unsafe fn engine_init_impl(pwd_filename: *const c_char, do_not_open_p
     let e = unsafe { engine_state };
     assert!(!e.is_null());
 
-    if do_not_open_port == 0 {
-        unsafe {
-            engine_do_open_port();
-        }
+    if mtproxy_core::runtime::engine::engine_init_open_plan(do_not_open_port != 0)
+        == mtproxy_core::runtime::engine::EngineInitOpenPlan::RunPreOpen
+    {
+        unsafe { engine_do_open_port() };
     }
 
     unsafe {
@@ -1026,7 +1054,13 @@ pub(super) unsafe fn engine_init_impl(pwd_filename: *const c_char, do_not_open_p
         }
     }
 
-    if do_not_open_port == 0 && unsafe { (*e).port <= 0 && (*e).start_port <= (*e).end_port } {
+    if mtproxy_core::runtime::engine::engine_init_port_range_plan(
+        do_not_open_port != 0,
+        unsafe { (*e).port },
+        unsafe { (*e).start_port },
+        unsafe { (*e).end_port },
+    ) == mtproxy_core::runtime::engine::EngineInitPortRangePlan::TryRange
+    {
         unsafe {
             (*e).port = try_open_port_range(
                 (*e).start_port,
@@ -1040,20 +1074,23 @@ pub(super) unsafe fn engine_init_impl(pwd_filename: *const c_char, do_not_open_p
     }
 
     let mut ipv4: c_uint = 0;
-    if unsafe { (*e).settings_addr.s_addr } != 0 {
-        ipv4 = c_uint::from_be(unsafe { (*e).settings_addr.s_addr });
-        if (ipv4 >> 24) != 10 {
-            unsafe {
-                kprintf(
-                    BAD_BINDED_IP_FMT.as_ptr().cast(),
-                    ip_octet_1(ipv4),
-                    ip_octet_2(ipv4),
-                    ip_octet_3(ipv4),
-                    ip_octet_4(ipv4),
-                );
-            }
-            ipv4 = 0;
+    let bind_plan = mtproxy_core::runtime::engine::engine_bind_ipv4_plan(c_uint::from_be(unsafe {
+        (*e).settings_addr.s_addr
+    }));
+    match bind_plan {
+        mtproxy_core::runtime::engine::EngineBindIpv4Plan::UseAuto => {}
+        mtproxy_core::runtime::engine::EngineBindIpv4Plan::UseProvided(addr) => {
+            ipv4 = addr;
         }
+        mtproxy_core::runtime::engine::EngineBindIpv4Plan::RejectProvided(addr) => unsafe {
+            kprintf(
+                BAD_BINDED_IP_FMT.as_ptr().cast(),
+                ip_octet_1(addr),
+                ip_octet_2(addr),
+                ip_octet_3(addr),
+                ip_octet_4(addr),
+            );
+        },
     }
 
     unsafe {

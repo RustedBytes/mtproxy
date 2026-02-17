@@ -74,6 +74,150 @@ pub enum EngineModule {
 /// Default enabled modules
 pub const ENGINE_DEFAULT_ENABLED_MODULES: u64 = EngineModule::Tcp as u64;
 
+pub const ENGINE_OPT_CPU_THREADS: i32 = 227;
+pub const ENGINE_OPT_IO_THREADS: i32 = 228;
+pub const ENGINE_OPT_MULTITHREAD: i32 = 258;
+pub const ENGINE_OPT_TCP_CPU_THREADS: i32 = 301;
+pub const ENGINE_OPT_TCP_IO_THREADS: i32 = 302;
+pub const ENGINE_EPOLL_SLEEP_NS_MULTITHREAD: i32 = 10_000;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EngineParseOptionDecision {
+    Reject,
+    SetRequiredCpuThreads(i32),
+    SetRequiredIoThreads(i32),
+    SetRequiredTcpCpuThreads(i32),
+    SetRequiredTcpIoThreads(i32),
+    SetMultithread {
+        enable: bool,
+        set_epoll_sleep_ns: bool,
+    },
+}
+
+/// Selects engine parse-option behavior for thread and multithread flags.
+///
+/// `optarg_value` should be parsed from the option argument when present.
+#[must_use]
+pub fn engine_parse_option_decision(
+    option_value: i32,
+    optarg_value: Option<i32>,
+) -> EngineParseOptionDecision {
+    match option_value {
+        ENGINE_OPT_CPU_THREADS => {
+            EngineParseOptionDecision::SetRequiredCpuThreads(optarg_value.unwrap_or(0))
+        }
+        ENGINE_OPT_IO_THREADS => {
+            EngineParseOptionDecision::SetRequiredIoThreads(optarg_value.unwrap_or(0))
+        }
+        ENGINE_OPT_MULTITHREAD => {
+            let enable = !matches!(optarg_value, Some(0));
+            EngineParseOptionDecision::SetMultithread {
+                enable,
+                set_epoll_sleep_ns: enable,
+            }
+        }
+        ENGINE_OPT_TCP_CPU_THREADS => {
+            EngineParseOptionDecision::SetRequiredTcpCpuThreads(optarg_value.unwrap_or(0))
+        }
+        ENGINE_OPT_TCP_IO_THREADS => {
+            EngineParseOptionDecision::SetRequiredTcpIoThreads(optarg_value.unwrap_or(0))
+        }
+        _ => EngineParseOptionDecision::Reject,
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EngineInitOpenPlan {
+    SkipPreOpen,
+    RunPreOpen,
+}
+
+/// Selects whether `engine_init` should run privileged pre-open logic.
+#[must_use]
+pub fn engine_init_open_plan(do_not_open_port: bool) -> EngineInitOpenPlan {
+    if do_not_open_port {
+        EngineInitOpenPlan::SkipPreOpen
+    } else {
+        EngineInitOpenPlan::RunPreOpen
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EngineInitPortRangePlan {
+    Skip,
+    TryRange,
+}
+
+/// Selects whether `engine_init` should attempt fallback listener range open.
+#[must_use]
+pub fn engine_init_port_range_plan(
+    do_not_open_port: bool,
+    port: i32,
+    start_port: i32,
+    end_port: i32,
+) -> EngineInitPortRangePlan {
+    if !do_not_open_port && port <= 0 && start_port <= end_port {
+        EngineInitPortRangePlan::TryRange
+    } else {
+        EngineInitPortRangePlan::Skip
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EngineBindIpv4Plan {
+    UseAuto,
+    UseProvided(u32),
+    RejectProvided(u32),
+}
+
+/// Selects bind-address behavior for `engine_init`.
+///
+/// `settings_addr_host` is host-order IPv4.
+#[must_use]
+pub fn engine_bind_ipv4_plan(settings_addr_host: u32) -> EngineBindIpv4Plan {
+    if settings_addr_host == 0 {
+        return EngineBindIpv4Plan::UseAuto;
+    }
+    if (settings_addr_host >> 24) == 10 {
+        EngineBindIpv4Plan::UseProvided(settings_addr_host)
+    } else {
+        EngineBindIpv4Plan::RejectProvided(settings_addr_host)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EngineServerListenPlan {
+    Skip,
+    FatalPortUndefined,
+    OpenAndInit {
+        open_socket: bool,
+        init_listener: bool,
+        ipv6_listener: bool,
+    },
+}
+
+/// Selects listener setup behavior for `server_init`.
+#[must_use]
+pub fn engine_server_listen_plan(
+    do_not_open_port: bool,
+    port: i32,
+    sfd: i32,
+    tcp_enabled: bool,
+    ipv6_enabled: bool,
+) -> EngineServerListenPlan {
+    if do_not_open_port {
+        return EngineServerListenPlan::Skip;
+    }
+    if port <= 0 {
+        return EngineServerListenPlan::FatalPortUndefined;
+    }
+    EngineServerListenPlan::OpenAndInit {
+        open_socket: sfd <= 0,
+        init_listener: tcp_enabled,
+        ipv6_listener: tcp_enabled && ipv6_enabled,
+    }
+}
+
 /// Engine state configuration
 ///
 /// This structure mirrors the C `engine_t` structure from engine.h
@@ -720,5 +864,121 @@ mod tests {
         let _guard = lock_engine_test_runtime();
         let result = engine_init(Some(""), true);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_option_decision_matches_engine_policy() {
+        assert_eq!(
+            engine_parse_option_decision(ENGINE_OPT_CPU_THREADS, Some(7)),
+            EngineParseOptionDecision::SetRequiredCpuThreads(7)
+        );
+        assert_eq!(
+            engine_parse_option_decision(ENGINE_OPT_IO_THREADS, Some(9)),
+            EngineParseOptionDecision::SetRequiredIoThreads(9)
+        );
+        assert_eq!(
+            engine_parse_option_decision(ENGINE_OPT_TCP_CPU_THREADS, Some(3)),
+            EngineParseOptionDecision::SetRequiredTcpCpuThreads(3)
+        );
+        assert_eq!(
+            engine_parse_option_decision(ENGINE_OPT_TCP_IO_THREADS, Some(5)),
+            EngineParseOptionDecision::SetRequiredTcpIoThreads(5)
+        );
+
+        assert_eq!(
+            engine_parse_option_decision(ENGINE_OPT_MULTITHREAD, None),
+            EngineParseOptionDecision::SetMultithread {
+                enable: true,
+                set_epoll_sleep_ns: true
+            }
+        );
+        assert_eq!(
+            engine_parse_option_decision(ENGINE_OPT_MULTITHREAD, Some(1)),
+            EngineParseOptionDecision::SetMultithread {
+                enable: true,
+                set_epoll_sleep_ns: true
+            }
+        );
+        assert_eq!(
+            engine_parse_option_decision(ENGINE_OPT_MULTITHREAD, Some(0)),
+            EngineParseOptionDecision::SetMultithread {
+                enable: false,
+                set_epoll_sleep_ns: false
+            }
+        );
+
+        assert_eq!(
+            engine_parse_option_decision(999_999, Some(1)),
+            EngineParseOptionDecision::Reject
+        );
+    }
+
+    #[test]
+    fn engine_init_branch_plans_match_policy() {
+        assert_eq!(engine_init_open_plan(true), EngineInitOpenPlan::SkipPreOpen);
+        assert_eq!(engine_init_open_plan(false), EngineInitOpenPlan::RunPreOpen);
+
+        assert_eq!(
+            engine_init_port_range_plan(false, 0, 1000, 2000),
+            EngineInitPortRangePlan::TryRange
+        );
+        assert_eq!(
+            engine_init_port_range_plan(true, 0, 1000, 2000),
+            EngineInitPortRangePlan::Skip
+        );
+        assert_eq!(
+            engine_init_port_range_plan(false, 443, 1000, 2000),
+            EngineInitPortRangePlan::Skip
+        );
+        assert_eq!(
+            engine_init_port_range_plan(false, 0, 3000, 2000),
+            EngineInitPortRangePlan::Skip
+        );
+
+        assert_eq!(engine_bind_ipv4_plan(0), EngineBindIpv4Plan::UseAuto);
+        assert_eq!(
+            engine_bind_ipv4_plan(0x0a00_0001),
+            EngineBindIpv4Plan::UseProvided(0x0a00_0001)
+        );
+        assert_eq!(
+            engine_bind_ipv4_plan(0xc0a8_0001),
+            EngineBindIpv4Plan::RejectProvided(0xc0a8_0001)
+        );
+    }
+
+    #[test]
+    fn server_init_listener_plan_matches_policy() {
+        assert_eq!(
+            engine_server_listen_plan(true, 0, 0, true, true),
+            EngineServerListenPlan::Skip
+        );
+        assert_eq!(
+            engine_server_listen_plan(false, 0, 0, true, true),
+            EngineServerListenPlan::FatalPortUndefined
+        );
+        assert_eq!(
+            engine_server_listen_plan(false, 443, -1, true, false),
+            EngineServerListenPlan::OpenAndInit {
+                open_socket: true,
+                init_listener: true,
+                ipv6_listener: false
+            }
+        );
+        assert_eq!(
+            engine_server_listen_plan(false, 443, 7, true, true),
+            EngineServerListenPlan::OpenAndInit {
+                open_socket: false,
+                init_listener: true,
+                ipv6_listener: true
+            }
+        );
+        assert_eq!(
+            engine_server_listen_plan(false, 443, 7, false, true),
+            EngineServerListenPlan::OpenAndInit {
+                open_socket: false,
+                init_listener: false,
+                ipv6_listener: false
+            }
+        );
     }
 }

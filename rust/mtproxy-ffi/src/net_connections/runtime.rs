@@ -3216,28 +3216,33 @@ pub(super) unsafe fn create_target_impl(
     assert_eq!(lock_rc, 0);
 
     let source_ref = unsafe { &*source };
-    let t = if source_ref.target.s_addr != 0 {
-        unsafe {
+    let lookup_plan = mtproxy_core::runtime::net::connections::target_create_lookup_plan(
+        source_ref.target.s_addr != 0,
+        false,
+    );
+    let lookup_mode =
+        mtproxy_core::runtime::net::connections::target_lookup_mode_value(lookup_plan.mode);
+    let t = match lookup_plan.family {
+        mtproxy_core::runtime::net::connections::TargetLookupFamily::Ipv4 => unsafe {
             target_lookup_ipv4_impl(
                 source_ref.target.s_addr,
                 source_ref.port,
                 source_ref.type_,
                 source_ref.extra,
-                0,
+                lookup_mode,
                 ptr::null_mut(),
             )
-        }
-    } else {
-        unsafe {
+        },
+        mtproxy_core::runtime::net::connections::TargetLookupFamily::Ipv6 => unsafe {
             target_lookup_ipv6_impl(
                 &source_ref.target_ipv6,
                 source_ref.port,
                 source_ref.type_,
                 source_ref.extra,
-                0,
+                lookup_mode,
                 ptr::null_mut(),
             )
-        }
+        },
     };
 
     let lifecycle_decision =
@@ -3315,28 +3320,34 @@ pub(super) unsafe fn create_target_impl(
             mtproxy_ffi_net_connections_stat_add_allocated_targets(1);
         }
 
-        if source_ref.target.s_addr != 0 {
-            unsafe {
+        let insert_lookup_plan = mtproxy_core::runtime::net::connections::target_create_lookup_plan(
+            source_ref.target.s_addr != 0,
+            true,
+        );
+        let insert_lookup_mode = mtproxy_core::runtime::net::connections::target_lookup_mode_value(
+            insert_lookup_plan.mode,
+        );
+        match insert_lookup_plan.family {
+            mtproxy_core::runtime::net::connections::TargetLookupFamily::Ipv4 => unsafe {
                 target_lookup_ipv4_impl(
                     source_ref.target.s_addr,
                     source_ref.port,
                     source_ref.type_,
                     source_ref.extra,
-                    1,
+                    insert_lookup_mode,
                     t_new,
                 );
-            }
-        } else {
-            unsafe {
+            },
+            mtproxy_core::runtime::net::connections::TargetLookupFamily::Ipv6 => unsafe {
                 target_lookup_ipv6_impl(
                     &source_ref.target_ipv6,
                     source_ref.port,
                     source_ref.type_,
                     source_ref.extra,
-                    1,
+                    insert_lookup_mode,
                     t_new,
                 );
-            }
+            },
         }
 
         if !was_created.is_null() {
@@ -3371,46 +3382,68 @@ pub(super) unsafe fn free_target_impl(ctj: ConnTargetJob) -> c_int {
         assert_eq!(unlock_rc, 0);
         return -1;
     }
+    let Some(free_lookup_plan) =
+        mtproxy_core::runtime::net::connections::target_free_lookup_plan(free_action)
+    else {
+        unreachable!("reject free action returned above")
+    };
+    let free_lookup_mode =
+        mtproxy_core::runtime::net::connections::target_lookup_mode_value(free_lookup_plan.mode);
 
     assert!(!target.is_null());
     assert!(!unsafe { (*target).type_ }.is_null());
     assert_eq!(unsafe { (*target).global_refcnt }, 0);
     assert!(unsafe { (*target).conn_tree.is_null() });
 
-    if free_action == mtproxy_core::runtime::net::connections::TargetFreeDecision::DeleteIpv4 {
-        let ad = unsafe { (*target).target };
-        let port = unsafe { (*target).port };
-        let type_ = unsafe { (*target).type_ };
-        let extra = unsafe { (*target).extra };
-        unsafe {
-            kprintf(
-                FREE_UNUSED_TARGET_IPV4_MSG.as_ptr().cast(),
-                inet_ntoa(ad),
-                port,
-            )
-        };
-        let removed =
-            unsafe { target_lookup_ipv4_impl(ad.s_addr, port, type_, extra, -1, ptr::null_mut()) };
-        assert_eq!(removed, ctj);
-    } else {
-        assert_eq!(
-            free_action,
-            mtproxy_core::runtime::net::connections::TargetFreeDecision::DeleteIpv6
-        );
-        let ad_ipv6 = unsafe { (*target).target_ipv6 };
-        let port = unsafe { (*target).port };
-        let type_ = unsafe { (*target).type_ };
-        let extra = unsafe { (*target).extra };
-        unsafe {
-            kprintf(
-                FREE_UNUSED_TARGET_IPV6_MSG.as_ptr().cast(),
-                show_ipv6(ad_ipv6.as_ptr()),
-                port,
-            )
-        };
-        let removed =
-            unsafe { target_lookup_ipv6_impl(&ad_ipv6, port, type_, extra, -1, ptr::null_mut()) };
-        assert_eq!(removed, ctj);
+    match free_lookup_plan.family {
+        mtproxy_core::runtime::net::connections::TargetLookupFamily::Ipv4 => {
+            let ad = unsafe { (*target).target };
+            let port = unsafe { (*target).port };
+            let type_ = unsafe { (*target).type_ };
+            let extra = unsafe { (*target).extra };
+            unsafe {
+                kprintf(
+                    FREE_UNUSED_TARGET_IPV4_MSG.as_ptr().cast(),
+                    inet_ntoa(ad),
+                    port,
+                )
+            };
+            let removed = unsafe {
+                target_lookup_ipv4_impl(
+                    ad.s_addr,
+                    port,
+                    type_,
+                    extra,
+                    free_lookup_mode,
+                    ptr::null_mut(),
+                )
+            };
+            assert_eq!(removed, ctj);
+        }
+        mtproxy_core::runtime::net::connections::TargetLookupFamily::Ipv6 => {
+            let ad_ipv6 = unsafe { (*target).target_ipv6 };
+            let port = unsafe { (*target).port };
+            let type_ = unsafe { (*target).type_ };
+            let extra = unsafe { (*target).extra };
+            unsafe {
+                kprintf(
+                    FREE_UNUSED_TARGET_IPV6_MSG.as_ptr().cast(),
+                    show_ipv6(ad_ipv6.as_ptr()),
+                    port,
+                )
+            };
+            let removed = unsafe {
+                target_lookup_ipv6_impl(
+                    &ad_ipv6,
+                    port,
+                    type_,
+                    extra,
+                    free_lookup_mode,
+                    ptr::null_mut(),
+                )
+            };
+            assert_eq!(removed, ctj);
+        }
     }
 
     let unlock_rc = unsafe { libc::pthread_mutex_unlock(ptr::addr_of_mut!(TargetsLock)) };

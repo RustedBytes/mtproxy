@@ -10,6 +10,11 @@ Generated from C callsites referencing `mtproxy_ffi_*` and `rust_*` symbols.
   - socket job dispatch policy
   - target job dispatch/post-tick/finalize policy
   - connection/socket/read-write policy helpers
+- `net/net-connections.c` target create/free hash lookup family+mode routing is now selected by typed core lookup plans.
+- `net/net-msg-buffers.c` size-class policy path is routed through `mtproxy-core::runtime::net::msg_buffers`.
+- `net/net-thread.c` notification-event dispatch policy is routed through `mtproxy-core::runtime::net::thread`.
+- `engine/engine.c` parse-option thread/multithread decision routing is now selected by `mtproxy-core::runtime::engine`.
+- `engine/engine.c` `engine_init`/`server_init` pre-open/range-open/bind/listener branch routing now uses typed plans from `mtproxy-core::runtime::engine`.
 
 This keeps C-facing runtime behavior parity while reducing FFI-local policy ownership.
 

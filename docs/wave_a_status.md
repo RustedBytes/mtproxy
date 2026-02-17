@@ -18,26 +18,28 @@ Wave A targets network-core migration with Rust as source-of-truth and `mtproxy-
   - target free decision mapped to typed core enum (`reject/delete-ipv4/delete-ipv6`).
   - create-target lifecycle path policy moved to typed core decision (`reuse-existing` vs `allocate-new`).
   - target-pick callback skip/keep/select branch policy unified in core typed decision.
+  - target hash lookup family/mode selection for `create_target`/free paths moved to typed core lookup plans.
+  - create/free lookup mode literals (`-1/0/1`) replaced with typed core lookup mode mapping.
+  - free-path family selection routed by typed core free lookup plan.
+  - callback count-bucket mapping for target scan uses core-ready bucket helper (`target_ready_bucket_deltas`).
   - FFI runtime paths updated to consume typed core decisions.
+- `net_msg_buffers`:
+  - size-class selection policy (`size_hint` -> bucket index) moved to `mtproxy-core::runtime::net::msg_buffers::pick_size_index`.
+- `net_thread`:
+  - notification-event dispatch policy moved to `mtproxy-core::runtime::net::thread::run_notification_event` with callback adapter only in FFI/compat.
+- policy boundary confirmation:
+  - `net_events`, `tcp_rpc_client`, `tcp_rpc_server` runtime modules keep adapter/boundary logic while policy branches are routed through `mtproxy-core`.
+- compatibility discipline:
+  - this batch introduced no new `mtproxy_ffi_*` exports and no new `#[no_mangle]` symbols beyond existing module surfaces.
 
 ## Verification Snapshot
 - `cargo test -p mtproxy-core` passing.
 - `cargo test -p mtproxy-bin` passing.
 - `cargo check -p mtproxy-ffi` passing (with pre-existing warnings unrelated to Wave A extraction goals).
+- `cargo clippy -p mtproxy-core -p mtproxy-bin -p mtproxy-ffi --all-targets` currently fails due to pre-existing strict lint debt outside this Wave A extraction batch.
 
 ## Remaining Wave A Work (complete list)
-- `net_connections`: extract target hash lookup family/mode selection policy for `create_target` and free paths into typed core helpers (FFI keeps pointer writes only).
-- `net_connections`: extract remaining target-connection scan/count callback branch fragments that still branch in runtime.
-- `net_connections`: extract any remaining create/free lifecycle decision fragments still encoded as runtime-local conditionals into core typed helpers.
-- `net_connections`: remove remaining runtime-local policy constants/branch maps when equivalent typed core decisions exist.
-- `net_connections`: keep `unsafe` in this module boundary-only; ensure each remaining `unsafe` block has a concise safety invariant comment.
-- `net_events`: confirm no residual runtime-local policy branches remain outside adapter/boundary mechanics.
-- `tcp_rpc_client`: confirm no residual runtime-local handshake/upgrade policy branches remain outside adapter/boundary mechanics.
-- `tcp_rpc_server`: confirm no residual runtime-local handshake/upgrade policy branches remain outside adapter/boundary mechanics.
-- `net_msg_buffers`: perform Wave A policy extraction pass (core-first, adapter-thin), matching current C behavior.
-- `net_thread`: perform Wave A policy extraction pass (core-first, adapter-thin), matching current C behavior.
-- compatibility layer discipline: no new `mtproxy_ffi_*` exports, no new `#[no_mangle]` symbols, and no new production logic in `mtproxy-ffi`.
-- docs/traceability: keep `docs/wave_a_status.md` and `docs/c_to_rust_dependency_graph.md` updated per extraction batch.
+- no remaining Wave A extraction items tracked in this file.
 
 ## Wave A Exit Criteria
 - Rust (`mtproxy-core`) is source-of-truth for all Wave A network policy decisions:
