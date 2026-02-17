@@ -92,7 +92,7 @@ mtproxy_ffi_net_tcp_rpc_ext_server_is_allowed_timestamp(int32_t timestamp,
  *
  */
 
-int tcp_rpcs_compact_parse_execute(connection_job_t c);
+static int tcp_rpcs_compact_parse_execute(connection_job_t c);
 int tcp_rpcs_ext_alarm(connection_job_t c);
 int tcp_rpcs_ext_init_accepted(connection_job_t c);
 
@@ -252,6 +252,6 @@ int tcp_rpcs_ext_init_accepted(connection_job_t C) {
   return tcp_rpcs_init_accepted_nohs(C);
 }
 
-int tcp_rpcs_compact_parse_execute(connection_job_t C) {
+static int tcp_rpcs_compact_parse_execute(connection_job_t C) {
   return mtproxy_ffi_net_tcp_rpc_ext_server_compact_parse_execute(C);
 }

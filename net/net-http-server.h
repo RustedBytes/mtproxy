@@ -105,12 +105,6 @@ static inline struct http_server_functions *HTS_FUNC(connection_job_t c) {
 extern conn_type_t ct_http_server;
 extern struct http_server_functions default_http_server;
 
-int hts_do_wakeup(connection_job_t c);
-int hts_parse_execute(connection_job_t c);
-int hts_std_wakeup(connection_job_t c);
-int hts_std_alarm(connection_job_t c);
-int hts_init_accepted(connection_job_t c);
-int hts_close_connection(connection_job_t c, int who);
 void http_flush(connection_job_t C, struct raw_message *raw);
 
 extern int http_connections;

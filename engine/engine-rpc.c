@@ -120,10 +120,6 @@ int create_query_custom_job(job_t job, struct raw_message *raw, double timeout,
                                                         generation);
 }
 
-int query_job_run(job_t job, int fd, int generation) {
-  return mtproxy_ffi_engine_rpc_query_job_run(job, fd, generation);
-}
-
 int default_tl_close_conn(connection_job_t c, [[maybe_unused]] int who) {
   return mtproxy_ffi_engine_rpc_default_tl_close_conn(c, who);
 }

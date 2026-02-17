@@ -59,9 +59,6 @@ extern struct tcp_rpc_server_functions default_tcp_rpc_server;
 
 int tcp_rpcs_wakeup(connection_job_t c);
 int tcp_rpcs_parse_execute(connection_job_t c);
-int tcp_rpcs_alarm(connection_job_t c);
-int tcp_rpcs_do_wakeup(connection_job_t c);
-int tcp_rpcs_init_accepted(connection_job_t c);
 int tcp_rpcs_close_connection(connection_job_t c, int who);
 int tcp_rpcs_init_accepted_nohs(connection_job_t c);
 // int tcp_rpcs_flush_packet (connection_job_t c); -- use tcp_rpc_flush_packet

@@ -81,13 +81,13 @@ double mtproxy_ffi_net_tcp_rpc_client_precise_now(void) { return precise_now; }
  *
  */
 
-int tcp_rpcc_parse_execute(connection_job_t c);
+static int tcp_rpcc_parse_execute(connection_job_t c);
 int tcp_rpcc_compact_parse_execute(connection_job_t c);
-int tcp_rpcc_connected(connection_job_t c);
+static int tcp_rpcc_connected(connection_job_t c);
 int tcp_rpcc_connected_nohs(connection_job_t c);
-int tcp_rpcc_close_connection(connection_job_t c, int who);
+static int tcp_rpcc_close_connection(connection_job_t c, int who);
 int tcp_rpcc_init_outbound(connection_job_t c);
-int tcp_rpc_client_check_ready(connection_job_t c);
+static int tcp_rpc_client_check_ready(connection_job_t c);
 int tcp_rpcc_default_check_perm(connection_job_t c);
 int tcp_rpcc_init_crypto(connection_job_t c);
 int tcp_rpcc_start_crypto(connection_job_t c, char *nonce, int key_select,
@@ -124,19 +124,19 @@ struct tcp_rpc_client_functions default_tcp_rpc_client = {
     .rpc_ready = server_noop,
 };
 
-int tcp_rpcc_parse_execute(connection_job_t c) {
+static int tcp_rpcc_parse_execute(connection_job_t c) {
   return mtproxy_ffi_net_tcp_rpc_client_parse_execute(c);
 }
 
-int tcp_rpcc_connected(connection_job_t c) {
+static int tcp_rpcc_connected(connection_job_t c) {
   return mtproxy_ffi_net_tcp_rpc_client_connected(c);
 }
 
-int tcp_rpcc_close_connection(connection_job_t c, int who) {
+static int tcp_rpcc_close_connection(connection_job_t c, int who) {
   return mtproxy_ffi_net_tcp_rpc_client_close_connection(c, who);
 }
 
-int tcp_rpc_client_check_ready(connection_job_t c) {
+static int tcp_rpc_client_check_ready(connection_job_t c) {
   return mtproxy_ffi_net_tcp_rpc_client_check_ready(c);
 }
 

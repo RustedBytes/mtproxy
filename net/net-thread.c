@@ -102,7 +102,7 @@ struct notification_event_job_extra {
 };
 static job_t notification_job;
 
-int notification_event_run(job_t job, int op, struct job_thread *JT) {
+static int notification_event_run(job_t job, int op, struct job_thread *JT) {
   if (op != JS_RUN) {
     return JOB_ERROR;
   }

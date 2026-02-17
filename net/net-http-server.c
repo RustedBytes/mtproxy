@@ -81,11 +81,11 @@ int hts_default_execute(connection_job_t c, struct raw_message *raw, int op) {
   return mtproxy_ffi_net_http_server_hts_default_execute(c, raw, op);
 }
 
-int hts_init_accepted(connection_job_t c) {
+static int hts_init_accepted(connection_job_t c) {
   return mtproxy_ffi_net_http_server_hts_init_accepted(c);
 }
 
-int hts_close_connection(connection_job_t c, int who) {
+static int hts_close_connection(connection_job_t c, int who) {
   return mtproxy_ffi_net_http_server_hts_close_connection(c, who);
 }
 
@@ -102,19 +102,19 @@ int hts_write_packet(connection_job_t c, struct raw_message *raw) {
   return mtproxy_ffi_net_http_server_hts_write_packet(c, raw);
 }
 
-int hts_parse_execute(connection_job_t c) {
+static int hts_parse_execute(connection_job_t c) {
   return mtproxy_ffi_net_http_server_hts_parse_execute(c);
 }
 
-int hts_std_wakeup(connection_job_t c) {
+static int hts_std_wakeup(connection_job_t c) {
   return mtproxy_ffi_net_http_server_hts_std_wakeup(c);
 }
 
-int hts_std_alarm(connection_job_t c) {
+static int hts_std_alarm(connection_job_t c) {
   return mtproxy_ffi_net_http_server_hts_std_alarm(c);
 }
 
-int hts_do_wakeup(connection_job_t c) {
+static int hts_do_wakeup(connection_job_t c) {
   return mtproxy_ffi_net_http_server_hts_do_wakeup(c);
 }
 

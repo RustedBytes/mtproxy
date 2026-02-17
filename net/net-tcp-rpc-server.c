@@ -102,9 +102,9 @@ void mtproxy_ffi_net_tcp_rpc_server_flags_or(connection_job_t c, int32_t mask) {
 
 int tcp_rpcs_wakeup(connection_job_t c);
 int tcp_rpcs_parse_execute(connection_job_t c);
-int tcp_rpcs_alarm(connection_job_t c);
-int tcp_rpcs_do_wakeup(connection_job_t c);
-int tcp_rpcs_init_accepted(connection_job_t c);
+static int tcp_rpcs_alarm(connection_job_t c);
+static int tcp_rpcs_do_wakeup(connection_job_t c);
+static int tcp_rpcs_init_accepted(connection_job_t c);
 int tcp_rpcs_close_connection(connection_job_t c, int who);
 int tcp_rpcs_init_accepted_nohs(connection_job_t c);
 int tcp_rpcs_default_check_perm(connection_job_t c);
@@ -156,7 +156,7 @@ int tcp_rpcs_wakeup(connection_job_t c) {
   return mtproxy_ffi_net_tcp_rpc_server_wakeup(c);
 }
 
-int tcp_rpcs_alarm(connection_job_t c) {
+static int tcp_rpcs_alarm(connection_job_t c) {
   return mtproxy_ffi_net_tcp_rpc_server_alarm(c);
 }
 
@@ -164,11 +164,11 @@ int tcp_rpcs_close_connection(connection_job_t c, int who) {
   return mtproxy_ffi_net_tcp_rpc_server_close_connection(c, who);
 }
 
-int tcp_rpcs_do_wakeup(connection_job_t c) {
+static int tcp_rpcs_do_wakeup(connection_job_t c) {
   return mtproxy_ffi_net_tcp_rpc_server_do_wakeup(c);
 }
 
-int tcp_rpcs_init_accepted(connection_job_t c) {
+static int tcp_rpcs_init_accepted(connection_job_t c) {
   return mtproxy_ffi_net_tcp_rpc_server_init_accepted(c);
 }
 
