@@ -67,8 +67,6 @@ mtproxy_ffi_net_tcp_rpc_ext_server_lookup_domain_info(const uint8_t *domain,
                                                       int32_t len);
 extern const struct domain_info *
 mtproxy_ffi_net_tcp_rpc_ext_server_default_domain_info(void);
-extern int32_t mtproxy_ffi_net_tcp_rpc_ext_server_allow_only_tls(void);
-extern int32_t mtproxy_ffi_net_tcp_rpc_ext_server_ext_secret_count(void);
 extern const uint8_t *
 mtproxy_ffi_net_tcp_rpc_ext_server_ext_secret_at(int32_t index);
 extern int32_t mtproxy_ffi_net_tcp_rpc_ext_server_proxy_connection(
@@ -203,14 +201,6 @@ mtproxy_ffi_net_tcp_rpc_ext_lookup_domain_info(const uint8_t *domain,
 
 const struct domain_info *mtproxy_ffi_net_tcp_rpc_ext_default_domain_info(void) {
   return mtproxy_ffi_net_tcp_rpc_ext_server_default_domain_info();
-}
-
-int32_t mtproxy_ffi_net_tcp_rpc_ext_allow_only_tls(void) {
-  return mtproxy_ffi_net_tcp_rpc_ext_server_allow_only_tls();
-}
-
-int32_t mtproxy_ffi_net_tcp_rpc_ext_ext_secret_count(void) {
-  return mtproxy_ffi_net_tcp_rpc_ext_server_ext_secret_count();
 }
 
 const uint8_t *mtproxy_ffi_net_tcp_rpc_ext_ext_secret_at(int32_t index) {

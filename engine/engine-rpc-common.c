@@ -31,6 +31,7 @@
 
 #include "engine/engine-rpc-common.h"
 
+#include "common/precise-time.h"
 #include "common/tl-parse.h"
 #include "engine/engine-rpc.h"
 #include "rust/mtproxy-ffi/include/mtproxy_ffi.h"

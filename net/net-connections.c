@@ -590,8 +590,6 @@ extern int32_t mtproxy_ffi_net_connections_init_listening_tcpv6_connection(
 extern int32_t
 mtproxy_ffi_net_connections_do_listening_connection_job(job_t job, int32_t op,
                                                         struct job_thread *jt);
-extern void mtproxy_ffi_net_connections_destroy_dead_target_connections(
-    conn_target_job_t ctj);
 extern int32_t
 mtproxy_ffi_net_connections_create_new_connections(conn_target_job_t ctj);
 extern int32_t
@@ -617,34 +615,6 @@ extern int32_t mtproxy_ffi_net_connections_net_server_socket_read_write_gateway(
 
 void tcp_set_max_accept_rate(int rate) { max_accept_rate = rate; }
 
-static int tcp_recv_buffers_num;
-static int tcp_recv_buffers_total_size;
-static struct iovec tcp_recv_iovec[MAX_TCP_RECV_BUFFERS + 1];
-static struct msg_buffer *tcp_recv_buffers[MAX_TCP_RECV_BUFFERS];
-
-int prealloc_tcp_buffers(void) {
-  assert(!tcp_recv_buffers_num);
-
-  int i;
-  for (i = MAX_TCP_RECV_BUFFERS - 1; i >= 0; i--) {
-    struct msg_buffer *X =
-        alloc_msg_buffer((tcp_recv_buffers_num) ? tcp_recv_buffers[i + 1] : 0,
-                         TCP_RECV_BUFFER_SIZE);
-    if (!X) {
-      vkprintf(0, "**FATAL**: cannot allocate tcp receive buffer\n");
-      exit(2);
-    }
-    vkprintf(3, "allocated %d byte tcp receive buffer #%d at %p\n",
-             X->chunk->buffer_size, i, X);
-    tcp_recv_buffers[i] = X;
-    tcp_recv_iovec[i + 1].iov_base = X->data;
-    tcp_recv_iovec[i + 1].iov_len = X->chunk->buffer_size;
-    ++tcp_recv_buffers_num;
-    tcp_recv_buffers_total_size += X->chunk->buffer_size;
-  }
-  return tcp_recv_buffers_num;
-}
-
 int tcp_prepare_iovec(struct iovec *iov, int *iovcnt, int maxcnt,
                       struct raw_message *raw) {
   int t = rwm_prepare_iovec(raw, iov, maxcnt, raw->total_bytes);
@@ -663,7 +633,6 @@ int tcp_prepare_iovec(struct iovec *iov, int *iovcnt, int maxcnt,
   }
 }
 
-void assert_main_thread(void) {}
 void assert_net_cpu_thread(void) {}
 void assert_net_net_thread(void) {}
 void assert_engine_thread(void) {
@@ -1062,13 +1031,6 @@ int check_conn_functions(conn_type_t *type, int listening) {
 
 void compute_next_reconnect(conn_target_job_t CT) {
   mtproxy_ffi_net_connections_compute_next_reconnect_target(CT);
-}
-
-/*
-  Deletes failed connections (with flag C_ERROR) from target's tree
-*/
-void destroy_dead_target_connections(conn_target_job_t CTJ) {
-  mtproxy_ffi_net_connections_destroy_dead_target_connections(CTJ);
 }
 
 /*
