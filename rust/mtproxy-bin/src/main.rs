@@ -1,3 +1,3 @@
 fn main() {
-    std::process::exit(mtproxy_bin::entrypoint::run_from_env());
+    std::process::exit(mtproxy_bin::entrypoint::run_mtproto_proxy_main_from_env());
 }

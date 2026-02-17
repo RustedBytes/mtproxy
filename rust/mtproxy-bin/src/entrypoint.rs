@@ -398,6 +398,17 @@ fn spawn_workers(worker_processes: u32) -> Result<(), String> {
     Ok(())
 }
 
+fn align_with_c_main_signal_mask() -> Result<(), String> {
+    let sigchld = u32::try_from(libc::SIGCHLD)
+        .map_err(|_| "platform SIGCHLD value is out of u32 range".to_string())?;
+    let sigusr1 = u32::try_from(libc::SIGUSR1)
+        .map_err(|_| "platform SIGUSR1 value is out of u32 range".to_string())?;
+
+    engine::signals::register_runtime_signal(sigchld)?;
+    engine::signals::register_runtime_signal(sigusr1)?;
+    Ok(())
+}
+
 fn run_with_parsed_args(args: &Args) -> i32 {
     // Display bootstrap information
     let signature = mtproxy_core::bootstrap_signature();
@@ -445,6 +456,11 @@ fn run_with_parsed_args(args: &Args) -> i32 {
         }
     }
 
+    if let Err(e) = align_with_c_main_signal_mask() {
+        eprintln!("ERROR: Signal bootstrap failed: {e}");
+        return 1;
+    }
+
     // Start main runtime loop
     match runtime_start(args) {
         Ok(()) => {
@@ -485,6 +501,14 @@ pub fn run_from_argv(argv: &[String]) -> i32 {
 pub fn run_from_env() -> i32 {
     let argv: Vec<String> = std::env::args().collect();
     run_from_argv(&argv)
+}
+
+/// Runs MTProto proxy entrypoint using process environment arguments.
+///
+/// This symbol mirrors the role of `main()` in `mtproto/mtproto-proxy.c`.
+#[must_use]
+pub fn run_mtproto_proxy_main_from_env() -> i32 {
+    run_from_env()
 }
 
 fn mtproto_config_parse_probe() -> Result<(usize, usize), ()> {
