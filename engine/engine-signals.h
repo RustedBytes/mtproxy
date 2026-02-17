@@ -41,4 +41,3 @@ void empty_signal_handler(const int sig);
 int interrupt_signal_raised(void);
 
 int engine_process_signals(void);
-void empty_signal_handler(const int sig);

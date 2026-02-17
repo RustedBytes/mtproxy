@@ -77,8 +77,6 @@ extern int32_t mtproxy_ffi_engine_terminate_job_run(void *job, int32_t op,
                                                     void *jt);
 extern int32_t mtproxy_ffi_engine_default_get_op(struct tl_in_state *tlio_in);
 
-void usage();
-
 int32_t mtproxy_ffi_engine_check_conn_functions_bridge(void *conn_type) {
   return check_conn_functions(conn_type, 1);
 }

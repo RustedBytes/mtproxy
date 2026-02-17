@@ -28,7 +28,6 @@
 */
 
 #include <arpa/inet.h>
-#include <fcntl.h>
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -53,8 +52,6 @@ void default_close_network_sockets() {
     E->sfd = -1;
   }
 }
-
-int try_open_port(int port, int quit_on_fail);
 
 static int32_t engine_net_try_open_port_callback(int32_t port,
                                                  [[maybe_unused]] void *ctx) {

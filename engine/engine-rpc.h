@@ -56,22 +56,16 @@ struct query_work_params {
   int generation;
 };
 
-// extern struct tl_act_extra *(*tl_parse_function)(struct tl_in_state *tlio_in,
-// long long actor_id);
 typedef void (*tl_query_result_fun_t)(struct tl_in_state *tlio_in,
                                       struct tl_query_header *h);
-// extern void (*tl_stat_function)(struct tl_out_state *tlio_out);
-// extern int (*tl_get_op_function)(struct tl_in_state *tlio_in);
 
 void tl_query_result_fun_set(tl_query_result_fun_t func, int query_type_id);
 long long tl_generate_next_qid(int query_type_id);
 
-int default_tl_rpcs_execute(connection_job_t c, int op, int len);
 int default_tl_tcp_rpcs_execute(connection_job_t c, int op,
                                 struct raw_message *raw);
 int default_tl_close_conn(connection_job_t c, int who);
 int tl_store_stats(struct tl_out_state *tlio_out, const char *s, int raw);
-extern char *tl_engine_name;
 void register_custom_op_cb(unsigned op,
                            void (*func)(struct tl_in_state *tlio_in,
                                         struct query_work_params *params));
@@ -79,14 +73,7 @@ void engine_work_rpc_req_result(struct tl_in_state *tlio_in,
                                 struct query_work_params *params);
 void tl_engine_store_stats(struct tl_out_state *tlio_out);
 
-const char *op_to_string(int op);
-
-void tl_restart_all_ready(void);
 void tl_default_act_free(struct tl_act_extra *extra);
-
-int engine_check_allow_query(unsigned flags);
-int tl_query_act(connection_job_t c, int op, int len);
-int tl_query_act_tcp(connection_job_t c, int op, struct raw_message *raw);
 
 struct tl_act_extra {
   int size;
