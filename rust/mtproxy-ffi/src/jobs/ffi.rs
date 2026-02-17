@@ -1,10 +1,11 @@
 //! FFI export surface for jobs runtime.
 
 use super::core::*;
-use core::ffi::c_void;
+use core::ffi::{c_char, c_void};
 use core::mem;
 use core::ptr;
 use libc::pthread_attr_t;
+use std::sync::atomic::{AtomicI32, Ordering};
 
 const JOB_SUBCLASS_OFFSET: i32 = 3;
 const JOB_THREAD_STACK_SIZE: usize = 4 << 20;
@@ -81,6 +82,66 @@ struct JobListJobNode {
 
 type JobThreadWorkOneFn = Option<unsafe extern "C" fn(*mut c_void, i32)>;
 
+#[repr(C)]
+struct ProcStatsC {
+    pid: i32,
+    comm: [c_char; 256],
+    state: c_char,
+    ppid: i32,
+    pgrp: i32,
+    session: i32,
+    tty_nr: i32,
+    tpgid: i32,
+    flags: libc::c_ulong,
+    minflt: libc::c_ulong,
+    cminflt: libc::c_ulong,
+    majflt: libc::c_ulong,
+    cmajflt: libc::c_ulong,
+    utime: libc::c_ulong,
+    stime: libc::c_ulong,
+    cutime: libc::c_long,
+    cstime: libc::c_long,
+    priority: libc::c_long,
+    nice: libc::c_long,
+    num_threads: libc::c_long,
+    itrealvalue: libc::c_long,
+    starttime: libc::c_ulong,
+    vsize: libc::c_ulong,
+    rss: libc::c_long,
+    rlim: libc::c_ulong,
+    startcode: libc::c_ulong,
+    endcode: libc::c_ulong,
+    startstack: libc::c_ulong,
+    kstkesp: libc::c_ulong,
+    kstkeip: libc::c_ulong,
+    signal: libc::c_ulong,
+    blocked: libc::c_ulong,
+    sigignore: libc::c_ulong,
+    sigcatch: libc::c_ulong,
+    wchan: libc::c_ulong,
+    nswap: libc::c_ulong,
+    cnswap: libc::c_ulong,
+    exit_signal: i32,
+    processor: i32,
+    rt_priority: libc::c_ulong,
+    policy: libc::c_ulong,
+    delayacct_blkio_ticks: libc::c_ulonglong,
+}
+
+unsafe extern "C" {
+    fn read_proc_stats(pid: i32, tid: i32, s: *mut ProcStatsC) -> i32;
+}
+
+#[inline]
+unsafe fn atomic_i32_from_mut<'a>(ptr: *mut i32) -> &'a AtomicI32 {
+    &*ptr.cast::<AtomicI32>()
+}
+
+#[inline]
+unsafe fn atomic_i32_from_const<'a>(ptr: *const i32) -> &'a AtomicI32 {
+    &*ptr.cast::<AtomicI32>()
+}
+
 unsafe extern "C" fn process_one_job_gw(job_ptr: *mut c_void, thread_class: i32) {
     unsafe {
         process_one_job(1, job_ptr.cast::<AsyncJob>(), thread_class);
@@ -90,6 +151,119 @@ unsafe extern "C" fn process_one_job_gw(job_ptr: *mut c_void, thread_class: i32)
 unsafe extern "C" fn process_one_sublist_gw(id_ptr: *mut c_void, class: i32) {
     unsafe {
         mtproxy_ffi_jobs_process_one_sublist(id_ptr as usize, class);
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn jobs_async_job_header_size_c_impl() -> usize {
+    mem::size_of::<AsyncJob>()
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn jobs_prepare_async_create_c_impl(custom_bytes: i32) -> *mut JobThread {
+    unsafe { mtproxy_ffi_jobs_prepare_async_create(custom_bytes) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn jobs_interrupt_thread_c_impl(thread: *mut JobThread) -> i32 {
+    abort_if(thread.is_null());
+    unsafe { libc::pthread_kill((*thread).pthread_id as libc::pthread_t, libc::SIGRTMAX() - 7) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn jobs_atomic_fetch_add_c_impl(ptr: *mut i32, delta: i32) -> i32 {
+    unsafe { atomic_i32_from_mut(ptr).fetch_add(delta, Ordering::SeqCst) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn jobs_atomic_fetch_or_c_impl(ptr: *mut i32, mask: i32) -> i32 {
+    unsafe { atomic_i32_from_mut(ptr).fetch_or(mask, Ordering::SeqCst) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn jobs_atomic_fetch_and_c_impl(ptr: *mut i32, mask: i32) -> i32 {
+    unsafe { atomic_i32_from_mut(ptr).fetch_and(mask, Ordering::SeqCst) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn jobs_atomic_cas_c_impl(ptr: *mut i32, expect: i32, value: i32) -> i32 {
+    if unsafe {
+        atomic_i32_from_mut(ptr)
+            .compare_exchange(expect, value, Ordering::SeqCst, Ordering::SeqCst)
+            .is_ok()
+    } {
+        1
+    } else {
+        0
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn jobs_atomic_load_c_impl(ptr: *const i32) -> i32 {
+    unsafe { atomic_i32_from_const(ptr).load(Ordering::SeqCst) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn jobs_atomic_store_c_impl(ptr: *mut i32, value: i32) {
+    unsafe { atomic_i32_from_mut(ptr).store(value, Ordering::SeqCst) };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn jobs_set_job_interrupt_signal_handler_c_impl() {
+    unsafe { mtproxy_ffi_jobs_set_job_interrupt_signal_handler() };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn jobs_get_current_thread_subclass_count_c_impl() -> i32 {
+    unsafe { mtproxy_ffi_jobs_get_current_thread_subclass_count() }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn jobs_run_thread_callbacks_c_impl() {
+    let mut callback = unsafe { jobs_cb_list };
+    while !callback.is_null() {
+        if let Some(new_thread) = unsafe { (*callback).new_thread } {
+            unsafe { new_thread() };
+        }
+        callback = unsafe { (*callback).next };
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn jobs_main_queue_magic_c_impl() -> i32 {
+    let base = ptr::addr_of!(MainJobQueue).cast::<u8>();
+    let magic_ptr = unsafe { base.add(mem::size_of::<*mut c_void>()).cast::<i32>() };
+    unsafe { *magic_ptr }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn jobs_read_proc_utime_stime_c_impl(
+    pid: i32,
+    tid: i32,
+    utime: *mut libc::c_ulong,
+    stime: *mut libc::c_ulong,
+) {
+    let mut stats: ProcStatsC = unsafe { mem::zeroed() };
+    unsafe { read_proc_stats(pid, tid, &raw mut stats) };
+    if !utime.is_null() {
+        unsafe { *utime = stats.utime };
+    }
+    if !stime.is_null() {
+        unsafe { *stime = stats.stime };
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn jobs_sem_post_subclass_list_c_impl(list: *mut JobSubclassList, count: i32) {
+    abort_if(list.is_null());
+    if count <= 0 {
+        return;
+    }
+    let sem_ptr = unsafe { (*list).sem_raw.as_mut_ptr().cast::<libc::sem_t>() };
+    for _ in 0..count {
+        unsafe {
+            libc::sem_post(sem_ptr);
+        }
     }
 }
 
