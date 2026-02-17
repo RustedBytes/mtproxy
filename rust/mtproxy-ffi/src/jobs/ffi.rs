@@ -148,6 +148,16 @@ thread_local! {
     static JOBS_TLS_MODULE_STAT: Cell<*mut JobsModuleStat> = const { Cell::new(ptr::null_mut()) };
 }
 
+static JOBS_MODULE_CALLBACK_REGISTERED: AtomicI32 = AtomicI32::new(0);
+static mut JOBS_MODULE_THREAD_CALLBACK: ThreadCallback = ThreadCallback {
+    next: ptr::null_mut(),
+    new_thread: Some(jobs_module_thread_init_trampoline),
+};
+
+unsafe extern "C" fn jobs_module_thread_init_trampoline() {
+    unsafe { mtproxy_ffi_jobs_module_thread_init() };
+}
+
 #[inline]
 unsafe fn atomic_i32_from_mut<'a>(ptr: *mut i32) -> &'a AtomicI32 {
     &*ptr.cast::<AtomicI32>()
@@ -188,6 +198,18 @@ fn jobs_tls_module_stat_get() -> *mut JobsModuleStat {
 #[inline]
 fn jobs_tls_module_stat_set(stat: *mut JobsModuleStat) {
     JOBS_TLS_MODULE_STAT.with(|slot| slot.set(stat));
+}
+
+#[inline]
+unsafe fn ensure_jobs_module_callback_registered() {
+    if JOBS_MODULE_CALLBACK_REGISTERED
+        .compare_exchange(0, 1, Ordering::AcqRel, Ordering::Acquire)
+        .is_ok()
+    {
+        unsafe {
+            mtproxy_ffi_jobs_register_thread_callback(ptr::addr_of_mut!(JOBS_MODULE_THREAD_CALLBACK))
+        };
+    }
 }
 
 #[inline]
@@ -1143,6 +1165,7 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_create_job_class_sub(
 
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_jobs_init_async_jobs() -> i32 {
+    unsafe { ensure_jobs_module_callback_registered() };
     unsafe { init_main_pthread_id() };
 
     if unsafe { jobs_main_queue_magic_c_impl() } == 0 {

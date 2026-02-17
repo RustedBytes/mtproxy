@@ -1,4 +1,4 @@
-use core::ffi::{c_char, c_void};
+use core::ffi::{c_char, c_int, c_void};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
@@ -51,6 +51,7 @@ pub(super) type JobMessageReceiveFn =
 pub(super) type JobListNodeTypeFn =
     Option<unsafe extern "C" fn(JobT, i32, *mut JobListNode) -> i32>;
 
+#[derive(Copy, Clone)]
 #[repr(C, align(128))]
 pub struct JobThread {
     pub(super) pthread_id: usize,
@@ -92,6 +93,7 @@ pub struct AsyncJob {
     pub(super) j_custom: [i64; 0],
 }
 
+#[derive(Copy, Clone)]
 #[repr(C)]
 pub struct JobClass {
     pub(super) thread_class: i32,
@@ -138,6 +140,7 @@ pub struct JobsModuleStat {
     pub(super) timer_ops_scheduler: i64,
 }
 
+#[derive(Copy, Clone)]
 #[repr(C)]
 pub struct JobThreadStat {
     pub(super) tot_sys: libc::c_ulong,
@@ -175,9 +178,13 @@ pub struct JobTimerManagerExtra {
     pub(super) tokio_queue_id: i32,
 }
 
-#[repr(C)]
+#[derive(Copy, Clone)]
+#[repr(C, align(64))]
 pub struct MpQueue {
-    _private: [u8; 0],
+    pub(super) mq_head: *mut c_void,
+    pub(super) mq_magic: c_int,
+    pub(super) _pad: [u8; 64 - core::mem::size_of::<*mut c_void>() - core::mem::size_of::<c_int>()],
+    pub(super) mq_tail: *mut c_void,
 }
 
 #[repr(C)]
@@ -275,19 +282,79 @@ unsafe extern "C" {
     pub(super) static mut a_idle_quotient: f64;
     pub(super) static mut tot_idle_time: f64;
     pub(super) static mut start_time: i32;
-    pub(super) static mut max_job_thread_id: i32;
-    pub(super) static mut cur_job_threads: i32;
-    pub(super) static mut main_pthread_id_initialized: i32;
-    pub(super) static mut main_pthread_id: usize;
-    pub(super) static mut main_job_thread: *mut JobThread;
-    pub(super) static mut jobs_cb_list: *mut ThreadCallback;
-    pub(super) static mut JobThreads: [JobThread; MAX_JOB_THREADS];
-    pub(super) static mut JobThreadsStats: [JobThreadStat; MAX_JOB_THREADS];
-    pub(super) static mut JobClasses: [JobClass; JC_MAX + 1];
-    pub(super) static mut MainJobQueue: MpQueue;
-    pub(super) static mut timer_manager_job: JobT;
-    pub(super) static mut jobs_module_stat_array: [*mut JobsModuleStat; MAX_JOB_THREADS];
 }
+
+const ZERO_JOB_THREAD: JobThread = JobThread {
+    pthread_id: 0,
+    id: 0,
+    thread_class: 0,
+    job_class_mask: 0,
+    status: 0,
+    jobs_performed: 0,
+    job_queue: core::ptr::null_mut(),
+    current_job: core::ptr::null_mut(),
+    current_job_start_time: 0.0,
+    last_job_time: 0.0,
+    tot_jobs_time: 0.0,
+    jobs_running: [0; JC_MAX + 1],
+    jobs_created: 0,
+    jobs_active: 0,
+    thread_system_id: 0,
+    rand_data: [0; 24],
+    timer_manager: core::ptr::null_mut(),
+    wakeup_time: 0.0,
+    job_class: core::ptr::null_mut(),
+};
+
+const ZERO_JOB_THREAD_STAT: JobThreadStat = JobThreadStat {
+    tot_sys: 0,
+    tot_user: 0,
+    recent_sys: 0,
+    recent_user: 0,
+};
+
+const ZERO_JOB_CLASS: JobClass = JobClass {
+    thread_class: 0,
+    min_threads: 0,
+    max_threads: 0,
+    cur_threads: 0,
+    job_queue: core::ptr::null_mut(),
+    subclasses: core::ptr::null_mut(),
+};
+
+const ZERO_MP_QUEUE: MpQueue = MpQueue {
+    mq_head: core::ptr::null_mut(),
+    mq_magic: 0,
+    _pad: [0; 64 - core::mem::size_of::<*mut c_void>() - core::mem::size_of::<c_int>()],
+    mq_tail: core::ptr::null_mut(),
+};
+
+#[no_mangle]
+pub(super) static mut max_job_thread_id: i32 = 0;
+#[no_mangle]
+pub(super) static mut cur_job_threads: i32 = 0;
+#[no_mangle]
+pub(super) static mut main_pthread_id_initialized: i32 = 0;
+#[no_mangle]
+pub(super) static mut main_pthread_id: usize = 0;
+#[no_mangle]
+pub(super) static mut main_job_thread: *mut JobThread = core::ptr::null_mut();
+#[no_mangle]
+pub(super) static mut jobs_cb_list: *mut ThreadCallback = core::ptr::null_mut();
+#[no_mangle]
+pub(super) static mut JobThreads: [JobThread; MAX_JOB_THREADS] = [ZERO_JOB_THREAD; MAX_JOB_THREADS];
+#[no_mangle]
+pub(super) static mut JobThreadsStats: [JobThreadStat; MAX_JOB_THREADS] =
+    [ZERO_JOB_THREAD_STAT; MAX_JOB_THREADS];
+#[no_mangle]
+pub(super) static mut JobClasses: [JobClass; JC_MAX + 1] = [ZERO_JOB_CLASS; JC_MAX + 1];
+#[no_mangle]
+pub(super) static mut MainJobQueue: MpQueue = ZERO_MP_QUEUE;
+#[no_mangle]
+pub(super) static mut timer_manager_job: JobT = core::ptr::null_mut();
+#[no_mangle]
+pub(super) static mut jobs_module_stat_array: [*mut JobsModuleStat; MAX_JOB_THREADS] =
+    [core::ptr::null_mut(); MAX_JOB_THREADS];
 
 #[inline]
 pub(super) fn abort_if(condition: bool) {

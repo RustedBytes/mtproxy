@@ -360,8 +360,6 @@ struct job_list_node {
 int insert_job_into_job_list(job_t list_job, JOB_REF_ARG(job), int mode);
 void update_all_thread_stats(void);
 
-extern int max_job_thread_id;
-
 void check_main_thread(void);
 int job_timer_wakeup_gateway(event_timer_t *et);
 int job_timer_check(job_t job);
@@ -433,5 +431,3 @@ struct thread_callback {
 
 void register_thread_callback(struct thread_callback *cb);
 job_t alloc_timer_manager(int thread_class);
-
-extern struct job_thread JobThreads[];
