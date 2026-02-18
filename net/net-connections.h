@@ -34,6 +34,7 @@
 #include "jobs/jobs.h"
 #include "net/net-events.h"
 #include "net/net-msg.h"
+#include "net/net-timers.h"
 
 enum {
   MAX_CONNECTIONS = 65536,

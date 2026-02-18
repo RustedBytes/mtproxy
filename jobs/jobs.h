@@ -22,20 +22,11 @@
 
 #pragma once
 
-#include "net/net-msg.h"
-#include "net/net-timers.h"
 #include <pthread.h>
-#include <semaphore.h>
 #include <stdlib.h>
 
 #define __joblocked
 #define __jobref
-
-enum {
-  MAX_SUBCLASS_THREADS = 16,
-  // verbosity level for jobs
-  JOBS_DEBUG = 3,
-};
 
 #define PTR_MOVE(__ptr_v)                                                      \
   ({                                                                           \
@@ -46,9 +37,9 @@ enum {
 
 #define JOB_REF_ARG(__name) [[maybe_unused]] int __name##_tag_int, job_t __name
 #define JOB_REF_PASS(__ptr) 1, PTR_MOVE(__ptr)
-#define JOB_REF_NULL 1, nullptr
 
 struct job_thread;
+struct job_class;
 struct async_job;
 typedef struct async_job *job_t;
 
@@ -57,109 +48,9 @@ typedef int (*job_function_t)(job_t job, int op, struct job_thread *JT);
 struct job_thread *jobs_get_this_job_thread(void);
 
 enum {
-  JOB_DESTROYED = (-0x7fffffff - 1),
-  JOB_COMPLETED = 0x100,
-  JOB_FINISH = 0x80,
-  JOB_ERROR = -1,
-};
-
-/* job signal numbers (0..7) */
-enum {
-  JS_FREE = -1, // pseudo-signal, invoked to free job structure ("destructor")
-  JS_RUN = 0,
-  JS_AUX = 1,
-  JS_MSG = 2,
-  JS_ALARM = 4, // usually sent by timer
-  JS_ABORT = 5, // used for error propagation, especially from children
-  JS_KILL = 6,
-  JS_FINISH = 7,
-  JS_SIG0 = 0,
-  JS_SIG1 = 1,
-  JS_SIG2 = 2,
-  JS_SIG3 = 3,
-  JS_SIG4 = 4,
-  JS_SIG5 = 5,
-  JS_SIG6 = 6,
-  JS_SIG7 = 7,
-};
-
-
-enum {
-  JC_NONE = 0, // no signal (unless used with "fast" flag; then it means "any
-               // context")
-  JC_IO = 1,   // signal must be processed in I/O thread
-  JC_CPU = 2,  // signal must be processed in CPU thread
-  JC_MAIN =
-      3, // signal must be processed in main thread (unless specified otherwise)
-  JC_CONNECTION = 4,
-  JC_CONNECTION_IO = 5,
-  JC_UDP = 6,
-  JC_UDP_IO = 7,
+  JC_MAIN = 3,
   JC_ENGINE = 8,
-  JC_MP_QUEUE = 9, // fake class: no signals should be allowed
-  JC_GMS_CPU = 10,
-  JC_ENGINE_MULT = 11,
   JC_MAX = 0xf,
-  JC_MASK = JC_MAX,
-  JC_EPOLL = JC_MAIN,
-  JC_METAFILE_READ = JC_IO,
-  JC_METAFILE_PREPARE = JC_CPU,
-  JC_GMS = JC_ENGINE,
-};
-
-enum {
-  DEFAULT_IO_JOB_THREADS = 16,
-  DEFAULT_CPU_JOB_THREADS = 8,
-  DEFAULT_GMS_CPU_JOB_THREADS = 8,
-};
-
-enum {
-  JF_LOCKED = 0x10000, // job is "locked" (usually this means that a signal is
-                       // being processed)
-  JF_SIGINT = 0x20000, // signal interruption: if job is "locked" and we send a
-                       // new signal to it, invoke pthread_signal() as well
-  JF_COMPLETED =
-      0x40000, // used to signal job "completion" to outside observers
-};
-
-#define JF_QUEUED_CLASS(__c) (1 << (__c))
-enum {
-  JF_QUEUED_MAIN = (1 << JC_MAIN), // job is in MAIN execution queue
-  JF_QUEUED_IO = (1 << JC_IO),     // job is in IO execution queue
-  JF_QUEUED_CPU = (1 << JC_CPU),   // job is in CPU execution queue
-  JF_QUEUED = 0xffff,              // job is in some execution queue
-};
-
-enum {
-  JT_HAVE_TIMER = 1,
-  JT_HAVE_MSG_QUEUE = 2,
-};
-
-#define JFS_SET(__s)                                                           \
-  (0x1000000U << (__s)) // j_flags: signal __s is awaiting delivery
-
-enum {
-  JSP_PARENT_ERROR = 1,  // j_status: propagate error to j_error field in
-                         // j_parent, and send ABORT to parent
-  JSP_PARENT_RUN = 2,    // j_status: send RUN to j_parent after job completion
-  JSP_PARENT_WAKEUP = 4, // j_status: decrease j_parent's j_children; if it
-                         // becomes 0, maybe send RUN
-  JSP_PARENT_RESPTR =
-      8, // j_status: (result) pointer(s) kept in j_custom actually point inside
-         // j_parent; use only if j_parent is still valid
-  JSP_PARENT_INCOMPLETE = 0x10, // abort job if parent already completed
-  JSP_PARENT_RWE = 7,
-  JSP_PARENT_RWEP = 0xf,
-  JSP_PARENT_RWEI = 0x17,
-  JSP_PARENT_RWEPI = 0x1f,
-};
-
-enum {
-  JMC_UPDATE = 1,
-  JMC_FORCE_UPDATE = 2,
-  JMC_RPC_QUERY = 3,
-  JMC_TYPE_MASK = 31,
-  JMC_CONTINUATION = 8,
 };
 
 /* all fields here, with the exception of bits 24..31 and JF_LOCKED of j_flags,
@@ -192,38 +83,6 @@ struct async_job { // must be partially compatible with `struct connection`
   job_t j_parent;           // parent (dependent) job or 0
   long long j_custom[0] __attribute__((aligned(64)));
 } __attribute__((aligned(64)));
-
-struct job_subclass {
-  int subclass_id;
-
-  int total_jobs;
-  int allowed_to_run_jobs;
-  int processed_jobs;
-
-  int locked;
-
-  struct mp_queue *job_queue;
-};
-
-struct job_subclass_list {
-  int subclass_cnt;
-
-  sem_t sem;
-
-  struct job_subclass *subclasses;
-};
-
-struct job_class {
-  int thread_class;
-
-  int min_threads;
-  int max_threads;
-  int cur_threads;
-
-  struct mp_queue *job_queue;
-
-  struct job_subclass_list *subclasses;
-};
 
 struct job_thread {
   pthread_t pthread_id;
