@@ -2,8 +2,9 @@
 
 use crate::*;
 use core::ffi::{c_char, c_double, c_int, c_void};
-use core::ptr;
 use core::sync::atomic::{AtomicI32, AtomicI64, Ordering};
+use mtproxy_core::runtime::net::timer_heap::{TimerHeap, TimerId};
+use std::collections::BTreeMap;
 use std::cell::RefCell;
 use std::thread_local;
 
@@ -26,116 +27,75 @@ pub struct EventTimer {
 
 #[derive(Default)]
 struct TimerHeapState {
-    heap: Option<Box<[*mut EventTimer]>>,
-    heap_size: usize,
+    heap: TimerHeap,
+    by_id: BTreeMap<TimerId, *mut EventTimer>,
+    next_id: TimerId,
 }
 
 impl TimerHeapState {
-    fn ensure_heap(&mut self) {
-        if self.heap.is_none() {
-            self.heap = Some(vec![ptr::null_mut(); MAX_EVENT_TIMERS + 1].into_boxed_slice());
+    fn alloc_id(&mut self) -> Option<TimerId> {
+        let mut candidate = self.next_id.saturating_add(1);
+        if candidate == 0 {
+            candidate = 1;
         }
+        while self.by_id.contains_key(&candidate) {
+            candidate = candidate.saturating_add(1);
+            if candidate == 0 {
+                candidate = 1;
+            }
+            if candidate > i32::MAX as u64 {
+                return None;
+            }
+        }
+        self.next_id = candidate;
+        Some(candidate)
     }
 
-    fn heap_mut(&mut self) -> &mut [*mut EventTimer] {
-        self.ensure_heap();
-        match self.heap.as_mut() {
-            Some(heap) => heap,
-            None => unreachable!("timer heap must be initialized"),
-        }
-    }
-
-    unsafe fn first_timer(&mut self) -> *mut EventTimer {
-        assert!(self.heap_size > 0);
-        self.heap_mut()[1]
-    }
-
-    unsafe fn basic_adjust(&mut self, et: *mut EventTimer, mut i: usize) -> c_int {
-        let heap_size = self.heap_size;
-        let heap = self.heap_mut();
-
-        while i > 1 {
-            let j = i >> 1;
-            if (*heap[j]).wakeup_time <= (*et).wakeup_time {
-                break;
-            }
-            heap[i] = heap[j];
-            (*heap[i]).h_idx = i32::try_from(i).unwrap_or(i32::MAX);
-            i = j;
-        }
-
-        let mut j = 2 * i;
-        while j <= heap_size {
-            if j < heap_size && (*heap[j]).wakeup_time > (*heap[j + 1]).wakeup_time {
-                j += 1;
-            }
-            if (*et).wakeup_time <= (*heap[j]).wakeup_time {
-                break;
-            }
-            heap[i] = heap[j];
-            (*heap[i]).h_idx = i32::try_from(i).unwrap_or(i32::MAX);
-            i = j;
-            j <<= 1;
-        }
-
-        heap[i] = et;
-        (*et).h_idx = i32::try_from(i).unwrap_or(i32::MAX);
-        i32::try_from(i).unwrap_or(i32::MAX)
+    fn first_timer_ptr(&self) -> Option<*mut EventTimer> {
+        let entry = self.heap.next_deadline()?;
+        self.by_id.get(&entry.id).copied()
     }
 
     unsafe fn insert_impl(&mut self, et: *mut EventTimer) -> c_int {
         assert!(!et.is_null());
-        self.ensure_heap();
         EVENT_TIMER_INSERT_OPS.fetch_add(1, Ordering::Relaxed);
 
-        let i = if (*et).h_idx != 0 {
-            let idx = usize::try_from((*et).h_idx).unwrap_or(0);
-            let heap_size = self.heap_size;
-            let heap = self.heap_mut();
-            assert!(idx > 0 && idx <= heap_size && heap[idx] == et);
-            idx
+        let id = if (*et).h_idx != 0 {
+            let id = u64::try_from((*et).h_idx).unwrap_or(0);
+            assert!(id > 0);
+            assert!(self.by_id.get(&id).copied() == Some(et));
+            id
         } else {
+            assert!(self.by_id.len() < MAX_EVENT_TIMERS);
+            let Some(id) = self.alloc_id() else {
+                return -1;
+            };
             TOTAL_TIMERS.fetch_add(1, Ordering::Relaxed);
-            assert!(self.heap_size < MAX_EVENT_TIMERS);
-            self.heap_size += 1;
-            self.heap_size
+            self.by_id.insert(id, et);
+            (*et).h_idx = i32::try_from(id).unwrap_or(i32::MAX);
+            id
         };
 
-        self.basic_adjust(et, i)
+        self.heap.insert_or_update(id, (*et).wakeup_time);
+        i32::try_from(id).unwrap_or(i32::MAX)
     }
 
     unsafe fn remove_impl(&mut self, et: *mut EventTimer) -> c_int {
         assert!(!et.is_null());
-        self.ensure_heap();
 
-        let i = usize::try_from((*et).h_idx).unwrap_or(0);
-        if i == 0 {
+        let id = u64::try_from((*et).h_idx).unwrap_or(0);
+        if id == 0 {
+            return 0;
+        }
+        if self.by_id.remove(&id).is_none() {
+            (*et).h_idx = 0;
             return 0;
         }
 
+        let _ = self.heap.remove(id);
         TOTAL_TIMERS.fetch_sub(1, Ordering::Relaxed);
         EVENT_TIMER_REMOVE_OPS.fetch_add(1, Ordering::Relaxed);
-
-        {
-            let heap_size = self.heap_size;
-            let heap = self.heap_mut();
-            assert!(i > 0 && i <= heap_size && heap[i] == et);
-        }
         (*et).h_idx = 0;
-
-        let replacement = {
-            let heap_size = self.heap_size;
-            let heap = self.heap_mut();
-            let replacement = heap[heap_size];
-            self.heap_size -= 1;
-            replacement
-        };
-
-        if i > self.heap_size {
-            return 1;
-        }
-
-        self.basic_adjust(replacement, i);
         1
     }
 }
@@ -206,15 +166,10 @@ pub unsafe extern "C" fn remove_event_timer(et: *mut EventTimer) -> c_int {
 
 #[no_mangle]
 pub extern "C" fn thread_run_timers() -> c_int {
-    TIMER_STATE.with(|state| state.borrow_mut().ensure_heap());
-
     let first_snapshot = TIMER_STATE.with(|state| {
-        let mut state = state.borrow_mut();
-        if state.heap_size == 0 {
-            return None;
-        }
-        let first = unsafe { state.first_timer() };
-        Some((unsafe { (*first).wakeup_time }, state.heap_size))
+        let state = state.borrow();
+        let first = state.first_timer_ptr()?;
+        Some((unsafe { (*first).wakeup_time }, state.by_id.len()))
     });
 
     let Some((first_wakeup_time, first_heap_size)) = first_snapshot else {
@@ -229,40 +184,37 @@ pub extern "C" fn thread_run_timers() -> c_int {
     }
 
     loop {
-        let due_timer = TIMER_STATE.with(|state| {
+        let due_timers = TIMER_STATE.with(|state| {
             let mut state = state.borrow_mut();
-            if state.heap_size == 0 {
-                return None;
+            let now = precise_now_value();
+            let due = state.heap.pop_due(now);
+            let mut out = Vec::with_capacity(due.len());
+            for item in due {
+                if let Some(et) = state.by_id.remove(&item.id) {
+                    unsafe { (*et).h_idx = 0 };
+                    TOTAL_TIMERS.fetch_sub(1, Ordering::Relaxed);
+                    EVENT_TIMER_REMOVE_OPS.fetch_add(1, Ordering::Relaxed);
+                    out.push(et);
+                }
             }
-
-            let first = unsafe { state.first_timer() };
-            if unsafe { (*first).wakeup_time > precise_now_value() } {
-                return None;
-            }
-
-            assert_eq!(unsafe { (*first).h_idx }, 1);
-            let _ = unsafe { state.remove_impl(first) };
-            Some(first)
+            out
         });
-
-        let Some(et) = due_timer else {
+        if due_timers.is_empty() {
             break;
-        };
-
-        let Some(wakeup) = (unsafe { (*et).wakeup }) else {
-            continue;
-        };
-        let _ = unsafe { wakeup(et) };
-        EVENT_TIMER_ALARMS.fetch_add(1, Ordering::Relaxed);
+        }
+        for et in due_timers {
+            let Some(wakeup) = (unsafe { (*et).wakeup }) else {
+                continue;
+            };
+            let _ = unsafe { wakeup(et) };
+            EVENT_TIMER_ALARMS.fetch_add(1, Ordering::Relaxed);
+        }
     }
 
     let next_snapshot = TIMER_STATE.with(|state| {
-        let mut state = state.borrow_mut();
-        if state.heap_size == 0 {
-            return None;
-        }
-        let first = unsafe { state.first_timer() };
-        Some((unsafe { (*first).wakeup_time }, state.heap_size))
+        let state = state.borrow();
+        let first = state.first_timer_ptr()?;
+        Some((unsafe { (*first).wakeup_time }, state.by_id.len()))
     });
 
     let Some((next_wakeup_time, next_heap_size)) = next_snapshot else {
@@ -283,11 +235,10 @@ pub extern "C" fn thread_run_timers() -> c_int {
 #[no_mangle]
 pub extern "C" fn timers_get_first() -> c_double {
     TIMER_STATE.with(|state| {
-        let mut state = state.borrow_mut();
-        if state.heap_size == 0 {
+        let state = state.borrow();
+        let Some(first) = state.first_timer_ptr() else {
             return 0.0;
-        }
-        let first = unsafe { state.first_timer() };
+        };
         unsafe { (*first).wakeup_time }
     })
 }
@@ -330,7 +281,6 @@ mod tests {
         EMPTY_WAIT_MSEC,
     };
     use core::ffi::c_int;
-    use core::ptr;
 
     unsafe extern "C" fn test_wakeup(_: *mut EventTimer) -> c_int {
         0
@@ -354,15 +304,14 @@ mod tests {
         let mut t3 = timer(4.0);
 
         unsafe {
-            assert_eq!(state.insert_impl(&mut t1), 1);
-            assert_eq!(state.insert_impl(&mut t2), 1);
-            assert_eq!(state.insert_impl(&mut t3), 3);
+            assert!(state.insert_impl(&mut t1) > 0);
+            assert!(state.insert_impl(&mut t2) > 0);
+            assert!(state.insert_impl(&mut t3) > 0);
         }
 
-        let first = unsafe { state.first_timer() };
-        assert!(ptr::eq(first, &t2));
-        assert_eq!(t2.h_idx, 1);
-        assert_eq!(state.heap_size, 3);
+        let first = state.first_timer_ptr().unwrap();
+        assert!(core::ptr::eq(first, &t2));
+        assert_eq!(state.by_id.len(), 3);
     }
 
     #[test]
@@ -372,7 +321,7 @@ mod tests {
 
         let rc = unsafe { state.remove_impl(&mut t1) };
         assert_eq!(rc, 0);
-        assert_eq!(state.heap_size, 0);
+        assert_eq!(state.by_id.len(), 0);
     }
 
     #[test]
@@ -389,17 +338,17 @@ mod tests {
             assert_eq!(state.remove_impl(&mut t2), 1);
         }
 
-        let first = unsafe { state.first_timer() };
-        assert!(ptr::eq(first, &t3));
-        assert_eq!(state.heap_size, 2);
+        let first = state.first_timer_ptr().unwrap();
+        assert!(core::ptr::eq(first, &t3));
+        assert_eq!(state.by_id.len(), 2);
         assert_eq!(t2.h_idx, 0);
     }
 
     #[test]
     fn ffi_rejects_null_timer_pointers() {
         unsafe {
-            assert_eq!(insert_event_timer(ptr::null_mut()), -1);
-            assert_eq!(remove_event_timer(ptr::null_mut()), -1);
+            assert_eq!(insert_event_timer(core::ptr::null_mut()), -1);
+            assert_eq!(remove_event_timer(core::ptr::null_mut()), -1);
         }
     }
 
@@ -414,7 +363,7 @@ mod tests {
         };
 
         unsafe {
-            assert_eq!(insert_event_timer(&mut timer), 1);
+            assert!(insert_event_timer(&mut timer) > 0);
         }
 
         assert_eq!(thread_run_timers(), EMPTY_WAIT_MSEC);

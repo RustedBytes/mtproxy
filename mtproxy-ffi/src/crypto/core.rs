@@ -2,6 +2,7 @@ pub(super) use crate::ffi_util::{
     mut_ref_from_ptr, mut_slice_from_ptr, ref_from_ptr, slice_from_ptr,
 };
 use crate::*;
+use mtproxy_core::runtime::crypto as core_crypto;
 
 pub(super) const AES_CREATE_KEYS_MAX_STR_LEN: usize =
     16 + 16 + 4 + 4 + 2 + 6 + 4 + 2 + MAX_PWD_LEN + 16 + 16 + 4 + (16 * 2) + 256;
@@ -202,21 +203,10 @@ pub(super) fn write_md5_hex(input: &[u8], out: &mut [u8; 33]) -> bool {
 }
 
 pub(super) fn crypto_dh_is_good_rpc_dh_bin_impl(data: &[u8], prime_prefix: &[u8]) -> i32 {
-    if data.len() < 8 || prime_prefix.len() < 8 {
-        return -1;
+    match core_crypto::dh_is_good_prefix(data, prime_prefix) {
+        Ok(v) => v,
+        Err(core_crypto::CryptoError::InvalidInput) => -1,
     }
-    if data[..8].iter().all(|b| *b == 0) {
-        return 0;
-    }
-    for (&data_byte, &prefix_byte) in data.iter().zip(prime_prefix.iter()).take(8) {
-        if data_byte > prefix_byte {
-            return 0;
-        }
-        if data_byte < prefix_byte {
-            return 1;
-        }
-    }
-    0
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -553,11 +543,11 @@ pub(super) fn crc32_partial_poly(data: &[u8], mut crc: u32, poly: u32) -> u32 {
 }
 
 pub(super) fn crc32_partial_impl(data: &[u8], crc: u32) -> u32 {
-    crc32_partial_poly(data, crc, CRC32_REFLECTED_POLY)
+    core_crypto::crc32_partial(data, crc)
 }
 
 pub(super) fn crc32c_partial_impl(data: &[u8], crc: u32) -> u32 {
-    crc32_partial_poly(data, crc, CRC32C_REFLECTED_POLY)
+    core_crypto::crc32c_partial(data, crc)
 }
 
 #[inline]

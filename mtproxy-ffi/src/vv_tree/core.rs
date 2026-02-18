@@ -3,7 +3,10 @@
 use crate::ffi_util::{mut_ref_from_ptr, ref_from_ptr};
 use core::ffi::{c_int, c_void};
 use core::sync::atomic::{AtomicUsize, Ordering};
-use std::collections::{BTreeMap, BTreeSet};
+use mtproxy_core::runtime::collections::vv_tree::{
+    ConnectionTree as CoreConnectionTree, VvTreeMap as CoreVvTreeMap,
+};
+use std::collections::BTreeMap;
 use std::sync::{Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::MtproxyProcessId;
@@ -38,7 +41,7 @@ pub struct VvTreeHandle {
 }
 
 struct VvTree {
-    values: RwLock<BTreeMap<usize, c_int>>,
+    values: RwLock<CoreVvTreeMap>,
 }
 
 unsafe fn vv_tree_as_ref<'a>(handle: *mut VvTreeHandle) -> Option<&'a VvTree> {
@@ -49,7 +52,7 @@ unsafe fn vv_tree_as_ref<'a>(handle: *mut VvTreeHandle) -> Option<&'a VvTree> {
 #[no_mangle]
 pub unsafe extern "C" fn vv_tree_create() -> *mut VvTreeHandle {
     let tree = Box::new(VvTree {
-        values: RwLock::new(BTreeMap::new()),
+        values: RwLock::new(CoreVvTreeMap::default()),
     });
     Box::into_raw(tree) as *mut VvTreeHandle
 }
@@ -72,8 +75,7 @@ pub unsafe extern "C" fn vv_tree_insert(
         return;
     };
 
-    let mut values = rw_write(&tree.values);
-    values.entry(key as usize).or_insert(priority);
+    rw_write(&tree.values).insert_if_absent(key as usize, priority);
 }
 
 #[no_mangle]
@@ -86,7 +88,7 @@ pub unsafe extern "C" fn vv_tree_lookup(
     };
 
     let values = rw_read(&tree.values);
-    if values.contains_key(&(key as usize)) {
+    if values.contains(key as usize) {
         key
     } else {
         core::ptr::null()
@@ -99,8 +101,7 @@ pub unsafe extern "C" fn vv_tree_delete(handle: *mut VvTreeHandle, key: *const c
         return 0;
     };
 
-    let mut values = rw_write(&tree.values);
-    i32::from(values.remove(&(key as usize)).is_some())
+    i32::from(rw_write(&tree.values).remove(key as usize))
 }
 
 #[no_mangle]
@@ -130,7 +131,7 @@ pub unsafe extern "C" fn vv_tree_traverse(
         return;
     };
 
-    let keys: Vec<usize> = rw_read(&tree.values).keys().copied().collect();
+    let keys = rw_read(&tree.values).keys_sorted();
     for key in keys {
         callback(key as *const c_void);
     }
@@ -143,7 +144,7 @@ pub struct tree_connection {
 
 struct ConnectionTree {
     refs: AtomicUsize,
-    values: RwLock<BTreeSet<usize>>,
+    values: RwLock<CoreConnectionTree>,
 }
 
 fn conn_tree_from_raw(tree: *mut tree_connection) -> *mut ConnectionTree {
@@ -169,7 +170,7 @@ unsafe fn conn_tree_release_raw(tree: *mut tree_connection) {
 }
 
 unsafe fn conn_tree_create_with(value: usize) -> *mut tree_connection {
-    let mut set = BTreeSet::new();
+    let mut set = CoreConnectionTree::default();
     set.insert(value);
     let state = Box::new(ConnectionTree {
         refs: AtomicUsize::new(1),
@@ -203,10 +204,7 @@ pub unsafe extern "C" fn tree_delete_connection(
     }
 
     let state = conn_tree_from_raw(tree);
-    let mut values = rw_write(&(*state).values);
-    values.remove(&(conn as usize));
-    let empty = values.is_empty();
-    drop(values);
+    let empty = rw_write(&(*state).values).remove_and_is_empty(conn as usize);
 
     if empty {
         conn_tree_release_raw(tree);
@@ -226,7 +224,7 @@ pub unsafe extern "C" fn tree_lookup_ptr_connection(
     }
 
     let state = conn_tree_from_raw(tree);
-    if rw_read(&(*state).values).contains(&(conn as usize)) {
+    if rw_read(&(*state).values).contains(conn as usize) {
         conn
     } else {
         core::ptr::null_mut()
@@ -243,7 +241,7 @@ pub unsafe extern "C" fn tree_act_connection(
     }
 
     let state = conn_tree_from_raw(tree);
-    let values: Vec<usize> = rw_read(&(*state).values).iter().copied().collect();
+    let values = rw_read(&(*state).values).values_sorted();
     for value in values {
         act(value as *mut c_void);
     }
@@ -260,7 +258,7 @@ pub unsafe extern "C" fn tree_act_ex_connection(
     }
 
     let state = conn_tree_from_raw(tree);
-    let values: Vec<usize> = rw_read(&(*state).values).iter().copied().collect();
+    let values = rw_read(&(*state).values).values_sorted();
     for value in values {
         act(value as *mut c_void, ex);
     }
@@ -278,7 +276,7 @@ pub unsafe extern "C" fn tree_act_ex2_connection(
     }
 
     let state = conn_tree_from_raw(tree);
-    let values: Vec<usize> = rw_read(&(*state).values).iter().copied().collect();
+    let values = rw_read(&(*state).values).values_sorted();
     for value in values {
         act(value as *mut c_void, ex, ex2);
     }
@@ -297,7 +295,7 @@ pub unsafe extern "C" fn tree_act_ex3_connection(
     }
 
     let state = conn_tree_from_raw(tree);
-    let values: Vec<usize> = rw_read(&(*state).values).iter().copied().collect();
+    let values = rw_read(&(*state).values).values_sorted();
     for value in values {
         act(value as *mut c_void, ex, ex2, ex3);
     }

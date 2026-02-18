@@ -15,6 +15,7 @@ pub mod tcp_rpc_common;
 pub mod tcp_rpc_ext_server;
 pub mod tcp_rpc_server;
 pub mod thread;
+pub mod timer_heap;
 pub mod timers;
 
 /// Availability state for a runtime net module.
@@ -34,7 +35,7 @@ pub struct NetModuleEntry {
 }
 
 /// Net runtime module registry.
-pub const NET_MODULES: [NetModuleEntry; 16] = [
+pub const NET_MODULES: [NetModuleEntry; 17] = [
     NetModuleEntry {
         module: "runtime::net::config",
         state: NetModuleState::Active,
@@ -93,6 +94,10 @@ pub const NET_MODULES: [NetModuleEntry; 16] = [
     },
     NetModuleEntry {
         module: "runtime::net::thread",
+        state: NetModuleState::Active,
+    },
+    NetModuleEntry {
+        module: "runtime::net::timer_heap",
         state: NetModuleState::Active,
     },
     NetModuleEntry {

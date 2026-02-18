@@ -3,6 +3,7 @@
 pub mod bootstrap;
 pub mod collections;
 pub mod config;
+pub mod crypto;
 pub mod engine;
 pub mod jobs;
 pub mod mtproto;

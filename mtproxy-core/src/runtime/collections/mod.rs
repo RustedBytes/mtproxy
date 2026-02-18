@@ -7,3 +7,4 @@
 
 pub mod ip_format;
 pub mod treap;
+pub mod vv_tree;

@@ -1,4 +1,5 @@
 use crate::*;
+use mtproxy_core::runtime::config::observability_parse as obs_parse;
 
 unsafe extern "C" {
     fn mtproxy_ffi_precise_time_set_tls(precise_now_value: f64, precise_now_rdtsc_value: i64);
@@ -214,48 +215,21 @@ fn cfg_is_word_char(ch: u8) -> bool {
     ch.is_ascii_alphanumeric() || matches!(ch, b'.' | b'-' | b'_')
 }
 
-fn cfg_skipspc_impl(bytes: &[u8], mut line_no: i32) -> MtproxyCfgScanResult {
-    let mut i = 0usize;
-    loop {
-        if i >= bytes.len() {
-            return MtproxyCfgScanResult {
-                advance: i,
-                line_no,
-                ch: 0,
-            };
-        }
-        match bytes[i] {
-            b' ' | b'\t' | b'\r' => {
-                i += 1;
-            }
-            b'\n' => {
-                line_no += 1;
-                i += 1;
-            }
-            b'#' => {
-                i += 1;
-                while i < bytes.len() && bytes[i] != b'\n' {
-                    i += 1;
-                }
-            }
-            ch => {
-                return MtproxyCfgScanResult {
-                    advance: i,
-                    line_no,
-                    ch: i32::from(ch),
-                };
-            }
-        }
+fn cfg_skipspc_impl(bytes: &[u8], line_no: i32) -> MtproxyCfgScanResult {
+    let (advance, line_no, ch) = obs_parse::cfg_skipspc_advance(bytes, line_no);
+    MtproxyCfgScanResult {
+        advance,
+        line_no,
+        ch,
     }
 }
 
 fn cfg_skspc_impl(bytes: &[u8], line_no: i32) -> MtproxyCfgScanResult {
-    let i = cfg_take_while(bytes, 0, |ch| matches!(ch, b' ' | b'\t'));
-    let ch = bytes.get(i).copied().unwrap_or(0);
+    let (advance, line_no, ch) = obs_parse::cfg_skspc_advance(bytes, line_no);
     MtproxyCfgScanResult {
-        advance: i,
+        advance,
         line_no,
-        ch: i32::from(ch),
+        ch,
     }
 }
 

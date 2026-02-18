@@ -4,6 +4,7 @@
 //! The main behavior lives in this Rust module.
 
 pub(super) use core::ffi::{c_char, c_int, c_longlong, c_void};
+use mtproxy_core::runtime::bootstrap::options as core_options;
 pub(super) use std::collections::HashSet;
 pub(super) use std::ffi::{CStr, CString};
 pub(super) use std::sync::{LazyLock, Mutex, MutexGuard};
@@ -80,20 +81,18 @@ pub(super) fn c_str_to_owned(ptr: *const c_char) -> Option<String> {
 }
 
 pub(super) fn parse_option_arg_mode(arg: c_int) -> bool {
-    arg == NO_ARGUMENT || arg == REQUIRED_ARGUMENT || arg == OPTIONAL_ARGUMENT
+    to_core_arg_mode(arg).is_some()
 }
 
 pub(super) fn find_option_index_by_value(
     entries: &[ParseOptionEntry],
     value: c_int,
 ) -> Option<usize> {
-    entries.iter().position(|entry| entry.vals.contains(&value))
+    build_core_registry(entries).find_index_by_value(value)
 }
 
 pub(super) fn find_option_index_by_name(entries: &[ParseOptionEntry], name: &str) -> Option<usize> {
-    entries
-        .iter()
-        .position(|entry| entry.longopts.iter().any(|current| current == name))
+    build_core_registry(entries).find_index_by_name(name)
 }
 
 pub(super) fn parse_option_add_internal(
@@ -109,7 +108,21 @@ pub(super) fn parse_option_add_internal(
     }
 
     let mut registry = lock_unpoisoned(&PARSE_REGISTRY);
-    if find_option_index_by_value(&registry.entries, val).is_some() {
+    let Some(arg_mode) = to_core_arg_mode(arg) else {
+        return -1;
+    };
+    let mut core_registry = build_core_registry(&registry.entries);
+    let core_added = core_registry.add(core_options::OptionSpec {
+        values: vec![val],
+        base_value: val,
+        smallest_value: val,
+        longopts: vec![name.to_owned()],
+        callback: to_core_callback_kind(callback),
+        help: help.clone(),
+        flags,
+        arg_mode,
+    });
+    if !core_added {
         return -1;
     }
 
@@ -126,6 +139,43 @@ pub(super) fn parse_option_add_internal(
     registry.entries.sort_by_key(|entry| entry.smallest_val);
 
     0
+}
+
+fn to_core_arg_mode(arg: c_int) -> Option<core_options::OptionArgMode> {
+    match arg {
+        NO_ARGUMENT => Some(core_options::OptionArgMode::None),
+        REQUIRED_ARGUMENT => Some(core_options::OptionArgMode::Required),
+        OPTIONAL_ARGUMENT => Some(core_options::OptionArgMode::Optional),
+        _ => None,
+    }
+}
+
+fn to_core_callback_kind(kind: CallbackKind) -> core_options::OptionCallbackKind {
+    match kind {
+        CallbackKind::Default => core_options::OptionCallbackKind::Default,
+        CallbackKind::Builtin => core_options::OptionCallbackKind::Builtin,
+        CallbackKind::C(_) => core_options::OptionCallbackKind::External,
+    }
+}
+
+fn build_core_registry(entries: &[ParseOptionEntry]) -> core_options::OptionRegistry {
+    let mut registry = core_options::OptionRegistry::default();
+    for entry in entries {
+        let Some(arg_mode) = to_core_arg_mode(entry.arg) else {
+            continue;
+        };
+        let _ = registry.add(core_options::OptionSpec {
+            values: entry.vals.clone(),
+            base_value: entry.base_val,
+            smallest_value: entry.smallest_val,
+            longopts: entry.longopts.clone(),
+            callback: to_core_callback_kind(entry.callback),
+            help: entry.help.clone(),
+            flags: entry.flags,
+            arg_mode,
+        });
+    }
+    registry
 }
 
 pub(super) struct CallbackArg {
