@@ -46,8 +46,6 @@ typedef job_t connection_job_t;
 typedef job_t socket_connection_job_t;
 typedef job_t listening_connection_job_t;
 typedef job_t conn_target_job_t;
-typedef job_t query_job_t;
-struct query_info;
 
 /* connection function table */
 
@@ -153,24 +151,6 @@ struct conn_target_info {
   conn_target_job_t hnext;
 
   int global_refcnt;
-};
-
-struct pseudo_conn_target_info {
-  struct event_timer timer;
-  int pad1;
-  int pad2;
-
-  void *pad3;
-  conn_type_t *type;
-  void *extra;
-  struct in_addr target;
-  unsigned char target_ipv6[16];
-  int port;
-  int active_outbound_connections, outbound_connections;
-  int ready_outbound_connections;
-
-  connection_job_t in_conn;
-  connection_job_t out_conn;
 };
 
 struct connection_info {
@@ -297,19 +277,6 @@ void assert_engine_thread(void);
 
 // struct tree_connection *get_connection_tree_ptr (struct tree_connection **);
 // void free_connection_tree_ptr (struct tree_connection *);
-
-struct free_later {
-  void *ptr;
-  void (*free)(void *);
-};
-
-struct query_info {
-  struct event_timer ev;
-  struct raw_message raw;
-  int src_type;
-  struct process_id src_pid;
-  void *conn;
-};
 
 int check_conn_functions(conn_type_t *type, int listening);
 

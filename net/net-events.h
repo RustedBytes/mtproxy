@@ -42,10 +42,8 @@ enum {
   EVT_READ = 4,
   EVT_WRITE = 2,
   EVT_SPEC = 1,
-  EVT_RW = EVT_READ | EVT_WRITE,
   EVT_RWX = EVT_READ | EVT_WRITE | EVT_SPEC,
   EVT_LEVEL = 8,
-  EVT_OPEN = 0x80,
   EVT_CLOSED = 0x40,
   EVT_IN_EPOLL = 0x20,
   EVT_NEW = 0x100,
@@ -108,11 +106,6 @@ enum {
   SM_SPECIAL = 0x10000,
   SM_NOQACK = 0x20000,
   SM_RAWMSG = 0x40000,
-};
-
-union sockaddr_in46 {
-  struct sockaddr_in a4;
-  struct sockaddr_in6 a6;
 };
 
 extern int epoll_sleep_ns;
