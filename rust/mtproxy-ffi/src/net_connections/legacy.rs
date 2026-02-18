@@ -909,3 +909,13 @@ pub extern "C" fn mtproxy_ffi_net_connections_stats_add_free_connection_counts(
     ALLOCATED_OUTBOUND_CONNECTIONS.fetch_add(allocated_outbound_delta, Ordering::Relaxed);
     ALLOCATED_INBOUND_CONNECTIONS.fetch_add(allocated_inbound_delta, Ordering::Relaxed);
 }
+
+// ============================================================================
+// Bridge function migrated from net/net-connections.c  
+// ============================================================================
+
+/// Returns thread-local precise_now value (migrated from net/net-connections.c)
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_connections_precise_now() -> c_double {
+    crate::mtproxy_ffi_precise_time_get_precise_now()
+}

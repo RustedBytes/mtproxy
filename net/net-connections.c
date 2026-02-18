@@ -33,26 +33,28 @@
 #include <pthread.h>
 
 #include "jobs/jobs.h"
-#include "precise-time.h"
 #include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 
+// Global variables (still referenced from C/Rust interop)
 int active_special_connections, max_special_connections = MAX_CONNECTIONS;
+conn_target_job_t HTarget[PRIME_TARGETS];
+pthread_mutex_t TargetsLock = PTHREAD_MUTEX_INITIALIZER;
 
+// Assertion functions (must remain in C for now due to private JobThread fields)
 void assert_net_cpu_thread(void) {}
+
 void assert_engine_thread(void) {
   struct job_thread *JT = jobs_get_this_job_thread();
   assert(JT && (JT->thread_class == JC_ENGINE || JT->thread_class == JC_MAIN));
 }
 
-double mtproxy_ffi_net_connections_precise_now(void) { return precise_now; }
+// Bridge functions (must remain in C for now due to private JobThread fields)
 int mtproxy_ffi_net_connections_job_free(job_t job) {
   return job_free(JOB_REF_PASS(job));
 }
+
 void mtproxy_ffi_net_connections_job_thread_dec_jobs_active(void) {
   struct job_thread *JT = jobs_get_this_job_thread();
   assert(JT);
   JT->jobs_active--;
 }
-
-conn_target_job_t HTarget[PRIME_TARGETS];
-pthread_mutex_t TargetsLock = PTHREAD_MUTEX_INITIALIZER;

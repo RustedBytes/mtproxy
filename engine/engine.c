@@ -29,26 +29,12 @@
 
 #include "engine/engine.h"
 
-#include "common/precise-time.h"
 #include "common/server-functions.h"
-#include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 
-int32_t mtproxy_ffi_engine_check_conn_functions_bridge(void *conn_type) {
-  return check_conn_functions(conn_type, 1);
-}
-
-int32_t mtproxy_ffi_engine_now_value(void) { return now; }
-
-double mtproxy_ffi_engine_precise_now_value(void) { return precise_now; }
-
-void mtproxy_ffi_engine_usage_bridge(void) { usage(); }
-
+// Global variables (still referenced from C/Rust interop)
 char *local_progname;
-
 double precise_now_diff;
-
 engine_t *engine_state;
-
 unsigned char server_ipv6[16];
 
 const char *get_version_string_override(void) __attribute__((weak));

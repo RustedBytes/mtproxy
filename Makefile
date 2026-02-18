@@ -49,7 +49,6 @@ LIB_OBJS_NORMAL := \
 	${OBJ}/common/tl-parse.o ${OBJ}/common/common-stats.o \
 	${OBJ}/engine/engine.o \
 	${OBJ}/common/kprintf.o \
-	${OBJ}/common/precise-time.o \
 
 LIB_OBJS := ${LIB_OBJS_NORMAL}
 

@@ -51,6 +51,7 @@ use std::vec::Vec;
 pub const FFI_API_VERSION: u32 = mtproxy_core::CORE_API_VERSION;
 
 thread_local! {
+    static TLS_NOW: Cell<i32> = const { Cell::new(0) };
     static TLS_PRECISE_NOW: Cell<f64> = const { Cell::new(0.0) };
     static TLS_PRECISE_NOW_RDTSC: Cell<i64> = const { Cell::new(0) };
 }
@@ -115,3 +116,43 @@ pub(crate) use crypto::core::{CRC32_REFLECTED_POLY, GF32_CLMUL_POWERS_LEN};
 
 #[cfg(test)]
 mod tests;
+
+// ============================================================================
+// Precise time FFI functions (migrated from common/precise-time.c)
+// ============================================================================
+
+/// Global precise_time variable (migrated from common/precise-time.c)
+#[no_mangle]
+pub static mut precise_time: i64 = 0;
+
+/// Global precise_time_rdtsc variable (migrated from common/precise-time.c)
+#[no_mangle]
+pub static mut precise_time_rdtsc: i64 = 0;
+
+/// Set thread-local precise time values
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_precise_time_set_tls(
+    precise_now_value: c_double,
+    precise_now_rdtsc_value: i64,
+) {
+    TLS_PRECISE_NOW.set(precise_now_value);
+    TLS_PRECISE_NOW_RDTSC.set(precise_now_rdtsc_value);
+}
+
+/// Get thread-local precise_now value
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_precise_time_get_precise_now() -> c_double {
+    TLS_PRECISE_NOW.get()
+}
+
+/// Set thread-local now value
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_precise_time_set_now(now_value: c_int) {
+    TLS_NOW.set(now_value);
+}
+
+/// Get thread-local now value
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_precise_time_get_now() -> c_int {
+    TLS_NOW.get()
+}
