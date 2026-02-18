@@ -1,71 +1,79 @@
-# MTProxy
-Simple MTProto proxy with a Rust-first runtime.
+# MTProxy (Rust workspace)
 
-This repository currently has two runnable paths:
-- `mtproxy-rust` (canonical runtime, from `mtproxy-bin`).
-- `mtproto-proxy` (compatibility wrapper binary linked against Rust FFI).
+Rust-first MTProto proxy implementation with an optional legacy-compatible wrapper binary.
 
-## Requirements
-Install Rust (`cargo`) and common C build tools.
+## Workspace layout
+- `mtproxy-bin`: main runtime binary (`mtproxy-rust`)
+- `mtproxy-core`: runtime logic and networking internals
+- `mtproxy-ffi`: FFI layer used by compatibility/bridge code
 
-Debian/Ubuntu:
+## Prerequisites
+- Rust toolchain (`cargo`, `rustc`)
+- `just` command runner
+- build tools (`clang`, `ar`, libc headers) for legacy wrapper builds
+
+Example (Debian/Ubuntu):
 ```bash
-apt install git curl build-essential rustc cargo
-```
-
-CentOS/RHEL:
-```bash
-yum install rust cargo
-yum groupinstall "Development Tools"
+sudo apt update
+sudo apt install -y rustc cargo just clang build-essential
 ```
 
 ## Build
-`make` builds the compatibility wrapper:
+Debug Rust runtime:
 ```bash
-make
-```
-Output: `objs/bin/mtproto-proxy`
-
-Build the Rust-native release binary and copy it into `objs/bin`:
-```bash
-make release
+just build
 ```
 Output: `objs/bin/mtproxy-rust`
 
-Direct Cargo build:
+Release Rust runtime:
 ```bash
-cargo build -p mtproxy-bin --release
+just release
+```
+Output: `objs/bin/mtproxy-rust`
+
+Direct Cargo release build:
+```bash
+cargo build --release -p mtproxy-bin --bin mtproxy-rust
 ```
 Output: `target/release/mtproxy-rust`
 
-Clean build artifacts:
+Legacy-compatible wrapper (links Rust FFI into `mtproto-proxy`):
 ```bash
-make clean
+just build-legacy         # debug
+just release-legacy       # release
+```
+Output: `objs/bin/mtproto-proxy`
+
+Clean artifacts:
+```bash
+just clean
 ```
 
 ## Run
-1. Fetch Telegram secret and config files:
+Fetch Telegram files:
 ```bash
-curl -s https://core.telegram.org/getProxySecret -o proxy-secret
-curl -s https://core.telegram.org/getProxyConfig -o proxy-multi.conf
+curl -fsSL https://core.telegram.org/getProxySecret -o proxy-secret
+curl -fsSL https://core.telegram.org/getProxyConfig -o proxy-multi.conf
 ```
-2. Generate your proxy secret (32 hex chars):
+
+Generate a proxy secret (32 hex chars):
 ```bash
 head -c 16 /dev/urandom | xxd -ps
 ```
-3. Start proxy (Rust-native binary shown):
+
+Start proxy:
 ```bash
-./objs/bin/mtproxy-rust -u nobody -p 8888 -H 443 -S <secret> --aes-pwd proxy-secret -M 1 proxy-multi.conf
+./objs/bin/mtproxy-rust \
+  -u nobody \
+  -p 8888 \
+  -H 443 \
+  -S <your_32_hex_secret> \
+  --aes-pwd proxy-secret \
+  -M 1 \
+  proxy-multi.conf
 ```
 
-Quick option reference:
-- `-H 443`: public client port.
-- `-p 8888`: internal HTTP/stats port.
-- `-S <secret>`: 32-hex MTProto secret (repeatable).
-- `--aes-pwd proxy-secret`: file from step 1.
-- trailing `proxy-multi.conf`: config file from step 1.
-
-Show full CLI options:
+Show all options:
 ```bash
 ./objs/bin/mtproxy-rust --help
 ```
@@ -75,10 +83,22 @@ Client link format:
 tg://proxy?server=SERVER_NAME&port=PORT&secret=SECRET
 ```
 
-Register proxy with [@MTProxybot](https://t.me/MTProxybot), then add returned tag via `-P <proxy-tag>`.
+If using [@MTProxybot](https://t.me/MTProxybot), pass the returned tag with `-P <proxy-tag>`.
 
-## Development checks
-Rust workspace checks:
+## Development
+Format:
+```bash
+just format
+```
+
+Checks:
+```bash
+just check
+just clippy
+just test
+```
+
+Or run directly:
 ```bash
 cargo check --workspace
 cargo fmt --all --check
@@ -86,14 +106,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
 
-Notes about Make targets:
-- `make test` expects `tests/run.sh`.
-- `make ffi-freeze` expects `scripts/ffi_freeze_check.sh`.
-- `make step15-inventory` expects `scripts/generate_refactor_manifest.sh`.
-
-If those paths are missing in your checkout, use Cargo commands directly.
-
 ## Random padding
-To enable random padding, prefix proxy secret with `dd`:
+Prefix a secret with `dd` to enable random padding:
 
 `cafe...babe` -> `ddcafe...babe`
