@@ -3657,8 +3657,11 @@ pub extern "C" fn mtproxy_ffi_net_connections_job_free(job: JobT) -> i32 {
 }
 
 /// Decrements jobs_active counter (migrated from net/net-connections.c)
-/// Note: Direct field access without atomics matches original C behavior.
-/// The JobThread structure ensures this is accessed from the correct thread context.
+/// 
+/// **Thread Safety:** Direct field access without atomics matches original C behavior.
+/// The JobThread structure is accessed only by its owning thread (obtained via
+/// `jobs_get_this_job_thread_c_impl()`), so no concurrent access is possible.
+/// Each thread has its own JobThread instance.
 #[no_mangle]
 pub extern "C" fn mtproxy_ffi_net_connections_job_thread_dec_jobs_active() {
     unsafe {
