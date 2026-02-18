@@ -947,12 +947,12 @@ fn ext_conn_to_ffi(
     }
 }
 
-pub(super) unsafe fn mtproto_ext_conn_reset_ffi() {
+pub(super) fn mtproto_ext_conn_reset_ffi() {
     let mut table = ext_conn_lock();
     *table = mtproxy_core::runtime::mtproto::proxy::ExtConnectionTable::new();
 }
 
-pub(super) unsafe fn mtproto_ext_conn_create_ffi(
+pub(super) fn mtproto_ext_conn_create_ffi(
     in_fd: c_int,
     in_gen: c_int,
     in_conn_id: i64,
@@ -994,7 +994,7 @@ pub(super) unsafe fn mtproto_ext_conn_create_ffi(
     }
 }
 
-pub(super) unsafe fn mtproto_ext_conn_get_by_in_fd_ffi(
+pub(super) fn mtproto_ext_conn_get_by_in_fd_ffi(
     in_fd: c_int,
     out: *mut MtproxyMtprotoExtConnection,
 ) -> i32 {
@@ -1012,7 +1012,7 @@ pub(super) unsafe fn mtproto_ext_conn_get_by_in_fd_ffi(
     }
 }
 
-pub(super) unsafe fn mtproto_ext_conn_get_by_out_conn_id_ffi(
+pub(super) fn mtproto_ext_conn_get_by_out_conn_id_ffi(
     out_conn_id: i64,
     out: *mut MtproxyMtprotoExtConnection,
 ) -> i32 {
@@ -1028,7 +1028,7 @@ pub(super) unsafe fn mtproto_ext_conn_get_by_out_conn_id_ffi(
     }
 }
 
-pub(super) unsafe fn mtproto_ext_conn_update_auth_key_ffi(
+pub(super) fn mtproto_ext_conn_update_auth_key_ffi(
     in_fd: c_int,
     in_conn_id: i64,
     auth_key_id: i64,
@@ -1044,7 +1044,7 @@ pub(super) unsafe fn mtproto_ext_conn_update_auth_key_ffi(
     }
 }
 
-pub(super) unsafe fn mtproto_ext_conn_remove_by_out_conn_id_ffi(
+pub(super) fn mtproto_ext_conn_remove_by_out_conn_id_ffi(
     out_conn_id: i64,
     out: *mut MtproxyMtprotoExtConnection,
 ) -> i32 {
@@ -1060,7 +1060,7 @@ pub(super) unsafe fn mtproto_ext_conn_remove_by_out_conn_id_ffi(
     }
 }
 
-pub(super) unsafe fn mtproto_ext_conn_remove_by_in_conn_id_ffi(
+pub(super) fn mtproto_ext_conn_remove_by_in_conn_id_ffi(
     in_fd: c_int,
     in_conn_id: i64,
     out: *mut MtproxyMtprotoExtConnection,
@@ -1077,7 +1077,7 @@ pub(super) unsafe fn mtproto_ext_conn_remove_by_in_conn_id_ffi(
     }
 }
 
-pub(super) unsafe fn mtproto_ext_conn_remove_any_by_out_fd_ffi(
+pub(super) fn mtproto_ext_conn_remove_any_by_out_fd_ffi(
     out_fd: c_int,
     out: *mut MtproxyMtprotoExtConnection,
 ) -> i32 {
@@ -1093,7 +1093,7 @@ pub(super) unsafe fn mtproto_ext_conn_remove_any_by_out_fd_ffi(
     }
 }
 
-pub(super) unsafe fn mtproto_ext_conn_remove_any_by_in_fd_ffi(
+pub(super) fn mtproto_ext_conn_remove_any_by_in_fd_ffi(
     in_fd: c_int,
     out: *mut MtproxyMtprotoExtConnection,
 ) -> i32 {
@@ -1109,7 +1109,7 @@ pub(super) unsafe fn mtproto_ext_conn_remove_any_by_in_fd_ffi(
     }
 }
 
-pub(super) unsafe fn mtproto_ext_conn_lru_insert_ffi(in_fd: c_int, in_gen: c_int) -> i32 {
+pub(super) fn mtproto_ext_conn_lru_insert_ffi(in_fd: c_int, in_gen: c_int) -> i32 {
     let mut table = ext_conn_lock();
     match table.lru_insert_by_in_fd_gen(in_fd, in_gen) {
         Ok(true) => 1,
@@ -1118,7 +1118,7 @@ pub(super) unsafe fn mtproto_ext_conn_lru_insert_ffi(in_fd: c_int, in_gen: c_int
     }
 }
 
-pub(super) unsafe fn mtproto_ext_conn_lru_delete_ffi(in_fd: c_int) -> i32 {
+pub(super) fn mtproto_ext_conn_lru_delete_ffi(in_fd: c_int) -> i32 {
     let mut table = ext_conn_lock();
     match table.lru_delete_by_in_fd(in_fd) {
         Ok(true) => 1,
@@ -1127,7 +1127,7 @@ pub(super) unsafe fn mtproto_ext_conn_lru_delete_ffi(in_fd: c_int) -> i32 {
     }
 }
 
-pub(super) unsafe fn mtproto_ext_conn_lru_pop_oldest_ffi(
+pub(super) fn mtproto_ext_conn_lru_pop_oldest_ffi(
     out: *mut MtproxyMtprotoExtConnection,
 ) -> i32 {
     let Some(out_ref) = (unsafe { mut_ref_from_ptr(out) }) else {
@@ -1142,7 +1142,7 @@ pub(super) unsafe fn mtproto_ext_conn_lru_pop_oldest_ffi(
     }
 }
 
-pub(super) unsafe fn mtproto_ext_conn_counts_ffi(
+pub(super) fn mtproto_ext_conn_counts_ffi(
     out_current: *mut i64,
     out_created: *mut i64,
 ) -> i32 {
@@ -1158,7 +1158,7 @@ pub(super) unsafe fn mtproto_ext_conn_counts_ffi(
     0
 }
 
-pub(super) unsafe fn mtproto_notify_ext_connection_runtime_ffi(
+pub(super) fn mtproto_notify_ext_connection_runtime_ffi(
     ex: *const MtproxyMtprotoExtConnection,
     send_notifications: c_int,
 ) {
@@ -1193,7 +1193,7 @@ pub(super) unsafe fn mtproto_notify_ext_connection_runtime_ffi(
     }
 }
 
-pub(super) unsafe fn mtproto_remove_ext_connection_runtime_ffi(
+pub(super) fn mtproto_remove_ext_connection_runtime_ffi(
     ex: *const MtproxyMtprotoExtConnection,
     send_notifications: c_int,
 ) {
@@ -1219,7 +1219,7 @@ pub(super) unsafe fn mtproto_remove_ext_connection_runtime_ffi(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(super) unsafe fn mtproto_build_rpc_proxy_req_ffi(
+pub(super) fn mtproto_build_rpc_proxy_req_ffi(
     flags: c_int,
     out_conn_id: i64,
     remote_ipv6: *const u8,
@@ -1334,7 +1334,7 @@ pub(super) unsafe fn mtproto_build_rpc_proxy_req_ffi(
     }
 }
 
-pub(super) unsafe fn mtproto_build_http_ok_header_ffi(
+pub(super) fn mtproto_build_http_ok_header_ffi(
     keep_alive: c_int,
     extra_headers: c_int,
     content_len: c_int,
@@ -1377,7 +1377,7 @@ Access-Control-Max-Age: 1728000\r\n"
     0
 }
 
-pub(super) unsafe fn mtproto_client_send_non_http_wrap_ffi(
+pub(super) fn mtproto_client_send_non_http_wrap_ffi(
     tlio_in: *mut c_void,
     tlio_out: *mut c_void,
 ) -> i32 {
@@ -1401,7 +1401,7 @@ pub(super) unsafe fn mtproto_client_send_non_http_wrap_ffi(
     0
 }
 
-pub(super) unsafe fn mtproto_http_send_message_ffi(
+pub(super) fn mtproto_http_send_message_ffi(
     c: *mut c_void,
     tlio_in: *mut c_void,
     flags: c_int,
@@ -1514,7 +1514,7 @@ pub(super) unsafe fn mtproto_http_send_message_ffi(
     1
 }
 
-pub(super) unsafe fn mtproto_finish_postponed_http_response_ffi(
+pub(super) fn mtproto_finish_postponed_http_response_ffi(
     data: *mut c_void,
     len: c_int,
 ) -> c_int {
@@ -1550,7 +1550,7 @@ unsafe extern "C" fn mtproto_finish_postponed_http_response_bridge(
     unsafe { mtproto_finish_postponed_http_response_ffi(data, len) }
 }
 
-pub(super) unsafe fn mtproto_client_send_message_runtime_ffi(
+pub(super) fn mtproto_client_send_message_runtime_ffi(
     c_tag_int: c_int,
     c: *mut c_void,
     in_conn_id: i64,
@@ -1861,7 +1861,7 @@ unsafe fn mtproto_choose_proxy_target_impl(target_dc: c_int) -> ConnTargetJob {
     core::ptr::null_mut()
 }
 
-pub(super) unsafe fn mtproto_choose_proxy_target_ffi(target_dc: c_int) -> ConnTargetJob {
+pub(super) fn mtproto_choose_proxy_target_ffi(target_dc: c_int) -> ConnTargetJob {
     unsafe { mtproto_choose_proxy_target_impl(target_dc) }
 }
 
@@ -2142,7 +2142,7 @@ unsafe fn mtproto_forward_mtproto_enc_packet_impl(
     }
 }
 
-pub(super) unsafe fn mtproto_forward_mtproto_packet_ffi(
+pub(super) fn mtproto_forward_mtproto_packet_ffi(
     tlio_in: *mut c_void,
     c: ConnectionJob,
     len: c_int,
@@ -2269,7 +2269,7 @@ unsafe fn mtproto_notify_remote_closed_owned(c: ConnectionJob, out_conn_id: i64)
     }
 }
 
-pub(super) unsafe fn mtproto_push_rpc_confirmation_runtime_ffi(
+pub(super) fn mtproto_push_rpc_confirmation_runtime_ffi(
     c_tag_int: c_int,
     c: ConnectionJob,
     confirm: c_int,
@@ -2357,7 +2357,7 @@ pub(super) unsafe fn mtproto_push_rpc_confirmation_runtime_ffi(
     }
 }
 
-pub(super) unsafe fn mtproto_process_client_packet_runtime_ffi(
+pub(super) fn mtproto_process_client_packet_runtime_ffi(
     tlio_in: *mut c_void,
     c: ConnectionJob,
 ) -> c_int {
@@ -2477,7 +2477,7 @@ pub(super) unsafe fn mtproto_process_client_packet_runtime_ffi(
     }
 }
 
-pub(super) unsafe fn mtproto_process_http_query_ffi(
+pub(super) fn mtproto_process_http_query_ffi(
     tlio_in: *mut c_void,
     hqj: *mut c_void,
 ) -> c_int {
@@ -2685,7 +2685,7 @@ pub(super) unsafe fn mtproto_process_http_query_ffi(
     -404
 }
 
-pub(super) unsafe fn mtproto_callback_job_run_ffi(
+pub(super) fn mtproto_callback_job_run_ffi(
     job: *mut c_void,
     op: c_int,
     _jt: *mut c_void,
@@ -2716,7 +2716,7 @@ pub(super) unsafe fn mtproto_callback_job_run_ffi(
                 saturating_i32_from_usize(core::mem::size_of::<MtprotoJobCallbackFn>());
             assert!(custom_bytes >= payload_offset);
             let data_ptr = unsafe { d.cast::<u8>().add(payload_offset as usize).cast::<c_void>() };
-            func(data_ptr, custom_bytes - payload_offset)
+            unsafe { func(data_ptr, custom_bytes - payload_offset) }
         }
         JS_FINISH => unsafe { job_free(1, job.cast::<c_void>()) },
         _ => {
@@ -2734,7 +2734,7 @@ unsafe extern "C" fn mtproto_callback_job_run_bridge(
     unsafe { mtproto_callback_job_run_ffi(job, op, jt) }
 }
 
-pub(super) unsafe fn mtproto_http_query_job_run_ffi(
+pub(super) fn mtproto_http_query_job_run_ffi(
     job: *mut c_void,
     op: c_int,
     _jt: *mut c_void,
@@ -2853,7 +2853,7 @@ unsafe extern "C" fn mtproto_http_query_job_run_bridge(
     unsafe { mtproto_http_query_job_run_ffi(job.cast::<c_void>(), op, jt) }
 }
 
-pub(super) unsafe fn mtproto_client_packet_job_run_ffi(
+pub(super) fn mtproto_client_packet_job_run_ffi(
     job: *mut c_void,
     op: c_int,
     _jt: *mut c_void,
@@ -2925,7 +2925,7 @@ unsafe extern "C" fn mtproto_client_packet_job_run_bridge(
     unsafe { mtproto_client_packet_job_run_ffi(job.cast::<c_void>(), op, jt) }
 }
 
-pub(super) unsafe fn mtproto_rpcc_execute_ffi(
+pub(super) fn mtproto_rpcc_execute_ffi(
     c: ConnectionJob,
     op: c_int,
     msg: *mut c_void,
@@ -3002,7 +3002,7 @@ pub(super) unsafe fn mtproto_rpcc_execute_ffi(
     0
 }
 
-pub(super) unsafe fn mtproto_mtfront_client_ready_ffi(c: *mut c_void) -> c_int {
+pub(super) fn mtproto_mtfront_client_ready_ffi(c: *mut c_void) -> c_int {
     unsafe {
         mtproto_check_thread_class_local(JC_ENGINE);
     }
@@ -3040,7 +3040,7 @@ pub(super) unsafe fn mtproto_mtfront_client_ready_ffi(c: *mut c_void) -> c_int {
     0
 }
 
-pub(super) unsafe fn mtproto_mtfront_client_close_ffi(c: *mut c_void, _who: c_int) -> c_int {
+pub(super) fn mtproto_mtfront_client_close_ffi(c: *mut c_void, _who: c_int) -> c_int {
     unsafe {
         mtproto_check_thread_class_local(JC_ENGINE);
     }
@@ -3086,7 +3086,7 @@ pub(super) unsafe fn mtproto_mtfront_client_close_ffi(c: *mut c_void, _who: c_in
     0
 }
 
-pub(super) unsafe fn mtproto_do_close_in_ext_conn_ffi(data: *mut c_void, s_len: c_int) -> c_int {
+pub(super) fn mtproto_do_close_in_ext_conn_ffi(data: *mut c_void, s_len: c_int) -> c_int {
     assert!(s_len == saturating_i32_from_usize(core::mem::size_of::<c_int>()));
     let fd_ptr = data.cast::<c_int>();
     assert!(!fd_ptr.is_null());
@@ -3104,7 +3104,7 @@ unsafe extern "C" fn mtproto_do_close_in_ext_conn_bridge(data: *mut c_void, s_le
     unsafe { mtproto_do_close_in_ext_conn_ffi(data, s_len) }
 }
 
-pub(super) unsafe fn mtproto_ext_rpc_ready_ffi(c: *mut c_void) -> c_int {
+pub(super) fn mtproto_ext_rpc_ready_ffi(c: *mut c_void) -> c_int {
     if c.is_null() {
         return 0;
     }
@@ -3140,7 +3140,7 @@ pub(super) unsafe fn mtproto_ext_rpc_ready_ffi(c: *mut c_void) -> c_int {
     0
 }
 
-pub(super) unsafe fn mtproto_ext_rpc_close_ffi(c: *mut c_void, who: c_int) -> c_int {
+pub(super) fn mtproto_ext_rpc_close_ffi(c: *mut c_void, who: c_int) -> c_int {
     if c.is_null() {
         return 0;
     }
@@ -3169,7 +3169,7 @@ pub(super) unsafe fn mtproto_ext_rpc_close_ffi(c: *mut c_void, who: c_int) -> c_
     0
 }
 
-pub(super) unsafe fn mtproto_proxy_rpc_ready_ffi(c: *mut c_void) -> c_int {
+pub(super) fn mtproto_proxy_rpc_ready_ffi(c: *mut c_void) -> c_int {
     unsafe {
         mtproto_check_thread_class_local(JC_ENGINE);
     }
@@ -3199,7 +3199,7 @@ pub(super) unsafe fn mtproto_proxy_rpc_ready_ffi(c: *mut c_void) -> c_int {
     0
 }
 
-pub(super) unsafe fn mtproto_http_close_ffi(c: *mut c_void, who: c_int) -> c_int {
+pub(super) fn mtproto_http_close_ffi(c: *mut c_void, who: c_int) -> c_int {
     if c.is_null() {
         return 0;
     }
@@ -3244,7 +3244,7 @@ pub(super) unsafe fn mtproto_http_close_ffi(c: *mut c_void, who: c_int) -> c_int
     0
 }
 
-pub(super) unsafe fn mtproto_proxy_rpc_close_ffi(c: *mut c_void, who: c_int) -> c_int {
+pub(super) fn mtproto_proxy_rpc_close_ffi(c: *mut c_void, who: c_int) -> c_int {
     unsafe {
         mtproto_check_thread_class_local(JC_ENGINE);
     }
@@ -3291,7 +3291,7 @@ pub(super) unsafe fn mtproto_proxy_rpc_close_ffi(c: *mut c_void, who: c_int) -> 
     0
 }
 
-pub(super) unsafe fn mtproto_do_rpcs_execute_ffi(data: *mut c_void, s_len: c_int) -> c_int {
+pub(super) fn mtproto_do_rpcs_execute_ffi(data: *mut c_void, s_len: c_int) -> c_int {
     assert!(s_len == saturating_i32_from_usize(core::mem::size_of::<MtprotoRpcsExecData>()));
     let data = data.cast::<MtprotoRpcsExecData>();
     assert!(!data.is_null());
@@ -3336,7 +3336,7 @@ unsafe extern "C" fn mtproto_do_rpcs_execute_bridge(data: *mut c_void, s_len: c_
     unsafe { mtproto_do_rpcs_execute_ffi(data, s_len) }
 }
 
-pub(super) unsafe fn mtproto_ext_rpcs_execute_ffi(
+pub(super) fn mtproto_ext_rpcs_execute_ffi(
     c: ConnectionJob,
     op: c_int,
     msg: *mut c_void,
@@ -3403,7 +3403,7 @@ pub(super) unsafe fn mtproto_ext_rpcs_execute_ffi(
     1
 }
 
-pub(super) unsafe fn mtproto_update_local_stats_copy_ffi(s: *mut c_void) {
+pub(super) fn mtproto_update_local_stats_copy_ffi(s: *mut c_void) {
     let s = s.cast::<MtprotoWorkerStats>();
     if s.is_null() {
         return;
@@ -3467,7 +3467,7 @@ pub(super) unsafe fn mtproto_update_local_stats_copy_ffi(s: *mut c_void) {
     core::sync::atomic::fence(core::sync::atomic::Ordering::SeqCst);
 }
 
-pub(super) unsafe fn mtproto_update_local_stats_ffi() {
+pub(super) fn mtproto_update_local_stats_ffi() {
     if unsafe { slave_mode } == 0 {
         return;
     }
@@ -3495,7 +3495,7 @@ fn mtproto_sig2int(sig: c_int) -> u64 {
     }
 }
 
-pub(super) unsafe fn mtproto_init_ct_server_mtfront_ffi() {
+pub(super) fn mtproto_init_ct_server_mtfront_ffi() {
     unsafe {
         ct_http_server_mtfront = ct_http_server;
         ct_tcp_rpc_ext_server_mtfront = ct_tcp_rpc_ext_server;
@@ -3512,7 +3512,7 @@ pub(super) unsafe fn mtproto_init_ct_server_mtfront_ffi() {
     }
 }
 
-pub(super) unsafe fn mtproto_precise_cron_ffi() {
+pub(super) fn mtproto_precise_cron_ffi() {
     unsafe { mtproto_update_local_stats_ffi() };
 }
 
@@ -3588,7 +3588,7 @@ unsafe extern "C" fn mtproto_ext_rpc_close_bridge(c: ConnectionJob, who: c_int) 
     unsafe { mtproto_ext_rpc_close_ffi(c, who) }
 }
 
-pub(super) unsafe fn mtproto_init_runtime_globals_ffi() {
+pub(super) fn mtproto_init_runtime_globals_ffi() {
     unsafe {
         mtfront_rpc_client = MtprotoTcpRpcClientFunctions {
             execute: mtproto_rpcc_execute_bridge as *mut c_void,
@@ -3680,7 +3680,7 @@ unsafe extern "C" fn mtproto_sigusr1_handler_bridge() {
     unsafe { mtproto_mtfront_sigusr1_handler_ffi() };
 }
 
-pub(super) unsafe fn mtproto_setup_front_functions_ffi() {
+pub(super) fn mtproto_setup_front_functions_ffi() {
     unsafe { mtproto_init_runtime_globals_ffi() };
 
     let mut f = MtprotoServerFunctions {
@@ -3703,7 +3703,7 @@ pub(super) unsafe fn mtproto_setup_front_functions_ffi() {
         pre_start: Some(mtproto_pre_start_bridge),
         pre_loop: Some(mtproto_pre_loop_bridge),
         run_script: None,
-        full_version_str: FullVersionStr,
+        full_version_str: unsafe { FullVersionStr },
         short_version_str: SHORT_VERSION_STR.as_ptr().cast::<c_char>(),
         epoll_timeout: 1,
         aio_timeout: 0.0,
@@ -3735,14 +3735,14 @@ pub(super) unsafe fn mtproto_setup_front_functions_ffi() {
     }
 }
 
-pub(super) unsafe fn mtproto_legacy_main_ffi(argc: c_int, argv: *mut *mut c_char) -> c_int {
+pub(super) fn mtproto_legacy_main_ffi(argc: c_int, argv: *mut *mut c_char) -> c_int {
     unsafe {
         mtproto_setup_front_functions_ffi();
         default_main(core::ptr::addr_of_mut!(mtproto_front_functions), argc, argv)
     }
 }
 
-pub(super) unsafe fn mtproto_check_all_conn_buffers_ffi() {
+pub(super) fn mtproto_check_all_conn_buffers_ffi() {
     let mut bufs = MtprotoBuffersStat::default();
     unsafe {
         fetch_buffers_stat(core::ptr::addr_of_mut!(bufs));
@@ -3792,7 +3792,7 @@ pub(super) unsafe fn mtproto_check_all_conn_buffers_ffi() {
     }
 }
 
-pub(super) unsafe fn mtproto_check_conn_buffers_runtime_ffi(c: *mut c_void) -> c_int {
+pub(super) fn mtproto_check_conn_buffers_runtime_ffi(c: *mut c_void) -> c_int {
     if c.is_null() {
         return -1;
     }
@@ -3829,7 +3829,7 @@ pub(super) unsafe fn mtproto_check_conn_buffers_runtime_ffi(c: *mut c_void) -> c
     0
 }
 
-pub(super) unsafe fn mtproto_add_stats_ffi(w: *mut c_void) {
+pub(super) fn mtproto_add_stats_ffi(w: *mut c_void) {
     let w = w.cast::<MtprotoWorkerStats>();
     if w.is_null() {
         return;
@@ -4033,7 +4033,7 @@ pub(super) unsafe fn mtproto_add_stats_ffi(w: *mut c_void) {
     }
 }
 
-pub(super) unsafe fn mtproto_compute_stats_sum_ffi() {
+pub(super) fn mtproto_compute_stats_sum_ffi() {
     if unsafe { workers } == 0 {
         return;
     }
@@ -4079,7 +4079,7 @@ pub(super) unsafe fn mtproto_compute_stats_sum_ffi() {
     }
 }
 
-pub(super) unsafe fn mtproto_mtfront_prepare_stats_ffi(sb: *mut c_void) {
+pub(super) fn mtproto_mtfront_prepare_stats_ffi(sb: *mut c_void) {
     let sb = sb.cast::<MtprotoStatsBuffer>();
     if sb.is_null() {
         return;
@@ -4095,7 +4095,7 @@ pub(super) unsafe fn mtproto_mtfront_prepare_stats_ffi(sb: *mut c_void) {
     let mut tot_dh_rounds = [0_i64; 3];
     let mut allocated_aes_crypto = 0;
     let mut allocated_aes_crypto_temp = 0;
-    let now_unix = libc::time(core::ptr::null_mut()) as c_int;
+    let now_unix = unsafe { libc::time(core::ptr::null_mut()) } as c_int;
     let uptime = now_unix.wrapping_sub(unsafe { start_time });
     let mut ext_connections = 0_i64;
     let mut ext_connections_created = 0_i64;
@@ -4341,7 +4341,7 @@ proxy_tag_set\t%d\n\0"
     }
 }
 
-pub(super) unsafe fn mtproto_hts_stats_execute_ffi(
+pub(super) fn mtproto_hts_stats_execute_ffi(
     c: *mut c_void,
     msg: *mut c_void,
     _op: c_int,
@@ -4434,7 +4434,7 @@ pub(super) unsafe fn mtproto_hts_stats_execute_ffi(
     0
 }
 
-pub(super) unsafe fn mtproto_hts_execute_ffi(c: *mut c_void, msg: *mut c_void, op: c_int) -> c_int {
+pub(super) fn mtproto_hts_execute_ffi(c: *mut c_void, msg: *mut c_void, op: c_int) -> c_int {
     let c = c.cast::<c_void>();
     let msg = msg.cast::<MtprotoRawMessage>();
     if c.is_null() || msg.is_null() {
@@ -4576,7 +4576,7 @@ pub(super) unsafe fn mtproto_hts_execute_ffi(c: *mut c_void, msg: *mut c_void, o
     0
 }
 
-pub(super) unsafe fn mtproto_http_alarm_ffi(c: *mut c_void) -> c_int {
+pub(super) fn mtproto_http_alarm_ffi(c: *mut c_void) -> c_int {
     if c.is_null() {
         return 0;
     }
@@ -4617,7 +4617,7 @@ pub(super) unsafe fn mtproto_http_alarm_ffi(c: *mut c_void) -> c_int {
     0
 }
 
-pub(super) unsafe fn mtproto_mtfront_prepare_parse_options_ffi() {
+pub(super) fn mtproto_mtfront_prepare_parse_options_ffi() {
     unsafe {
         rust_sf_register_parse_option_or_die(
             b"http-stats\0".as_ptr().cast(),
@@ -4696,7 +4696,7 @@ pub(super) unsafe fn mtproto_mtfront_prepare_parse_options_ffi() {
     }
 }
 
-pub(super) unsafe fn mtproto_f_parse_option_ffi(val: c_int) -> c_int {
+pub(super) fn mtproto_f_parse_option_ffi(val: c_int) -> c_int {
     match val {
         OPT_C => unsafe {
             max_special_connections = libc::atoi(optarg.cast_const());
@@ -4807,7 +4807,7 @@ pub(super) unsafe fn mtproto_f_parse_option_ffi(val: c_int) -> c_int {
     0
 }
 
-pub(super) unsafe fn mtproto_check_children_dead_ffi() {
+pub(super) fn mtproto_check_children_dead_ffi() {
     let workers_count = usize::try_from(unsafe { workers })
         .unwrap_or(0)
         .min(MAX_WORKERS);
@@ -4872,7 +4872,7 @@ pub(super) unsafe fn mtproto_check_children_dead_ffi() {
     }
 }
 
-pub(super) unsafe fn mtproto_check_children_status_ffi() {
+pub(super) fn mtproto_check_children_status_ffi() {
     if unsafe { workers } != 0 {
         let workers_count = usize::try_from(unsafe { workers })
             .unwrap_or(0)
@@ -4942,7 +4942,7 @@ pub(super) unsafe fn mtproto_check_children_status_ffi() {
     }
 }
 
-pub(super) unsafe fn mtproto_check_special_connections_overflow_ffi() {
+pub(super) fn mtproto_check_special_connections_overflow_ffi() {
     if unsafe { max_special_connections == 0 || slave_mode != 0 } {
         return;
     }
@@ -4969,7 +4969,7 @@ pub(super) unsafe fn mtproto_check_special_connections_overflow_ffi() {
     }
 }
 
-pub(super) unsafe fn mtproto_kill_children_ffi(signal: c_int) {
+pub(super) fn mtproto_kill_children_ffi(signal: c_int) {
     let workers_count = unsafe { workers };
     assert!(workers_count != 0);
     let limit = usize::try_from(workers_count).unwrap_or(0).min(MAX_WORKERS);
@@ -4983,7 +4983,7 @@ pub(super) unsafe fn mtproto_kill_children_ffi(signal: c_int) {
     }
 }
 
-pub(super) unsafe fn mtproto_cron_ffi() {
+pub(super) fn mtproto_cron_ffi() {
     unsafe {
         mtproto_check_children_status_ffi();
         mtproto_compute_stats_sum_ffi();
@@ -4992,7 +4992,7 @@ pub(super) unsafe fn mtproto_cron_ffi() {
     }
 }
 
-pub(super) unsafe fn mtproto_usage_ffi() {
+pub(super) fn mtproto_usage_ffi() {
     unsafe {
         libc::printf(
             b"usage: %s [-v] [-6] [-p<port>] [-H<http-port>{,<http-port>}] [-M<workers>] [-u<username>] [-b<backlog>] [-c<max-conn>] [-l<log-name>] [-W<window-size>] <config-file>\n\0"
@@ -5015,7 +5015,7 @@ pub unsafe extern "C" fn usage() {
     unsafe { mtproto_usage_ffi() };
 }
 
-pub(super) unsafe fn mtproto_mtfront_parse_extra_args_ffi(argc: c_int, argv: *mut *mut c_char) {
+pub(super) fn mtproto_mtfront_parse_extra_args_ffi(argc: c_int, argv: *mut *mut c_char) {
     if argc != 1 || argv.is_null() || unsafe { (*argv).is_null() } {
         unsafe { mtproto_usage_ffi() };
     }
@@ -5028,7 +5028,7 @@ pub(super) unsafe fn mtproto_mtfront_parse_extra_args_ffi(argc: c_int, argv: *mu
     }
 }
 
-pub(super) unsafe fn mtproto_mtfront_sigusr1_handler_ffi() {
+pub(super) fn mtproto_mtfront_sigusr1_handler_ffi() {
     unsafe {
         reopen_logs_ext(slave_mode);
         if workers != 0 {
@@ -5037,7 +5037,7 @@ pub(super) unsafe fn mtproto_mtfront_sigusr1_handler_ffi() {
     }
 }
 
-pub(super) unsafe fn mtproto_mtfront_on_exit_ffi() {
+pub(super) fn mtproto_mtfront_on_exit_ffi() {
     if unsafe { workers } != 0 {
         if unsafe { signal_check_pending(libc::SIGTERM) } != 0 {
             unsafe { mtproto_kill_children_ffi(libc::SIGTERM) };
@@ -5046,7 +5046,7 @@ pub(super) unsafe fn mtproto_mtfront_on_exit_ffi() {
     }
 }
 
-pub(super) unsafe fn mtproto_mtfront_pre_init_ffi() {
+pub(super) fn mtproto_mtfront_pre_init_ffi() {
     unsafe {
         mtproto_init_ct_server_mtfront_ffi();
         mtproto_ext_conn_reset_ffi();
@@ -5188,7 +5188,7 @@ pub(super) unsafe fn mtproto_mtfront_pre_init_ffi() {
     }
 }
 
-pub(super) unsafe fn mtproto_mtfront_pre_start_ffi() {
+pub(super) fn mtproto_mtfront_pre_start_ffi() {
     let res = unsafe { mtproto_cfg_do_reload_config_ffi(0x17) };
     if res < 0 {
         eprintln!("config check failed! (code {res})");
@@ -5207,7 +5207,7 @@ pub(super) unsafe fn mtproto_mtfront_pre_start_ffi() {
     }
 }
 
-pub(super) unsafe fn mtproto_mtfront_pre_loop_ffi() {
+pub(super) fn mtproto_mtfront_pre_loop_ffi() {
     let enable_ipv6 = unsafe {
         if !engine_state.is_null() && ((*engine_state).modules & ENGINE_ENABLE_IPV6) != 0 {
             SM_IPV6
@@ -5288,7 +5288,7 @@ pub(super) unsafe fn mtproto_mtfront_pre_loop_ffi() {
     }
 }
 
-pub(super) unsafe fn mtproto_forward_tcp_query_ffi(
+pub(super) fn mtproto_forward_tcp_query_ffi(
     tlio_in: *mut c_void,
     c: ConnectionJob,
     target: ConnTargetJob,
@@ -5364,7 +5364,7 @@ pub(super) unsafe fn mtproto_forward_tcp_query_ffi(
             if is_ext_server {
                 let c_data = unsafe { mtproto_rpc_data_ptr(c) };
                 if !c_data.is_null() {
-                    let flags_atomic = core::ptr::addr_of_mut!((*c_data).flags)
+                    let flags_atomic = unsafe { core::ptr::addr_of_mut!((*c_data).flags) }
                         .cast::<core::sync::atomic::AtomicI32>();
                     unsafe {
                         (*flags_atomic)
@@ -6008,7 +6008,7 @@ pub(super) fn mtproto_cfg_report_parse_full_pass_error(pass_rc: i32, tot_targets
     }
 }
 
-pub(super) unsafe fn mtproto_proxy_usage_ffi(program_name: *const c_char) -> i32 {
+pub(super) fn mtproto_proxy_usage_ffi(program_name: *const c_char) -> i32 {
     let program_name = if program_name.is_null() {
         "mtproto-proxy".to_owned()
     } else {
@@ -6023,7 +6023,7 @@ pub(super) unsafe fn mtproto_proxy_usage_ffi(program_name: *const c_char) -> i32
     0
 }
 
-pub(super) unsafe fn mtproto_proxy_main_ffi(argc: i32, argv: *const *const c_char) -> i32 {
+pub(super) fn mtproto_proxy_main_ffi(argc: i32, argv: *const *const c_char) -> i32 {
     let Some(args) = mtproto_proxy_collect_argv(argc, argv) else {
         eprintln!("ERROR: invalid argv passed to mtproxy_ffi_mtproto_proxy_main");
         return 1;
@@ -6032,7 +6032,7 @@ pub(super) unsafe fn mtproto_proxy_main_ffi(argc: i32, argv: *const *const c_cha
 }
 
 #[allow(private_interfaces)]
-pub(super) unsafe fn clear_config_ffi(mc: *mut MtproxyMfConfig, do_destroy_targets: c_int) {
+pub(super) fn clear_config_ffi(mc: *mut MtproxyMfConfig, do_destroy_targets: c_int) {
     let Some(mc_ref) = (unsafe { mut_ref_from_ptr(mc) }) else {
         return;
     };
@@ -6066,7 +6066,7 @@ pub(super) unsafe fn clear_config_ffi(mc: *mut MtproxyMfConfig, do_destroy_targe
 }
 
 #[allow(private_interfaces)]
-pub(super) unsafe fn mf_cluster_lookup_ffi(
+pub(super) fn mf_cluster_lookup_ffi(
     mc: *mut MtproxyMfConfig,
     cluster_id: c_int,
     force: c_int,
@@ -6098,7 +6098,7 @@ pub(super) unsafe fn mf_cluster_lookup_ffi(
     }
 }
 
-pub(super) unsafe fn mtproto_cfg_resolve_default_target_from_cfg_cur_ffi() -> c_int {
+pub(super) fn mtproto_cfg_resolve_default_target_from_cfg_cur_ffi() -> c_int {
     let host = unsafe { cfg_gethost() };
     if host.is_null() {
         return -1;
@@ -6136,7 +6136,7 @@ pub(super) unsafe fn mtproto_cfg_resolve_default_target_from_cfg_cur_ffi() -> c_
     -1
 }
 
-pub(super) unsafe fn mtproto_cfg_set_default_target_endpoint_ffi(
+pub(super) fn mtproto_cfg_set_default_target_endpoint_ffi(
     port: u16,
     min_connections: i64,
     max_connections: i64,
@@ -6151,7 +6151,7 @@ pub(super) unsafe fn mtproto_cfg_set_default_target_endpoint_ffi(
 }
 
 #[allow(private_interfaces)]
-pub(super) unsafe fn mtproto_cfg_create_target_ffi(mc: *mut MtproxyMfConfig, target_index: u32) {
+pub(super) fn mtproto_cfg_create_target_ffi(mc: *mut MtproxyMfConfig, target_index: u32) {
     let Some(mc_ref) = (unsafe { mut_ref_from_ptr(mc) }) else {
         return;
     };
@@ -6184,11 +6184,11 @@ pub(super) unsafe fn mtproto_cfg_create_target_ffi(mc: *mut MtproxyMfConfig, tar
     }
 }
 
-pub(super) unsafe fn mtproto_cfg_now_or_time_ffi() -> c_int {
+pub(super) fn mtproto_cfg_now_or_time_ffi() -> c_int {
     unsafe { time(core::ptr::null_mut()) as c_int }
 }
 
-pub(super) unsafe fn mtproto_parse_text_ipv4_ffi(str: *const c_char, out_ip: *mut u32) -> i32 {
+pub(super) fn mtproto_parse_text_ipv4_ffi(str: *const c_char, out_ip: *mut u32) -> i32 {
     let Some(input) = cstr_to_owned(str) else {
         return -1;
     };
@@ -6200,7 +6200,7 @@ pub(super) unsafe fn mtproto_parse_text_ipv4_ffi(str: *const c_char, out_ip: *mu
     0
 }
 
-pub(super) unsafe fn mtproto_parse_text_ipv6_ffi(
+pub(super) fn mtproto_parse_text_ipv6_ffi(
     str: *const c_char,
     out_ip: *mut u8,
     out_consumed: *mut i32,
@@ -6221,7 +6221,7 @@ pub(super) unsafe fn mtproto_parse_text_ipv6_ffi(
     0
 }
 
-pub(super) unsafe fn mtproto_inspect_packet_header_ffi(
+pub(super) fn mtproto_inspect_packet_header_ffi(
     header: *const u8,
     header_len: usize,
     packet_len: i32,
@@ -6257,7 +6257,7 @@ pub(super) unsafe fn mtproto_inspect_packet_header_ffi(
     0
 }
 
-pub(super) unsafe fn mtproto_parse_client_packet_ffi(
+pub(super) fn mtproto_parse_client_packet_ffi(
     data: *const u8,
     len: usize,
     out: *mut MtproxyMtprotoClientPacketParseResult,
@@ -6276,7 +6276,7 @@ pub(super) unsafe fn mtproto_parse_client_packet_ffi(
     0
 }
 
-pub(super) unsafe fn mtproto_process_client_packet_ffi(
+pub(super) fn mtproto_process_client_packet_ffi(
     data: *const u8,
     len: usize,
     conn_fd: c_int,
@@ -6294,7 +6294,7 @@ pub(super) unsafe fn mtproto_process_client_packet_ffi(
     0
 }
 
-pub(super) unsafe fn mtproto_mtfront_parse_function_runtime_ffi(
+pub(super) fn mtproto_mtfront_parse_function_runtime_ffi(
     tlio_in: *mut c_void,
     actor_id: i64,
 ) -> *mut c_void {
@@ -6422,7 +6422,7 @@ pub(super) unsafe fn mtproto_mtfront_parse_function_runtime_ffi(
     core::ptr::null_mut()
 }
 
-pub(super) unsafe fn mtproto_parse_function_ffi(
+pub(super) fn mtproto_parse_function_ffi(
     data: *const u8,
     len: usize,
     actor_id: i64,
@@ -6439,7 +6439,7 @@ pub(super) unsafe fn mtproto_parse_function_ffi(
     0
 }
 
-pub(super) unsafe fn mtproto_cfg_preinit_ffi(
+pub(super) fn mtproto_cfg_preinit_ffi(
     default_min_connections: i64,
     default_max_connections: i64,
     out: *mut MtproxyMtprotoCfgPreinitResult,
@@ -6470,7 +6470,7 @@ pub(super) unsafe fn mtproto_cfg_preinit_ffi(
     MTPROTO_CFG_PREINIT_OK
 }
 
-pub(super) unsafe fn mtproto_cfg_decide_cluster_apply_ffi(
+pub(super) fn mtproto_cfg_decide_cluster_apply_ffi(
     cluster_ids: *const i32,
     clusters_len: u32,
     cluster_id: i32,
@@ -6509,7 +6509,7 @@ pub(super) unsafe fn mtproto_cfg_decide_cluster_apply_ffi(
     }
 }
 
-pub(super) unsafe fn mtproto_cfg_getlex_ext_ffi(
+pub(super) fn mtproto_cfg_getlex_ext_ffi(
     cur: *const c_char,
     len: usize,
     out: *mut MtproxyMtprotoCfgGetlexExtResult,
@@ -6529,7 +6529,7 @@ pub(super) unsafe fn mtproto_cfg_getlex_ext_ffi(
     MTPROTO_CFG_GETLEX_EXT_OK
 }
 
-pub(super) unsafe fn mtproto_cfg_scan_directive_token_ffi(
+pub(super) fn mtproto_cfg_scan_directive_token_ffi(
     cur: *const c_char,
     len: usize,
     min_connections: i64,
@@ -6559,7 +6559,7 @@ pub(super) unsafe fn mtproto_cfg_scan_directive_token_ffi(
     }
 }
 
-pub(super) unsafe fn mtproto_cfg_parse_directive_step_ffi(
+pub(super) fn mtproto_cfg_parse_directive_step_ffi(
     cur: *const c_char,
     len: usize,
     min_connections: i64,
@@ -6620,7 +6620,7 @@ pub(super) unsafe fn mtproto_cfg_parse_directive_step_ffi(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(super) unsafe fn mtproto_cfg_parse_proxy_target_step_ffi(
+pub(super) fn mtproto_cfg_parse_proxy_target_step_ffi(
     cur: *const c_char,
     len: usize,
     current_targets: u32,
@@ -6749,7 +6749,7 @@ pub(super) unsafe fn mtproto_cfg_parse_proxy_target_step_ffi(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(super) unsafe fn mtproto_cfg_parse_full_pass_ffi(
+pub(super) fn mtproto_cfg_parse_full_pass_ffi(
     cur: *const c_char,
     len: usize,
     default_min_connections: i64,
@@ -6916,7 +6916,7 @@ pub(super) unsafe fn mtproto_cfg_parse_full_pass_ffi(
     }
 }
 
-pub(super) unsafe fn mtproto_cfg_expect_semicolon_ffi(
+pub(super) fn mtproto_cfg_expect_semicolon_ffi(
     cur: *const c_char,
     len: usize,
     out_advance: *mut usize,
@@ -6943,7 +6943,7 @@ pub(super) unsafe fn mtproto_cfg_expect_semicolon_ffi(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(super) unsafe fn mtproto_cfg_lookup_cluster_index_ffi(
+pub(super) fn mtproto_cfg_lookup_cluster_index_ffi(
     cluster_ids: *const i32,
     clusters_len: u32,
     cluster_id: i32,
@@ -6989,7 +6989,7 @@ pub(super) unsafe fn mtproto_cfg_lookup_cluster_index_ffi(
     MTPROTO_CFG_LOOKUP_CLUSTER_INDEX_OK
 }
 
-pub(super) unsafe fn mtproto_cfg_finalize_ffi(
+pub(super) fn mtproto_cfg_finalize_ffi(
     have_proxy: i32,
     cluster_ids: *const i32,
     clusters_len: u32,
@@ -7031,7 +7031,7 @@ pub(super) unsafe fn mtproto_cfg_finalize_ffi(
     }
 }
 
-pub(super) unsafe fn mtproto_cfg_parse_config_ffi(
+pub(super) fn mtproto_cfg_parse_config_ffi(
     mc: *mut c_void,
     flags: i32,
     config_fd: i32,
@@ -7259,7 +7259,7 @@ pub(super) unsafe fn mtproto_cfg_parse_config_ffi(
     res
 }
 
-pub(super) unsafe fn mtproto_cfg_do_reload_config_ffi(flags: i32) -> i32 {
+pub(super) fn mtproto_cfg_do_reload_config_ffi(flags: i32) -> i32 {
     if (flags & 4) == 0 {
         return -1;
     }
