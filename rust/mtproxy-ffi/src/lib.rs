@@ -185,7 +185,12 @@ struct EventPreciseCronInternal {
 }
 
 /// Global precise_cron_events variable (migrated from engine/engine.c)
-/// Initialized to point to itself (circular list)
+/// 
+/// **IMPORTANT:** This circular list must be initialized by calling
+/// `mtproxy_ffi_init_precise_cron_events()` before first use. The initialization
+/// is automatically done in `mtproxy_ffi_engine_init()`.
+/// 
+/// Initialized to null pointers; runtime initialization sets next/prev to point to itself.
 #[no_mangle]
 #[export_name = "precise_cron_events"]
 static mut GLOBAL_PRECISE_CRON_EVENTS: EventPreciseCronInternal = EventPreciseCronInternal {
