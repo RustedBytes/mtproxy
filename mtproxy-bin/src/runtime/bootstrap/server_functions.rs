@@ -1235,8 +1235,8 @@ struct RLimit {
 }
 
 fn get_rlimit_nofile() -> Result<RLimit, ResourceLimitError> {
-    let (cur, max) = getrlimit(Resource::RLIMIT_NOFILE)
-        .map_err(|_| ResourceLimitError::GetLimitFailed)?;
+    let (cur, max) =
+        getrlimit(Resource::RLIMIT_NOFILE).map_err(|_| ResourceLimitError::GetLimitFailed)?;
     Ok(RLimit {
         rlim_cur: cur,
         rlim_max: max,

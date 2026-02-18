@@ -700,10 +700,9 @@ mod tests {
         default_outbound_crypto_flags, init_fake_crypto_state, normalize_perm_flags,
         packet_len_state, process_nonce_packet_for_compat, requires_dh_accept, ClientError,
         ClientState, CryptoFlags, DefaultReadyState, NonceCompatOutput, NonceCompatPolicy,
-        ProcessId, RpcClientData, NONCE_POLICY_ALLOW_ENCRYPTED,
-        PACKET_LEN_STATE_INVALID, PACKET_LEN_STATE_READY, PACKET_LEN_STATE_SHORT,
-        PACKET_LEN_STATE_SKIP, RPCF_ALLOW_ENC, RPCF_ALLOW_SKIP_DH, RPCF_ALLOW_UNENC, RPCF_ENC_SENT,
-        RPCF_REQ_DH,
+        ProcessId, RpcClientData, NONCE_POLICY_ALLOW_ENCRYPTED, PACKET_LEN_STATE_INVALID,
+        PACKET_LEN_STATE_READY, PACKET_LEN_STATE_SHORT, PACKET_LEN_STATE_SKIP, RPCF_ALLOW_ENC,
+        RPCF_ALLOW_SKIP_DH, RPCF_ALLOW_UNENC, RPCF_ENC_SENT, RPCF_REQ_DH,
     };
     use crate::runtime::net::tcp_rpc_common::{
         CryptoSchema, HandshakePacket, NoncePacket, PacketSerialization,
