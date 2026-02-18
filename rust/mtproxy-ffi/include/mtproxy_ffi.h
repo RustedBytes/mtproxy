@@ -5,6 +5,7 @@
 #include <pthread.h>
 #include <stdlib.h>
 #include <sys/uio.h>
+#include <netinet/in.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -838,7 +839,11 @@ struct raw_message;
 struct job_message;
 struct event_timer;
 struct process_id;
+struct query_work_params;
 struct tl_act_extra;
+struct rpc_custom_op;
+struct tcp_rpc_server_functions;
+struct http_server_functions;
 typedef int32_t (*mtproxy_ffi_engine_net_try_open_port_fn)(int32_t port, void *ctx);
 typedef void (*mtproxy_ffi_engine_signal_dispatch_fn)(int32_t sig, void *ctx);
 typedef void (*mtproxy_ffi_engine_rpc_custom_op_fn)(void *tlio_in, void *params);
@@ -846,6 +851,8 @@ typedef void (*mtproxy_ffi_engine_rpc_query_result_fn)(void *tlio_in, void *quer
 typedef void *(*mtproxy_ffi_engine_rpc_parse_fn)(void *tlio_in, int64_t actor_id);
 typedef void (*mtproxy_ffi_engine_rpc_stat_fn)(void *tlio_out);
 typedef int32_t (*mtproxy_ffi_engine_rpc_get_op_fn)(void *tlio_in);
+typedef void (*tl_query_result_fun_t)(struct tl_in_state *tlio_in,
+                                      struct tl_query_header *h);
 
 // Legacy net/*.h compatibility ABI now provided by Rust bindings header.
 enum {
@@ -1103,6 +1110,56 @@ void *rwm_get_block_ptr(struct raw_message *raw);
 int rwm_get_block_ptr_bytes(struct raw_message *raw);
 
 extern struct raw_message empty_rwm;
+
+// engine-rpc.h compatibility ABI now provided by Rust bindings header.
+struct query_work_params {
+  struct event_timer ev;
+  enum tl_type type;
+  struct process_id pid;
+  struct raw_message src;
+  struct tl_query_header *h;
+  struct raw_message *result;
+  int error_code;
+  int answer_sent;
+  int wait_coord;
+  char *error;
+  void *wait_pos;
+  struct paramed_type *P;
+  long long start_rdtsc;
+  long long total_work_rdtsc;
+  job_t all_list;
+  int fd;
+  int generation;
+};
+
+struct tl_act_extra {
+  int size;
+  int flags;
+  int attempt;
+  int type;
+  int op;
+  int subclass;
+  unsigned long long hash;
+  long long start_rdtsc;
+  long long cpu_rdtsc;
+  struct tl_out_state *tlio_out;
+  int (*act)(job_t, struct tl_act_extra *data);
+  void (*free)(struct tl_act_extra *data);
+  struct tl_act_extra *(*dup)(struct tl_act_extra *data);
+  struct tl_query_header *header;
+  struct raw_message **raw;
+  char **error;
+  job_t extra_ref;
+  int *error_code;
+  int extra[0];
+};
+
+#pragma pack(push, 4)
+struct rpc_custom_op {
+  unsigned op;
+  void (*func)(struct tl_in_state *tlio_in, struct query_work_params *params);
+};
+#pragma pack(pop)
 
 enum {
   MAX_CONNECTIONS = 65536,
@@ -1381,6 +1438,99 @@ struct tcp_rpc_server_functions {
 };
 
 extern conn_type_t ct_tcp_rpc_server;
+
+// engine.h compatibility ABI now provided by Rust bindings header.
+typedef struct {
+  void (*cron)(void);
+  void (*precise_cron)(void);
+  void (*on_exit)(void);
+  int (*on_waiting_exit)(
+      void); // returns 0 -> stop wait and exit, X > 0 wait X microsenconds */
+  void (*on_safe_quit)(void);
+
+  void (*close_net_sockets)(void);
+
+  unsigned long long flags;
+  unsigned long long allowed_signals;
+  unsigned long long forbidden_signals;
+  unsigned long long default_modules;
+  unsigned long long default_modules_disabled;
+
+  void (*prepare_stats)(stats_buffer_t *sb);
+
+  void (*prepare_parse_options)(void);
+  int (*parse_option)(int val);
+  void (*parse_extra_args)(int count, char *args[]);
+
+  void (*pre_init)(void);
+
+  void (*pre_start)(void);
+
+  void (*pre_loop)(void);
+  int (*run_script)(void);
+
+  const char *FullVersionStr;
+  const char *ShortVersionStr;
+
+  int epoll_timeout;
+  double aio_timeout;
+
+  struct tl_act_extra *(*parse_function)(struct tl_in_state *tlio_in,
+                                         long long actor_id);
+  int (*get_op)(struct tl_in_state *tlio_in);
+
+  void (*signal_handlers[65])(void);
+  struct rpc_custom_op *custom_ops;
+
+  struct tcp_rpc_server_functions *tcp_methods;
+
+  conn_type_t *http_type;
+  struct http_server_functions *http_functions;
+
+  int cron_subclass;
+  int precise_cron_subclass;
+} server_functions_t;
+
+typedef struct {
+  struct in_addr settings_addr;
+  int do_not_open_port;
+  int epoll_wait_timeout;
+  int sfd;
+
+  unsigned long long modules;
+  int port;
+  int start_port, end_port;
+
+  int backlog;
+  int maxconn;
+  int required_io_threads;
+  int required_cpu_threads;
+  int required_tcp_cpu_threads;
+  int required_tcp_io_threads;
+
+  char *aes_pwd_file;
+
+  server_functions_t *F;
+} engine_t;
+
+typedef struct event_precise_cron {
+  struct event_precise_cron *next, *prev;
+  void (*wakeup)(struct event_precise_cron *arg);
+} event_precise_cron_t;
+
+// Legacy engine.h compatibility ABI now provided by Rust bindings header.
+// GLIBC defines SIGRTMAX as a function in C, but engine ABI expects 64.
+enum { OUR_SIGRTMAX = 64 };
+
+static inline unsigned long long SIG2INT(const int sig) {
+  return (sig == OUR_SIGRTMAX) ? 1ull : (1ull << (unsigned long long)sig);
+}
+
+static const unsigned long long ENGINE_NO_PORT = 4ull;
+
+extern double precise_now_diff;
+extern engine_t *engine_state;
+int default_main(server_functions_t *F, int argc, char *argv[]);
 
 enum {
   MIN_PWD_LEN = 32,
