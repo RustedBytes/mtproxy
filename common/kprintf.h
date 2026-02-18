@@ -26,21 +26,7 @@
 
 #pragma once
 
-#include <stddef.h>
-#include <sys/types.h>
-
 extern int verbosity;
-extern const char *logname;
-
-void reopen_logs(void);
-void reopen_logs_ext(int slave_mode);
-int hexdump(const void *start, const void *end);
-
-// safely writes buf to fd, considering write speed limit
-void kdb_write(int fd, const void *buf, long long count, const char *filename);
-
-// write message with timestamp and pid, safe to call inside handler
-int kwrite(int fd, const void *buf, int count);
 
 // print message with timestamp
 void kprintf(const char *format, ...) __attribute__((format(printf, 1, 2)));
@@ -51,6 +37,3 @@ void kprintf(const char *format, ...) __attribute__((format(printf, 1, 2)));
     }                                                                          \
     kprintf((format), ##__VA_ARGS__);                                          \
   } while (0)
-
-void nck_write(int fd, const void *data, size_t len);
-void nck_pwrite(int fd, const void *data, size_t len, off_t offset);

@@ -1434,7 +1434,7 @@ pub unsafe extern "C" fn mtproxy_ffi_process_id_is_newer(
     i32::from(delta != 0 && delta <= 0x3fff)
 }
 
-/// Process-global PID state matching `common/pid.h`.
+/// Process-global PID state matching the legacy C `struct process_id` ABI.
 #[no_mangle]
 pub static mut PID: MtproxyProcessId = MtproxyProcessId {
     ip: 0,

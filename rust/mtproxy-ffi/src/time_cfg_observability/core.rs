@@ -1508,7 +1508,7 @@ pub unsafe extern "C" fn mtproxy_ffi_read_proc_stat_file(
     0
 }
 
-/// C ABI mirror of `struct proc_stats` from `common/proc-stat.h`.
+/// C ABI mirror of the legacy `struct proc_stats`.
 #[repr(C)]
 pub struct ProcStats {
     pub pid: i32,

@@ -24,6 +24,17 @@ pub struct MtproxyProcessId {
 }
 
 #[repr(C)]
+#[allow(dead_code)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct MtproxyProcessIdExt {
+    pub ip: u32,
+    pub port: i16,
+    pub pid: u16,
+    pub utime: i32,
+    pub actor_id: i32,
+}
+
+#[repr(C)]
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct MtproxyAesKeyData {
     pub read_key: [u8; 32],

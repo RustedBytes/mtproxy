@@ -39,7 +39,7 @@ impl RpcPacketType {
 
 /// Process identifier for RPC connections (IP address + port + PID).
 ///
-/// This matches the C `struct process_id` layout from `common/pid.h`.
+/// This matches the legacy C `struct process_id` layout.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[repr(C)]
 pub struct ProcessId {

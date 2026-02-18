@@ -24,25 +24,8 @@
 
 #pragma once
 
-#include <sys/types.h>
-
 #include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 
-int am_get_memory_usage(pid_t pid, long long *a, int m);
-int am_get_memory_stats(am_memory_stat_t *S, int flags);
-
-void sb_init(stats_buffer_t *sb, char *buff, int size);
-void sb_alloc(stats_buffer_t *sb, int size);
-void sb_release(stats_buffer_t *sb);
-
-void sb_prepare(stats_buffer_t *sb);
+// Variadic shim remains in C; implementation forwards to Rust.
 void sb_printf(stats_buffer_t *sb, const char *format, ...)
     __attribute__((format(printf, 2, 3)));
-void sb_memory(stats_buffer_t *sb, int flags);
-void sbp_print_date(stats_buffer_t *sb, const char *key, time_t unix_time);
-
-int sb_register_stat_fun(stat_fun_t fun);
-
-int sb_sum_i(void **base, int len, int offset);
-long long sb_sum_ll(void **base, int len, int offset);
-double sb_sum_f(void **base, int len, int offset);

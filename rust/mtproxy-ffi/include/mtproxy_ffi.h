@@ -345,6 +345,14 @@ typedef struct mtproxy_ffi_process_id {
   int32_t utime;
 } mtproxy_ffi_process_id_t;
 
+typedef struct mtproxy_ffi_process_id_ext {
+  uint32_t ip;
+  int16_t port;
+  uint16_t pid;
+  int32_t utime;
+  int32_t actor_id;
+} mtproxy_ffi_process_id_ext_t;
+
 typedef struct mtproxy_ffi_rpc_target_tree mtproxy_ffi_rpc_target_tree_t;
 
 typedef struct mtproxy_ffi_aes_key_data {

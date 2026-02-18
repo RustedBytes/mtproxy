@@ -1,4 +1,4 @@
-//! Compatibility queue for `common/mp-queue.c` / `common/mp-queue.h`.
+//! Compatibility queue for the legacy C mp-queue ABI.
 //!
 //! The legacy C implementation uses a lock-free segmented queue with hazard
 //! pointers and futex-backed semaphore waiting. This Rust port keeps the same
