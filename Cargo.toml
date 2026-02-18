@@ -1,8 +1,8 @@
 [workspace]
 members = [
-  "rust/mtproxy-bin",
-  "rust/mtproxy-core",
-  "rust/mtproxy-ffi",
+  "mtproxy-bin",
+  "mtproxy-core",
+  "mtproxy-ffi",
 ]
 resolver = "2"
 

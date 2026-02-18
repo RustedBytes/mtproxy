@@ -2,7 +2,7 @@
 Simple MTProto proxy with a Rust-first runtime.
 
 This repository currently has two runnable paths:
-- `mtproxy-rust` (canonical runtime, from `rust/mtproxy-bin`).
+- `mtproxy-rust` (canonical runtime, from `mtproxy-bin`).
 - `mtproto-proxy` (compatibility wrapper binary linked against Rust FFI).
 
 ## Requirements

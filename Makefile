@@ -18,7 +18,7 @@ CFLAGS = $(ARCH) -O3 -std=gnu2x -Wall -Wno-array-bounds -mpclmul -march=core2 -m
 LDFLAGS = $(ARCH) -ggdb -rdynamic -lm -lrt -lpthread
 
 LIB = ${OBJ}/lib
-CINCLUDE = -iquote common -iquote . -iquote rust/mtproxy-ffi/include
+CINCLUDE = -iquote common -iquote . -iquote mtproxy-ffi/include
 
 LIBLIST = ${LIB}/libkdb.a
 
@@ -34,7 +34,7 @@ ALLDIRS := ${DEPDIRS} ${OBJDIRS}
 EXELIST	:= ${EXE}/mtproto-proxy
 # Legacy entrypoint is now provided by Rust (`main` in mtproxy-ffi).
 RUST_OBJECTS	=
-RUST_RS_SOURCES := $(shell find rust/mtproxy-core/src rust/mtproxy-ffi/src -type f -name '*.rs')
+RUST_RS_SOURCES := $(shell find mtproxy-core/src mtproxy-ffi/src -type f -name '*.rs')
 RUST_RUNTIME_RELEASE = target/release/mtproxy-rust
 
 DEPENDENCE_CXX		:=	$(subst ${OBJ}/,${DEP}/,$(patsubst %.o,%.d,${OBJECTS_CXX}))
@@ -68,7 +68,7 @@ ${EXELIST}: ${LIBLIST}
 ${EXE}/mtproto-proxy: ${RUST_OBJECTS} ${LIB}/libkdb.a ${RUST_FFI_STATICLIB}
 	${CC} -o $@ ${RUST_OBJECTS} ${LIB}/libkdb.a ${RUST_FFI_STATICLIB} ${LIB}/libkdb.a ${RUST_FFI_STATICLIB} ${LIB}/libkdb.a ${LDFLAGS} -ldl
 
-${RUST_FFI_STATICLIB}: Cargo.toml Cargo.lock rust/mtproxy-core/Cargo.toml rust/mtproxy-ffi/Cargo.toml ${RUST_RS_SOURCES}
+${RUST_FFI_STATICLIB}: Cargo.toml Cargo.lock mtproxy-core/Cargo.toml mtproxy-ffi/Cargo.toml ${RUST_RS_SOURCES}
 	cargo build  -p mtproxy-ffi
 	@if [ ! -f "$@" ]; then \
 		latest="$$(ls -1t target/debug/deps/libmtproxy_ffi-*.a 2>/dev/null | head -n1)"; \
@@ -76,7 +76,7 @@ ${RUST_FFI_STATICLIB}: Cargo.toml Cargo.lock rust/mtproxy-core/Cargo.toml rust/m
 		cp "$$latest" "$@"; \
 	fi
 
-${RUST_FFI_STATICLIB_RELEASE}: Cargo.toml Cargo.lock rust/mtproxy-core/Cargo.toml rust/mtproxy-ffi/Cargo.toml ${RUST_RS_SOURCES}
+${RUST_FFI_STATICLIB_RELEASE}: Cargo.toml Cargo.lock mtproxy-core/Cargo.toml mtproxy-ffi/Cargo.toml ${RUST_RS_SOURCES}
 	cargo build --release -p mtproxy-ffi
 	@if [ ! -f "$@" ]; then \
 		latest="$$(ls -1t target/release/deps/libmtproxy_ffi-*.a 2>/dev/null | head -n1)"; \
@@ -84,7 +84,7 @@ ${RUST_FFI_STATICLIB_RELEASE}: Cargo.toml Cargo.lock rust/mtproxy-core/Cargo.tom
 		cp "$$latest" "$@"; \
 	fi
 
-${RUST_RUNTIME_RELEASE}: Cargo.toml Cargo.lock rust/mtproxy-bin/Cargo.toml rust/mtproxy-core/Cargo.toml ${RUST_RS_SOURCES}
+${RUST_RUNTIME_RELEASE}: Cargo.toml Cargo.lock mtproxy-bin/Cargo.toml mtproxy-core/Cargo.toml ${RUST_RS_SOURCES}
 	cargo build --release -p mtproxy-bin --bin mtproxy-rust
 
 release: ${ALLDIRS} ${RUST_RUNTIME_RELEASE}

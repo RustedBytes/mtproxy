@@ -207,7 +207,7 @@ let (decoded_len, header_bytes) = decode_compact_header(first_byte, remaining).u
 
 ## FFI Integration
 
-The RPC implementation is integrated with the C codebase through the FFI layer in `rust/mtproxy-ffi`. The following functions are exported:
+The RPC implementation is integrated with the C codebase through the FFI layer in `mtproxy-ffi`. The following functions are exported:
 
 - `mtproxy_ffi_tcp_rpc_encode_compact_header()`
 - `mtproxy_ffi_tcp_rpc_client_packet_len_state()`
@@ -244,4 +244,4 @@ The current implementation provides the core data structures, state machines, an
 
 - C Implementation: `net/net-tcp-rpc-client.c`, `net/net-tcp-rpc-server.c`
 - Protocol Documentation: TBD
-- FFI Boundary: `rust/mtproxy-ffi/BOUNDARY.md`
+- FFI Boundary: `mtproxy-ffi/BOUNDARY.md`
