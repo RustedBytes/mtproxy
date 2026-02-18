@@ -5,6 +5,10 @@ use super::runtime::*;
 use core::ffi::{c_char, c_double, c_int, c_long, c_longlong, c_uint, c_void};
 use core::ptr;
 use core::sync::atomic::{AtomicI32, AtomicI64, AtomicU64, Ordering};
+use libc::in_addr;
+
+const LEGACY_MAX_EVENTS: usize = 1 << 19;
+const LEGACY_PRIME_TARGETS: usize = 99_961;
 
 unsafe extern "C" {
     fn mtproxy_ffi_net_add_nat_info(rule_text: *const c_char) -> c_int;
@@ -49,6 +53,107 @@ unsafe extern "C" {
     fn ffi_net_connections_job_free(job: Job) -> c_int;
     #[link_name = "mtproxy_ffi_net_connections_job_thread_dec_jobs_active"]
     fn ffi_net_connections_job_thread_dec_jobs_active();
+    #[link_name = "rwm_init"]
+    fn ffi_rwm_init(raw: *mut RawMessage, alloc_bytes: c_int) -> c_int;
+    #[link_name = "rwm_free"]
+    fn ffi_rwm_free(raw: *mut RawMessage) -> c_int;
+    #[link_name = "rwm_prepare_iovec"]
+    fn ffi_rwm_prepare_iovec(
+        raw: *const RawMessage,
+        iov: *mut libc::iovec,
+        iov_len: c_int,
+        bytes: c_int,
+    ) -> c_int;
+    #[link_name = "rwm_skip_data"]
+    fn ffi_rwm_skip_data(raw: *mut RawMessage, bytes: c_int) -> c_int;
+    #[link_name = "show_ipv6"]
+    fn ffi_show_ipv6(ipv6: *const u8) -> *const c_char;
+    #[link_name = "inet_ntoa"]
+    fn ffi_inet_ntoa(addr: in_addr) -> *mut c_char;
+    #[link_name = "client_socket"]
+    fn ffi_client_socket(in_addr: c_uint, port: c_int, mode: c_int) -> c_int;
+    #[link_name = "client_socket_ipv6"]
+    fn ffi_client_socket_ipv6(in6_addr_ptr: *const u8, port: c_int, mode: c_int) -> c_int;
+    #[allow(clashing_extern_declarations)]
+    #[link_name = "mtproxy_ffi_net_msg_buffers_alloc"]
+    fn ffi_alloc_msg_buffer(neighbor: *mut MsgBuffer, size_hint: c_int) -> *mut MsgBuffer;
+    #[link_name = "new_msg_part"]
+    fn ffi_new_msg_part(neighbor: *mut MsgPart, x: *mut MsgBuffer) -> *mut MsgPart;
+    #[link_name = "epoll_sethandler"]
+    fn ffi_epoll_sethandler(
+        fd: c_int,
+        prio: c_int,
+        handler: EventHandler,
+        data: *mut c_void,
+    ) -> c_int;
+    #[link_name = "epoll_insert"]
+    fn ffi_epoll_insert(fd: c_int, flags: c_int) -> c_int;
+    #[link_name = "epoll_remove"]
+    fn ffi_epoll_remove(fd: c_int) -> c_int;
+    #[link_name = "remove_event_from_heap"]
+    fn ffi_remove_event_from_heap(ev: *mut EventDescr, allow_hole: c_int) -> c_int;
+    #[link_name = "mtproxy_ffi_net_tcp_connections_cpu_tcp_free_connection_buffers"]
+    fn ffi_cpu_tcp_free_connection_buffers(c: ConnectionJob) -> c_int;
+    #[link_name = "mtproxy_ffi_net_tcp_connections_cpu_tcp_server_reader"]
+    fn ffi_cpu_tcp_server_reader(c: ConnectionJob) -> c_int;
+    #[link_name = "mtproxy_ffi_net_tcp_connections_cpu_tcp_server_writer"]
+    fn ffi_cpu_tcp_server_writer(c: ConnectionJob) -> c_int;
+    #[link_name = "maximize_sndbuf"]
+    fn ffi_maximize_sndbuf(socket_fd: c_int, max: c_int);
+    #[link_name = "maximize_rcvbuf"]
+    fn ffi_maximize_rcvbuf(socket_fd: c_int, max: c_int);
+    #[link_name = "get_tree_ptr_connection"]
+    fn ffi_get_tree_ptr_connection(tree: *mut *mut TreeConnection) -> *mut TreeConnection;
+    #[link_name = "tree_act_ex_connection"]
+    fn ffi_tree_act_ex_connection(
+        tree: *mut TreeConnection,
+        act: Option<unsafe extern "C" fn(ConnectionJob, *mut c_void)>,
+        ex: *mut c_void,
+    );
+    #[link_name = "tree_act_ex3_connection"]
+    fn ffi_tree_act_ex3_connection(
+        tree: *mut TreeConnection,
+        act: Option<unsafe extern "C" fn(ConnectionJob, *mut c_void, *mut c_void, *mut c_void)>,
+        ex: *mut c_void,
+        ex2: *mut c_void,
+        ex3: *mut c_void,
+    );
+    #[link_name = "tree_act_connection"]
+    fn ffi_tree_act_connection(
+        tree: *mut TreeConnection,
+        act: Option<unsafe extern "C" fn(ConnectionJob)>,
+    );
+    #[link_name = "tree_insert_connection"]
+    fn ffi_tree_insert_connection(
+        tree: *mut TreeConnection,
+        conn: ConnectionJob,
+        priority: c_int,
+    ) -> *mut TreeConnection;
+    #[link_name = "tree_delete_connection"]
+    fn ffi_tree_delete_connection(
+        tree: *mut TreeConnection,
+        conn: ConnectionJob,
+    ) -> *mut TreeConnection;
+    #[link_name = "tree_free_connection"]
+    fn ffi_tree_free_connection(tree: *mut TreeConnection);
+    #[link_name = "free_tree_ptr_connection"]
+    fn ffi_free_tree_ptr_connection(tree: *mut TreeConnection);
+    #[link_name = "HTarget"]
+    static mut ffi_htarget: [ConnTargetJob; LEGACY_PRIME_TARGETS];
+    #[link_name = "TargetsLock"]
+    static mut ffi_targets_lock: libc::pthread_mutex_t;
+    #[link_name = "epoll_fd"]
+    static mut ffi_epoll_fd: c_int;
+    #[link_name = "Events"]
+    static mut ffi_events: [EventDescr; LEGACY_MAX_EVENTS];
+    #[link_name = "tcp_maximize_buffers"]
+    static mut ffi_tcp_maximize_buffers: c_int;
+    #[link_name = "verbosity"]
+    static mut ffi_verbosity: c_int;
+    #[link_name = "active_special_connections"]
+    static mut ffi_active_special_connections: c_int;
+    #[link_name = "max_special_connections"]
+    static mut ffi_max_special_connections: c_int;
     static mut active_special_connections: c_int;
     static mut max_special_connections: c_int;
 }
@@ -129,6 +234,240 @@ pub(super) unsafe fn mtproxy_ffi_net_connections_job_free(job: Job) -> c_int {
 #[inline]
 pub(super) unsafe fn mtproxy_ffi_net_connections_job_thread_dec_jobs_active() {
     unsafe { ffi_net_connections_job_thread_dec_jobs_active() };
+}
+
+#[inline]
+pub(super) unsafe fn alloc_mp_queue_w() -> *mut MpQueue {
+    unsafe { crate::alloc_mp_queue_w().cast::<MpQueue>() }
+}
+
+#[inline]
+pub(super) unsafe fn free_mp_queue(mq: *mut MpQueue) {
+    unsafe { crate::free_mp_queue(mq.cast::<c_void>()) };
+}
+
+#[inline]
+pub(super) unsafe fn rwm_init(raw: *mut RawMessage, alloc_bytes: c_int) -> c_int {
+    unsafe { ffi_rwm_init(raw, alloc_bytes) }
+}
+
+#[inline]
+pub(super) unsafe fn rwm_free(raw: *mut RawMessage) -> c_int {
+    unsafe { ffi_rwm_free(raw) }
+}
+
+#[inline]
+pub(super) unsafe fn rwm_prepare_iovec(
+    raw: *const RawMessage,
+    iov: *mut libc::iovec,
+    iov_len: c_int,
+    bytes: c_int,
+) -> c_int {
+    unsafe { ffi_rwm_prepare_iovec(raw, iov, iov_len, bytes) }
+}
+
+#[inline]
+pub(super) unsafe fn rwm_skip_data(raw: *mut RawMessage, bytes: c_int) -> c_int {
+    unsafe { ffi_rwm_skip_data(raw, bytes) }
+}
+
+#[inline]
+pub(super) unsafe fn show_ipv6(ipv6: *const u8) -> *const c_char {
+    unsafe { ffi_show_ipv6(ipv6) }
+}
+
+#[inline]
+pub(super) unsafe fn inet_ntoa(addr: in_addr) -> *mut c_char {
+    unsafe { ffi_inet_ntoa(addr) }
+}
+
+#[inline]
+pub(super) unsafe fn client_socket(in_addr: c_uint, port: c_int, mode: c_int) -> c_int {
+    unsafe { ffi_client_socket(in_addr, port, mode) }
+}
+
+#[inline]
+pub(super) unsafe fn client_socket_ipv6(in6_addr_ptr: *const u8, port: c_int, mode: c_int) -> c_int {
+    unsafe { ffi_client_socket_ipv6(in6_addr_ptr, port, mode) }
+}
+
+#[inline]
+pub(super) unsafe fn drand48_j() -> c_double {
+    unsafe { crate::drand48_j() }
+}
+
+#[inline]
+pub(super) unsafe fn lrand48_j() -> c_long {
+    unsafe { crate::lrand48_j() }
+}
+
+#[inline]
+pub(super) unsafe fn alloc_msg_buffer(neighbor: *mut MsgBuffer, size_hint: c_int) -> *mut MsgBuffer {
+    unsafe { ffi_alloc_msg_buffer(neighbor, size_hint) }
+}
+
+#[inline]
+pub(super) unsafe fn new_msg_part(neighbor: *mut MsgPart, x: *mut MsgBuffer) -> *mut MsgPart {
+    unsafe { ffi_new_msg_part(neighbor, x) }
+}
+
+#[inline]
+pub(super) unsafe fn epoll_sethandler(
+    fd: c_int,
+    prio: c_int,
+    handler: EventHandler,
+    data: *mut c_void,
+) -> c_int {
+    unsafe { ffi_epoll_sethandler(fd, prio, handler, data) }
+}
+
+#[inline]
+pub(super) unsafe fn epoll_insert(fd: c_int, flags: c_int) -> c_int {
+    unsafe { ffi_epoll_insert(fd, flags) }
+}
+
+#[inline]
+pub(super) unsafe fn epoll_remove(fd: c_int) -> c_int {
+    unsafe { ffi_epoll_remove(fd) }
+}
+
+#[inline]
+pub(super) unsafe fn remove_event_from_heap(ev: *mut EventDescr, allow_hole: c_int) -> c_int {
+    unsafe { ffi_remove_event_from_heap(ev, allow_hole) }
+}
+
+#[inline]
+pub(super) unsafe extern "C" fn cpu_tcp_free_connection_buffers(c: ConnectionJob) -> c_int {
+    unsafe { ffi_cpu_tcp_free_connection_buffers(c) }
+}
+
+#[inline]
+pub(super) unsafe extern "C" fn cpu_tcp_server_reader(c: ConnectionJob) -> c_int {
+    unsafe { ffi_cpu_tcp_server_reader(c) }
+}
+
+#[inline]
+pub(super) unsafe extern "C" fn cpu_tcp_server_writer(c: ConnectionJob) -> c_int {
+    unsafe { ffi_cpu_tcp_server_writer(c) }
+}
+
+#[inline]
+pub(super) unsafe fn maximize_sndbuf(socket_fd: c_int, max: c_int) {
+    unsafe { ffi_maximize_sndbuf(socket_fd, max) };
+}
+
+#[inline]
+pub(super) unsafe fn maximize_rcvbuf(socket_fd: c_int, max: c_int) {
+    unsafe { ffi_maximize_rcvbuf(socket_fd, max) };
+}
+
+#[inline]
+pub(super) unsafe fn get_tree_ptr_connection(tree: *mut *mut TreeConnection) -> *mut TreeConnection {
+    unsafe { ffi_get_tree_ptr_connection(tree) }
+}
+
+#[inline]
+pub(super) unsafe fn tree_act_ex_connection(
+    tree: *mut TreeConnection,
+    act: Option<unsafe extern "C" fn(ConnectionJob, *mut c_void)>,
+    ex: *mut c_void,
+) {
+    unsafe { ffi_tree_act_ex_connection(tree, act, ex) };
+}
+
+#[inline]
+pub(super) unsafe fn tree_act_ex3_connection(
+    tree: *mut TreeConnection,
+    act: Option<unsafe extern "C" fn(ConnectionJob, *mut c_void, *mut c_void, *mut c_void)>,
+    ex: *mut c_void,
+    ex2: *mut c_void,
+    ex3: *mut c_void,
+) {
+    unsafe { ffi_tree_act_ex3_connection(tree, act, ex, ex2, ex3) };
+}
+
+#[inline]
+pub(super) unsafe fn tree_act_connection(
+    tree: *mut TreeConnection,
+    act: Option<unsafe extern "C" fn(ConnectionJob)>,
+) {
+    unsafe { ffi_tree_act_connection(tree, act) };
+}
+
+#[inline]
+pub(super) unsafe fn tree_insert_connection(
+    tree: *mut TreeConnection,
+    conn: ConnectionJob,
+    priority: c_int,
+) -> *mut TreeConnection {
+    unsafe { ffi_tree_insert_connection(tree, conn, priority) }
+}
+
+#[inline]
+pub(super) unsafe fn tree_delete_connection(
+    tree: *mut TreeConnection,
+    conn: ConnectionJob,
+) -> *mut TreeConnection {
+    unsafe { ffi_tree_delete_connection(tree, conn) }
+}
+
+#[inline]
+pub(super) unsafe fn tree_free_connection(tree: *mut TreeConnection) {
+    unsafe { ffi_tree_free_connection(tree) };
+}
+
+#[inline]
+pub(super) unsafe fn free_tree_ptr_connection(tree: *mut TreeConnection) {
+    unsafe { ffi_free_tree_ptr_connection(tree) };
+}
+
+#[inline]
+pub(super) unsafe fn htarget_bucket_ptr(bucket: usize) -> *mut ConnTargetJob {
+    unsafe { ptr::addr_of_mut!(ffi_htarget[bucket]) }
+}
+
+#[inline]
+pub(super) unsafe fn targets_lock_ptr() -> *mut libc::pthread_mutex_t {
+    &raw mut ffi_targets_lock
+}
+
+#[inline]
+pub(super) unsafe fn epoll_fd_get() -> c_int {
+    unsafe { ffi_epoll_fd }
+}
+
+#[inline]
+pub(super) unsafe fn event_ptr(fd: usize) -> *mut EventDescr {
+    unsafe { ptr::addr_of_mut!(ffi_events[fd]) }
+}
+
+#[inline]
+pub(super) unsafe fn tcp_maximize_buffers_get() -> c_int {
+    unsafe { ffi_tcp_maximize_buffers }
+}
+
+#[inline]
+pub(super) unsafe fn verbosity_get() -> c_int {
+    unsafe { ffi_verbosity }
+}
+
+#[inline]
+pub(super) unsafe fn active_special_connections_ptr() -> *mut c_int {
+    &raw mut ffi_active_special_connections
+}
+
+#[inline]
+pub(super) unsafe fn max_special_connections_get() -> c_int {
+    unsafe { ffi_max_special_connections }
+}
+
+#[inline]
+pub(super) unsafe extern "C" fn net_server_socket_read_write_gateway_event_descr(
+    fd: c_int,
+    data: *mut c_void,
+    ev: *mut EventDescr,
+) -> c_int {
+    unsafe { net_server_socket_read_write_gateway(fd, data, ev.cast::<c_void>()) }
 }
 
 #[repr(C)]

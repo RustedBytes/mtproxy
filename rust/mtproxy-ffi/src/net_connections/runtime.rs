@@ -2,9 +2,13 @@
 
 use super::abi::*;
 use super::legacy::{
+    alloc_mp_queue_w, alloc_msg_buffer, client_socket, client_socket_ipv6,
     cpu_server_close_connection, cpu_server_free_connection, cpu_server_read_write,
-    create_async_job, job_decref, job_incref, job_signal, job_timer_check, job_timer_init,
-    job_timer_insert, job_timer_remove,
+    cpu_tcp_free_connection_buffers, cpu_tcp_server_reader, cpu_tcp_server_writer,
+    create_async_job, drand48_j, epoll_insert, epoll_remove, epoll_sethandler,
+    free_mp_queue, free_tree_ptr_connection, get_tree_ptr_connection, inet_ntoa,
+    job_decref, job_incref, job_signal, job_timer_check, job_timer_init, job_timer_insert,
+    job_timer_remove, lrand48_j, maximize_rcvbuf, maximize_sndbuf, new_msg_part,
     do_conn_target_job, do_connection_job, do_listening_connection_job,
     do_socket_connection_job, mtproxy_ffi_net_connections_accept_rate_get_max,
     mtproxy_ffi_net_connections_accept_rate_get_state,
@@ -34,15 +38,20 @@ use super::legacy::{
     mtproxy_ffi_net_connections_stats_add_ready, mtproxy_ffi_net_connections_stats_add_targets,
     mtproxy_ffi_net_connections_stats_add_tcp_read,
     mtproxy_ffi_net_connections_stats_add_tcp_write, net_accept_new_connections,
-    net_server_socket_free, net_server_socket_read_write, net_server_socket_reader,
-    net_server_socket_writer, new_conn_generation, schedule_job, server_check_ready, server_failed,
-    server_flush, server_noop, unlock_job,
+    net_server_socket_free, net_server_socket_read_write,
+    net_server_socket_read_write_gateway_event_descr as net_server_socket_read_write_gateway,
+    net_server_socket_reader, net_server_socket_writer, new_conn_generation, remove_event_from_heap,
+    rwm_free, rwm_init, rwm_prepare_iovec, rwm_skip_data, schedule_job, server_check_ready,
+    server_failed, server_flush, server_noop, show_ipv6, tree_act_connection,
+    tree_act_ex3_connection, tree_act_ex_connection, tree_delete_connection, tree_free_connection,
+    tree_insert_connection, unlock_job, active_special_connections_ptr, epoll_fd_get, event_ptr,
+    htarget_bucket_ptr, max_special_connections_get, targets_lock_ptr, tcp_maximize_buffers_get,
+    verbosity_get,
 };
 use ::core::ffi::{c_char, c_double, c_int, c_longlong, c_uint, c_void};
 use ::core::mem::size_of;
 use ::core::ptr;
 use ::core::sync::atomic::{AtomicI32, AtomicI64, Ordering};
-use libc::in_addr;
 
 const MAX_EVENTS: usize = 1 << 19;
 const PRIME_TARGETS: usize = 99_961;
@@ -235,88 +244,6 @@ const fn jsc_allow(class: c_int, signo: c_int) -> u64 {
 struct ConnTargetPickCtx {
     selected: *mut ConnectionJob,
     allow_stopped: c_int,
-}
-
-unsafe extern "C" {
-    static mut HTarget: [ConnTargetJob; PRIME_TARGETS];
-    static mut TargetsLock: libc::pthread_mutex_t;
-    static mut epoll_fd: c_int;
-    static mut Events: [EventDescr; MAX_EVENTS];
-
-    fn kprintf(format: *const c_char, ...);
-    fn show_ipv6(ipv6: *const u8) -> *const c_char;
-    fn inet_ntoa(in_addr: in_addr) -> *mut c_char;
-
-    fn alloc_mp_queue_w() -> *mut MpQueue;
-    fn free_mp_queue(mq: *mut MpQueue);
-    #[allow(clashing_extern_declarations)]
-    #[link_name = "mtproxy_ffi_net_msg_buffers_alloc"]
-    fn alloc_msg_buffer(neighbor: *mut MsgBuffer, size_hint: c_int) -> *mut MsgBuffer;
-    fn new_msg_part(neighbor: *mut MsgPart, x: *mut MsgBuffer) -> *mut MsgPart;
-    fn rwm_init(raw: *mut RawMessage, alloc_bytes: c_int) -> c_int;
-    fn rwm_free(raw: *mut RawMessage) -> c_int;
-    fn rwm_prepare_iovec(
-        raw: *const RawMessage,
-        iov: *mut libc::iovec,
-        iov_len: c_int,
-        bytes: c_int,
-    ) -> c_int;
-    fn rwm_skip_data(raw: *mut RawMessage, bytes: c_int) -> c_int;
-    fn epoll_sethandler(fd: c_int, prio: c_int, handler: EventHandler, data: *mut c_void) -> c_int;
-    fn epoll_insert(fd: c_int, flags: c_int) -> c_int;
-    fn epoll_remove(fd: c_int) -> c_int;
-    fn remove_event_from_heap(ev: *mut EventDescr, allow_hole: c_int) -> c_int;
-    fn net_server_socket_read_write_gateway(
-        fd: c_int,
-        data: *mut c_void,
-        ev: *mut EventDescr,
-    ) -> c_int;
-    #[link_name = "mtproxy_ffi_net_tcp_connections_cpu_tcp_free_connection_buffers"]
-    fn cpu_tcp_free_connection_buffers(c: ConnectionJob) -> c_int;
-    #[link_name = "mtproxy_ffi_net_tcp_connections_cpu_tcp_server_reader"]
-    fn cpu_tcp_server_reader(c: ConnectionJob) -> c_int;
-    #[link_name = "mtproxy_ffi_net_tcp_connections_cpu_tcp_server_writer"]
-    fn cpu_tcp_server_writer(c: ConnectionJob) -> c_int;
-
-    fn drand48_j() -> c_double;
-    fn lrand48_j() -> libc::c_long;
-    fn client_socket(in_addr: u32, port: c_int, mode: c_int) -> c_int;
-    fn client_socket_ipv6(in6_addr_ptr: *const u8, port: c_int, mode: c_int) -> c_int;
-    static mut tcp_maximize_buffers: c_int;
-    static mut verbosity: c_int;
-    static mut active_special_connections: c_int;
-    static mut max_special_connections: c_int;
-    fn maximize_sndbuf(socket_fd: c_int, max: c_int);
-    fn maximize_rcvbuf(socket_fd: c_int, max: c_int);
-
-    fn get_tree_ptr_connection(tree: *mut *mut TreeConnection) -> *mut TreeConnection;
-    fn tree_act_ex_connection(
-        tree: *mut TreeConnection,
-        act: Option<unsafe extern "C" fn(ConnectionJob, *mut c_void)>,
-        ex: *mut c_void,
-    );
-    fn tree_act_ex3_connection(
-        tree: *mut TreeConnection,
-        act: Option<unsafe extern "C" fn(ConnectionJob, *mut c_void, *mut c_void, *mut c_void)>,
-        ex: *mut c_void,
-        ex2: *mut c_void,
-        ex3: *mut c_void,
-    );
-    fn tree_act_connection(
-        tree: *mut TreeConnection,
-        act: Option<unsafe extern "C" fn(ConnectionJob)>,
-    );
-    fn tree_insert_connection(
-        tree: *mut TreeConnection,
-        conn: ConnectionJob,
-        priority: c_int,
-    ) -> *mut TreeConnection;
-    fn tree_delete_connection(
-        tree: *mut TreeConnection,
-        conn: ConnectionJob,
-    ) -> *mut TreeConnection;
-    fn tree_free_connection(tree: *mut TreeConnection);
-    fn free_tree_ptr_connection(tree: *mut TreeConnection);
 }
 
 #[inline]
@@ -803,7 +730,7 @@ pub(super) unsafe fn net_server_socket_writer_impl(c: SocketConnectionJob) -> c_
             written_total += r;
         }
 
-        if unsafe { verbosity > 0 && r < 0 && write_errno != libc::EAGAIN } {
+        if unsafe { verbosity_get() > 0 && r < 0 && write_errno != libc::EAGAIN } {
             unsafe {
                 libc::perror(c"writev()".as_ptr());
             }
@@ -964,7 +891,7 @@ pub(super) unsafe fn alloc_new_socket_connection_impl(c: ConnectionJob) -> Socke
 
     let fd_u = usize::try_from(unsafe { (*socket).fd }).unwrap_or(MAX_EVENTS);
     assert!(fd_u < MAX_EVENTS);
-    let ev = unsafe { ptr::addr_of_mut!(Events[fd_u]) };
+    let ev = unsafe { event_ptr(fd_u) };
     assert!(unsafe { (*ev).data }.is_null());
     assert_eq!(unsafe { (*ev).refcnt }, 0);
     unsafe {
@@ -1038,7 +965,7 @@ pub(super) unsafe fn alloc_new_connection_impl(
             libc::socklen_t::try_from(size_of::<c_int>()).unwrap_or(0),
         );
     }
-    if unsafe { tcp_maximize_buffers } != 0 {
+    if unsafe { tcp_maximize_buffers_get() } != 0 {
         unsafe {
             maximize_sndbuf(cfd, 0);
             maximize_rcvbuf(cfd, 0);
@@ -1227,14 +1154,13 @@ pub(super) unsafe fn alloc_new_connection_impl(
                 }
 
                 if (listener_flags & C_SPECIAL) != 0 {
-                    let special_connections =
-                        unsafe { atomic_i32(ptr::addr_of_mut!(active_special_connections)) }
-                            .fetch_add(1, Ordering::SeqCst)
-                            + 1;
+                    let special_connections = unsafe { atomic_i32(active_special_connections_ptr()) }
+                        .fetch_add(1, Ordering::SeqCst)
+                        + 1;
                     let special_action =
                         mtproxy_core::runtime::net::connections::alloc_connection_special_action(
                             special_connections,
-                            unsafe { max_special_connections },
+                            unsafe { max_special_connections_get() },
                         );
                     assert!(
                         (special_action
@@ -1324,7 +1250,8 @@ pub(super) unsafe fn net_accept_new_connections_impl(lcj: Job) -> c_int {
     loop {
         let fd_u = usize::try_from(unsafe { (*listening).fd }).unwrap_or(MAX_EVENTS);
         assert!(fd_u < MAX_EVENTS);
-        if (unsafe { Events[fd_u].state } & EVT_IN_EPOLL) == 0 {
+        let ev = unsafe { event_ptr(fd_u) };
+        if (unsafe { (*ev).state } & EVT_IN_EPOLL) == 0 {
             break;
         }
 
@@ -1500,7 +1427,7 @@ pub(super) unsafe fn init_listening_connection_ext_impl(
 
     let fd_u = usize::try_from(fd).unwrap_or(MAX_EVENTS);
     assert!(fd_u < MAX_EVENTS);
-    let ev = unsafe { ptr::addr_of_mut!(Events[fd_u]) };
+    let ev = unsafe { event_ptr(fd_u) };
     assert!(unsafe { (*ev).data }.is_null());
     assert_eq!(unsafe { (*ev).refcnt }, 0);
     unsafe {
@@ -2038,12 +1965,11 @@ pub(super) unsafe fn cpu_server_close_connection_impl(c: ConnectionJob, _who: c_
         unsafe {
             (*conn).flags &= !C_SPECIAL;
         }
-        let orig_special_connections =
-            unsafe { atomic_i32(ptr::addr_of_mut!(active_special_connections)) }
-                .fetch_sub(1, Ordering::SeqCst);
+        let orig_special_connections = unsafe { atomic_i32(active_special_connections_ptr()) }
+            .fetch_sub(1, Ordering::SeqCst);
         if mtproxy_core::runtime::net::connections::close_connection_should_signal_special_aux(
             orig_special_connections,
-            unsafe { max_special_connections },
+            unsafe { max_special_connections_get() },
         ) {
             unsafe {
                 mtproxy_ffi_net_connections_close_connection_signal_special_aux();
@@ -2071,7 +1997,7 @@ pub(super) unsafe fn cpu_server_read_write_impl(c: ConnectionJob) -> c_int {
 pub(super) unsafe fn connection_event_incref_impl(fd: c_int, val: c_longlong) {
     let fd_u = usize::try_from(fd).unwrap_or(MAX_EVENTS);
     assert!(fd_u < MAX_EVENTS);
-    let ev = unsafe { ptr::addr_of_mut!(Events[fd_u]) };
+    let ev = unsafe { event_ptr(fd_u) };
 
     let new_refcnt = unsafe { atomic_i64(ptr::addr_of_mut!((*ev).refcnt)) }
         .fetch_add(val, Ordering::SeqCst)
@@ -2097,7 +2023,7 @@ pub(super) unsafe fn connection_get_by_fd_impl(fd: c_int) -> ConnectionJob {
     if fd_u >= MAX_EVENTS {
         return ptr::null_mut();
     }
-    let ev = unsafe { ptr::addr_of_mut!(Events[fd_u]) };
+    let ev = unsafe { event_ptr(fd_u) };
     if (unsafe { (*ev).refcnt as c_int }) == 0 || unsafe { (*ev).data.is_null() } {
         return ptr::null_mut();
     }
@@ -2503,7 +2429,7 @@ unsafe fn target_lookup_ipv4_impl(
     );
     let bucket = usize::try_from(bucket_i32).unwrap_or(0);
 
-    let mut prev: *mut ConnTargetJob = unsafe { ptr::addr_of_mut!(HTarget[bucket]) };
+    let mut prev: *mut ConnTargetJob = unsafe { htarget_bucket_ptr(bucket) };
     loop {
         let cur = unsafe { *prev };
         if cur.is_null() {
@@ -2547,9 +2473,10 @@ unsafe fn target_lookup_ipv4_impl(
     let decision = mtproxy_core::runtime::net::connections::target_lookup_decision(mode, false);
     if decision == mtproxy_core::runtime::net::connections::TargetLookupDecision::InsertNew {
         let new_target_info = unsafe { conn_target_info(new_target) };
+        let bucket_head = unsafe { htarget_bucket_ptr(bucket) };
         unsafe {
-            (*new_target_info).hnext = HTarget[bucket];
-            HTarget[bucket] = new_target;
+            (*new_target_info).hnext = *bucket_head;
+            *bucket_head = new_target;
         }
         return new_target;
     }
@@ -2584,7 +2511,7 @@ unsafe fn target_lookup_ipv6_impl(
     );
     let bucket = usize::try_from(bucket_i32).unwrap_or(0);
 
-    let mut prev: *mut ConnTargetJob = unsafe { ptr::addr_of_mut!(HTarget[bucket]) };
+    let mut prev: *mut ConnTargetJob = unsafe { htarget_bucket_ptr(bucket) };
     loop {
         let cur = unsafe { *prev };
         if cur.is_null() {
@@ -2629,9 +2556,10 @@ unsafe fn target_lookup_ipv6_impl(
     let decision = mtproxy_core::runtime::net::connections::target_lookup_decision(mode, false);
     if decision == mtproxy_core::runtime::net::connections::TargetLookupDecision::InsertNew {
         let new_target_info = unsafe { conn_target_info(new_target) };
+        let bucket_head = unsafe { htarget_bucket_ptr(bucket) };
         unsafe {
-            (*new_target_info).hnext = HTarget[bucket];
-            HTarget[bucket] = new_target;
+            (*new_target_info).hnext = *bucket_head;
+            *bucket_head = new_target;
         }
         return new_target;
     }
@@ -2912,7 +2840,7 @@ pub(super) unsafe fn create_target_impl(
         return ptr::null_mut();
     }
 
-    let lock_rc = unsafe { libc::pthread_mutex_lock(ptr::addr_of_mut!(TargetsLock)) };
+    let lock_rc = unsafe { libc::pthread_mutex_lock(targets_lock_ptr()) };
     assert_eq!(lock_rc, 0);
 
     let source_ref = unsafe { &*source };
@@ -3062,13 +2990,13 @@ pub(super) unsafe fn create_target_impl(
         t_new
     };
 
-    let unlock_rc = unsafe { libc::pthread_mutex_unlock(ptr::addr_of_mut!(TargetsLock)) };
+    let unlock_rc = unsafe { libc::pthread_mutex_unlock(targets_lock_ptr()) };
     assert_eq!(unlock_rc, 0);
     out
 }
 
 pub(super) unsafe fn free_target_impl(ctj: ConnTargetJob) -> c_int {
-    let lock_rc = unsafe { libc::pthread_mutex_lock(ptr::addr_of_mut!(TargetsLock)) };
+    let lock_rc = unsafe { libc::pthread_mutex_lock(targets_lock_ptr()) };
     assert_eq!(lock_rc, 0);
 
     let target = unsafe { conn_target_info(ctj) };
@@ -3078,7 +3006,7 @@ pub(super) unsafe fn free_target_impl(ctj: ConnTargetJob) -> c_int {
         unsafe { (*target).target.s_addr != 0 },
     );
     if free_action == mtproxy_core::runtime::net::connections::TargetFreeDecision::Reject {
-        let unlock_rc = unsafe { libc::pthread_mutex_unlock(ptr::addr_of_mut!(TargetsLock)) };
+        let unlock_rc = unsafe { libc::pthread_mutex_unlock(targets_lock_ptr()) };
         assert_eq!(unlock_rc, 0);
         return -1;
     }
@@ -3146,7 +3074,7 @@ pub(super) unsafe fn free_target_impl(ctj: ConnTargetJob) -> c_int {
         }
     }
 
-    let unlock_rc = unsafe { libc::pthread_mutex_unlock(ptr::addr_of_mut!(TargetsLock)) };
+    let unlock_rc = unsafe { libc::pthread_mutex_unlock(targets_lock_ptr()) };
     assert_eq!(unlock_rc, 0);
 
     unsafe {
@@ -3157,7 +3085,7 @@ pub(super) unsafe fn free_target_impl(ctj: ConnTargetJob) -> c_int {
 }
 
 pub(super) unsafe fn do_conn_target_job_impl(job: Job, op: c_int, _jt: *mut c_void) -> c_int {
-    if unsafe { epoll_fd } <= 0 {
+    if unsafe { epoll_fd_get() } <= 0 {
         unsafe {
             job_timer_insert(
                 job,
