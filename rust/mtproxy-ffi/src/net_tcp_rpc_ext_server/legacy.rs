@@ -1,7 +1,7 @@
 //! Legacy symbol glue for `net/net-tcp-rpc-ext-server.c`.
 
 use super::core::*;
-use core::ffi::{c_char, c_double, c_int, c_uint, c_void};
+use core::ffi::{c_char, c_double, c_int, c_long, c_uint, c_void};
 use core::mem::align_of;
 use core::ptr;
 
@@ -44,9 +44,14 @@ unsafe extern "C" {
     fn tcp_rpc_flush(c: ConnectionJob) -> c_int;
     fn tcp_rpc_write_packet_compact(c: ConnectionJob, raw: *mut RawMessage) -> c_int;
 
-    fn aes_crypto_ctr128_init(c: ConnectionJob, key_data: *mut c_void, key_data_len: c_int)
-        -> c_int;
-    fn aes_crypto_free(c: ConnectionJob) -> c_int;
+    #[link_name = "aes_crypto_ctr128_init"]
+    fn ffi_aes_crypto_ctr128_init(
+        c: ConnectionJob,
+        key_data: *mut c_void,
+        key_data_len: c_int,
+    ) -> c_int;
+    #[link_name = "aes_crypto_free"]
+    fn ffi_aes_crypto_free(c: ConnectionJob) -> c_int;
     fn mtproxy_ffi_net_tcp_connections_cpu_tcp_aes_crypto_ctr128_encrypt_output(
         c: ConnectionJob,
     ) -> c_int;
@@ -59,8 +64,82 @@ unsafe extern "C" {
 
     fn mtproxy_ffi_net_connections_precise_now() -> c_double;
     fn mtproxy_ffi_precise_time_get_now() -> c_int;
+    #[link_name = "mtproxy_ffi_crypto_rand_bytes"]
+    fn ffi_crypto_rand_bytes(out: *mut u8, len: c_int) -> c_int;
+    #[link_name = "mtproxy_ffi_crypto_tls_generate_public_key"]
+    fn ffi_crypto_tls_generate_public_key(out: *mut u8) -> c_int;
+    #[link_name = "kdb_gethostbyname"]
+    fn ffi_kdb_gethostbyname(name: *const c_char) -> *mut libc::hostent;
+    #[link_name = "client_socket"]
+    fn ffi_client_socket(in_addr: u32, port: c_int, mode: c_int) -> c_int;
+    #[link_name = "client_socket_ipv6"]
+    fn ffi_client_socket_ipv6(in6_addr_ptr: *const u8, port: c_int, mode: c_int) -> c_int;
+    #[link_name = "alloc_new_connection"]
+    fn ffi_alloc_new_connection(
+        cfd: c_int,
+        ctj: ConnectionJob,
+        lcj: ConnectionJob,
+        basic_type: c_int,
+        conn_type: *mut ConnFunctions,
+        conn_extra: *mut c_void,
+        peer: u32,
+        peer_ipv6: *mut u8,
+        peer_port: c_int,
+    ) -> ConnectionJob;
+    #[link_name = "rwm_fetch_lookup"]
+    fn ffi_rwm_fetch_lookup(raw: *mut RawMessage, buf: *mut c_void, bytes: c_int) -> c_int;
+    #[link_name = "rwm_move"]
+    fn ffi_rwm_move(dest_raw: *mut RawMessage, src_raw: *mut RawMessage);
+    #[link_name = "rwm_skip_data"]
+    fn ffi_rwm_skip_data(raw: *mut RawMessage, bytes: c_int) -> c_int;
+    #[link_name = "rwm_union"]
+    fn ffi_rwm_union(raw: *mut RawMessage, tail: *mut RawMessage) -> c_int;
+    #[link_name = "rwm_init"]
+    fn ffi_rwm_init(raw: *mut RawMessage, alloc_bytes: c_int) -> c_int;
+    #[link_name = "rwm_split_head"]
+    fn ffi_rwm_split_head(head: *mut RawMessage, raw: *mut RawMessage, bytes: c_int) -> c_int;
+    #[link_name = "rwm_trunc"]
+    fn ffi_rwm_trunc(raw: *mut RawMessage, len: c_int) -> c_int;
+    #[link_name = "rwm_free"]
+    fn ffi_rwm_free(raw: *mut RawMessage) -> c_int;
+    #[link_name = "rwm_create"]
+    fn ffi_rwm_create(raw: *mut RawMessage, data: *const c_void, alloc_bytes: c_int) -> c_int;
+    #[link_name = "rwm_dump"]
+    fn ffi_rwm_dump(raw: *mut RawMessage) -> c_int;
+    #[link_name = "mpq_push_w"]
+    fn ffi_mpq_push_w(mq: *mut MpQueue, val: *mut c_void, flags: c_int) -> c_long;
+    #[link_name = "job_incref"]
+    fn ffi_job_incref(job: ConnectionJob) -> ConnectionJob;
+    #[link_name = "job_signal"]
+    fn ffi_job_signal(job_tag_int: c_int, job: ConnectionJob, signo: c_int);
+    #[link_name = "job_timer_remove"]
+    fn ffi_job_timer_remove(job: ConnectionJob);
+    #[link_name = "fail_connection"]
+    fn ffi_fail_connection(c: ConnectionJob, who: c_int);
+    #[link_name = "tcp_rpcs_parse_execute"]
+    fn ffi_tcp_rpcs_parse_execute(c: ConnectionJob) -> c_int;
+    #[link_name = "tcp_rpcs_default_execute"]
+    fn ffi_tcp_rpcs_default_execute(c: ConnectionJob, op: c_int, msg: *mut RawMessage) -> c_int;
+    #[link_name = "aesni_crypt"]
+    fn ffi_aesni_crypt(ctx: *mut c_void, input: *const c_void, out: *mut c_void, size: c_int);
+    #[link_name = "get_utime_monotonic"]
+    fn ffi_get_utime_monotonic() -> c_double;
+    #[link_name = "cpu_server_close_connection"]
+    fn ffi_cpu_server_close_connection(c: ConnectionJob, who: c_int) -> c_int;
+    #[link_name = "sha256"]
+    fn ffi_sha256(input: *const u8, ilen: c_int, output: *mut u8);
+    #[link_name = "sha256_hmac"]
+    fn ffi_sha256_hmac(
+        key: *mut u8,
+        keylen: c_int,
+        input: *mut u8,
+        ilen: c_int,
+        output: *mut u8,
+    );
     fn show_ip(ip: u32) -> *const c_char;
     fn show_ipv6(ipv6: *const u8) -> *const c_char;
+    #[link_name = "verbosity"]
+    static mut ffi_verbosity: c_int;
 }
 
 #[inline]
@@ -106,6 +185,256 @@ unsafe fn show_ip46(ip: u32, ipv6: *const u8) -> *const c_char {
 #[inline]
 unsafe fn now_value() -> c_int {
     unsafe { mtproxy_ffi_precise_time_get_now() }
+}
+
+#[inline]
+pub(super) unsafe fn conn_info(c: ConnectionJob) -> *mut ConnectionInfo {
+    unsafe { conn_info_ptr(c) }
+}
+
+#[inline]
+pub(super) unsafe fn rpc_data(c: ConnectionJob) -> *mut TcpRpcData {
+    unsafe { rpc_data_ptr(c) }
+}
+
+#[inline]
+pub(super) unsafe fn rpc_funcs(c: ConnectionJob) -> *mut TcpRpcServerFunctions {
+    unsafe { rpc_funcs_ptr(c) }
+}
+
+#[inline]
+pub(super) unsafe fn have_client_random(random: *const u8) -> c_int {
+    unsafe { have_client_random_state_impl(random) }
+}
+
+#[inline]
+pub(super) unsafe fn add_client_random(random: *const u8) {
+    unsafe { add_client_random_state_impl(random, now_value()) };
+}
+
+#[inline]
+pub(super) unsafe fn delete_old_client_randoms() {
+    unsafe { delete_old_client_randoms_state_impl(now_value()) };
+}
+
+#[inline]
+pub(super) unsafe fn is_allowed_timestamp_state(timestamp: c_int) -> c_int {
+    unsafe { is_allowed_timestamp_state_impl(timestamp, now_value()) }
+}
+
+#[inline]
+pub(super) unsafe fn ext_job_decref(c: ConnectionJob) {
+    unsafe { job_decref(JOB_REF_TAG, c) };
+}
+
+#[inline]
+pub(super) unsafe fn ext_unlock_job(c: ConnectionJob) -> c_int {
+    unsafe { unlock_job(JOB_REF_TAG, c) }
+}
+
+#[inline]
+pub(super) unsafe fn show_our_ip(c: ConnectionJob) -> *const c_char {
+    let conn = unsafe { conn_info_ptr(c) };
+    unsafe { show_ip46((*conn).our_ip, (*conn).our_ipv6.as_ptr()) }
+}
+
+#[inline]
+pub(super) unsafe fn show_remote_ip(c: ConnectionJob) -> *const c_char {
+    let conn = unsafe { conn_info_ptr(c) };
+    unsafe { show_ip46((*conn).remote_ip, (*conn).remote_ipv6.as_ptr()) }
+}
+
+#[inline]
+pub(super) unsafe fn ct_proxy_pass_ptr() -> *mut ConnFunctions {
+    &raw mut ct_proxy_pass
+}
+
+#[inline]
+pub(super) unsafe fn verbosity_get() -> c_int {
+    unsafe { ffi_verbosity }
+}
+
+#[inline]
+pub(super) unsafe fn mtproxy_ffi_crypto_rand_bytes(out: *mut u8, len: c_int) -> c_int {
+    unsafe { ffi_crypto_rand_bytes(out, len) }
+}
+
+#[inline]
+pub(super) unsafe fn mtproxy_ffi_crypto_tls_generate_public_key(out: *mut u8) -> c_int {
+    unsafe { ffi_crypto_tls_generate_public_key(out) }
+}
+
+#[inline]
+pub(super) unsafe fn kdb_gethostbyname(name: *const c_char) -> *mut libc::hostent {
+    unsafe { ffi_kdb_gethostbyname(name) }
+}
+
+#[inline]
+pub(super) unsafe fn client_socket(in_addr: u32, port: c_int, mode: c_int) -> c_int {
+    unsafe { ffi_client_socket(in_addr, port, mode) }
+}
+
+#[inline]
+pub(super) unsafe fn client_socket_ipv6(in6_addr_ptr: *const u8, port: c_int, mode: c_int) -> c_int {
+    unsafe { ffi_client_socket_ipv6(in6_addr_ptr, port, mode) }
+}
+
+#[inline]
+pub(super) unsafe fn alloc_new_connection(
+    cfd: c_int,
+    ctj: ConnectionJob,
+    lcj: ConnectionJob,
+    basic_type: c_int,
+    conn_type: *mut ConnFunctions,
+    conn_extra: *mut c_void,
+    peer: u32,
+    peer_ipv6: *mut u8,
+    peer_port: c_int,
+) -> ConnectionJob {
+    unsafe {
+        ffi_alloc_new_connection(
+            cfd, ctj, lcj, basic_type, conn_type, conn_extra, peer, peer_ipv6, peer_port,
+        )
+    }
+}
+
+#[inline]
+pub(super) unsafe fn rwm_fetch_lookup(raw: *mut RawMessage, buf: *mut c_void, bytes: c_int) -> c_int {
+    unsafe { ffi_rwm_fetch_lookup(raw, buf, bytes) }
+}
+
+#[inline]
+pub(super) unsafe fn rwm_move(dest_raw: *mut RawMessage, src_raw: *mut RawMessage) {
+    unsafe { ffi_rwm_move(dest_raw, src_raw) };
+}
+
+#[inline]
+pub(super) unsafe fn rwm_skip_data(raw: *mut RawMessage, bytes: c_int) -> c_int {
+    unsafe { ffi_rwm_skip_data(raw, bytes) }
+}
+
+#[inline]
+pub(super) unsafe fn rwm_union(raw: *mut RawMessage, tail: *mut RawMessage) -> c_int {
+    unsafe { ffi_rwm_union(raw, tail) }
+}
+
+#[inline]
+pub(super) unsafe fn rwm_init(raw: *mut RawMessage, alloc_bytes: c_int) -> c_int {
+    unsafe { ffi_rwm_init(raw, alloc_bytes) }
+}
+
+#[inline]
+pub(super) unsafe fn rwm_split_head(head: *mut RawMessage, raw: *mut RawMessage, bytes: c_int) -> c_int {
+    unsafe { ffi_rwm_split_head(head, raw, bytes) }
+}
+
+#[inline]
+pub(super) unsafe fn rwm_trunc(raw: *mut RawMessage, len: c_int) -> c_int {
+    unsafe { ffi_rwm_trunc(raw, len) }
+}
+
+#[inline]
+pub(super) unsafe fn rwm_free(raw: *mut RawMessage) -> c_int {
+    unsafe { ffi_rwm_free(raw) }
+}
+
+#[inline]
+pub(super) unsafe fn rwm_create(raw: *mut RawMessage, data: *const c_void, alloc_bytes: c_int) -> c_int {
+    unsafe { ffi_rwm_create(raw, data, alloc_bytes) }
+}
+
+#[inline]
+pub(super) unsafe fn rwm_dump(raw: *mut RawMessage) -> c_int {
+    unsafe { ffi_rwm_dump(raw) }
+}
+
+#[inline]
+pub(super) unsafe fn mpq_push_w(mq: *mut MpQueue, val: *mut c_void, flags: c_int) -> c_long {
+    unsafe { ffi_mpq_push_w(mq, val, flags) }
+}
+
+#[inline]
+pub(super) unsafe fn job_incref(job: ConnectionJob) -> ConnectionJob {
+    unsafe { ffi_job_incref(job) }
+}
+
+#[inline]
+pub(super) unsafe fn job_signal(job_tag_int: c_int, job: ConnectionJob, signo: c_int) {
+    unsafe { ffi_job_signal(job_tag_int, job, signo) };
+}
+
+#[inline]
+pub(super) unsafe fn job_timer_remove(job: ConnectionJob) {
+    unsafe { ffi_job_timer_remove(job) };
+}
+
+#[inline]
+pub(super) unsafe fn fail_connection(c: ConnectionJob, who: c_int) {
+    unsafe { ffi_fail_connection(c, who) };
+}
+
+#[inline]
+pub(super) unsafe fn tcp_rpcs_parse_execute(c: ConnectionJob) -> c_int {
+    unsafe { ffi_tcp_rpcs_parse_execute(c) }
+}
+
+#[inline]
+pub(super) unsafe fn tcp_rpcs_default_execute(
+    c: ConnectionJob,
+    op: c_int,
+    msg: *mut RawMessage,
+) -> c_int {
+    unsafe { ffi_tcp_rpcs_default_execute(c, op, msg) }
+}
+
+#[inline]
+pub(super) unsafe extern "C" fn aes_crypto_ctr128_init(
+    c: ConnectionJob,
+    key_data: *mut c_void,
+    key_data_len: c_int,
+) -> c_int {
+    unsafe { ffi_aes_crypto_ctr128_init(c, key_data, key_data_len) }
+}
+
+#[inline]
+pub(super) unsafe extern "C" fn aes_crypto_free(c: ConnectionJob) -> c_int {
+    unsafe { ffi_aes_crypto_free(c) }
+}
+
+#[inline]
+pub(super) unsafe fn aesni_crypt(
+    ctx: *mut c_void,
+    input: *const c_void,
+    out: *mut c_void,
+    size: c_int,
+) {
+    unsafe { ffi_aesni_crypt(ctx, input, out, size) };
+}
+
+#[inline]
+pub(super) unsafe fn get_utime_monotonic() -> c_double {
+    unsafe { ffi_get_utime_monotonic() }
+}
+
+#[inline]
+pub(super) unsafe fn cpu_server_close_connection(c: ConnectionJob, who: c_int) -> c_int {
+    unsafe { ffi_cpu_server_close_connection(c, who) }
+}
+
+#[inline]
+pub(super) unsafe fn sha256(input: *const u8, ilen: c_int, output: *mut u8) {
+    unsafe { ffi_sha256(input, ilen, output) };
+}
+
+#[inline]
+pub(super) unsafe fn sha256_hmac(
+    key: *mut u8,
+    keylen: c_int,
+    input: *mut u8,
+    ilen: c_int,
+    output: *mut u8,
+) {
+    unsafe { ffi_sha256_hmac(key, keylen, input, ilen, output) };
 }
 
 unsafe extern "C" fn tcp_rpcs_compact_parse_execute(c: ConnectionJob) -> c_int {

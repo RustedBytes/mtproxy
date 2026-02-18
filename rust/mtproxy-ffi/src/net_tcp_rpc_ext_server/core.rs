@@ -1,6 +1,21 @@
 //! Rust runtime implementation for selected large functions in
 //! `net/net-tcp-rpc-ext-server.c`.
 
+use super::legacy::{
+    add_client_random as legacy_add_client_random, conn_info as legacy_conn_info,
+    ct_proxy_pass_ptr, delete_old_client_randoms as legacy_delete_old_client_randoms,
+    aes_crypto_ctr128_init, aes_crypto_free, aesni_crypt, alloc_new_connection, client_socket,
+    client_socket_ipv6, cpu_server_close_connection, fail_connection, get_utime_monotonic,
+    job_incref, job_signal, job_timer_remove, kdb_gethostbyname, mpq_push_w,
+    mtproxy_ffi_crypto_rand_bytes, mtproxy_ffi_crypto_tls_generate_public_key, rwm_create,
+    rwm_dump, rwm_fetch_lookup, rwm_free, rwm_init, rwm_move, rwm_skip_data, rwm_split_head,
+    rwm_trunc, rwm_union, sha256, sha256_hmac, tcp_rpcs_default_execute, tcp_rpcs_parse_execute,
+    ext_job_decref as legacy_job_decref, ext_unlock_job as legacy_unlock_job,
+    have_client_random as legacy_have_client_random,
+    is_allowed_timestamp_state as legacy_is_allowed_timestamp_state, rpc_data as legacy_rpc_data,
+    rpc_funcs as legacy_rpc_funcs, show_our_ip as legacy_show_our_ip,
+    show_remote_ip as legacy_show_remote_ip, verbosity_get,
+};
 use core::ffi::{c_char, c_double, c_int, c_long, c_short, c_void};
 use core::mem::size_of;
 use core::ptr;
@@ -389,96 +404,23 @@ struct AesCrypto {
     write_aeskey: *mut c_void,
 }
 
-unsafe extern "C" {
-    fn mtproxy_ffi_net_tcp_rpc_ext_conn_info(c: ConnectionJob) -> *mut ConnectionInfo;
-    fn mtproxy_ffi_net_tcp_rpc_ext_data(c: ConnectionJob) -> *mut TcpRpcData;
-    fn mtproxy_ffi_net_tcp_rpc_ext_funcs(c: ConnectionJob) -> *mut TcpRpcServerFunctions;
-
-    fn mtproxy_ffi_net_tcp_rpc_ext_have_client_random(random: *const u8) -> c_int;
-    fn mtproxy_ffi_net_tcp_rpc_ext_add_client_random(random: *const u8);
-    fn mtproxy_ffi_net_tcp_rpc_ext_delete_old_client_randoms();
-    fn mtproxy_ffi_net_tcp_rpc_ext_is_allowed_timestamp_state(timestamp: c_int) -> c_int;
-
-    fn mtproxy_ffi_crypto_rand_bytes(out: *mut u8, len: c_int) -> c_int;
-    fn mtproxy_ffi_crypto_tls_generate_public_key(out: *mut u8) -> c_int;
-
-    fn kdb_gethostbyname(name: *const c_char) -> *mut libc::hostent;
-    fn client_socket(in_addr: u32, port: c_int, mode: c_int) -> c_int;
-    fn client_socket_ipv6(in6_addr_ptr: *const u8, port: c_int, mode: c_int) -> c_int;
-    fn alloc_new_connection(
-        cfd: c_int,
-        ctj: ConnectionJob,
-        lcj: ConnectionJob,
-        basic_type: c_int,
-        conn_type: *mut ConnFunctions,
-        conn_extra: *mut c_void,
-        peer: u32,
-        peer_ipv6: *mut u8,
-        peer_port: c_int,
-    ) -> ConnectionJob;
-
-    fn rwm_fetch_lookup(raw: *mut RawMessage, buf: *mut c_void, bytes: c_int) -> c_int;
-    fn rwm_move(dest_raw: *mut RawMessage, src_raw: *mut RawMessage);
-    fn rwm_skip_data(raw: *mut RawMessage, bytes: c_int) -> c_int;
-    fn rwm_union(raw: *mut RawMessage, tail: *mut RawMessage) -> c_int;
-    fn rwm_init(raw: *mut RawMessage, alloc_bytes: c_int) -> c_int;
-    fn rwm_split_head(head: *mut RawMessage, raw: *mut RawMessage, bytes: c_int) -> c_int;
-    fn rwm_trunc(raw: *mut RawMessage, len: c_int) -> c_int;
-    fn rwm_free(raw: *mut RawMessage) -> c_int;
-    fn rwm_create(raw: *mut RawMessage, data: *const c_void, alloc_bytes: c_int) -> c_int;
-    fn rwm_dump(raw: *mut RawMessage) -> c_int;
-
-    fn mpq_push_w(mq: *mut MpQueue, val: *mut c_void, flags: c_int) -> c_long;
-
-    fn job_incref(job: ConnectionJob) -> ConnectionJob;
-    fn job_signal(job_tag_int: c_int, job: ConnectionJob, signo: c_int);
-    fn job_timer_remove(job: ConnectionJob);
-    fn mtproxy_ffi_net_tcp_rpc_ext_job_decref(c: ConnectionJob);
-    fn mtproxy_ffi_net_tcp_rpc_ext_unlock_job(c: ConnectionJob) -> c_int;
-
-    fn fail_connection(c: ConnectionJob, who: c_int);
-    fn tcp_rpcs_parse_execute(c: ConnectionJob) -> c_int;
-    fn tcp_rpcs_default_execute(c: ConnectionJob, op: c_int, msg: *mut RawMessage) -> c_int;
-
-    fn aes_crypto_ctr128_init(
-        c: ConnectionJob,
-        key_data: *mut c_void,
-        key_data_len: c_int,
-    ) -> c_int;
-    fn aes_crypto_free(c: ConnectionJob) -> c_int;
-    fn aesni_crypt(ctx: *mut c_void, input: *const c_void, out: *mut c_void, size: c_int);
-
-    fn get_utime_monotonic() -> c_double;
-    fn mtproxy_ffi_net_tcp_rpc_ext_show_our_ip(c: ConnectionJob) -> *const c_char;
-    fn mtproxy_ffi_net_tcp_rpc_ext_show_remote_ip(c: ConnectionJob) -> *const c_char;
-    fn cpu_server_close_connection(c: ConnectionJob, who: c_int) -> c_int;
-
-    fn sha256(input: *const u8, ilen: c_int, output: *mut u8);
-    fn sha256_hmac(key: *mut u8, keylen: c_int, input: *mut u8, ilen: c_int, output: *mut u8);
-
-    fn kprintf(format: *const c_char, ...);
-
-    static mut ct_proxy_pass: ConnFunctions;
-    static mut verbosity: c_int;
-}
-
 #[inline]
 unsafe fn conn_info(c: ConnectionJob) -> *mut ConnectionInfo {
-    let conn = unsafe { mtproxy_ffi_net_tcp_rpc_ext_conn_info(c) };
+    let conn = unsafe { legacy_conn_info(c) };
     assert!(!conn.is_null());
     conn
 }
 
 #[inline]
 unsafe fn rpc_data(c: ConnectionJob) -> *mut TcpRpcData {
-    let data = unsafe { mtproxy_ffi_net_tcp_rpc_ext_data(c) };
+    let data = unsafe { legacy_rpc_data(c) };
     assert!(!data.is_null());
     data
 }
 
 #[inline]
 unsafe fn rpc_funcs(c: ConnectionJob) -> *mut TcpRpcServerFunctions {
-    let funcs = unsafe { mtproxy_ffi_net_tcp_rpc_ext_funcs(c) };
+    let funcs = unsafe { legacy_rpc_funcs(c) };
     assert!(!funcs.is_null());
     funcs
 }
@@ -588,7 +530,7 @@ unsafe fn state_lookup_domain_info(domain: *const u8, len: c_int) -> *const Doma
             }
             info = unsafe { (*info).next };
         }
-        if unsafe { verbosity } > 0 {
+        if unsafe { verbosity_get() } > 0 {
             unsafe {
                 crate::kprintf_fmt!(
                     b"Receive request for unknown domain %.*s\n\0"
@@ -1678,7 +1620,7 @@ unsafe fn parse_execute_inner(c: ConnectionJob) -> c_int {
             unsafe {
                 crate::kprintf_fmt!(
                     PARSE_TRY_TYPE_FMT.as_ptr().cast(),
-                    mtproxy_ffi_net_tcp_rpc_ext_show_remote_ip(c),
+                    legacy_show_remote_ip(c),
                     (*conn).remote_port,
                 );
             }
@@ -1691,7 +1633,7 @@ unsafe fn parse_execute_inner(c: ConnectionJob) -> c_int {
                 unsafe {
                     crate::kprintf_fmt!(
                         PARSE_TLS_ESTABLISHED_FMT.as_ptr().cast(),
-                        mtproxy_ffi_net_tcp_rpc_ext_show_remote_ip(c),
+                        legacy_show_remote_ip(c),
                         (*conn).remote_port,
                     );
                 }
@@ -1793,7 +1735,7 @@ unsafe fn parse_execute_inner(c: ConnectionJob) -> c_int {
                     crate::kprintf_fmt!(
                         PARSE_TLS_DOMAIN_FMT.as_ptr().cast(),
                         (*info).domain,
-                        mtproxy_ffi_net_tcp_rpc_ext_show_remote_ip(c),
+                        legacy_show_remote_ip(c),
                         (*conn).remote_port,
                     );
                 }
@@ -1830,7 +1772,7 @@ unsafe fn parse_execute_inner(c: ConnectionJob) -> c_int {
                 client_random.copy_from_slice(&client_hello[11..43]);
                 client_hello[11..43].fill(0);
 
-                if unsafe { mtproxy_ffi_net_tcp_rpc_ext_have_client_random(client_random.as_ptr()) }
+                if unsafe { legacy_have_client_random(client_random.as_ptr()) }
                     != 0
                 {
                     unsafe {
@@ -1839,8 +1781,8 @@ unsafe fn parse_execute_inner(c: ConnectionJob) -> c_int {
                     return unsafe { proxy_connection_impl(c, info) };
                 }
                 unsafe {
-                    mtproxy_ffi_net_tcp_rpc_ext_add_client_random(client_random.as_ptr());
-                    mtproxy_ffi_net_tcp_rpc_ext_delete_old_client_randoms();
+                    legacy_add_client_random(client_random.as_ptr());
+                    legacy_delete_old_client_randoms();
                 }
 
                 let secret_cnt = unsafe { ext_secret_count() };
@@ -1880,7 +1822,7 @@ unsafe fn parse_execute_inner(c: ConnectionJob) -> c_int {
                     i32::from_ne_bytes(expected_random[28..32].try_into().unwrap_or([0u8; 4]))
                         ^ i32::from_ne_bytes(client_random[28..32].try_into().unwrap_or([0u8; 4]));
 
-                if unsafe { mtproxy_ffi_net_tcp_rpc_ext_is_allowed_timestamp_state(timestamp) } == 0
+                if unsafe { legacy_is_allowed_timestamp_state(timestamp) } == 0
                 {
                     return unsafe { proxy_connection_impl(c, info) };
                 }
@@ -2286,7 +2228,7 @@ unsafe fn parse_execute_inner(c: ConnectionJob) -> c_int {
             }
         }
 
-        if unsafe { verbosity } > 2 {
+        if unsafe { verbosity_get() } > 2 {
             unsafe {
                 crate::kprintf_fmt!(
                     PARSE_RECEIVED_PACKET_FMT.as_ptr().cast(),
@@ -2340,7 +2282,7 @@ pub(super) unsafe fn tcp_proxy_pass_parse_execute_impl(c: ConnectionJob) -> c_in
     let raw = unsafe { libc::malloc(size_of::<RawMessage>()) }.cast::<RawMessage>();
     if raw.is_null() {
         unsafe {
-            mtproxy_ffi_net_tcp_rpc_ext_job_decref(e);
+            legacy_job_decref(e);
             fail_connection(c, -1);
         }
         return 0;
@@ -2351,12 +2293,12 @@ pub(super) unsafe fn tcp_proxy_pass_parse_execute_impl(c: ConnectionJob) -> c_in
         rwm_init(&mut (*conn).in_data, 0);
     }
 
-    if unsafe { verbosity } > 2 {
+    if unsafe { verbosity_get() } > 2 {
         unsafe {
             crate::kprintf_fmt!(
                 PROXY_PASS_FORWARD_FMT.as_ptr().cast(),
                 (*raw).total_bytes,
-                mtproxy_ffi_net_tcp_rpc_ext_show_remote_ip(e),
+                legacy_show_remote_ip(e),
                 (*e_conn).remote_port,
             );
         }
@@ -2371,16 +2313,16 @@ pub(super) unsafe fn tcp_proxy_pass_parse_execute_impl(c: ConnectionJob) -> c_in
 
 pub(super) unsafe fn tcp_proxy_pass_close_impl(c: ConnectionJob, who: c_int) -> c_int {
     let conn = unsafe { conn_info(c) };
-    if unsafe { verbosity } > 0 {
+    if unsafe { verbosity_get() } > 0 {
         unsafe {
             crate::kprintf_fmt!(
                 b"closing proxy pass connection #%d %s:%d -> %s:%d\n\0"
                     .as_ptr()
                     .cast(),
                 (*conn).fd,
-                mtproxy_ffi_net_tcp_rpc_ext_show_our_ip(c),
+                legacy_show_our_ip(c),
                 (*conn).our_port,
-                mtproxy_ffi_net_tcp_rpc_ext_show_remote_ip(c),
+                legacy_show_remote_ip(c),
                 (*conn).remote_port,
             );
         }
@@ -2390,7 +2332,7 @@ pub(super) unsafe fn tcp_proxy_pass_close_impl(c: ConnectionJob, who: c_int) -> 
         unsafe {
             (*conn).extra = ptr::null_mut();
             fail_connection(e, -23);
-            mtproxy_ffi_net_tcp_rpc_ext_job_decref(e);
+            legacy_job_decref(e);
         }
     }
     unsafe { cpu_server_close_connection(c, who) }
@@ -2462,7 +2404,7 @@ pub(super) unsafe fn proxy_connection_impl(c: ConnectionJob, info: *const Domain
     assert!(
         unsafe {
             crate::net_connections::check_conn_functions_bridge(
-                ptr::addr_of_mut!(ct_proxy_pass).cast::<c_void>(),
+                ct_proxy_pass_ptr().cast::<c_void>(),
             )
         } >= 0
     );
@@ -2516,7 +2458,7 @@ pub(super) unsafe fn proxy_connection_impl(c: ConnectionJob, info: *const Domain
             ptr::null_mut(),
             ptr::null_mut(),
             CT_OUTBOUND,
-            ptr::addr_of_mut!(ct_proxy_pass),
+            ct_proxy_pass_ptr(),
             c,
             peer,
             info_ref.target_ipv6.as_ptr().cast_mut(),
@@ -2527,21 +2469,21 @@ pub(super) unsafe fn proxy_connection_impl(c: ConnectionJob, info: *const Domain
     if ej.is_null() {
         unsafe {
             crate::kprintf_fmt!(PROXY_FAIL_CONN_FMT.as_ptr().cast());
-            mtproxy_ffi_net_tcp_rpc_ext_job_decref(c);
+            legacy_job_decref(c);
             fail_connection(c, -37);
         }
         return 0;
     }
 
     unsafe {
-        (*conn).type_ = ptr::addr_of_mut!(ct_proxy_pass);
+        (*conn).type_ = ct_proxy_pass_ptr();
         (*conn).extra = job_incref(ej);
     }
 
     let e_conn = unsafe { conn_info(ej) };
     assert!(!unsafe { (*e_conn).io_conn.is_null() });
     unsafe {
-        mtproxy_ffi_net_tcp_rpc_ext_unlock_job(ej);
+        legacy_unlock_job(ej);
     }
 
     if let Some(parse_execute_fn) = unsafe { (*(*conn).type_).parse_execute } {

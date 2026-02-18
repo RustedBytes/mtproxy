@@ -1,5 +1,16 @@
 //! Rust runtime implementation for `net/net-tcp-rpc-server.c`.
 
+use super::legacy::{
+    aes_create_keys, aes_crypto_init, aes_generate_nonce, cpu_server_close_connection,
+    crc32_partial, crc32c_partial, dh_params_select_get, dh_second_round, fail_connection,
+    get_my_ipv4, incr_active_dh_connections, init_dh_params, init_server_pid as init_server_PID,
+    job_incref, main_secret_ptr, matches_pid, nat_translate_ip, pid_get, pid_ptr,
+    notification_event_insert_tcp_conn_alarm, notification_event_insert_tcp_conn_close,
+    notification_event_insert_tcp_conn_ready, notification_event_insert_tcp_conn_wakeup,
+    rwm_custom_crc32, rwm_dump, rwm_fetch_data, rwm_fetch_data_back, rwm_fetch_lookup, rwm_free,
+    rwm_skip_data, rwm_split_head, tcp_add_dh_accept, tcp_get_default_rpc_flags,
+    tcp_rpc_conn_send_data, tcp_rpc_conn_send_data_im, tcp_rpc_conn_send_data_init, verbosity_get,
+};
 use core::ffi::{c_char, c_double, c_int, c_long, c_uint, c_void};
 use core::mem::{align_of, size_of, MaybeUninit};
 use core::ptr;
@@ -25,7 +36,7 @@ use mtproxy_core::runtime::net::tcp_rpc_server::{
 };
 
 pub(super) type ConnectionJob = *mut c_void;
-type Job = *mut c_void;
+pub(super) type Job = *mut c_void;
 
 const CONN_CUSTOM_DATA_BYTES: usize = 256;
 const NEED_MORE_BYTES: c_int = 0x7fff_ffff;
@@ -275,84 +286,18 @@ struct TcpRpcHandshakePacket {
 }
 
 #[repr(C)]
-struct AesSecret {
+pub(super) struct AesSecret {
     pub refcnt: c_int,
     pub secret_len: c_int,
     pub secret: [u8; 260],
 }
 
 #[repr(C)]
-struct AesKeyData {
+pub(super) struct AesKeyData {
     pub read_key: [u8; 32],
     pub read_iv: [u8; 16],
     pub write_key: [u8; 32],
     pub write_iv: [u8; 16],
-}
-
-unsafe extern "C" {
-    fn fail_connection(c: ConnectionJob, who: c_int);
-    fn cpu_server_close_connection(c: ConnectionJob, who: c_int) -> c_int;
-    fn job_incref(job: Job) -> Job;
-
-    fn notification_event_insert_tcp_conn_ready(c: ConnectionJob);
-    fn notification_event_insert_tcp_conn_close(c: ConnectionJob);
-    fn notification_event_insert_tcp_conn_alarm(c: ConnectionJob);
-    fn notification_event_insert_tcp_conn_wakeup(c: ConnectionJob);
-
-    fn rwm_fetch_data(raw: *mut RawMessage, data: *mut c_void, bytes: c_int) -> c_int;
-    fn rwm_skip_data(raw: *mut RawMessage, bytes: c_int) -> c_int;
-    fn rwm_fetch_lookup(raw: *mut RawMessage, data: *mut c_void, bytes: c_int) -> c_int;
-    fn rwm_fetch_data_back(raw: *mut RawMessage, data: *mut c_void, bytes: c_int) -> c_int;
-    fn rwm_split_head(head: *mut RawMessage, raw: *mut RawMessage, bytes: c_int) -> c_int;
-    fn rwm_dump(raw: *mut RawMessage) -> c_int;
-    fn rwm_free(raw: *mut RawMessage) -> c_int;
-    fn rwm_custom_crc32(
-        raw: *mut RawMessage,
-        bytes: c_int,
-        custom_crc32_partial: Crc32PartialFn,
-    ) -> c_uint;
-    fn tcp_rpc_conn_send_data(c_tag_int: c_int, c: ConnectionJob, len: c_int, q: *mut c_void);
-    fn tcp_rpc_conn_send_data_im(c_tag_int: c_int, c: ConnectionJob, len: c_int, q: *mut c_void);
-    fn tcp_rpc_conn_send_data_init(c: ConnectionJob, len: c_int, q: *mut c_void);
-
-    fn init_server_PID(ip: c_uint, port: c_int);
-    fn get_my_ipv4() -> c_uint;
-    fn matches_pid(x: *mut ProcessId, y: *mut ProcessId) -> c_int;
-
-    fn tcp_get_default_rpc_flags() -> c_uint;
-    fn tcp_add_dh_accept() -> c_int;
-
-    fn init_dh_params() -> c_int;
-    fn dh_second_round(g_ab: *mut u8, g_a: *mut u8, g_b: *const u8) -> c_int;
-    fn incr_active_dh_connections();
-
-    fn aes_generate_nonce(res: *mut c_char) -> c_int;
-    fn aes_create_keys(
-        out: *mut AesKeyData,
-        am_client: c_int,
-        nonce_server: *const c_char,
-        nonce_client: *const c_char,
-        client_timestamp: c_int,
-        server_ip: c_uint,
-        server_port: u16,
-        server_ipv6: *const u8,
-        client_ip: c_uint,
-        client_port: u16,
-        client_ipv6: *const u8,
-        key: *const AesSecret,
-        temp_key: *const u8,
-        temp_key_len: c_int,
-    ) -> c_int;
-    fn aes_crypto_init(c: ConnectionJob, key_data: *mut c_void, key_data_len: c_int) -> c_int;
-
-    fn nat_translate_ip(local_ip: c_uint) -> c_uint;
-
-    static mut main_secret: AesSecret;
-    static mut dh_params_select: c_int;
-    static mut PID: ProcessId;
-    static mut verbosity: c_int;
-    fn crc32_partial(data: *const c_void, len: c_long, crc: c_uint) -> c_uint;
-    fn crc32c_partial(data: *const c_void, len: c_long, crc: c_uint) -> c_uint;
 }
 
 #[inline]
@@ -388,7 +333,7 @@ unsafe fn rpc_funcs(c: ConnectionJob) -> *mut TcpRpcServerFunctions {
 
 #[inline]
 unsafe fn main_secret_key_signature() -> c_int {
-    let secret = ptr::addr_of!(main_secret);
+    let secret = unsafe { main_secret_ptr() };
     unsafe { ptr::read_unaligned((*secret).secret.as_ptr().cast::<c_int>()) }
 }
 
@@ -531,7 +476,7 @@ unsafe fn tcp_rpcs_process_nonce_packet_impl(c: ConnectionJob, msg: *mut RawMess
         (unsafe { (*data).crypto_flags } & RPCF_ALLOW_UNENC) != 0,
         (unsafe { (*data).crypto_flags } & RPCF_ALLOW_ENC) != 0,
         now_or_unix_time(),
-        main_secret.secret_len,
+        unsafe { (*main_secret_ptr()).secret_len },
         main_secret_key_signature(),
         &mut processed_schema,
         &mut processed_key_select,
@@ -559,12 +504,12 @@ unsafe fn tcp_rpcs_process_nonce_packet_impl(c: ConnectionJob, msg: *mut RawMess
             }
         }
         RPC_CRYPTO_AES_DH => {
-            if processed_has_dh_params == 0 || unsafe { dh_params_select } == 0 {
+            if processed_has_dh_params == 0 || unsafe { dh_params_select_get() } == 0 {
                 let _ = unsafe { init_dh_params() };
             }
             if processed_has_dh_params != 0
                 && parsed.dh_params_select != 0
-                && parsed.dh_params_select == unsafe { dh_params_select }
+                && parsed.dh_params_select == unsafe { dh_params_select_get() }
             {
                 dh_ok = true;
             }
@@ -621,7 +566,7 @@ unsafe fn tcp_rpcs_send_handshake_packet_impl(c: ConnectionJob) -> c_int {
     let data = unsafe { rpc_data(c) };
     let packet = HandshakePacket::new(
         unsafe { (*data).crypto_flags } & RPCF_USE_CRC32C,
-        ffi_pid_to_core(unsafe { PID }),
+        ffi_pid_to_core(unsafe { pid_get() }),
         ffi_pid_to_core(unsafe { (*data).remote_pid }),
     );
     let bytes = packet.to_bytes();
@@ -631,7 +576,7 @@ unsafe fn tcp_rpcs_send_handshake_packet_impl(c: ConnectionJob) -> c_int {
 }
 
 unsafe fn tcp_rpcs_send_handshake_error_packet_impl(c: ConnectionJob, error_code: c_int) -> c_int {
-    let packet = HandshakeErrorPacket::new(error_code, ffi_pid_to_core(unsafe { PID }));
+    let packet = HandshakeErrorPacket::new(error_code, ffi_pid_to_core(unsafe { pid_get() }));
     let bytes = packet.to_bytes();
 
     unsafe { send_data(c, bytes.as_ptr(), bytes.len()) };
@@ -643,11 +588,12 @@ unsafe fn tcp_rpcs_process_handshake_packet_impl(c: ConnectionJob, msg: *mut Raw
     let conn = unsafe { conn_info(c) };
     let data = unsafe { rpc_data(c) };
 
-    if unsafe { PID.ip } == 0 {
+    let pid = unsafe { pid_ptr() };
+    if unsafe { (*pid).ip } == 0 {
         unsafe {
             init_server_PID((*conn).our_ip, (*conn).our_port as c_int);
-            if PID.ip == 0 {
-                PID.ip = get_my_ipv4();
+            if (*pid).ip == 0 {
+                (*pid).ip = get_my_ipv4();
             }
         }
     }
@@ -697,7 +643,7 @@ unsafe fn tcp_rpcs_process_handshake_packet_impl(c: ConnectionJob, msg: *mut Raw
     }
 
     let enable_crc32c;
-    let mut local_pid = unsafe { PID };
+    let mut local_pid = unsafe { pid_get() };
     let mut expected_peer_pid = core_pid_to_ffi(parsed.peer_pid);
     let peer_pid_matches = unsafe {
         matches_pid(
@@ -887,7 +833,7 @@ pub(super) unsafe fn tcp_rpcs_parse_execute_impl(c: ConnectionJob) -> c_int {
             4
         );
 
-        if unsafe { verbosity > 2 } {
+        if unsafe { verbosity_get() > 2 } {
             let _ = unsafe { rwm_dump(ptr::addr_of_mut!(msg)) };
         }
 
@@ -1129,7 +1075,8 @@ pub(super) unsafe fn tcp_rpcs_init_crypto_impl(
                 .cast::<TcpRpcNonceDhPacket>()
         };
 
-        if unsafe { (*old_dh).dh_params_select != dh_params_select || dh_params_select == 0 } {
+        let active_dh_params = unsafe { dh_params_select_get() };
+        if unsafe { (*old_dh).dh_params_select != active_dh_params || active_dh_params == 0 } {
             return -1;
         }
 
@@ -1173,7 +1120,7 @@ pub(super) unsafe fn tcp_rpcs_init_crypto_impl(
             nat_translate_ip((*conn).remote_ip),
             (*conn).remote_port as u16,
             (*conn).remote_ipv6.as_ptr(),
-            ptr::addr_of!(main_secret),
+            unsafe { main_secret_ptr().cast_const() },
             if temp_dh_len > 0 {
                 temp_dh.as_ptr()
             } else {
@@ -1226,7 +1173,7 @@ pub(super) unsafe fn tcp_rpcs_init_crypto_impl(
     write_i32_ne(&mut out_packet, 12, unsafe { (*data).nonce_time });
     out_packet[16..32].copy_from_slice(unsafe { &(*data).nonce });
     write_i32_ne(&mut out_packet, 32, 0);
-    write_i32_ne(&mut out_packet, 36, unsafe { dh_params_select });
+    write_i32_ne(&mut out_packet, 36, unsafe { dh_params_select_get() });
     out_packet[40..40 + 256].copy_from_slice(&out_dh_public);
 
     unsafe { send_data_init(c, out_packet.as_ptr(), out_packet.len()) };
