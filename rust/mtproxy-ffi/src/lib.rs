@@ -163,17 +163,14 @@ pub extern "C" fn mtproxy_ffi_precise_time_get_now() -> c_int {
 // ============================================================================
 
 /// Global progname variable (migrated from engine/engine.c)
-#[no_mangle]
 #[export_name = "local_progname"]
 static mut GLOBAL_LOCAL_PROGNAME: *mut c_char = core::ptr::null_mut();
 
 /// Global precise_now_diff variable (migrated from engine/engine.c)
-#[no_mangle]
 #[export_name = "precise_now_diff"]
 static mut GLOBAL_PRECISE_NOW_DIFF: c_double = 0.0;
 
 /// Global server_ipv6 variable (migrated from engine/engine.c)
-#[no_mangle]
 #[export_name = "server_ipv6"]
 static mut GLOBAL_SERVER_IPV6: [u8; 16] = [0; 16];
 
@@ -192,7 +189,6 @@ struct EventPreciseCronInternal {
 /// is automatically done in `mtproxy_ffi_engine_init()`.
 /// 
 /// Initialized to null pointers; runtime initialization sets next/prev to point to itself.
-#[no_mangle]
 #[export_name = "precise_cron_events"]
 static mut GLOBAL_PRECISE_CRON_EVENTS: EventPreciseCronInternal = EventPreciseCronInternal {
     next: core::ptr::null_mut(),
@@ -207,7 +203,6 @@ struct EngineStateInternal {
 }
 
 /// Global engine_state variable (migrated from engine/engine.c)
-#[no_mangle]
 #[export_name = "engine_state"]
 static mut GLOBAL_ENGINE_STATE: *mut EngineStateInternal = core::ptr::null_mut();
 
@@ -226,22 +221,18 @@ type ConnTargetJobT = *mut ConnTargetJobOpaque;
 const PRIME_TARGETS: usize = 99961; // From mtproxy_ffi.h
 
 /// Global HTarget array (migrated from net/net-connections.c)
-#[no_mangle]
 #[export_name = "HTarget"]
 static mut GLOBAL_HTARGET: [ConnTargetJobT; PRIME_TARGETS] = [core::ptr::null_mut(); PRIME_TARGETS];
 
 /// Global TargetsLock mutex (migrated from net/net-connections.c)
-#[no_mangle]
 #[export_name = "TargetsLock"]
 static mut GLOBAL_TARGETS_LOCK: libc::pthread_mutex_t = libc::PTHREAD_MUTEX_INITIALIZER;
 
 /// Global active_special_connections variable (migrated from net/net-connections.c)
-#[no_mangle]
 #[export_name = "active_special_connections"]
 static mut GLOBAL_ACTIVE_SPECIAL_CONNECTIONS: c_int = 0;
 
 /// Global max_special_connections variable (migrated from net/net-connections.c)
-#[no_mangle]
 #[export_name = "max_special_connections"]
 static mut GLOBAL_MAX_SPECIAL_CONNECTIONS: c_int = 65536; // MAX_CONNECTIONS default
 

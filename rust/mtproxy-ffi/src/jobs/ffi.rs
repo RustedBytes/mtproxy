@@ -890,7 +890,7 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_set_job_interrupt_signal_handler() {
     unsafe {
         libc::sigemptyset(&raw mut act.sa_mask);
         act.sa_flags = 0;
-        act.sa_sigaction = mtproxy_ffi_jobs_job_interrupt_signal_handler as usize;
+        act.sa_sigaction = mtproxy_ffi_jobs_job_interrupt_signal_handler as *const () as usize;
     }
     let rc = unsafe { libc::sigaction(libc::SIGRTMAX() - 7, &raw const act, ptr::null_mut()) };
     if rc != 0 {

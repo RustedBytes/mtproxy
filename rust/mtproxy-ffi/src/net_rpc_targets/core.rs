@@ -405,14 +405,13 @@ unsafe extern "C" fn check_connection_cb(
                 *result = c;
             }
         }
-    } else if ready == CR_STOPPED && unsafe { (*conn).unreliability } < unsafe { *best_unr } {
-        if unsafe { pid_matches_filter(ptr::addr_of_mut!((*data).remote_pid), pid) } {
+    } else if ready == CR_STOPPED && unsafe { (*conn).unreliability } < unsafe { *best_unr }
+        && unsafe { pid_matches_filter(ptr::addr_of_mut!((*data).remote_pid), pid) } {
             unsafe {
                 *best_unr = (*conn).unreliability;
                 *result = c;
             }
         }
-    }
 }
 
 unsafe extern "C" fn check_connection_arr_cb(c: ConnectionJob, ex: *mut c_void, ex2: *mut c_void) {

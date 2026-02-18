@@ -503,7 +503,7 @@ pub fn run_from_env() -> i32 {
     run_from_argv(&argv)
 }
 
-/// Runs MTProto proxy entrypoint using process environment arguments.
+/// Runs `MTProto` proxy entrypoint using process environment arguments.
 ///
 /// This symbol mirrors the role of `main()` in `mtproto/mtproto-proxy.c`.
 #[must_use]

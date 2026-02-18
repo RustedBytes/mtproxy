@@ -95,7 +95,7 @@ pub fn tls_expect_bytes(response: &[u8], pos: i32, expected: &[u8]) -> bool {
     &response[start..end] == expected
 }
 
-/// Computes the encrypted size for ServerHello response with optional randomization.
+/// Computes the encrypted size for `ServerHello` response with optional randomization.
 ///
 /// # Arguments
 /// * `base_size` - The base encrypted size from domain info
@@ -178,7 +178,7 @@ pub fn add_length(buffer: &mut [u8], pos: &mut usize, length: i32) -> bool {
         return false;
     }
 
-    let length_u16 = if length < 0 || length > 65535 {
+    let length_u16 = if !(0..=65535).contains(&length) {
         return false;
     } else {
         length as u16
@@ -194,7 +194,7 @@ pub fn add_length(buffer: &mut [u8], pos: &mut usize, length: i32) -> bool {
 ///
 /// # Arguments
 /// * `buffer` - The output buffer to write to
-/// * `pos` - Current position in buffer (will be advanced by data.len())
+/// * `pos` - Current position in buffer (will be advanced by `data.len()`)
 /// * `data` - The data bytes to copy
 ///
 /// # Returns
@@ -252,14 +252,14 @@ pub fn add_grease(buffer: &mut [u8], pos: &mut usize, greases: &[u8], num: usize
 /// manipulation for the real hash table implementation.
 #[must_use]
 pub fn have_client_random_check(random: &[u8; 16], existing_randoms: &[&[u8; 16]]) -> bool {
-    existing_randoms.iter().any(|&r| r == random)
+    existing_randoms.contains(&random)
 }
 
 /// Adds random bytes to a TLS request buffer.
 ///
 /// # Arguments
 /// * `buffer` - The output buffer to write to
-/// * `pos` - Current position in buffer (will be advanced by random_len)
+/// * `pos` - Current position in buffer (will be advanced by `random_len`)
 /// * `rand_bytes` - The random bytes to add
 ///
 /// # Returns

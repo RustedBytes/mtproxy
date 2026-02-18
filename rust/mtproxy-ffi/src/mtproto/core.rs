@@ -4344,7 +4344,7 @@ proxy_tag_set\t%d\n\0"
 pub(super) unsafe fn mtproto_hts_stats_execute_ffi(
     c: *mut c_void,
     msg: *mut c_void,
-    op: c_int,
+    _op: c_int,
 ) -> c_int {
     let c = c.cast::<c_void>();
     let msg = msg.cast::<MtprotoRawMessage>();

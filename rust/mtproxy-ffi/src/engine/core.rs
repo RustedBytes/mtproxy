@@ -1567,11 +1567,7 @@ unsafe fn raise_file_limit_impl(maxconn: c_int) {
         }
 
         let reserve_gap = RAISE_FILE_GAP as libc::rlim_t;
-        let limit_without_gap = if rlim.rlim_cur > reserve_gap {
-            rlim.rlim_cur - reserve_gap
-        } else {
-            0
-        };
+        let limit_without_gap = rlim.rlim_cur.saturating_sub(reserve_gap);
         if (maxconn_local as libc::rlim_t) > limit_without_gap {
             maxconn_local = limit_without_gap as c_int;
         }

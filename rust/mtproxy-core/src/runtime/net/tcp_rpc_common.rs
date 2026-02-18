@@ -903,7 +903,7 @@ static MAX_DH_ACCEPT_RATE: AtomicU32 = AtomicU32::new(0);
 ///
 /// NOTE: This Rust implementation provides a simplified version of DH rate limiting.
 /// The C implementation uses thread-local state which cannot be directly replicated
-/// in a no_std environment. The FFI layer should maintain thread-local state if needed.
+/// in a `no_std` environment. The FFI layer should maintain thread-local state if needed.
 pub fn set_max_dh_accept_rate(rate: i32) {
     #[allow(clippy::cast_sign_loss)]
     MAX_DH_ACCEPT_RATE.store(rate as u32, Ordering::Relaxed);
@@ -918,7 +918,7 @@ pub fn get_max_dh_accept_rate() -> i32 {
 
 /// Constructs a ping packet with the given ping ID.
 ///
-/// Returns a 12-byte array containing RPC_PING opcode and the ping ID.
+/// Returns a 12-byte array containing `RPC_PING` opcode and the ping ID.
 /// This mirrors the logic from `tcp_rpc_send_ping`.
 #[must_use]
 pub fn construct_ping_packet(ping_id: i64) -> [u8; 12] {
@@ -967,7 +967,7 @@ impl Default for DhAcceptRateState {
 /// # Arguments
 /// * `state` - Current rate limiting state (remaining tokens and last update time)
 /// * `max_rate` - Maximum operations per second (0 = unlimited, must be >= 0)
-/// * `precise_now` - Current time in seconds (must be >= state.last_time)
+/// * `precise_now` - Current time in seconds (must be >= `state.last_time`)
 ///
 /// # Returns
 /// `Ok(new_state)` if operation allowed, `Err(new_state)` if rate limited.
