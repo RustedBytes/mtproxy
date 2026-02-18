@@ -155,18 +155,19 @@ pub(crate) fn c_format_to_string(fmt: *const c_char, args: &[CFormatArg]) -> Str
     if fmt.is_null() {
         return String::new();
     }
+
     let bytes = unsafe { CStr::from_ptr(fmt) }.to_bytes();
     let mut out = String::with_capacity(bytes.len().saturating_mul(2));
     let mut i = 0usize;
     let mut arg_idx = 0usize;
 
     while i < bytes.len() {
-        let ch = bytes[i];
-        if ch != b'%' {
-            out.push(char::from(ch));
+        if bytes[i] != b'%' {
+            out.push(char::from(bytes[i]));
             i += 1;
             continue;
         }
+
         i += 1;
         if i >= bytes.len() {
             break;
@@ -224,13 +225,15 @@ pub(crate) fn c_format_to_string(fmt: *const c_char, args: &[CFormatArg]) -> Str
 
         if i + 1 < bytes.len() && bytes[i] == b'l' && bytes[i + 1] == b'l' {
             i += 2;
-        } else if i < bytes.len() && matches!(bytes[i], b'h' | b'l' | b'z' | b't' | b'j' | b'L') {
+        } else if i < bytes.len() && matches!(bytes[i], b'h' | b'l' | b'z' | b't' | b'j' | b'L')
+        {
             i += 1;
         }
 
         if i >= bytes.len() {
             break;
         }
+
         let spec = bytes[i] as char;
         i += 1;
 
@@ -316,8 +319,10 @@ fn sb_truncate_opaque(sb: &mut crate::stats::StatsBuffer) {
     if sb.buff.is_null() || sb.size <= 0 {
         return;
     }
+
     let size = sb.size as usize;
     let buff_slice = unsafe { core::slice::from_raw_parts_mut(sb.buff.cast::<u8>(), size) };
+
     buff_slice[size - 1] = 0;
     let mut pos = (size - 2) as isize;
     while pos >= 0 {
@@ -334,107 +339,68 @@ pub(crate) fn sb_printf_with_c_format(sb: *mut c_void, format: *const c_char, ar
     if sb.is_null() || format.is_null() {
         return;
     }
+
     let text = c_format_to_string(format, args);
     let sb = sb.cast::<crate::stats::StatsBuffer>();
     let sb_ref = unsafe { &mut *sb };
+
     if sb_ref.buff.is_null() || sb_ref.size <= 0 || sb_ref.pos < 0 {
         return;
     }
 
-    let needed = sb_ref.pos as usize + text.len() + 1;
-    let mut size = sb_ref.size as usize;
-    if needed > size {
+    let size = sb_ref.size as usize;
+    let pos = sb_ref.pos as usize;
+    if pos >= size {
+        sb_truncate_opaque(sb_ref);
+        return;
+    }
+
+    let needed = pos.saturating_add(text.len()).saturating_add(1);
+    let mut capacity = size;
+    if needed > capacity {
         if (sb_ref.flags & 1) != 0 {
-            let mut new_size = size.max(16);
+            let mut new_size = capacity.max(16);
             while new_size < needed {
                 new_size = new_size.saturating_mul(2);
             }
+
             let new_ptr =
                 unsafe { libc::realloc(sb_ref.buff.cast::<c_void>(), new_size) }.cast::<c_char>();
             if new_ptr.is_null() {
                 sb_truncate_opaque(sb_ref);
                 return;
             }
+
             sb_ref.buff = new_ptr;
             sb_ref.size = i32::try_from(new_size).unwrap_or(i32::MAX);
-            size = new_size;
+            capacity = new_size;
         } else {
             sb_truncate_opaque(sb_ref);
             return;
         }
     }
 
-    let pos = sb_ref.pos as usize;
-    let out = unsafe { core::slice::from_raw_parts_mut(sb_ref.buff.cast::<u8>(), size) };
+    let out = unsafe { core::slice::from_raw_parts_mut(sb_ref.buff.cast::<u8>(), capacity) };
     let bytes = text.as_bytes();
-    out[pos..pos + bytes.len()].copy_from_slice(bytes);
-    sb_ref.pos += i32::try_from(bytes.len()).unwrap_or(0);
-    out[sb_ref.pos as usize] = 0;
+    let end = pos + bytes.len();
+    out[pos..end].copy_from_slice(bytes);
+    sb_ref.pos = i32::try_from(end).unwrap_or(i32::MAX);
+    if end < out.len() {
+        out[end] = 0;
+    } else if let Some(last) = out.last_mut() {
+        *last = 0;
+        sb_ref.pos = (out.len().saturating_sub(1)) as i32;
+    }
 }
 
 pub(crate) fn kprintf_with_c_format(format: *const c_char, args: &[CFormatArg]) {
     if format.is_null() {
         return;
     }
-    let old_errno = unsafe { *libc::__errno_location() };
 
-    let mut tv: libc::timeval = unsafe { core::mem::zeroed() };
-    let mut tm: libc::tm = unsafe { core::mem::zeroed() };
-    if unsafe { libc::gettimeofday(&mut tv, core::ptr::null_mut()) } != 0
-        || unsafe { libc::localtime_r(&tv.tv_sec, &mut tm) }.is_null()
-    {
-        tm = unsafe { core::mem::zeroed() };
-        tv.tv_usec = 0;
-    }
-
-    let mut prefix = [0 as c_char; 96];
-    let n = unsafe {
-        crate::time_cfg_observability::mtproxy_ffi_format_log_prefix(
-            unsafe { libc::getpid() },
-            tm.tm_year + 1900,
-            tm.tm_mon + 1,
-            tm.tm_mday,
-            tm.tm_hour,
-            tm.tm_min,
-            tm.tm_sec,
-            tv.tv_usec as i32,
-            prefix.as_mut_ptr(),
-            prefix.len(),
-        )
-    };
-    let mut out = if n > 0 {
-        unsafe { CStr::from_ptr(prefix.as_ptr()) }
-            .to_string_lossy()
-            .into_owned()
-    } else {
-        String::new()
-    };
-    out.push_str(&c_format_to_string(format, args));
-
-    let bytes = out.as_bytes();
-    let mut written = 0usize;
-    while written < bytes.len() {
-        let r = unsafe {
-            libc::write(
-                2,
-                bytes[written..].as_ptr().cast::<c_void>(),
-                bytes.len() - written,
-            )
-        };
-        if r < 0 {
-            let err = unsafe { *libc::__errno_location() };
-            if err == libc::EINTR {
-                continue;
-            }
-            break;
-        }
-        if r == 0 {
-            break;
-        }
-        written += r as usize;
-    }
-
-    unsafe { *libc::__errno_location() = old_errno };
+    let rendered = c_format_to_string(format, args);
+    let message = rendered.trim_end_matches('\n');
+    log::info!("{message}");
 }
 
 #[macro_export]

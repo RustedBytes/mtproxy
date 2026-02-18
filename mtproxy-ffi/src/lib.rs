@@ -45,6 +45,7 @@ use std::cell::Cell;
 use std::ffi::CStr;
 use std::fs;
 use std::io::Read;
+use std::sync::Once;
 use std::sync::Mutex;
 use std::thread_local;
 use std::vec::Vec;
@@ -62,6 +63,7 @@ static PRECISE_TIME: AtomicI64 = AtomicI64::new(0);
 static PRECISE_TIME_RDTSC: AtomicI64 = AtomicI64::new(0);
 static DOUBLE_TIME_LAST_BITS: AtomicU64 = AtomicU64::new((-1.0f64).to_bits());
 static DOUBLE_TIME_NEXT_RDTSC: AtomicI64 = AtomicI64::new(0);
+static LOGGER_INIT: Once = Once::new();
 
 mod compat;
 mod crypto;
@@ -250,5 +252,9 @@ pub unsafe extern "C" fn mtproxy_ffi_init_precise_cron_events() {
 /// Legacy binary entrypoint, previously provided by `mtproto/mtproto-proxy.c`.
 #[no_mangle]
 pub unsafe extern "C" fn main(argc: c_int, argv: *mut *mut c_char) -> c_int {
+    LOGGER_INIT.call_once(|| {
+        let env = env_logger::Env::default().default_filter_or("info");
+        let _ = env_logger::Builder::from_env(env).try_init();
+    });
     mtproto::ffi::mtproxy_ffi_mtproto_legacy_main(argc, argv)
 }
