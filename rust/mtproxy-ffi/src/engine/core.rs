@@ -1915,6 +1915,12 @@ pub(super) unsafe fn engine_init_impl(pwd_filename: *const c_char, do_not_open_p
     let e = unsafe { engine_state };
     assert!(!e.is_null());
 
+    // Keep `precise_cron_events` in the same initialized state as legacy C:
+    // a circular sentinel list where next/prev point to itself.
+    unsafe {
+        crate::mtproxy_ffi_init_precise_cron_events();
+    }
+
     if mtproxy_core::runtime::engine::engine_init_open_plan(do_not_open_port != 0)
         == mtproxy_core::runtime::engine::EngineInitOpenPlan::RunPreOpen
     {
