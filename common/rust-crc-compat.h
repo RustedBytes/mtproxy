@@ -5,7 +5,6 @@
 #pragma once
 
 #include <stdint.h>
-#include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 
 #ifdef __cplusplus
 extern "C" {

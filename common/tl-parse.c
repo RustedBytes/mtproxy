@@ -22,14 +22,13 @@
               2014 Vitaly Valtman
 */
 
-#include "common/tl-parse.h"
-
 #include <assert.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
 
 #include "common/kprintf.h"
+#include "common/tl-parse.h"
 
 // Legacy TL entrypoints are implemented in Rust; C keeps only varargs helpers.
 
