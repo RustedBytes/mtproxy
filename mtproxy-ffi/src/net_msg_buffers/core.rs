@@ -191,7 +191,7 @@ unsafe extern "C" {
 
     #[link_name = "alloc_mp_queue_w"]
     fn c_alloc_mp_queue_w() -> *mut c_void;
-    #[allow(dead_code)]
+    #[cfg(test)]
     fn free_mp_queue(queue: *mut MpQueue);
     fn mpq_pop_nw(queue: *mut MpQueue, flags: c_int) -> *mut c_void;
     fn mpq_push_w(queue: *mut MpQueue, v: *mut c_void, flags: c_int) -> c_long;
@@ -216,8 +216,6 @@ unsafe extern "C" {
     fn schedule_job(job_tag_int: c_int, job: *mut AsyncJob) -> c_int;
     #[link_name = "job_free"]
     fn c_job_free(job_tag_int: c_int, job: *mut c_void) -> c_int;
-
-    fn sb_printf(sb: *mut StatsBuffer, format: *const c_char, ...);
 
     static mut verbosity: c_int;
 }
@@ -626,7 +624,7 @@ unsafe fn alloc_new_msg_buffers_chunk(ch: *mut MsgBuffersChunk) -> *mut MsgBuffe
     c
 }
 
-#[allow(dead_code)]
+#[cfg(test)]
 unsafe fn free_msg_buffers_chunk_internal(c: *mut MsgBuffersChunk, ch: *mut MsgBuffersChunk) {
     assert_eq!(unsafe { (*c).magic }, MSG_CHUNK_USED_LOCKED_MAGIC);
     let free_block_queue = unsafe { (*c).free_block_queue };
@@ -682,7 +680,7 @@ unsafe fn free_msg_buffers_chunk_internal(c: *mut MsgBuffersChunk, ch: *mut MsgB
     }
 }
 
-#[allow(dead_code)]
+#[cfg(test)]
 unsafe fn free_msg_buffers_chunk(c: *mut MsgBuffersChunk) {
     assert_eq!(unsafe { (*c).magic }, MSG_CHUNK_USED_LOCKED_MAGIC);
     assert_eq!(unsafe { free_cnt_get(c, 1) }, unsafe { (*c).tot_buffers });
