@@ -509,6 +509,11 @@ const fn sig2int(sig: c_int) -> u64 {
     }
 }
 
+#[export_name = "SIG2INT"]
+pub extern "C" fn mtproxy_ffi_engine_sig2int(sig: c_int) -> u64 {
+    sig2int(sig)
+}
+
 #[inline]
 const fn default_signal_mask() -> u64 {
     sig2int(libc::SIGHUP)

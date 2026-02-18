@@ -1545,9 +1545,7 @@ typedef struct event_precise_cron {
 // GLIBC defines SIGRTMAX as a function in C, but engine ABI expects 64.
 enum { OUR_SIGRTMAX = 64 };
 
-static inline unsigned long long SIG2INT(const int sig) {
-  return (sig == OUR_SIGRTMAX) ? 1ull : (1ull << (unsigned long long)sig);
-}
+unsigned long long SIG2INT(int sig);
 
 static const unsigned long long ENGINE_NO_PORT = 4ull;
 
