@@ -3624,3 +3624,42 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_tokio_message_queue_pop(
     };
     dequeue_user_queue_item(&queue, out_ptr)
 }
+
+// ============================================================================
+// Job and thread helper functions (migrated from net/net-connections.c)
+// ============================================================================
+
+/// Empty assertion function (migrated from net/net-connections.c)
+#[no_mangle]
+pub extern "C" fn assert_net_cpu_thread() {
+    // Empty by design - no-op assertion
+}
+
+/// Asserts current thread is engine or main thread (migrated from net/net-connections.c)
+#[no_mangle]
+pub extern "C" fn assert_engine_thread() {
+    unsafe {
+        let jt = jobs_get_this_job_thread_c_impl();
+        assert!(
+            !jt.is_null()
+                && ((*jt).thread_class == JC_ENGINE || (*jt).thread_class == JC_MAIN)
+        );
+    }
+}
+
+/// Frees a job (migrated from net/net-connections.c)
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_connections_job_free(job: JobT) -> i32 {
+    const JOB_REF_TAG: i32 = 1;
+    unsafe { job_free(JOB_REF_TAG, job) }
+}
+
+/// Decrements jobs_active counter (migrated from net/net-connections.c)
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_connections_job_thread_dec_jobs_active() {
+    unsafe {
+        let jt = jobs_get_this_job_thread_c_impl();
+        assert!(!jt.is_null());
+        (*jt).jobs_active -= 1;
+    }
+}
