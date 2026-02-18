@@ -1169,7 +1169,7 @@ pub(super) fn mtproto_notify_ext_connection_runtime_ffi(
         if (send_notifications & 1) != 0 {
             let co = unsafe { connection_get_by_fd_generation(ex_ref.out_fd, ex_ref.out_gen) };
             if !co.is_null() {
-                unsafe { mtproto_notify_remote_closed_owned(co, ex_ref.out_conn_id) };
+                mtproto_notify_remote_closed_owned(co, ex_ref.out_conn_id);
             }
         }
     }
@@ -1201,17 +1201,17 @@ pub(super) fn mtproto_remove_ext_connection_runtime_ffi(
 
     let mut cur = MtproxyMtprotoExtConnection::default();
     let lookup_rc =
-        unsafe { mtproto_ext_conn_get_by_out_conn_id_ffi(ex_ref.out_conn_id, &mut cur) };
+        mtproto_ext_conn_get_by_out_conn_id_ffi(ex_ref.out_conn_id, &mut cur);
     assert!(lookup_rc >= 0);
     if lookup_rc <= 0 {
         return;
     }
 
-    unsafe { mtproto_notify_ext_connection_runtime_ffi(&cur, send_notifications) };
+    mtproto_notify_ext_connection_runtime_ffi(&cur, send_notifications);
 
     let mut removed = MtproxyMtprotoExtConnection::default();
     let remove_rc =
-        unsafe { mtproto_ext_conn_remove_by_out_conn_id_ffi(cur.out_conn_id, &mut removed) };
+        mtproto_ext_conn_remove_by_out_conn_id_ffi(cur.out_conn_id, &mut removed);
     assert!(remove_rc >= 0);
 }
 
@@ -1411,7 +1411,7 @@ pub(super) fn mtproto_http_send_message_ffi(
     unsafe {
         clear_connection_timeout(c);
     }
-    let d = unsafe { mtproto_hts_data_ptr(c) };
+    let d = mtproto_hts_data_ptr(c);
     if d.is_null() {
         return 0;
     }
@@ -1426,31 +1426,27 @@ pub(super) fn mtproto_http_send_message_ffi(
     } else {
         let len = unread;
         let mut header_len = 0_usize;
-        let rc = unsafe {
-            mtproto_build_http_ok_header_ffi(
-                (*d).query_flags & QF_KEEPALIVE,
-                (*d).query_flags & QF_EXTRA_HEADERS,
+        let rc = mtproto_build_http_ok_header_ffi(
+                unsafe { (*d).query_flags & QF_KEEPALIVE },
+                unsafe { (*d).query_flags & QF_EXTRA_HEADERS },
                 len,
                 core::ptr::null_mut(),
                 0,
                 &mut header_len,
-            )
-        };
+            );
         if rc < 0 || header_len > i32::MAX as usize {
             return 0;
         }
 
         let mut header = vec![0_u8; header_len];
-        let rc = unsafe {
-            mtproto_build_http_ok_header_ffi(
-                (*d).query_flags & QF_KEEPALIVE,
-                (*d).query_flags & QF_EXTRA_HEADERS,
+        let rc = mtproto_build_http_ok_header_ffi(
+                unsafe { (*d).query_flags & QF_KEEPALIVE },
+                unsafe { (*d).query_flags & QF_EXTRA_HEADERS },
                 len,
                 header.as_mut_ptr(),
                 header.len(),
                 &mut header_len,
-            )
-        };
+            );
         if rc != 0 {
             return 0;
         }
@@ -1476,7 +1472,7 @@ pub(super) fn mtproto_http_send_message_ffi(
         }
     }
 
-    let conn = unsafe { mtproto_conn_info_ptr(c) };
+    let conn = mtproto_conn_info_ptr(c);
     if conn.is_null() {
         return 0;
     }
@@ -1492,10 +1488,10 @@ pub(super) fn mtproto_http_send_message_ffi(
     }
 
     let mut ex = MtproxyMtprotoExtConnection::default();
-    let ext_rc = unsafe { mtproto_ext_conn_get_by_in_fd_ffi((*conn).fd, &mut ex) };
+    let ext_rc = mtproto_ext_conn_get_by_in_fd_ffi(unsafe { (*conn).fd }, &mut ex);
     assert!(ext_rc >= 0);
     if ext_rc > 0 {
-        unsafe { mtproto_remove_ext_connection_runtime_ffi(&ex, 1) };
+        mtproto_remove_ext_connection_runtime_ffi(&ex, 1);
     }
 
     let mut c_copy = c;
@@ -1518,7 +1514,7 @@ pub(super) fn mtproto_finish_postponed_http_response_ffi(data: *mut c_void, len:
     let c = unsafe { *conn_ptr };
     assert!(!c.is_null());
 
-    let conn = unsafe { mtproto_conn_info_ptr(c) };
+    let conn = mtproto_conn_info_ptr(c);
     assert!(!conn.is_null());
 
     if unsafe { ((*c.cast::<MtprotoAsyncJobPrefix>()).j_flags & JF_COMPLETED) == 0 } {
@@ -1533,7 +1529,7 @@ pub(super) fn mtproto_finish_postponed_http_response_ffi(data: *mut c_void, len:
     } else {
         assert!(unsafe { (*conn).pending_queries == 0 });
     }
-    unsafe { mtproto_job_decref(c) };
+    mtproto_job_decref(c);
     JOB_COMPLETED
 }
 
@@ -1541,7 +1537,7 @@ unsafe extern "C" fn mtproto_finish_postponed_http_response_bridge(
     data: *mut c_void,
     len: c_int,
 ) -> c_int {
-    unsafe { mtproto_finish_postponed_http_response_ffi(data, len) }
+    mtproto_finish_postponed_http_response_ffi(data, len)
 }
 
 pub(super) fn mtproto_client_send_message_runtime_ffi(
@@ -1551,8 +1547,8 @@ pub(super) fn mtproto_client_send_message_runtime_ffi(
     tlio_in: *mut c_void,
     flags: c_int,
 ) -> c_int {
-    if unsafe { mtproto_check_conn_buffers_runtime_ffi(c) } < 0 {
-        unsafe { mtproto_job_decref(c) };
+    if mtproto_check_conn_buffers_runtime_ffi(c) < 0 {
+        mtproto_job_decref(c);
         return -1;
     }
     if in_conn_id != 0 {
@@ -1560,15 +1556,15 @@ pub(super) fn mtproto_client_send_message_runtime_ffi(
         return 1;
     }
 
-    let conn = unsafe { mtproto_conn_info_ptr(c) };
+    let conn = mtproto_conn_info_ptr(c);
     if conn.is_null() {
-        unsafe { mtproto_job_decref(c) };
+        mtproto_job_decref(c);
         return -1;
     }
 
     let http_type_ptr = core::ptr::addr_of_mut!(ct_http_server_mtfront).cast::<c_void>();
     if unsafe { (*conn).type_ == http_type_ptr } {
-        return unsafe { mtproto_http_send_message_ffi(c, tlio_in, flags) };
+        return mtproto_http_send_message_ffi(c, tlio_in, flags);
     }
 
     let tlio_out = unsafe { c_tl_out_state_alloc() }.cast::<crate::tl_parse::abi::TlOutState>();
@@ -1580,17 +1576,17 @@ pub(super) fn mtproto_client_send_message_runtime_ffi(
         c_tl_out_state_free(tlio_out.cast());
     }
 
-    if unsafe { mtproto_check_conn_buffers_runtime_ffi(c) } < 0 {
-        unsafe { mtproto_job_decref(c) };
+    if mtproto_check_conn_buffers_runtime_ffi(c) < 0 {
+        mtproto_job_decref(c);
         -1
     } else {
-        unsafe { mtproto_job_decref(c) };
+        mtproto_job_decref(c);
         1
     }
 }
 
 #[inline]
-unsafe fn mtproto_conn_info_ptr(c: ConnectionJob) -> *mut MtprotoConnInfoPrefix {
+fn mtproto_conn_info_ptr(c: ConnectionJob) -> *mut MtprotoConnInfoPrefix {
     if c.is_null() {
         return core::ptr::null_mut();
     }
@@ -1600,8 +1596,8 @@ unsafe fn mtproto_conn_info_ptr(c: ConnectionJob) -> *mut MtprotoConnInfoPrefix 
 }
 
 #[inline]
-unsafe fn mtproto_rpc_data_ptr(c: ConnectionJob) -> *mut MtprotoTcpRpcDataPrefix {
-    let conn = unsafe { mtproto_conn_info_ptr(c) };
+fn mtproto_rpc_data_ptr(c: ConnectionJob) -> *mut MtprotoTcpRpcDataPrefix {
+    let conn = mtproto_conn_info_ptr(c);
     if conn.is_null() {
         return core::ptr::null_mut();
     }
@@ -1612,8 +1608,8 @@ unsafe fn mtproto_rpc_data_ptr(c: ConnectionJob) -> *mut MtprotoTcpRpcDataPrefix
 }
 
 #[inline]
-unsafe fn mtproto_conn_tag(c: ConnectionJob) -> c_int {
-    let conn = unsafe { mtproto_conn_info_ptr(c) };
+fn mtproto_conn_tag(c: ConnectionJob) -> c_int {
+    let conn = mtproto_conn_info_ptr(c);
     if conn.is_null() {
         return 0;
     }
@@ -1622,15 +1618,15 @@ unsafe fn mtproto_conn_tag(c: ConnectionJob) -> c_int {
 }
 
 #[inline]
-unsafe fn mtproto_job_decref(c: ConnectionJob) {
+fn mtproto_job_decref(c: ConnectionJob) {
     if !c.is_null() {
         unsafe { job_decref(1, c) };
     }
 }
 
 #[inline]
-unsafe fn mtproto_http_query_flags_ptr(c: ConnectionJob) -> *mut c_int {
-    let conn = unsafe { mtproto_conn_info_ptr(c) };
+fn mtproto_http_query_flags_ptr(c: ConnectionJob) -> *mut c_int {
+    let conn = mtproto_conn_info_ptr(c);
     if conn.is_null() {
         return core::ptr::null_mut();
     }
@@ -1639,8 +1635,8 @@ unsafe fn mtproto_http_query_flags_ptr(c: ConnectionJob) -> *mut c_int {
 }
 
 #[inline]
-unsafe fn mtproto_http_query_flags_get(c: ConnectionJob) -> c_int {
-    let ptr = unsafe { mtproto_http_query_flags_ptr(c) };
+fn mtproto_http_query_flags_get(c: ConnectionJob) -> c_int {
+    let ptr = mtproto_http_query_flags_ptr(c);
     if ptr.is_null() {
         return 0;
     }
@@ -1648,8 +1644,8 @@ unsafe fn mtproto_http_query_flags_get(c: ConnectionJob) -> c_int {
 }
 
 #[inline]
-unsafe fn mtproto_http_query_flags_set(c: ConnectionJob, value: c_int) {
-    let ptr = unsafe { mtproto_http_query_flags_ptr(c) };
+fn mtproto_http_query_flags_set(c: ConnectionJob, value: c_int) {
+    let ptr = mtproto_http_query_flags_ptr(c);
     if ptr.is_null() {
         return;
     }
@@ -1657,8 +1653,8 @@ unsafe fn mtproto_http_query_flags_set(c: ConnectionJob, value: c_int) {
 }
 
 #[inline]
-unsafe fn mtproto_hts_data_ptr(c: ConnectionJob) -> *mut MtprotoHtsData {
-    let conn = unsafe { mtproto_conn_info_ptr(c) };
+fn mtproto_hts_data_ptr(c: ConnectionJob) -> *mut MtprotoHtsData {
+    let conn = mtproto_conn_info_ptr(c);
     if conn.is_null() {
         return core::ptr::null_mut();
     }
@@ -1666,7 +1662,7 @@ unsafe fn mtproto_hts_data_ptr(c: ConnectionJob) -> *mut MtprotoHtsData {
 }
 
 #[inline]
-unsafe fn mtproto_http_query_info_ptr(job: *mut c_void) -> *mut MtprotoHttpQueryInfo {
+fn mtproto_http_query_info_ptr(job: *mut c_void) -> *mut MtprotoHttpQueryInfo {
     if job.is_null() {
         return core::ptr::null_mut();
     }
@@ -1676,7 +1672,7 @@ unsafe fn mtproto_http_query_info_ptr(job: *mut c_void) -> *mut MtprotoHttpQuery
 }
 
 #[inline]
-unsafe fn mtproto_listening_conn_info_ptr(c: ConnectionJob) -> *mut MtprotoListeningConnInfoPrefix {
+fn mtproto_listening_conn_info_ptr(c: ConnectionJob) -> *mut MtprotoListeningConnInfoPrefix {
     if c.is_null() {
         return core::ptr::null_mut();
     }
@@ -1686,7 +1682,7 @@ unsafe fn mtproto_listening_conn_info_ptr(c: ConnectionJob) -> *mut MtprotoListe
 }
 
 #[inline]
-unsafe fn mtproto_client_packet_info_ptr(job: *mut c_void) -> *mut MtprotoClientPacketInfo {
+fn mtproto_client_packet_info_ptr(job: *mut c_void) -> *mut MtprotoClientPacketInfo {
     if job.is_null() {
         return core::ptr::null_mut();
     }
@@ -1726,7 +1722,7 @@ fn mtproto_jsc_fast(class: c_int, sig: c_int) -> u64 {
     ((u64::try_from(class).unwrap_or(0)) << shift) | mtproto_jss_allow_fast(sig)
 }
 
-unsafe fn mtproto_schedule_job_callback_local(
+fn mtproto_schedule_job_callback_local(
     context: c_int,
     func: MtprotoJobCallbackFn,
     data: *mut c_void,
@@ -1770,14 +1766,15 @@ unsafe fn mtproto_schedule_job_callback_local(
     }
 }
 
-unsafe fn mtproto_lru_insert_conn_local(c: ConnectionJob) {
-    let conn = unsafe { mtproto_conn_info_ptr(c) };
+fn mtproto_lru_insert_conn_local(c: ConnectionJob) {
+    let conn = mtproto_conn_info_ptr(c);
     assert!(!conn.is_null());
-    let rc = unsafe { mtproto_ext_conn_lru_insert_ffi((*conn).fd, (*conn).generation) };
+    let rc =
+        mtproto_ext_conn_lru_insert_ffi(unsafe { (*conn).fd }, unsafe { (*conn).generation });
     assert!(rc >= 0);
 }
 
-unsafe fn mtproto_check_thread_class_local(class: c_int) {
+fn mtproto_check_thread_class_local(class: c_int) {
     let jt = unsafe { crate::jobs_get_this_job_thread_c_impl() };
     assert!(!jt.is_null());
     let jt_prefix = jt.cast::<MtprotoJobThreadPrefix>();
@@ -1794,7 +1791,7 @@ fn mtproto_parse_hex_nibble(byte: u8) -> Option<u8> {
     }
 }
 
-unsafe fn mtproto_choose_proxy_target_impl(target_dc: c_int) -> ConnTargetJob {
+fn mtproto_choose_proxy_target_impl(target_dc: c_int) -> ConnTargetJob {
     const PICK_BATCH: c_int = 64;
     let cur_conf = unsafe { CurConf };
     if cur_conf.is_null() {
@@ -1835,15 +1832,15 @@ unsafe fn mtproto_choose_proxy_target_impl(target_dc: c_int) -> ConnTargetJob {
         while i < count {
             let c = candidates[i];
             if !c.is_null() {
-                let data = unsafe { mtproto_rpc_data_ptr(c) };
+                let data = mtproto_rpc_data_ptr(c);
                 let is_match = if !data.is_null() {
-                    let tag = unsafe { mtproto_conn_tag(c) };
+                    let tag = mtproto_conn_tag(c);
                     let marker = unsafe { (*data).extra_int };
                     marker == tag || marker == -tag
                 } else {
                     false
                 };
-                unsafe { mtproto_job_decref(c) };
+                mtproto_job_decref(c);
                 if is_match {
                     return s;
                 }
@@ -1856,11 +1853,11 @@ unsafe fn mtproto_choose_proxy_target_impl(target_dc: c_int) -> ConnTargetJob {
 }
 
 pub(super) fn mtproto_choose_proxy_target_ffi(target_dc: c_int) -> ConnTargetJob {
-    unsafe { mtproto_choose_proxy_target_impl(target_dc) }
+    mtproto_choose_proxy_target_impl(target_dc)
 }
 
 #[inline]
-unsafe fn mtproto_forward_pick_connection(target: ConnTargetJob) -> ConnectionJob {
+fn mtproto_forward_pick_connection(target: ConnTargetJob) -> ConnectionJob {
     const PICK_BATCH: c_int = 64;
     let mut attempts = 3;
     while !target.is_null() && attempts > 0 {
@@ -1879,9 +1876,9 @@ unsafe fn mtproto_forward_pick_connection(target: ConnTargetJob) -> ConnectionJo
         while i < count {
             let d = candidates[i];
             if !d.is_null() {
-                let data = unsafe { mtproto_rpc_data_ptr(d) };
+                let data = mtproto_rpc_data_ptr(d);
                 let is_match = if !data.is_null() {
-                    let tag = unsafe { mtproto_conn_tag(d) };
+                    let tag = mtproto_conn_tag(d);
                     let marker = unsafe { (*data).extra_int };
                     marker == tag || marker == -tag
                 } else {
@@ -1890,7 +1887,7 @@ unsafe fn mtproto_forward_pick_connection(target: ConnTargetJob) -> ConnectionJo
                 if is_match {
                     return d;
                 }
-                unsafe { mtproto_job_decref(d) };
+                mtproto_job_decref(d);
             }
             i = i.saturating_add(1);
         }
@@ -1899,7 +1896,7 @@ unsafe fn mtproto_forward_pick_connection(target: ConnTargetJob) -> ConnectionJo
 }
 
 #[inline]
-unsafe fn mtproto_forward_endpoint(
+fn mtproto_forward_endpoint(
     conn: *const MtprotoConnInfoPrefix,
     ip_port_override: *const c_int,
     nat_our_ip: bool,
@@ -1944,7 +1941,7 @@ unsafe fn mtproto_forward_endpoint(
 }
 
 #[allow(clippy::too_many_arguments)]
-unsafe fn mtproto_forward_build_req(
+fn mtproto_forward_build_req(
     flags: c_int,
     out_conn_id: i64,
     remote_ipv6: &[u8; 16],
@@ -2014,8 +2011,7 @@ unsafe fn mtproto_forward_build_req(
     };
 
     let mut req_len = 0usize;
-    let rc = unsafe {
-        mtproto_build_rpc_proxy_req_ffi(
+    let rc = mtproto_build_rpc_proxy_req_ffi(
             flags,
             out_conn_id,
             remote_ipv6.as_ptr(),
@@ -2035,8 +2031,7 @@ unsafe fn mtproto_forward_build_req(
             core::ptr::null_mut(),
             0,
             &mut req_len,
-        )
-    };
+        );
     if rc < 0 {
         return None;
     }
@@ -2045,8 +2040,7 @@ unsafe fn mtproto_forward_build_req(
     }
 
     let mut req = vec![0u8; req_len];
-    let rc = unsafe {
-        mtproto_build_rpc_proxy_req_ffi(
+    let rc = mtproto_build_rpc_proxy_req_ffi(
             flags,
             out_conn_id,
             remote_ipv6.as_ptr(),
@@ -2066,8 +2060,7 @@ unsafe fn mtproto_forward_build_req(
             req.as_mut_ptr(),
             req.len(),
             &mut req_len,
-        )
-    };
+        );
     if rc != 0 || req_len > 0x7fff_ffffusize {
         return None;
     }
@@ -2075,7 +2068,7 @@ unsafe fn mtproto_forward_build_req(
     Some(req)
 }
 
-unsafe fn mtproto_forward_send_req(d: ConnectionJob, req: &[u8]) -> bool {
+fn mtproto_forward_send_req(d: ConnectionJob, req: &[u8]) -> bool {
     let tlio_out = unsafe { c_tl_out_state_alloc() }.cast::<crate::tl_parse::abi::TlOutState>();
     if tlio_out.is_null() {
         return false;
@@ -2095,7 +2088,7 @@ unsafe fn mtproto_forward_send_req(d: ConnectionJob, req: &[u8]) -> bool {
     true
 }
 
-unsafe fn mtproto_forward_mtproto_enc_packet_impl(
+fn mtproto_forward_mtproto_enc_packet_impl(
     tlio_in: *mut crate::tl_parse::abi::TlInState,
     c: ConnectionJob,
     auth_key_id: i64,
@@ -2107,24 +2100,23 @@ unsafe fn mtproto_forward_mtproto_enc_packet_impl(
         return 0;
     }
 
-    let conn = unsafe { mtproto_conn_info_ptr(c) };
+    let conn = mtproto_conn_info_ptr(c);
     if conn.is_null() {
         return 0;
     }
     unsafe {
         (*conn).query_start_time = get_utime_monotonic();
     }
-    let data = unsafe { mtproto_rpc_data_ptr(c) };
+    let data = mtproto_rpc_data_ptr(c);
     if data.is_null() {
         return 0;
     }
     let target_dc = unsafe { (*data).extra_int4 };
-    let s = unsafe { mtproto_choose_proxy_target_impl(target_dc) };
+    let s = mtproto_choose_proxy_target_impl(target_dc);
 
     let unread = unsafe { crate::tl_parse::abi::mtproxy_ffi_tl_fetch_unread(tlio_in) };
     assert_eq!(unread, len);
-    unsafe {
-        mtproto_forward_tcp_query_ffi(
+    mtproto_forward_tcp_query_ffi(
             tlio_in.cast::<c_void>(),
             c,
             s,
@@ -2133,7 +2125,6 @@ unsafe fn mtproto_forward_mtproto_enc_packet_impl(
             remote_ip_port,
             core::ptr::null(),
         )
-    }
 }
 
 pub(super) fn mtproto_forward_mtproto_packet_ffi(
@@ -2163,44 +2154,39 @@ pub(super) fn mtproto_forward_mtproto_packet_ffi(
     }
 
     let mut inspected = MtproxyMtprotoPacketInspectResult::default();
-    let inspect_rc = unsafe {
-        mtproto_inspect_packet_header_ffi(
+    let inspect_rc = mtproto_inspect_packet_header_ffi(
             header.as_ptr(),
             header.len(),
             len,
             core::ptr::addr_of_mut!(inspected),
-        )
-    };
+        );
     if inspect_rc < 0 {
         return 0;
     }
 
     if inspected.kind == MTPROTO_PACKET_KIND_ENCRYPTED {
-        return unsafe {
-            mtproto_forward_mtproto_enc_packet_impl(
+        return mtproto_forward_mtproto_enc_packet_impl(
                 tlio_in,
                 c,
                 inspected.auth_key_id,
                 len,
                 remote_ip_port,
                 rpc_flags,
-            )
-        };
+            );
     }
     if inspected.kind != MTPROTO_PACKET_KIND_UNENCRYPTED_DH {
         return 0;
     }
 
-    let data = unsafe { mtproto_rpc_data_ptr(c) };
+    let data = mtproto_rpc_data_ptr(c);
     if data.is_null() {
         return 0;
     }
     let target_dc = unsafe { (*data).extra_int4 };
-    let s = unsafe { mtproto_choose_proxy_target_impl(target_dc) };
+    let s = mtproto_choose_proxy_target_impl(target_dc);
     let unread = unsafe { crate::tl_parse::abi::mtproxy_ffi_tl_fetch_unread(tlio_in) };
     assert_eq!(unread, len);
-    unsafe {
-        mtproto_forward_tcp_query_ffi(
+    mtproto_forward_tcp_query_ffi(
             tlio_in.cast::<c_void>(),
             c,
             s,
@@ -2209,10 +2195,9 @@ pub(super) fn mtproto_forward_mtproto_packet_ffi(
             remote_ip_port,
             core::ptr::null(),
         )
-    }
 }
 
-unsafe fn mtproto_notify_remote_closed(c: ConnectionJob, out_conn_id: i64) {
+fn mtproto_notify_remote_closed(c: ConnectionJob, out_conn_id: i64) {
     if c.is_null() {
         return;
     }
@@ -2240,7 +2225,7 @@ unsafe fn mtproto_notify_remote_closed(c: ConnectionJob, out_conn_id: i64) {
     }
 }
 
-unsafe fn mtproto_notify_remote_closed_owned(c: ConnectionJob, out_conn_id: i64) {
+fn mtproto_notify_remote_closed_owned(c: ConnectionJob, out_conn_id: i64) {
     if c.is_null() {
         return;
     }
@@ -2271,7 +2256,7 @@ pub(super) fn mtproto_push_rpc_confirmation_runtime_ffi(
     if c.is_null() {
         return;
     }
-    let d = unsafe { mtproto_rpc_data_ptr(c) };
+    let d = mtproto_rpc_data_ptr(c);
     if d.is_null() {
         return;
     }
@@ -2284,7 +2269,7 @@ pub(super) fn mtproto_push_rpc_confirmation_runtime_ffi(
         let prefix = [0xdd_u8; 1];
         assert!(unsafe { rwm_create(msg, prefix.as_ptr().cast(), 1) } == 1);
         assert!(unsafe { rwm_push_data(msg, core::ptr::addr_of!(confirm).cast(), 4) } == 4);
-        let conn = unsafe { mtproto_conn_info_ptr(c) };
+        let conn = mtproto_conn_info_ptr(c);
         if conn.is_null() || unsafe { (*conn).out_queue.is_null() } {
             unsafe {
                 rwm_free(msg);
@@ -2378,7 +2363,7 @@ pub(super) fn mtproto_process_client_packet_runtime_ffi(
         }
     }
 
-    let conn = unsafe { mtproto_conn_info_ptr(c) };
+    let conn = mtproto_conn_info_ptr(c);
     if conn.is_null() {
         return 0;
     }
@@ -2432,7 +2417,7 @@ pub(super) fn mtproto_process_client_packet_runtime_ffi(
             if !d.is_null() {
                 let mut confirm = planned.confirm;
                 assert!(planned.in_conn_id == 0);
-                let d_data = unsafe { mtproto_rpc_data_ptr(d) };
+                let d_data = mtproto_rpc_data_ptr(d);
                 if !d_data.is_null() && (unsafe { (*d_data).flags } & RPC_F_COMPACT) != 0 {
                     confirm = confirm.swap_bytes();
                 }
@@ -2476,7 +2461,7 @@ pub(super) fn mtproto_process_http_query_ffi(tlio_in: *mut c_void, hqj: *mut c_v
         return -404;
     }
     let tlio_in = tlio_in.cast::<crate::tl_parse::abi::TlInState>();
-    let d = unsafe { mtproto_http_query_info_ptr(hqj) };
+    let d = mtproto_http_query_info_ptr(hqj);
     if d.is_null() {
         return -404;
     }
@@ -2526,7 +2511,7 @@ pub(super) fn mtproto_process_http_query_ffi(tlio_in: *mut c_void, hqj: *mut c_v
     }
 
     if q_uri_len >= 4 && &q_uri[..4] == b"/api" {
-        let mut query_flags = unsafe { mtproto_http_query_flags_get(c) };
+        let mut query_flags = mtproto_http_query_flags_get(c);
         if q_uri_len >= 5 && q_uri[4] == b'w' {
             query_flags |= QF_EXTRA_HEADERS;
             unsafe {
@@ -2601,7 +2586,7 @@ pub(super) fn mtproto_process_http_query_ffi(tlio_in: *mut c_void, hqj: *mut c_v
 
         let mut tmp_ip_port = [0 as c_int; 5];
         let mut remote_ip_port = core::ptr::null::<c_int>();
-        let conn = unsafe { mtproto_conn_info_ptr(c) };
+        let conn = mtproto_conn_info_ptr(c);
         if conn.is_null() {
             return -404;
         }
@@ -2633,14 +2618,12 @@ pub(super) fn mtproto_process_http_query_ffi(tlio_in: *mut c_void, hqj: *mut c_v
                 let mut real_ip = 0u32;
                 let mut parsed_ipv6_len = -1;
                 let parse_ipv4_rc =
-                    unsafe { mtproto_parse_text_ipv4_ffi(x_real_ip.as_ptr(), &mut real_ip) };
-                let parse_ipv6_rc = unsafe {
-                    mtproto_parse_text_ipv6_ffi(
+                    mtproto_parse_text_ipv4_ffi(x_real_ip.as_ptr(), &mut real_ip);
+                let parse_ipv6_rc = mtproto_parse_text_ipv6_ffi(
                         x_real_ip.as_ptr(),
                         tmp_ip_port.as_mut_ptr().cast::<u8>(),
                         &mut parsed_ipv6_len,
-                    )
-                };
+                    );
                 if (parse_ipv4_rc == 0 && real_ip >= (1u32 << 24))
                     || (parse_ipv6_rc == 0 && parsed_ipv6_len > 0)
                 {
@@ -2661,15 +2644,13 @@ pub(super) fn mtproto_process_http_query_ffi(tlio_in: *mut c_void, hqj: *mut c_v
             }
         }
 
-        let res = unsafe {
-            mtproto_forward_mtproto_packet_ffi(
-                tlio_in.cast::<c_void>(),
-                c,
-                (*d).data_size,
-                remote_ip_port,
-                0,
-            )
-        };
+        let res = mtproto_forward_mtproto_packet_ffi(
+            tlio_in.cast::<c_void>(),
+            c,
+            unsafe { (*d).data_size },
+            remote_ip_port,
+            0,
+        );
         return if res != 0 { 1 } else { -404 };
     }
 
@@ -2718,7 +2699,7 @@ unsafe extern "C" fn mtproto_callback_job_run_bridge(
     op: c_int,
     jt: *mut c_void,
 ) -> c_int {
-    unsafe { mtproto_callback_job_run_ffi(job, op, jt) }
+    mtproto_callback_job_run_ffi(job, op, jt)
 }
 
 pub(super) fn mtproto_http_query_job_run_ffi(
@@ -2729,7 +2710,7 @@ pub(super) fn mtproto_http_query_job_run_ffi(
     if job.is_null() {
         return JOB_ERROR;
     }
-    let hq = unsafe { mtproto_http_query_info_ptr(job) };
+    let hq = mtproto_http_query_info_ptr(job);
     if hq.is_null() {
         return JOB_ERROR;
     }
@@ -2754,7 +2735,7 @@ pub(super) fn mtproto_http_query_job_run_ffi(
                     0,
                 );
             }
-            let res = unsafe { mtproto_process_http_query_ffi(tlio_in.cast::<c_void>(), job) };
+            let res = mtproto_process_http_query_ffi(tlio_in.cast::<c_void>(), job);
             unsafe {
                 c_tl_in_state_free(tlio_in.cast());
             }
@@ -2795,13 +2776,13 @@ pub(super) fn mtproto_http_query_job_run_ffi(
                     unsafe { connection_get_by_fd_generation((*hq).conn_fd, (*hq).conn_generation) }
                 };
                 if !c.is_null() {
-                    let c_conn = unsafe { mtproto_conn_info_ptr(c) };
+                    let c_conn = mtproto_conn_info_ptr(c);
                     if !c_conn.is_null() {
                         assert!(unsafe { (*c_conn).pending_queries } == 1);
                         unsafe {
                             (*c_conn).pending_queries -= 1;
                         }
-                        let query_flags = unsafe { mtproto_http_query_flags_get(c) };
+                        let query_flags = mtproto_http_query_flags_get(c);
                         if (query_flags & QF_KEEPALIVE) == 0
                             && unsafe { (*c_conn).status } == CONN_STATUS_WORKING
                         {
@@ -2810,7 +2791,7 @@ pub(super) fn mtproto_http_query_job_run_ffi(
                             }
                         }
                     }
-                    unsafe { mtproto_job_decref(c) };
+                    mtproto_job_decref(c);
                 }
                 unsafe {
                     pending_http_queries -= 1;
@@ -2838,7 +2819,7 @@ unsafe extern "C" fn mtproto_http_query_job_run_bridge(
     op: c_int,
     jt: *mut c_void,
 ) -> c_int {
-    unsafe { mtproto_http_query_job_run_ffi(job.cast::<c_void>(), op, jt) }
+    mtproto_http_query_job_run_ffi(job.cast::<c_void>(), op, jt)
 }
 
 pub(super) fn mtproto_client_packet_job_run_ffi(
@@ -2849,7 +2830,7 @@ pub(super) fn mtproto_client_packet_job_run_ffi(
     if job.is_null() {
         return JOB_ERROR;
     }
-    let d = unsafe { mtproto_client_packet_info_ptr(job) };
+    let d = mtproto_client_packet_info_ptr(job);
     if d.is_null() {
         return JOB_ERROR;
     }
@@ -2911,7 +2892,7 @@ unsafe extern "C" fn mtproto_client_packet_job_run_bridge(
     op: c_int,
     jt: *mut c_void,
 ) -> c_int {
-    unsafe { mtproto_client_packet_job_run_ffi(job.cast::<c_void>(), op, jt) }
+    mtproto_client_packet_job_run_ffi(job.cast::<c_void>(), op, jt)
 }
 
 pub(super) fn mtproto_rpcc_execute_ffi(c: ConnectionJob, op: c_int, msg: *mut c_void) -> c_int {
@@ -2919,7 +2900,7 @@ pub(super) fn mtproto_rpcc_execute_ffi(c: ConnectionJob, op: c_int, msg: *mut c_
         return 0;
     }
     let msg = msg.cast::<MtprotoRawMessage>();
-    let conn = unsafe { mtproto_conn_info_ptr(c) };
+    let conn = mtproto_conn_info_ptr(c);
     if conn.is_null() {
         return 0;
     }
@@ -2962,7 +2943,7 @@ pub(super) fn mtproto_rpcc_execute_ffi(c: ConnectionJob, op: c_int, msg: *mut c_
                 )
             };
             assert!(!job.is_null());
-            let d = unsafe { mtproto_client_packet_info_ptr(job.cast::<c_void>()) };
+            let d = mtproto_client_packet_info_ptr(job.cast::<c_void>());
             assert!(!d.is_null());
 
             unsafe {
@@ -2995,8 +2976,8 @@ pub(super) fn mtproto_mtfront_client_ready_ffi(c: *mut c_void) -> c_int {
         return 0;
     }
     let c = c.cast::<c_void>();
-    let d = unsafe { mtproto_rpc_data_ptr(c) };
-    let conn = unsafe { mtproto_conn_info_ptr(c) };
+    let d = mtproto_rpc_data_ptr(c);
+    let conn = mtproto_conn_info_ptr(c);
     if d.is_null() || conn.is_null() {
         return 0;
     }
@@ -3004,7 +2985,7 @@ pub(super) fn mtproto_mtfront_client_ready_ffi(c: *mut c_void) -> c_int {
     let fd = unsafe { (*conn).fd };
     assert!((fd as u32) < MAX_CONNECTIONS as u32);
     assert!(unsafe { (*d).extra_int == 0 });
-    let tag = unsafe { mtproto_conn_tag(c) };
+    let tag = mtproto_conn_tag(c);
     assert!((tag as u32) > 0 && (tag as u32) <= 0x0100_0000);
     unsafe {
         (*d).extra_int = tag;
@@ -3033,8 +3014,8 @@ pub(super) fn mtproto_mtfront_client_close_ffi(c: *mut c_void, _who: c_int) -> c
         return 0;
     }
     let c = c.cast::<c_void>();
-    let d = unsafe { mtproto_rpc_data_ptr(c) };
-    let conn = unsafe { mtproto_conn_info_ptr(c) };
+    let d = mtproto_rpc_data_ptr(c);
+    let conn = mtproto_conn_info_ptr(c);
     if d.is_null() || conn.is_null() {
         return 0;
     }
@@ -3057,12 +3038,12 @@ pub(super) fn mtproto_mtfront_client_close_ffi(c: *mut c_void, _who: c_int) -> c
         assert!(unsafe { (*d).extra_int == mtproto_conn_tag(c) });
         loop {
             let mut ex = MtproxyMtprotoExtConnection::default();
-            let rc = unsafe { mtproto_ext_conn_remove_any_by_out_fd_ffi(fd, &mut ex) };
+            let rc = mtproto_ext_conn_remove_any_by_out_fd_ffi(fd, &mut ex);
             assert!(rc >= 0);
             if rc <= 0 {
                 break;
             }
-            unsafe { mtproto_notify_ext_connection_runtime_ffi(&ex, 2) };
+            mtproto_notify_ext_connection_runtime_ffi(&ex, 2);
         }
     }
     unsafe {
@@ -3077,16 +3058,16 @@ pub(super) fn mtproto_do_close_in_ext_conn_ffi(data: *mut c_void, s_len: c_int) 
     assert!(!fd_ptr.is_null());
     let fd = unsafe { *fd_ptr };
     let mut ex = MtproxyMtprotoExtConnection::default();
-    let rc = unsafe { mtproto_ext_conn_get_by_in_fd_ffi(fd, &mut ex) };
+    let rc = mtproto_ext_conn_get_by_in_fd_ffi(fd, &mut ex);
     assert!(rc >= 0);
     if rc > 0 {
-        unsafe { mtproto_remove_ext_connection_runtime_ffi(&ex, 1) };
+        mtproto_remove_ext_connection_runtime_ffi(&ex, 1);
     }
     JOB_COMPLETED
 }
 
 unsafe extern "C" fn mtproto_do_close_in_ext_conn_bridge(data: *mut c_void, s_len: c_int) -> c_int {
-    unsafe { mtproto_do_close_in_ext_conn_ffi(data, s_len) }
+    mtproto_do_close_in_ext_conn_ffi(data, s_len)
 }
 
 pub(super) fn mtproto_ext_rpc_ready_ffi(c: *mut c_void) -> c_int {
@@ -3094,7 +3075,7 @@ pub(super) fn mtproto_ext_rpc_ready_ffi(c: *mut c_void) -> c_int {
         return 0;
     }
     let c = c.cast::<c_void>();
-    let conn = unsafe { mtproto_conn_info_ptr(c) };
+    let conn = mtproto_conn_info_ptr(c);
     if conn.is_null() {
         return 0;
     }
@@ -3130,7 +3111,7 @@ pub(super) fn mtproto_ext_rpc_close_ffi(c: *mut c_void, who: c_int) -> c_int {
         return 0;
     }
     let c = c.cast::<c_void>();
-    let conn = unsafe { mtproto_conn_info_ptr(c) };
+    let conn = mtproto_conn_info_ptr(c);
     if conn.is_null() {
         return 0;
     }
@@ -3146,10 +3127,10 @@ pub(super) fn mtproto_ext_rpc_close_ffi(c: *mut c_void, who: c_int) -> c_int {
         }
     }
     let mut ex = MtproxyMtprotoExtConnection::default();
-    let rc = unsafe { mtproto_ext_conn_get_by_in_fd_ffi(fd, &mut ex) };
+    let rc = mtproto_ext_conn_get_by_in_fd_ffi(fd, &mut ex);
     assert!(rc >= 0);
     if rc > 0 {
-        unsafe { mtproto_remove_ext_connection_runtime_ffi(&ex, 1) };
+        mtproto_remove_ext_connection_runtime_ffi(&ex, 1);
     }
     0
 }
@@ -3162,8 +3143,8 @@ pub(super) fn mtproto_proxy_rpc_ready_ffi(c: *mut c_void) -> c_int {
         return 0;
     }
     let c = c.cast::<c_void>();
-    let d = unsafe { mtproto_rpc_data_ptr(c) };
-    let conn = unsafe { mtproto_conn_info_ptr(c) };
+    let d = mtproto_rpc_data_ptr(c);
+    let conn = mtproto_conn_info_ptr(c);
     if d.is_null() || conn.is_null() {
         return 0;
     }
@@ -3175,7 +3156,7 @@ pub(super) fn mtproto_proxy_rpc_ready_ffi(c: *mut c_void) -> c_int {
         }
     }
     assert!(unsafe { (*d).extra_int == 0 });
-    let tag = unsafe { mtproto_conn_tag(c) };
+    let tag = mtproto_conn_tag(c);
     assert!((tag as u32) > 0 && (tag as u32) <= 0x0100_0000);
     unsafe {
         (*d).extra_int = -tag;
@@ -3189,7 +3170,7 @@ pub(super) fn mtproto_http_close_ffi(c: *mut c_void, who: c_int) -> c_int {
         return 0;
     }
     let c = c.cast::<c_void>();
-    let conn = unsafe { mtproto_conn_info_ptr(c) };
+    let conn = mtproto_conn_info_ptr(c);
     if conn.is_null() {
         return 0;
     }
@@ -3237,8 +3218,8 @@ pub(super) fn mtproto_proxy_rpc_close_ffi(c: *mut c_void, who: c_int) -> c_int {
         return 0;
     }
     let c = c.cast::<c_void>();
-    let d = unsafe { mtproto_rpc_data_ptr(c) };
-    let conn = unsafe { mtproto_conn_info_ptr(c) };
+    let d = mtproto_rpc_data_ptr(c);
+    let conn = mtproto_conn_info_ptr(c);
     if d.is_null() || conn.is_null() {
         return 0;
     }
@@ -3262,12 +3243,12 @@ pub(super) fn mtproto_proxy_rpc_close_ffi(c: *mut c_void, who: c_int) -> c_int {
         assert!(unsafe { (*d).extra_int == -mtproto_conn_tag(c) });
         loop {
             let mut ex = MtproxyMtprotoExtConnection::default();
-            let rc = unsafe { mtproto_ext_conn_remove_any_by_in_fd_ffi(fd, &mut ex) };
+            let rc = mtproto_ext_conn_remove_any_by_in_fd_ffi(fd, &mut ex);
             assert!(rc >= 0);
             if rc <= 0 {
                 break;
             }
-            unsafe { mtproto_notify_ext_connection_runtime_ffi(&ex, 1) };
+            mtproto_notify_ext_connection_runtime_ffi(&ex, 1);
         }
     }
     unsafe {
@@ -3282,7 +3263,7 @@ pub(super) fn mtproto_do_rpcs_execute_ffi(data: *mut c_void, s_len: c_int) -> c_
     assert!(!data.is_null());
 
     let conn = unsafe { (*data).conn };
-    unsafe { mtproto_lru_insert_conn_local(conn) };
+    mtproto_lru_insert_conn_local(conn);
 
     let len = unsafe { (*data).msg.total_bytes };
     let tlio_in = unsafe { c_tl_in_state_alloc() }.cast::<crate::tl_parse::abi::TlInState>();
@@ -3296,15 +3277,13 @@ pub(super) fn mtproto_do_rpcs_execute_ffi(data: *mut c_void, s_len: c_int) -> c_
         );
     }
 
-    let res = unsafe {
-        mtproto_forward_mtproto_packet_ffi(
-            tlio_in.cast::<c_void>(),
-            conn,
-            len,
-            core::ptr::null(),
-            (*data).rpc_flags,
-        )
-    };
+    let res = mtproto_forward_mtproto_packet_ffi(
+        tlio_in.cast::<c_void>(),
+        conn,
+        len,
+        core::ptr::null(),
+        unsafe { (*data).rpc_flags },
+    );
     unsafe {
         c_tl_in_state_free(tlio_in.cast());
         mtproto_job_decref(conn);
@@ -3321,14 +3300,14 @@ pub(super) fn mtproto_do_rpcs_execute_ffi(data: *mut c_void, s_len: c_int) -> c_
 }
 
 unsafe extern "C" fn mtproto_do_rpcs_execute_bridge(data: *mut c_void, s_len: c_int) -> c_int {
-    unsafe { mtproto_do_rpcs_execute_ffi(data, s_len) }
+    mtproto_do_rpcs_execute_ffi(data, s_len)
 }
 
 pub(super) fn mtproto_ext_rpcs_execute_ffi(c: ConnectionJob, op: c_int, msg: *mut c_void) -> c_int {
     if c.is_null() || msg.is_null() {
         return 0;
     }
-    let conn = unsafe { mtproto_conn_info_ptr(c) };
+    let conn = mtproto_conn_info_ptr(c);
     if conn.is_null() {
         return 0;
     }
@@ -3362,11 +3341,11 @@ pub(super) fn mtproto_ext_rpcs_execute_ffi(c: ConnectionJob, op: c_int, msg: *mu
         return SKIP_ALL_BYTES;
     }
 
-    if unsafe { mtproto_check_conn_buffers_runtime_ffi(c) } < 0 {
+    if mtproto_check_conn_buffers_runtime_ffi(c) < 0 {
         return SKIP_ALL_BYTES;
     }
 
-    let c_data = unsafe { mtproto_rpc_data_ptr(c) };
+    let c_data = mtproto_rpc_data_ptr(c);
     assert!(!c_data.is_null());
 
     let mut data = MtprotoRpcsExecData::default();
@@ -3430,7 +3409,7 @@ pub(super) fn mtproto_update_local_stats_copy_ffi(s: *mut c_void) {
 
     let mut ext_connections = 0_i64;
     let mut ext_connections_created = 0_i64;
-    if unsafe { mtproto_ext_conn_counts_ffi(&mut ext_connections, &mut ext_connections_created) }
+    if mtproto_ext_conn_counts_ffi(&mut ext_connections, &mut ext_connections_created)
         < 0
     {
         ext_connections = 0;
@@ -3497,7 +3476,7 @@ pub(super) fn mtproto_init_ct_server_mtfront_ffi() {
 }
 
 pub(super) fn mtproto_precise_cron_ffi() {
-    unsafe { mtproto_update_local_stats_ffi() };
+    mtproto_update_local_stats_ffi();
 }
 
 pub(super) unsafe extern "C" fn mtproto_on_child_termination_handler_ffi() {}
@@ -3521,15 +3500,15 @@ unsafe extern "C" fn mtproto_rpcc_execute_bridge(
     op: c_int,
     raw: *mut MtprotoRawMessage,
 ) -> c_int {
-    unsafe { mtproto_rpcc_execute_ffi(c, op, raw.cast::<c_void>()) }
+    mtproto_rpcc_execute_ffi(c, op, raw.cast::<c_void>())
 }
 
 unsafe extern "C" fn mtproto_mtfront_client_ready_bridge(c: ConnectionJob) -> c_int {
-    unsafe { mtproto_mtfront_client_ready_ffi(c) }
+    mtproto_mtfront_client_ready_ffi(c)
 }
 
 unsafe extern "C" fn mtproto_mtfront_client_close_bridge(c: ConnectionJob, who: c_int) -> c_int {
-    unsafe { mtproto_mtfront_client_close_ffi(c, who) }
+    mtproto_mtfront_client_close_ffi(c, who)
 }
 
 unsafe extern "C" fn mtproto_hts_execute_bridge(
@@ -3537,7 +3516,7 @@ unsafe extern "C" fn mtproto_hts_execute_bridge(
     raw: *mut MtprotoRawMessage,
     op: c_int,
 ) -> c_int {
-    unsafe { mtproto_hts_execute_ffi(c, raw.cast::<c_void>(), op) }
+    mtproto_hts_execute_ffi(c, raw.cast::<c_void>(), op)
 }
 
 unsafe extern "C" fn mtproto_hts_stats_execute_bridge(
@@ -3545,15 +3524,15 @@ unsafe extern "C" fn mtproto_hts_stats_execute_bridge(
     raw: *mut MtprotoRawMessage,
     op: c_int,
 ) -> c_int {
-    unsafe { mtproto_hts_stats_execute_ffi(c, raw.cast::<c_void>(), op) }
+    mtproto_hts_stats_execute_ffi(c, raw.cast::<c_void>(), op)
 }
 
 unsafe extern "C" fn mtproto_http_alarm_bridge(c: ConnectionJob) -> c_int {
-    unsafe { mtproto_http_alarm_ffi(c) }
+    mtproto_http_alarm_ffi(c)
 }
 
 unsafe extern "C" fn mtproto_http_close_bridge(c: ConnectionJob, who: c_int) -> c_int {
-    unsafe { mtproto_http_close_ffi(c, who) }
+    mtproto_http_close_ffi(c, who)
 }
 
 unsafe extern "C" fn mtproto_ext_rpcs_execute_bridge(
@@ -3561,15 +3540,15 @@ unsafe extern "C" fn mtproto_ext_rpcs_execute_bridge(
     op: c_int,
     raw: *mut MtprotoRawMessage,
 ) -> c_int {
-    unsafe { mtproto_ext_rpcs_execute_ffi(c, op, raw.cast::<c_void>()) }
+    mtproto_ext_rpcs_execute_ffi(c, op, raw.cast::<c_void>())
 }
 
 unsafe extern "C" fn mtproto_ext_rpc_ready_bridge(c: ConnectionJob) -> c_int {
-    unsafe { mtproto_ext_rpc_ready_ffi(c) }
+    mtproto_ext_rpc_ready_ffi(c)
 }
 
 unsafe extern "C" fn mtproto_ext_rpc_close_bridge(c: ConnectionJob, who: c_int) -> c_int {
-    unsafe { mtproto_ext_rpc_close_ffi(c, who) }
+    mtproto_ext_rpc_close_ffi(c, who)
 }
 
 pub(super) fn mtproto_init_runtime_globals_ffi() {
@@ -3617,58 +3596,58 @@ pub(super) fn mtproto_init_runtime_globals_ffi() {
 }
 
 unsafe extern "C" fn mtproto_cron_bridge() {
-    unsafe { mtproto_cron_ffi() };
+    mtproto_cron_ffi();
 }
 
 unsafe extern "C" fn mtproto_precise_cron_bridge() {
-    unsafe { mtproto_precise_cron_ffi() };
+    mtproto_precise_cron_ffi();
 }
 
 unsafe extern "C" fn mtproto_on_exit_bridge() {
-    unsafe { mtproto_mtfront_on_exit_ffi() };
+    mtproto_mtfront_on_exit_ffi();
 }
 
 unsafe extern "C" fn mtproto_prepare_stats_bridge(sb: *mut MtprotoStatsBuffer) {
-    unsafe { mtproto_mtfront_prepare_stats_ffi(sb.cast::<c_void>()) };
+    mtproto_mtfront_prepare_stats_ffi(sb.cast::<c_void>());
 }
 
 unsafe extern "C" fn mtproto_prepare_parse_options_bridge() {
-    unsafe { mtproto_mtfront_prepare_parse_options_ffi() };
+    mtproto_mtfront_prepare_parse_options_ffi();
 }
 
 unsafe extern "C" fn mtproto_parse_option_bridge(val: c_int) -> c_int {
-    unsafe { mtproto_f_parse_option_ffi(val) }
+    mtproto_f_parse_option_ffi(val)
 }
 
 unsafe extern "C" fn mtproto_parse_extra_args_bridge(argc: c_int, argv: *mut *mut c_char) {
-    unsafe { mtproto_mtfront_parse_extra_args_ffi(argc, argv) };
+    mtproto_mtfront_parse_extra_args_ffi(argc, argv);
 }
 
 unsafe extern "C" fn mtproto_pre_init_bridge() {
-    unsafe { mtproto_mtfront_pre_init_ffi() };
+    mtproto_mtfront_pre_init_ffi();
 }
 
 unsafe extern "C" fn mtproto_pre_start_bridge() {
-    unsafe { mtproto_mtfront_pre_start_ffi() };
+    mtproto_mtfront_pre_start_ffi();
 }
 
 unsafe extern "C" fn mtproto_pre_loop_bridge() {
-    unsafe { mtproto_mtfront_pre_loop_ffi() };
+    mtproto_mtfront_pre_loop_ffi();
 }
 
 unsafe extern "C" fn mtproto_parse_function_bridge(
     tlio_in: *mut c_void,
     actor_id: i64,
 ) -> *mut c_void {
-    unsafe { mtproto_mtfront_parse_function_runtime_ffi(tlio_in, actor_id) }
+    mtproto_mtfront_parse_function_runtime_ffi(tlio_in, actor_id)
 }
 
 unsafe extern "C" fn mtproto_sigusr1_handler_bridge() {
-    unsafe { mtproto_mtfront_sigusr1_handler_ffi() };
+    mtproto_mtfront_sigusr1_handler_ffi();
 }
 
 pub(super) fn mtproto_setup_front_functions_ffi() {
-    unsafe { mtproto_init_runtime_globals_ffi() };
+    mtproto_init_runtime_globals_ffi();
 
     let mut f = MtprotoServerFunctions {
         cron: Some(mtproto_cron_bridge),
@@ -3738,7 +3717,7 @@ pub(super) fn mtproto_check_all_conn_buffers_ffi() {
     let mut to_free = bufs.total_used_buffers_size - max_buffer_memory * 3 / 4;
     while to_free > 0 {
         let mut ext = MtproxyMtprotoExtConnection::default();
-        let pop_rc = unsafe { mtproto_ext_conn_lru_pop_oldest_ffi(core::ptr::addr_of_mut!(ext)) };
+        let pop_rc = mtproto_ext_conn_lru_pop_oldest_ffi(core::ptr::addr_of_mut!(ext));
         assert!(pop_rc >= 0);
         if pop_rc <= 0 {
             break;
@@ -3758,7 +3737,7 @@ pub(super) fn mtproto_check_all_conn_buffers_ffi() {
         }
         let d = unsafe { connection_get_by_fd_generation(ext.in_fd, ext.in_gen) };
         if !d.is_null() {
-            let conn = unsafe { mtproto_conn_info_ptr(d) };
+            let conn = mtproto_conn_info_ptr(d);
             if !conn.is_null() {
                 let tot_used_bytes = unsafe {
                     (*conn).in_.total_bytes
@@ -3784,7 +3763,7 @@ pub(super) fn mtproto_check_conn_buffers_runtime_ffi(c: *mut c_void) -> c_int {
         return -1;
     }
     let c = c.cast::<c_void>();
-    let conn = unsafe { mtproto_conn_info_ptr(c) };
+    let conn = mtproto_conn_info_ptr(c);
     if conn.is_null() {
         return -1;
     }
@@ -4094,7 +4073,7 @@ pub(super) fn mtproto_mtfront_prepare_stats_ffi(sb: *mut c_void) {
         fetch_tot_dh_rounds_stat(tot_dh_rounds.as_mut_ptr());
         fetch_aes_crypto_stat(&mut allocated_aes_crypto, &mut allocated_aes_crypto_temp);
     }
-    if unsafe { mtproto_ext_conn_counts_ffi(&mut ext_connections, &mut ext_connections_created) }
+    if mtproto_ext_conn_counts_ffi(&mut ext_connections, &mut ext_connections_created)
         < 0
     {
         ext_connections = 0;
@@ -4330,12 +4309,12 @@ pub(super) fn mtproto_hts_stats_execute_ffi(c: *mut c_void, msg: *mut c_void, _o
     if c.is_null() || msg.is_null() {
         return -501;
     }
-    let conn = unsafe { mtproto_conn_info_ptr(c) };
+    let conn = mtproto_conn_info_ptr(c);
     if conn.is_null() {
         return -501;
     }
 
-    if unsafe { mtproto_check_conn_buffers_runtime_ffi(c) } < 0 {
+    if mtproto_check_conn_buffers_runtime_ffi(c) < 0 {
         return -429;
     }
 
@@ -4417,8 +4396,8 @@ pub(super) fn mtproto_hts_execute_ffi(c: *mut c_void, msg: *mut c_void, op: c_in
     if c.is_null() || msg.is_null() {
         return 0;
     }
-    let d = unsafe { mtproto_hts_data_ptr(c) };
-    let conn = unsafe { mtproto_conn_info_ptr(c) };
+    let d = mtproto_hts_data_ptr(c);
+    let conn = mtproto_conn_info_ptr(c);
     if d.is_null() || conn.is_null() {
         return 0;
     }
@@ -4426,7 +4405,7 @@ pub(super) fn mtproto_hts_execute_ffi(c: *mut c_void, msg: *mut c_void, op: c_in
     // Serve local stats from the main HTTP execute path as well, so it works
     // even if runtime fallback wiring selects generic mtproto HTTP callbacks.
     if op == HTQT_GET {
-        let stats_rc = unsafe { mtproto_hts_stats_execute_ffi(c, msg.cast::<c_void>(), op) };
+        let stats_rc = mtproto_hts_stats_execute_ffi(c, msg.cast::<c_void>(), op);
         if stats_rc != -404 && stats_rc != -501 {
             return stats_rc;
         }
@@ -4454,7 +4433,7 @@ pub(super) fn mtproto_hts_execute_ffi(c: *mut c_void, msg: *mut c_void, op: c_in
         return 0;
     }
 
-    if unsafe { mtproto_check_conn_buffers_runtime_ffi(c) } < 0 {
+    if mtproto_check_conn_buffers_runtime_ffi(c) < 0 {
         return -429;
     }
     if unsafe { (*d).data_size } >= MAX_POST_SIZE {
@@ -4517,7 +4496,7 @@ pub(super) fn mtproto_hts_execute_ffi(c: *mut c_void, msg: *mut c_void, op: c_in
         )
     };
     assert!(!job.is_null());
-    let hq = unsafe { mtproto_http_query_info_ptr(job.cast()) };
+    let hq = mtproto_http_query_info_ptr(job.cast());
     assert!(!hq.is_null());
 
     unsafe {
@@ -4558,8 +4537,8 @@ pub(super) fn mtproto_http_alarm_ffi(c: *mut c_void) -> c_int {
         return 0;
     }
     let c = c.cast::<c_void>();
-    let conn = unsafe { mtproto_conn_info_ptr(c) };
-    let d = unsafe { mtproto_hts_data_ptr(c) };
+    let conn = mtproto_conn_info_ptr(c);
+    let d = mtproto_hts_data_ptr(c);
     if conn.is_null() || d.is_null() {
         return 0;
     }
@@ -4985,13 +4964,13 @@ pub(super) fn mtproto_usage_ffi() {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn usage() {
-    unsafe { mtproto_usage_ffi() };
+pub extern "C" fn usage() {
+    mtproto_usage_ffi();
 }
 
 pub(super) fn mtproto_mtfront_parse_extra_args_ffi(argc: c_int, argv: *mut *mut c_char) {
     if argc != 1 || argv.is_null() || unsafe { (*argv).is_null() } {
-        unsafe { mtproto_usage_ffi() };
+        mtproto_usage_ffi();
     }
     unsafe {
         config_filename = *argv;
@@ -5014,9 +4993,9 @@ pub(super) fn mtproto_mtfront_sigusr1_handler_ffi() {
 pub(super) fn mtproto_mtfront_on_exit_ffi() {
     if unsafe { workers } != 0 {
         if unsafe { signal_check_pending(libc::SIGTERM) } != 0 {
-            unsafe { mtproto_kill_children_ffi(libc::SIGTERM) };
+            mtproto_kill_children_ffi(libc::SIGTERM);
         }
-        unsafe { mtproto_check_children_dead_ffi() };
+        mtproto_check_children_dead_ffi();
     }
 }
 
@@ -5045,7 +5024,7 @@ pub(super) fn mtproto_mtfront_pre_init_ffi() {
         }
     }
 
-    let res = unsafe { mtproto_cfg_do_reload_config_ffi(0x26) };
+    let res = mtproto_cfg_do_reload_config_ffi(0x26);
     if res < 0 {
         eprintln!("config check failed! (code {res})");
         unsafe { libc::exit(-res) };
@@ -5161,7 +5140,7 @@ pub(super) fn mtproto_mtfront_pre_init_ffi() {
 }
 
 pub(super) fn mtproto_mtfront_pre_start_ffi() {
-    let res = unsafe { mtproto_cfg_do_reload_config_ffi(0x17) };
+    let res = mtproto_cfg_do_reload_config_ffi(0x17);
     if res < 0 {
         eprintln!("config check failed! (code {res})");
         unsafe { libc::exit(-res) };
@@ -5230,7 +5209,7 @@ pub(super) fn mtproto_mtfront_pre_loop_ffi() {
                 assert!(fd_u < MAX_EVENTS);
                 let lc = unsafe { Events[fd_u].data };
                 assert!(!lc.is_null());
-                let lc_info = unsafe { mtproto_listening_conn_info_ptr(lc) };
+                let lc_info = mtproto_listening_conn_info_ptr(lc);
                 assert!(!lc_info.is_null());
                 unsafe {
                     (*lc_info).window_clamp = clamp;
@@ -5273,7 +5252,7 @@ pub(super) fn mtproto_forward_tcp_query_ffi(
         return 0;
     }
     let tlio_in = tlio_in.cast::<crate::tl_parse::abi::TlInState>();
-    let conn = unsafe { mtproto_conn_info_ptr(c) };
+    let conn = mtproto_conn_info_ptr(c);
     if conn.is_null() {
         return 0;
     }
@@ -5284,7 +5263,7 @@ pub(super) fn mtproto_forward_tcp_query_ffi(
     let is_http_server = unsafe { (*conn).type_ == http_type_ptr };
 
     if is_ext_server {
-        let c_data = unsafe { mtproto_rpc_data_ptr(c) };
+        let c_data = mtproto_rpc_data_ptr(c);
         if c_data.is_null() {
             return 0;
         }
@@ -5296,7 +5275,7 @@ pub(super) fn mtproto_forward_tcp_query_ffi(
 
     let c_fd = unsafe { (*conn).fd };
     let mut ex = MtproxyMtprotoExtConnection::default();
-    let ex_lookup_rc = unsafe { mtproto_ext_conn_get_by_in_fd_ffi(c_fd, &mut ex) };
+    let ex_lookup_rc = mtproto_ext_conn_get_by_in_fd_ffi(c_fd, &mut ex);
     if ex_lookup_rc < 0 {
         return 0;
     }
@@ -5304,7 +5283,7 @@ pub(super) fn mtproto_forward_tcp_query_ffi(
 
     if have_ex && ex.auth_key_id != auth_key_id {
         let update_rc =
-            unsafe { mtproto_ext_conn_update_auth_key_ffi(ex.in_fd, ex.in_conn_id, auth_key_id) };
+            mtproto_ext_conn_update_auth_key_ffi(ex.in_fd, ex.in_conn_id, auth_key_id);
         if update_rc < 0 {
             return 0;
         }
@@ -5315,26 +5294,26 @@ pub(super) fn mtproto_forward_tcp_query_ffi(
     if have_ex {
         d = unsafe { connection_get_by_fd_generation(ex.out_fd, ex.out_gen) };
         if !d.is_null() {
-            let d_conn = unsafe { mtproto_conn_info_ptr(d) };
+            let d_conn = mtproto_conn_info_ptr(d);
             if d_conn.is_null() || unsafe { (*d_conn).target.is_null() } {
-                unsafe { mtproto_job_decref(d) };
+                mtproto_job_decref(d);
                 d = core::ptr::null_mut();
             }
         }
         if d.is_null() {
-            unsafe { mtproto_remove_ext_connection_runtime_ffi(&ex, 1) };
+            mtproto_remove_ext_connection_runtime_ffi(&ex, 1);
             have_ex = false;
         }
     }
 
     if d.is_null() {
-        d = unsafe { mtproto_forward_pick_connection(target) };
+        d = mtproto_forward_pick_connection(target);
         if d.is_null() {
             unsafe {
                 dropped_queries = dropped_queries.wrapping_add(1);
             }
             if is_ext_server {
-                let c_data = unsafe { mtproto_rpc_data_ptr(c) };
+                let c_data = mtproto_rpc_data_ptr(c);
                 if !c_data.is_null() {
                     let flags_atomic = unsafe { core::ptr::addr_of_mut!((*c_data).flags) }
                         .cast::<core::sync::atomic::AtomicI32>();
@@ -5352,27 +5331,25 @@ pub(super) fn mtproto_forward_tcp_query_ffi(
             return 0;
         }
 
-        let d_conn = unsafe { mtproto_conn_info_ptr(d) };
+        let d_conn = mtproto_conn_info_ptr(d);
         if d_conn.is_null() {
-            unsafe { mtproto_job_decref(d) };
+            mtproto_job_decref(d);
             unsafe {
                 dropped_queries = dropped_queries.wrapping_add(1);
             }
             return 0;
         }
-        let create_rc = unsafe {
-            mtproto_ext_conn_create_ffi(
-                (*conn).fd,
-                (*conn).generation,
-                0,
-                (*d_conn).fd,
-                (*d_conn).generation,
-                auth_key_id,
-                &mut ex,
-            )
-        };
+        let create_rc = mtproto_ext_conn_create_ffi(
+            unsafe { (*conn).fd },
+            unsafe { (*conn).generation },
+            0,
+            unsafe { (*d_conn).fd },
+            unsafe { (*d_conn).generation },
+            auth_key_id,
+            &mut ex,
+        );
         if create_rc <= 0 {
-            unsafe { mtproto_job_decref(d) };
+            mtproto_job_decref(d);
             unsafe {
                 dropped_queries = dropped_queries.wrapping_add(1);
             }
@@ -5390,7 +5367,7 @@ pub(super) fn mtproto_forward_tcp_query_ffi(
 
     let payload_len = unsafe { crate::tl_parse::abi::mtproxy_ffi_tl_fetch_unread(tlio_in) };
     if payload_len < 0 {
-        unsafe { mtproto_job_decref(d) };
+        mtproto_job_decref(d);
         return 0;
     }
     let payload_len_usize = usize::try_from(payload_len).unwrap_or(0);
@@ -5404,43 +5381,41 @@ pub(super) fn mtproto_forward_tcp_query_ffi(
             )
         };
         if fetched != payload_len {
-            unsafe { mtproto_job_decref(d) };
+            mtproto_job_decref(d);
             return 0;
         }
     }
 
     let mut remote_ipv6 = [0u8; 16];
     let remote_port =
-        unsafe { mtproto_forward_endpoint(conn, remote_ip_port, false, &mut remote_ipv6) };
+        mtproto_forward_endpoint(conn, remote_ip_port, false, &mut remote_ipv6);
     let mut our_ipv6 = [0u8; 16];
-    let our_port = unsafe { mtproto_forward_endpoint(conn, our_ip_port, true, &mut our_ipv6) };
+    let our_port = mtproto_forward_endpoint(conn, our_ip_port, true, &mut our_ipv6);
 
     if !have_ex {
-        unsafe { mtproto_job_decref(d) };
+        mtproto_job_decref(d);
         return 0;
     }
-    let Some(req) = (unsafe {
-        mtproto_forward_build_req(
-            flags,
-            ex.out_conn_id,
-            &remote_ipv6,
-            remote_port,
-            &our_ipv6,
-            our_port,
-            &payload,
-        )
-    }) else {
-        unsafe { mtproto_job_decref(d) };
+    let Some(req) = mtproto_forward_build_req(
+        flags,
+        ex.out_conn_id,
+        &remote_ipv6,
+        remote_port,
+        &our_ipv6,
+        our_port,
+        &payload,
+    ) else {
+        mtproto_job_decref(d);
         return 0;
     };
 
-    if !unsafe { mtproto_forward_send_req(d, &req) } {
-        unsafe { mtproto_job_decref(d) };
+    if !mtproto_forward_send_req(d, &req) {
+        mtproto_job_decref(d);
         return 0;
     }
 
     if is_http_server {
-        let conn_after = unsafe { mtproto_conn_info_ptr(c) };
+        let conn_after = mtproto_conn_info_ptr(c);
         if !conn_after.is_null() && unsafe { (*conn_after).pending_queries == 1 } {
             unsafe {
                 set_connection_timeout(c, FORWARD_HTTP_TIMEOUT_SECONDS);
@@ -7100,7 +7075,7 @@ pub(super) fn mtproto_cfg_parse_config_ffi(mc: *mut c_void, flags: i32, config_f
 
             let host_cur = unsafe { parse_start.add(action.host_offset) };
             unsafe { cfg_cur = host_cur };
-            if unsafe { mtproto_cfg_resolve_default_target_from_cfg_cur_ffi() } < 0 {
+            if mtproto_cfg_resolve_default_target_from_cfg_cur_ffi() < 0 {
                 break 'parse;
             }
 
@@ -7121,7 +7096,7 @@ pub(super) fn mtproto_cfg_parse_config_ffi(mc: *mut c_void, flags: i32, config_f
             }
 
             if (flags & 1) != 0 {
-                unsafe { mtproto_cfg_create_target_ffi(mc_ptr, action.step.target_index) };
+                mtproto_cfg_create_target_ffi(mc_ptr, action.step.target_index);
             }
 
             if action.step.cluster_index < 0
@@ -7251,7 +7226,7 @@ pub(super) fn mtproto_cfg_do_reload_config_ffi(flags: i32) -> i32 {
         }
     }
 
-    let mut res = unsafe { mtproto_cfg_parse_config_ffi(NextConf.cast(), flags & !1, fd) };
+    let mut res = mtproto_cfg_parse_config_ffi(unsafe { NextConf.cast() }, flags & !1, fd);
 
     if fd >= 0 {
         unsafe { close(fd) };
@@ -7273,7 +7248,7 @@ pub(super) fn mtproto_cfg_do_reload_config_ffi(flags: i32) -> i32 {
         return 0;
     }
 
-    res = unsafe { mtproto_cfg_parse_config_ffi(NextConf.cast(), flags | 1, -1) };
+    res = mtproto_cfg_parse_config_ffi(unsafe { NextConf.cast() }, flags | 1, -1);
     if res < 0 {
         unsafe { clear_config_ffi(NextConf, 0) };
         unsafe {
@@ -7301,7 +7276,7 @@ pub(super) fn mtproto_cfg_do_reload_config_ffi(flags: i32) -> i32 {
     let cur_conf = unsafe { CurConf };
     if !cur_conf.is_null() {
         let cur_conf_ref = unsafe { &mut *cur_conf };
-        let cur_now = unsafe { mtproto_cfg_now_or_time_ffi() };
+        let cur_now = mtproto_cfg_now_or_time_ffi();
         cur_conf_ref.config_loaded_at = cur_now;
         cur_conf_ref.config_bytes = unsafe { config_bytes };
         cur_conf_ref.config_md5_hex = unsafe { malloc(33).cast() };

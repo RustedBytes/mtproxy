@@ -8,7 +8,7 @@ use crate::*;
 /// # Safety
 /// `program_name` may be null; otherwise it must point to a valid NUL-terminated C string.
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_proxy_usage(program_name: *const c_char) -> i32 {
+pub extern "C" fn mtproxy_ffi_mtproto_proxy_usage(program_name: *const c_char) -> i32 {
     mtproto_proxy_usage_ffi(program_name)
 }
 
@@ -17,7 +17,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_proxy_usage(program_name: *const c_
 /// # Safety
 /// `argv` must point to `argc` valid NUL-terminated C strings when `argc > 0`.
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_proxy_main(
+pub extern "C" fn mtproxy_ffi_mtproto_proxy_main(
     argc: i32,
     argv: *const *const c_char,
 ) -> i32 {
@@ -25,7 +25,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_proxy_main(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_legacy_main(
+pub extern "C" fn mtproxy_ffi_mtproto_legacy_main(
     argc: c_int,
     argv: *mut *mut c_char,
 ) -> i32 {
@@ -38,7 +38,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_legacy_main(
 /// `mc` must point to a writable `struct mf_config` when non-null.
 #[no_mangle]
 #[allow(private_interfaces)]
-pub unsafe extern "C" fn clear_config(mc: *mut MtproxyMfConfig, do_destroy_targets: c_int) {
+pub extern "C" fn clear_config(mc: *mut MtproxyMfConfig, do_destroy_targets: c_int) {
     clear_config_ffi(mc, do_destroy_targets);
 }
 
@@ -48,7 +48,7 @@ pub unsafe extern "C" fn clear_config(mc: *mut MtproxyMfConfig, do_destroy_targe
 /// `mc` must point to a valid `struct mf_config` when non-null.
 #[no_mangle]
 #[allow(private_interfaces)]
-pub unsafe extern "C" fn mf_cluster_lookup(
+pub extern "C" fn mf_cluster_lookup(
     mc: *mut MtproxyMfConfig,
     cluster_id: c_int,
     force: c_int,
@@ -61,12 +61,12 @@ pub unsafe extern "C" fn mf_cluster_lookup(
 /// # Safety
 /// Uses global parser cursors from C runtime and mutates `default_cfg_ct`.
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_resolve_default_target_from_cfg_cur() -> c_int {
+pub extern "C" fn mtproxy_ffi_mtproto_cfg_resolve_default_target_from_cfg_cur() -> c_int {
     mtproto_cfg_resolve_default_target_from_cfg_cur_ffi()
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_set_default_target_endpoint(
+pub extern "C" fn mtproxy_ffi_mtproto_cfg_set_default_target_endpoint(
     port: u16,
     min_connections: i64,
     max_connections: i64,
@@ -86,7 +86,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_set_default_target_endpoint(
 /// `mc` must point to writable `struct mf_config`; `target_index` must be in range.
 #[no_mangle]
 #[allow(private_interfaces)]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_create_target(
+pub extern "C" fn mtproxy_ffi_mtproto_cfg_create_target(
     mc: *mut MtproxyMfConfig,
     target_index: u32,
 ) {
@@ -94,7 +94,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_create_target(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_now_or_time() -> c_int {
+pub extern "C" fn mtproxy_ffi_mtproto_cfg_now_or_time() -> c_int {
     mtproto_cfg_now_or_time_ffi()
 }
 
@@ -103,7 +103,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_now_or_time() -> c_int {
 /// # Safety
 /// `str` must be a valid NUL-terminated C string, `out_ip` must be writable.
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_parse_text_ipv4(
+pub extern "C" fn mtproxy_ffi_mtproto_parse_text_ipv4(
     str: *const c_char,
     out_ip: *mut u32,
 ) -> i32 {
@@ -116,7 +116,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_parse_text_ipv4(
 /// `str` must be a valid NUL-terminated C string,
 /// `out_ip`/`out_consumed` must be writable.
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_parse_text_ipv6(
+pub extern "C" fn mtproxy_ffi_mtproto_parse_text_ipv6(
     str: *const c_char,
     out_ip: *mut u8,
     out_consumed: *mut i32,
@@ -130,7 +130,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_parse_text_ipv6(
 /// `header` must point to `header_len` readable bytes when `header_len > 0`,
 /// `out` must be writable.
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_inspect_packet_header(
+pub extern "C" fn mtproxy_ffi_mtproto_inspect_packet_header(
     header: *const u8,
     header_len: usize,
     packet_len: i32,
@@ -144,7 +144,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_inspect_packet_header(
 /// # Safety
 /// `data` must point to `len` readable bytes when `len > 0`, `out` must be writable.
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_parse_client_packet(
+pub extern "C" fn mtproxy_ffi_mtproto_parse_client_packet(
     data: *const u8,
     len: usize,
     out: *mut MtproxyMtprotoClientPacketParseResult,
@@ -153,7 +153,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_parse_client_packet(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_process_client_packet(
+pub extern "C" fn mtproxy_ffi_mtproto_process_client_packet(
     data: *const u8,
     len: usize,
     conn_fd: c_int,
@@ -164,7 +164,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_process_client_packet(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_process_client_packet_runtime(
+pub extern "C" fn mtproxy_ffi_mtproto_process_client_packet_runtime(
     tlio_in: *mut c_void,
     c: *mut c_void,
 ) -> i32 {
@@ -172,7 +172,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_process_client_packet_runtime(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_push_rpc_confirmation_runtime(
+pub extern "C" fn mtproxy_ffi_mtproto_push_rpc_confirmation_runtime(
     c_tag_int: c_int,
     c: *mut c_void,
     confirm: c_int,
@@ -181,7 +181,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_push_rpc_confirmation_runtime(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_mtfront_parse_function_runtime(
+pub extern "C" fn mtproxy_ffi_mtproto_mtfront_parse_function_runtime(
     tlio_in: *mut c_void,
     actor_id: i64,
 ) -> *mut c_void {
@@ -189,7 +189,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_mtfront_parse_function_runtime(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_process_http_query(
+pub extern "C" fn mtproxy_ffi_mtproto_process_http_query(
     tlio_in: *mut c_void,
     hqj: *mut c_void,
 ) -> i32 {
@@ -197,7 +197,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_process_http_query(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_http_query_job_run(
+pub extern "C" fn mtproxy_ffi_mtproto_http_query_job_run(
     job: *mut c_void,
     op: c_int,
     jt: *mut c_void,
@@ -206,7 +206,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_http_query_job_run(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_callback_job_run(
+pub extern "C" fn mtproxy_ffi_mtproto_callback_job_run(
     job: *mut c_void,
     op: c_int,
     jt: *mut c_void,
@@ -215,7 +215,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_callback_job_run(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_client_packet_job_run(
+pub extern "C" fn mtproxy_ffi_mtproto_client_packet_job_run(
     job: *mut c_void,
     op: c_int,
     jt: *mut c_void,
@@ -224,7 +224,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_client_packet_job_run(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_client_send_message_runtime(
+pub extern "C" fn mtproxy_ffi_mtproto_client_send_message_runtime(
     c_tag_int: c_int,
     c: *mut c_void,
     in_conn_id: i64,
@@ -235,60 +235,63 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_client_send_message_runtime(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_add_stats(w: *mut c_void) {
+pub extern "C" fn mtproxy_ffi_mtproto_add_stats(w: *mut c_void) {
     mtproto_add_stats_ffi(w);
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_compute_stats_sum() {
+pub extern "C" fn mtproxy_ffi_mtproto_compute_stats_sum() {
     mtproto_compute_stats_sum_ffi();
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_check_all_conn_buffers() {
+pub extern "C" fn mtproxy_ffi_mtproto_check_all_conn_buffers() {
     mtproto_check_all_conn_buffers_ffi();
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_check_conn_buffers_runtime(c: *mut c_void) -> i32 {
+pub extern "C" fn mtproxy_ffi_mtproto_check_conn_buffers_runtime(c: *mut c_void) -> i32 {
     mtproto_check_conn_buffers_runtime_ffi(c)
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_update_local_stats_copy(s: *mut c_void) {
+pub extern "C" fn mtproxy_ffi_mtproto_update_local_stats_copy(s: *mut c_void) {
     mtproto_update_local_stats_copy_ffi(s);
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_precise_cron() {
+pub extern "C" fn mtproxy_ffi_mtproto_precise_cron() {
     mtproto_precise_cron_ffi();
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_on_child_termination_handler() {
-    mtproto_on_child_termination_handler_ffi();
+pub extern "C" fn mtproxy_ffi_mtproto_on_child_termination_handler() {
+    // SAFETY: This wrapper preserves the legacy C ABI call contract.
+    unsafe { mtproto_on_child_termination_handler_ffi() };
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_data_received(
+pub extern "C" fn mtproxy_ffi_mtproto_data_received(
     c: *mut c_void,
     bytes_received: c_int,
 ) -> i32 {
-    mtproto_data_received_ffi(c, bytes_received)
+    // SAFETY: Caller provides a valid connection pointer and byte count per C ABI contract.
+    unsafe { mtproto_data_received_ffi(c, bytes_received) }
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_data_sent(c: *mut c_void, bytes_sent: c_int) -> i32 {
-    mtproto_data_sent_ffi(c, bytes_sent)
+pub extern "C" fn mtproxy_ffi_mtproto_data_sent(c: *mut c_void, bytes_sent: c_int) -> i32 {
+    // SAFETY: Caller provides a valid connection pointer and byte count per C ABI contract.
+    unsafe { mtproto_data_sent_ffi(c, bytes_sent) }
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_mtfront_prepare_stats(sb: *mut c_void) {
+pub extern "C" fn mtproxy_ffi_mtproto_mtfront_prepare_stats(sb: *mut c_void) {
     mtproto_mtfront_prepare_stats_ffi(sb);
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_hts_stats_execute(
+pub extern "C" fn mtproxy_ffi_mtproto_hts_stats_execute(
     c: *mut c_void,
     msg: *mut c_void,
     op: c_int,
@@ -297,7 +300,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_hts_stats_execute(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_hts_execute(
+pub extern "C" fn mtproxy_ffi_mtproto_hts_execute(
     c: *mut c_void,
     msg: *mut c_void,
     op: c_int,
@@ -306,7 +309,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_hts_execute(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_rpcc_execute(
+pub extern "C" fn mtproxy_ffi_mtproto_rpcc_execute(
     c: *mut c_void,
     op: c_int,
     msg: *mut c_void,
@@ -315,12 +318,12 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_rpcc_execute(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_mtfront_client_ready(c: *mut c_void) -> i32 {
+pub extern "C" fn mtproxy_ffi_mtproto_mtfront_client_ready(c: *mut c_void) -> i32 {
     mtproto_mtfront_client_ready_ffi(c)
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_rpcs_execute(
+pub extern "C" fn mtproxy_ffi_mtproto_ext_rpcs_execute(
     c: *mut c_void,
     op: c_int,
     msg: *mut c_void,
@@ -329,7 +332,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_rpcs_execute(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_mtfront_client_close(
+pub extern "C" fn mtproxy_ffi_mtproto_mtfront_client_close(
     c: *mut c_void,
     who: c_int,
 ) -> i32 {
@@ -337,7 +340,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_mtfront_client_close(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_do_close_in_ext_conn(
+pub extern "C" fn mtproxy_ffi_mtproto_do_close_in_ext_conn(
     data: *mut c_void,
     s_len: c_int,
 ) -> i32 {
@@ -345,27 +348,27 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_do_close_in_ext_conn(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_rpc_ready(c: *mut c_void) -> i32 {
+pub extern "C" fn mtproxy_ffi_mtproto_ext_rpc_ready(c: *mut c_void) -> i32 {
     mtproto_ext_rpc_ready_ffi(c)
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_rpc_close(c: *mut c_void, who: c_int) -> i32 {
+pub extern "C" fn mtproxy_ffi_mtproto_ext_rpc_close(c: *mut c_void, who: c_int) -> i32 {
     mtproto_ext_rpc_close_ffi(c, who)
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_proxy_rpc_ready(c: *mut c_void) -> i32 {
+pub extern "C" fn mtproxy_ffi_mtproto_proxy_rpc_ready(c: *mut c_void) -> i32 {
     mtproto_proxy_rpc_ready_ffi(c)
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_proxy_rpc_close(c: *mut c_void, who: c_int) -> i32 {
+pub extern "C" fn mtproxy_ffi_mtproto_proxy_rpc_close(c: *mut c_void, who: c_int) -> i32 {
     mtproto_proxy_rpc_close_ffi(c, who)
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_do_rpcs_execute(
+pub extern "C" fn mtproxy_ffi_mtproto_do_rpcs_execute(
     data: *mut c_void,
     s_len: c_int,
 ) -> i32 {
@@ -373,7 +376,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_do_rpcs_execute(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_finish_postponed_http_response(
+pub extern "C" fn mtproxy_ffi_mtproto_finish_postponed_http_response(
     data: *mut c_void,
     len: c_int,
 ) -> i32 {
@@ -381,57 +384,57 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_finish_postponed_http_response(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_http_alarm(c: *mut c_void) -> i32 {
+pub extern "C" fn mtproxy_ffi_mtproto_http_alarm(c: *mut c_void) -> i32 {
     mtproto_http_alarm_ffi(c)
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_http_close(c: *mut c_void, who: c_int) -> i32 {
+pub extern "C" fn mtproxy_ffi_mtproto_http_close(c: *mut c_void, who: c_int) -> i32 {
     mtproto_http_close_ffi(c, who)
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_f_parse_option(val: c_int) -> i32 {
+pub extern "C" fn mtproxy_ffi_mtproto_f_parse_option(val: c_int) -> i32 {
     mtproto_f_parse_option_ffi(val)
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_mtfront_prepare_parse_options() {
+pub extern "C" fn mtproxy_ffi_mtproto_mtfront_prepare_parse_options() {
     mtproto_mtfront_prepare_parse_options_ffi();
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_check_children_dead() {
+pub extern "C" fn mtproxy_ffi_mtproto_check_children_dead() {
     mtproto_check_children_dead_ffi();
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_check_children_status() {
+pub extern "C" fn mtproxy_ffi_mtproto_check_children_status() {
     mtproto_check_children_status_ffi();
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_check_special_connections_overflow() {
+pub extern "C" fn mtproxy_ffi_mtproto_check_special_connections_overflow() {
     mtproto_check_special_connections_overflow_ffi();
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_kill_children(signal: c_int) {
+pub extern "C" fn mtproxy_ffi_mtproto_kill_children(signal: c_int) {
     mtproto_kill_children_ffi(signal);
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_cron() {
+pub extern "C" fn mtproxy_ffi_mtproto_cron() {
     mtproto_cron_ffi();
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_usage() {
+pub extern "C" fn mtproxy_ffi_mtproto_usage() {
     mtproto_usage_ffi();
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_mtfront_parse_extra_args(
+pub extern "C" fn mtproxy_ffi_mtproto_mtfront_parse_extra_args(
     argc: c_int,
     argv: *mut *mut c_char,
 ) {
@@ -439,37 +442,37 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_mtfront_parse_extra_args(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_mtfront_sigusr1_handler() {
+pub extern "C" fn mtproxy_ffi_mtproto_mtfront_sigusr1_handler() {
     mtproto_mtfront_sigusr1_handler_ffi();
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_mtfront_on_exit() {
+pub extern "C" fn mtproxy_ffi_mtproto_mtfront_on_exit() {
     mtproto_mtfront_on_exit_ffi();
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_mtfront_pre_init() {
+pub extern "C" fn mtproxy_ffi_mtproto_mtfront_pre_init() {
     mtproto_mtfront_pre_init_ffi();
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_mtfront_pre_start() {
+pub extern "C" fn mtproxy_ffi_mtproto_mtfront_pre_start() {
     mtproto_mtfront_pre_start_ffi();
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_mtfront_pre_loop() {
+pub extern "C" fn mtproxy_ffi_mtproto_mtfront_pre_loop() {
     mtproto_mtfront_pre_loop_ffi();
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_conn_reset() {
+pub extern "C" fn mtproxy_ffi_mtproto_ext_conn_reset() {
     mtproto_ext_conn_reset_ffi();
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_conn_create(
+pub extern "C" fn mtproxy_ffi_mtproto_ext_conn_create(
     in_fd: c_int,
     in_gen: c_int,
     in_conn_id: i64,
@@ -482,7 +485,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_conn_create(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_conn_get_by_in_fd(
+pub extern "C" fn mtproxy_ffi_mtproto_ext_conn_get_by_in_fd(
     in_fd: c_int,
     out: *mut MtproxyMtprotoExtConnection,
 ) -> i32 {
@@ -490,7 +493,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_conn_get_by_in_fd(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_conn_get_by_out_conn_id(
+pub extern "C" fn mtproxy_ffi_mtproto_ext_conn_get_by_out_conn_id(
     out_conn_id: i64,
     out: *mut MtproxyMtprotoExtConnection,
 ) -> i32 {
@@ -498,7 +501,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_conn_get_by_out_conn_id(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_conn_update_auth_key(
+pub extern "C" fn mtproxy_ffi_mtproto_ext_conn_update_auth_key(
     in_fd: c_int,
     in_conn_id: i64,
     auth_key_id: i64,
@@ -507,7 +510,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_conn_update_auth_key(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_conn_remove_by_out_conn_id(
+pub extern "C" fn mtproxy_ffi_mtproto_ext_conn_remove_by_out_conn_id(
     out_conn_id: i64,
     out: *mut MtproxyMtprotoExtConnection,
 ) -> i32 {
@@ -515,7 +518,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_conn_remove_by_out_conn_id(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_conn_remove_by_in_conn_id(
+pub extern "C" fn mtproxy_ffi_mtproto_ext_conn_remove_by_in_conn_id(
     in_fd: c_int,
     in_conn_id: i64,
     out: *mut MtproxyMtprotoExtConnection,
@@ -524,7 +527,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_conn_remove_by_in_conn_id(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_conn_remove_any_by_out_fd(
+pub extern "C" fn mtproxy_ffi_mtproto_ext_conn_remove_any_by_out_fd(
     out_fd: c_int,
     out: *mut MtproxyMtprotoExtConnection,
 ) -> i32 {
@@ -532,7 +535,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_conn_remove_any_by_out_fd(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_conn_remove_any_by_in_fd(
+pub extern "C" fn mtproxy_ffi_mtproto_ext_conn_remove_any_by_in_fd(
     in_fd: c_int,
     out: *mut MtproxyMtprotoExtConnection,
 ) -> i32 {
@@ -540,7 +543,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_conn_remove_any_by_in_fd(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_conn_lru_insert(
+pub extern "C" fn mtproxy_ffi_mtproto_ext_conn_lru_insert(
     in_fd: c_int,
     in_gen: c_int,
 ) -> i32 {
@@ -548,19 +551,19 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_conn_lru_insert(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_conn_lru_delete(in_fd: c_int) -> i32 {
+pub extern "C" fn mtproxy_ffi_mtproto_ext_conn_lru_delete(in_fd: c_int) -> i32 {
     mtproto_ext_conn_lru_delete_ffi(in_fd)
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_conn_lru_pop_oldest(
+pub extern "C" fn mtproxy_ffi_mtproto_ext_conn_lru_pop_oldest(
     out: *mut MtproxyMtprotoExtConnection,
 ) -> i32 {
     mtproto_ext_conn_lru_pop_oldest_ffi(out)
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_conn_counts(
+pub extern "C" fn mtproxy_ffi_mtproto_ext_conn_counts(
     out_current: *mut i64,
     out_created: *mut i64,
 ) -> i32 {
@@ -568,7 +571,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_ext_conn_counts(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_notify_ext_connection_runtime(
+pub extern "C" fn mtproxy_ffi_mtproto_notify_ext_connection_runtime(
     ex: *const MtproxyMtprotoExtConnection,
     send_notifications: c_int,
 ) {
@@ -576,7 +579,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_notify_ext_connection_runtime(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_remove_ext_connection_runtime(
+pub extern "C" fn mtproxy_ffi_mtproto_remove_ext_connection_runtime(
     ex: *const MtproxyMtprotoExtConnection,
     send_notifications: c_int,
 ) {
@@ -585,7 +588,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_remove_ext_connection_runtime(
 
 #[no_mangle]
 #[allow(clippy::too_many_arguments)]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_build_rpc_proxy_req(
+pub extern "C" fn mtproxy_ffi_mtproto_build_rpc_proxy_req(
     flags: c_int,
     out_conn_id: i64,
     remote_ipv6: *const u8,
@@ -630,7 +633,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_build_rpc_proxy_req(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_build_http_ok_header(
+pub extern "C" fn mtproxy_ffi_mtproto_build_http_ok_header(
     keep_alive: c_int,
     extra_headers: c_int,
     content_len: c_int,
@@ -649,7 +652,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_build_http_ok_header(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_client_send_non_http_wrap(
+pub extern "C" fn mtproxy_ffi_mtproto_client_send_non_http_wrap(
     tlio_in: *mut c_void,
     tlio_out: *mut c_void,
 ) -> i32 {
@@ -657,7 +660,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_client_send_non_http_wrap(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_http_send_message(
+pub extern "C" fn mtproxy_ffi_mtproto_http_send_message(
     c: *mut c_void,
     tlio_in: *mut c_void,
     flags: c_int,
@@ -666,7 +669,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_http_send_message(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_forward_tcp_query(
+pub extern "C" fn mtproxy_ffi_mtproto_forward_tcp_query(
     tlio_in: *mut c_void,
     c: *mut c_void,
     target: *mut c_void,
@@ -687,7 +690,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_forward_tcp_query(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_forward_mtproto_packet(
+pub extern "C" fn mtproxy_ffi_mtproto_forward_mtproto_packet(
     tlio_in: *mut c_void,
     c: *mut c_void,
     len: c_int,
@@ -698,7 +701,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_forward_mtproto_packet(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_choose_proxy_target(target_dc: c_int) -> *mut c_void {
+pub extern "C" fn mtproxy_ffi_mtproto_choose_proxy_target(target_dc: c_int) -> *mut c_void {
     mtproto_choose_proxy_target_ffi(target_dc)
 }
 
@@ -707,7 +710,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_choose_proxy_target(target_dc: c_in
 /// # Safety
 /// `data` must point to `len` readable bytes when `len > 0`, `out` must be writable.
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_parse_function(
+pub extern "C" fn mtproxy_ffi_mtproto_parse_function(
     data: *const u8,
     len: usize,
     actor_id: i64,
@@ -721,7 +724,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_parse_function(
 /// # Safety
 /// `out` must be writable.
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_preinit(
+pub extern "C" fn mtproxy_ffi_mtproto_cfg_preinit(
     default_min_connections: i64,
     default_max_connections: i64,
     out: *mut MtproxyMtprotoCfgPreinitResult,
@@ -735,7 +738,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_preinit(
 /// `cluster_ids` must be readable for `clusters_len` entries when `clusters_len > 0`;
 /// `out` must be writable.
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_decide_cluster_apply(
+pub extern "C" fn mtproxy_ffi_mtproto_cfg_decide_cluster_apply(
     cluster_ids: *const i32,
     clusters_len: u32,
     cluster_id: i32,
@@ -750,7 +753,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_decide_cluster_apply(
 /// # Safety
 /// `cur` must be readable for `len` bytes when `len > 0`; `out` must be writable.
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_getlex_ext(
+pub extern "C" fn mtproxy_ffi_mtproto_cfg_getlex_ext(
     cur: *const c_char,
     len: usize,
     out: *mut MtproxyMtprotoCfgGetlexExtResult,
@@ -763,7 +766,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_getlex_ext(
 /// # Safety
 /// `cur` must be readable for `len` bytes when `len > 0`; `out` must be writable.
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_scan_directive_token(
+pub extern "C" fn mtproxy_ffi_mtproto_cfg_scan_directive_token(
     cur: *const c_char,
     len: usize,
     min_connections: i64,
@@ -780,7 +783,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_scan_directive_token(
 /// `cluster_ids` must be readable for `clusters_len` entries when `clusters_len > 0`;
 /// `out` must be writable.
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_parse_directive_step(
+pub extern "C" fn mtproxy_ffi_mtproto_cfg_parse_directive_step(
     cur: *const c_char,
     len: usize,
     min_connections: i64,
@@ -810,7 +813,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_parse_directive_step(
 /// `last_cluster_state` must be readable when `has_last_cluster_state != 0`;
 /// `out` must be writable.
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_parse_proxy_target_step(
+pub extern "C" fn mtproxy_ffi_mtproto_cfg_parse_proxy_target_step(
     cur: *const c_char,
     len: usize,
     current_targets: u32,
@@ -853,7 +856,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_parse_proxy_target_step(
 /// `actions` must be writable for `actions_capacity` entries when `actions_capacity > 0`;
 /// `out` must be writable.
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_parse_full_pass(
+pub extern "C" fn mtproxy_ffi_mtproto_cfg_parse_full_pass(
     cur: *const c_char,
     len: usize,
     default_min_connections: i64,
@@ -884,7 +887,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_parse_full_pass(
 /// # Safety
 /// `cur` must be readable for `len` bytes when `len > 0`; `out_advance` must be writable.
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_expect_semicolon(
+pub extern "C" fn mtproxy_ffi_mtproto_cfg_expect_semicolon(
     cur: *const c_char,
     len: usize,
     out_advance: *mut usize,
@@ -898,7 +901,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_expect_semicolon(
 /// `cluster_ids` must be readable for `clusters_len` entries when `clusters_len > 0`;
 /// `out_cluster_index` must be writable.
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_lookup_cluster_index(
+pub extern "C" fn mtproxy_ffi_mtproto_cfg_lookup_cluster_index(
     cluster_ids: *const i32,
     clusters_len: u32,
     cluster_id: i32,
@@ -924,7 +927,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_lookup_cluster_index(
 /// `cluster_ids` must be readable for `clusters_len` entries when `clusters_len > 0`;
 /// `out` must be writable.
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_finalize(
+pub extern "C" fn mtproxy_ffi_mtproto_cfg_finalize(
     have_proxy: i32,
     cluster_ids: *const i32,
     clusters_len: u32,
@@ -945,7 +948,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_finalize(
 /// # Safety
 /// `mc` must point to a writable `struct mf_config`.
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_parse_config(
+pub extern "C" fn mtproxy_ffi_mtproto_cfg_parse_config(
     mc: *mut c_void,
     flags: i32,
     config_fd: i32,
@@ -958,6 +961,6 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_parse_config(
 /// # Safety
 /// Uses and mutates process-global C runtime state (`CurConf`, `NextConf`, parser globals).
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_do_reload_config(flags: i32) -> i32 {
+pub extern "C" fn mtproxy_ffi_mtproto_cfg_do_reload_config(flags: i32) -> i32 {
     mtproto_cfg_do_reload_config_ffi(flags)
 }
