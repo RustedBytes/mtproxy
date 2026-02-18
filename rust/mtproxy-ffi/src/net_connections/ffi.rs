@@ -1,5 +1,6 @@
 //! FFI export surface for net_connections runtime.
 
+use super::abi::*;
 use super::core::*;
 use super::runtime::*;
 use core::ffi::{c_uint, c_void};

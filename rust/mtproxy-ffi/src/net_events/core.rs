@@ -1,5 +1,6 @@
 //! Rust runtime implementation for `net/net-events.c`.
 
+use super::abi::EventDescr;
 use crate::*;
 use core::ffi::{c_char, c_double, c_int, c_longlong, c_uint, c_void};
 use core::ptr;
@@ -59,23 +60,6 @@ pub(super) const CSTR_SO_SNDBUF: &[u8] = b"getsockopt (SO_SNDBUF)\0";
 pub(super) const CSTR_SO_RCVBUF: &[u8] = b"getsockopt (SO_RCVBUF)\0";
 pub(super) const CSTR_FATAL: &[u8] = b"fatal\0";
 pub(super) const CSTR_NONE: &[u8] = b"(none)\0";
-
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub struct EventDescr {
-    pub fd: c_int,
-    pub state: c_int,
-    pub ready: c_int,
-    pub epoll_state: c_int,
-    pub epoll_ready: c_int,
-    pub timeout: c_int,
-    pub priority: c_int,
-    pub in_queue: c_int,
-    pub timestamp: c_longlong,
-    pub refcnt: c_longlong,
-    pub work: Option<unsafe extern "C" fn(c_int, *mut c_void, *mut EventDescr) -> c_int>,
-    pub data: *mut c_void,
-}
 
 unsafe extern "C" {
     pub(super) static mut Events: [EventDescr; MAX_EVENTS];

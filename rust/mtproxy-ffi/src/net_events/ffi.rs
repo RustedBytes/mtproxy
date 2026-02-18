@@ -1,5 +1,6 @@
 //! FFI export surface for net events runtime.
 
+use super::abi::EventDescr;
 use super::core::*;
 use core::ffi::{c_char, c_double, c_int, c_longlong, c_uint, c_void};
 

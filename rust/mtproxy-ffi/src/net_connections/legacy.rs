@@ -1,5 +1,6 @@
 //! Legacy symbol glue for migrated `net/net-connections.c` wrappers.
 
+use super::abi::*;
 use super::runtime::*;
 use core::ffi::{c_char, c_double, c_int, c_long, c_longlong, c_uint, c_void};
 use core::ptr;
@@ -24,51 +25,6 @@ pub(super) struct StatsBuffer {
     pos: c_int,
     size: c_int,
     flags: c_int,
-}
-
-#[repr(C)]
-pub(super) struct MpQueue {
-    _priv: [u8; 0],
-}
-
-#[repr(C)]
-pub(super) struct RawMessage {
-    first: *mut c_void,
-    last: *mut c_void,
-    total_bytes: c_int,
-    magic: c_int,
-    first_offset: c_int,
-    last_offset: c_int,
-}
-
-#[repr(C)]
-pub struct ConnectionsStat {
-    active_connections: c_int,
-    active_dh_connections: c_int,
-    outbound_connections: c_int,
-    active_outbound_connections: c_int,
-    ready_outbound_connections: c_int,
-    active_special_connections: c_int,
-    max_special_connections: c_int,
-    allocated_connections: c_int,
-    allocated_outbound_connections: c_int,
-    allocated_inbound_connections: c_int,
-    allocated_socket_connections: c_int,
-    allocated_targets: c_int,
-    ready_targets: c_int,
-    active_targets: c_int,
-    inactive_targets: c_int,
-    tcp_readv_calls: c_longlong,
-    tcp_readv_intr: c_longlong,
-    tcp_readv_bytes: c_longlong,
-    tcp_writev_calls: c_longlong,
-    tcp_writev_intr: c_longlong,
-    tcp_writev_bytes: c_longlong,
-    accept_calls_failed: c_longlong,
-    accept_nonblock_set_failed: c_longlong,
-    accept_rate_limit_failed: c_longlong,
-    accept_init_accepted_failed: c_longlong,
-    accept_connection_limit_failed: c_longlong,
 }
 
 static ACTIVE_CONNECTIONS: AtomicI32 = AtomicI32::new(0);
