@@ -178,10 +178,10 @@ pub fn add_length(buffer: &mut [u8], pos: &mut usize, length: i32) -> bool {
         return false;
     }
 
-    let length_u16 = if !(0..=65535).contains(&length) {
-        return false;
-    } else {
+    let length_u16 = if (0..=65535).contains(&length) {
         length as u16
+    } else {
+        return false;
     };
 
     let bytes = length_u16.to_be_bytes();

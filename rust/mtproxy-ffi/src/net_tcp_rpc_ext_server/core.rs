@@ -1316,7 +1316,7 @@ unsafe fn update_domain_info_inner(info: *mut DomainInfo) -> c_int {
             }
             pollfds.push(libc::pollfd {
                 fd: sockets[i],
-                events: events,
+                events,
                 revents: 0,
             });
             index.push(i);
