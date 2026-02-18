@@ -93,4 +93,3 @@ impl TimerHeap {
         out
     }
 }
-

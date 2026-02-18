@@ -4,8 +4,8 @@ use crate::*;
 use core::ffi::{c_char, c_double, c_int, c_void};
 use core::sync::atomic::{AtomicI32, AtomicI64, Ordering};
 use mtproxy_core::runtime::net::timer_heap::{TimerHeap, TimerId};
-use std::collections::BTreeMap;
 use std::cell::RefCell;
+use std::collections::BTreeMap;
 use std::thread_local;
 
 const MAX_EVENT_TIMERS: usize = 1 << 19;

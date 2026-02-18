@@ -45,8 +45,8 @@ use std::cell::Cell;
 use std::ffi::CStr;
 use std::fs;
 use std::io::Read;
-use std::sync::Once;
 use std::sync::Mutex;
+use std::sync::Once;
 use std::thread_local;
 use std::vec::Vec;
 

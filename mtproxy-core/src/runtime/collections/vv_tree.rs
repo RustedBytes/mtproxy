@@ -83,4 +83,3 @@ impl ConnectionTree {
         self.values.iter().copied().collect()
     }
 }
-

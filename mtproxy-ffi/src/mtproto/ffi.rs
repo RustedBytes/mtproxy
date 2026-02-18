@@ -17,18 +17,12 @@ pub extern "C" fn mtproxy_ffi_mtproto_proxy_usage(program_name: *const c_char) -
 /// # Safety
 /// `argv` must point to `argc` valid NUL-terminated C strings when `argc > 0`.
 #[no_mangle]
-pub extern "C" fn mtproxy_ffi_mtproto_proxy_main(
-    argc: i32,
-    argv: *const *const c_char,
-) -> i32 {
+pub extern "C" fn mtproxy_ffi_mtproto_proxy_main(argc: i32, argv: *const *const c_char) -> i32 {
     mtproto_proxy_main_ffi(argc, argv)
 }
 
 #[no_mangle]
-pub extern "C" fn mtproxy_ffi_mtproto_legacy_main(
-    argc: c_int,
-    argv: *mut *mut c_char,
-) -> i32 {
+pub extern "C" fn mtproxy_ffi_mtproto_legacy_main(argc: c_int, argv: *mut *mut c_char) -> i32 {
     mtproto_legacy_main_ffi(argc, argv)
 }
 
@@ -103,10 +97,7 @@ pub extern "C" fn mtproxy_ffi_mtproto_cfg_now_or_time() -> c_int {
 /// # Safety
 /// `str` must be a valid NUL-terminated C string, `out_ip` must be writable.
 #[no_mangle]
-pub extern "C" fn mtproxy_ffi_mtproto_parse_text_ipv4(
-    str: *const c_char,
-    out_ip: *mut u32,
-) -> i32 {
+pub extern "C" fn mtproxy_ffi_mtproto_parse_text_ipv4(str: *const c_char, out_ip: *mut u32) -> i32 {
     mtproto_parse_text_ipv4_ffi(str, out_ip)
 }
 
@@ -271,10 +262,7 @@ pub extern "C" fn mtproxy_ffi_mtproto_on_child_termination_handler() {
 }
 
 #[no_mangle]
-pub extern "C" fn mtproxy_ffi_mtproto_data_received(
-    c: *mut c_void,
-    bytes_received: c_int,
-) -> i32 {
+pub extern "C" fn mtproxy_ffi_mtproto_data_received(c: *mut c_void, bytes_received: c_int) -> i32 {
     // SAFETY: Caller provides a valid connection pointer and byte count per C ABI contract.
     unsafe { mtproto_data_received_ffi(c, bytes_received) }
 }
@@ -332,18 +320,12 @@ pub extern "C" fn mtproxy_ffi_mtproto_ext_rpcs_execute(
 }
 
 #[no_mangle]
-pub extern "C" fn mtproxy_ffi_mtproto_mtfront_client_close(
-    c: *mut c_void,
-    who: c_int,
-) -> i32 {
+pub extern "C" fn mtproxy_ffi_mtproto_mtfront_client_close(c: *mut c_void, who: c_int) -> i32 {
     mtproto_mtfront_client_close_ffi(c, who)
 }
 
 #[no_mangle]
-pub extern "C" fn mtproxy_ffi_mtproto_do_close_in_ext_conn(
-    data: *mut c_void,
-    s_len: c_int,
-) -> i32 {
+pub extern "C" fn mtproxy_ffi_mtproto_do_close_in_ext_conn(data: *mut c_void, s_len: c_int) -> i32 {
     mtproto_do_close_in_ext_conn_ffi(data, s_len)
 }
 
@@ -368,10 +350,7 @@ pub extern "C" fn mtproxy_ffi_mtproto_proxy_rpc_close(c: *mut c_void, who: c_int
 }
 
 #[no_mangle]
-pub extern "C" fn mtproxy_ffi_mtproto_do_rpcs_execute(
-    data: *mut c_void,
-    s_len: c_int,
-) -> i32 {
+pub extern "C" fn mtproxy_ffi_mtproto_do_rpcs_execute(data: *mut c_void, s_len: c_int) -> i32 {
     mtproto_do_rpcs_execute_ffi(data, s_len)
 }
 
@@ -543,10 +522,7 @@ pub extern "C" fn mtproxy_ffi_mtproto_ext_conn_remove_any_by_in_fd(
 }
 
 #[no_mangle]
-pub extern "C" fn mtproxy_ffi_mtproto_ext_conn_lru_insert(
-    in_fd: c_int,
-    in_gen: c_int,
-) -> i32 {
+pub extern "C" fn mtproxy_ffi_mtproto_ext_conn_lru_insert(in_fd: c_int, in_gen: c_int) -> i32 {
     mtproto_ext_conn_lru_insert_ffi(in_fd, in_gen)
 }
 

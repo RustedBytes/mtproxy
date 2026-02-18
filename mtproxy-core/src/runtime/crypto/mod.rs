@@ -68,4 +68,3 @@ pub fn dh_is_good_prefix(data: &[u8], prime_prefix: &[u8]) -> Result<i32, Crypto
     }
     Ok(0)
 }
-

@@ -114,7 +114,9 @@ pub fn cfg_getword_len(bytes: &[u8]) -> i32 {
     let (advance, _, _) = cfg_skspc_advance(bytes, 0);
     let mut i = advance;
     let start = i;
-    while i < bytes.len() && (bytes[i].is_ascii_alphanumeric() || matches!(bytes[i], b'.' | b'-' | b'_')) {
+    while i < bytes.len()
+        && (bytes[i].is_ascii_alphanumeric() || matches!(bytes[i], b'.' | b'-' | b'_'))
+    {
         i += 1;
     }
     i32::try_from(i.saturating_sub(start)).unwrap_or(i32::MAX)
@@ -150,4 +152,3 @@ pub fn cfg_error_message(prefix: &str, detail: &str) -> String {
     message.push_str(detail);
     message
 }
-

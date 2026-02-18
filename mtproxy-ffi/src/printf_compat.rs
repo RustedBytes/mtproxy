@@ -225,8 +225,7 @@ pub(crate) fn c_format_to_string(fmt: *const c_char, args: &[CFormatArg]) -> Str
 
         if i + 1 < bytes.len() && bytes[i] == b'l' && bytes[i + 1] == b'l' {
             i += 2;
-        } else if i < bytes.len() && matches!(bytes[i], b'h' | b'l' | b'z' | b't' | b'j' | b'L')
-        {
+        } else if i < bytes.len() && matches!(bytes[i], b'h' | b'l' | b'z' | b't' | b'j' | b'L') {
             i += 1;
         }
 

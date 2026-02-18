@@ -94,4 +94,3 @@ impl OptionRegistry {
         self.entries.iter().position(|entry| entry.has_name(name))
     }
 }
-

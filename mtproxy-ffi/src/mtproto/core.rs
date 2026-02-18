@@ -1200,8 +1200,7 @@ pub(super) fn mtproto_remove_ext_connection_runtime_ffi(
     assert!(ex_ref.out_conn_id != 0);
 
     let mut cur = MtproxyMtprotoExtConnection::default();
-    let lookup_rc =
-        mtproto_ext_conn_get_by_out_conn_id_ffi(ex_ref.out_conn_id, &mut cur);
+    let lookup_rc = mtproto_ext_conn_get_by_out_conn_id_ffi(ex_ref.out_conn_id, &mut cur);
     assert!(lookup_rc >= 0);
     if lookup_rc <= 0 {
         return;
@@ -1210,8 +1209,7 @@ pub(super) fn mtproto_remove_ext_connection_runtime_ffi(
     mtproto_notify_ext_connection_runtime_ffi(&cur, send_notifications);
 
     let mut removed = MtproxyMtprotoExtConnection::default();
-    let remove_rc =
-        mtproto_ext_conn_remove_by_out_conn_id_ffi(cur.out_conn_id, &mut removed);
+    let remove_rc = mtproto_ext_conn_remove_by_out_conn_id_ffi(cur.out_conn_id, &mut removed);
     assert!(remove_rc >= 0);
 }
 
@@ -1427,26 +1425,26 @@ pub(super) fn mtproto_http_send_message_ffi(
         let len = unread;
         let mut header_len = 0_usize;
         let rc = mtproto_build_http_ok_header_ffi(
-                unsafe { (*d).query_flags & QF_KEEPALIVE },
-                unsafe { (*d).query_flags & QF_EXTRA_HEADERS },
-                len,
-                core::ptr::null_mut(),
-                0,
-                &mut header_len,
-            );
+            unsafe { (*d).query_flags & QF_KEEPALIVE },
+            unsafe { (*d).query_flags & QF_EXTRA_HEADERS },
+            len,
+            core::ptr::null_mut(),
+            0,
+            &mut header_len,
+        );
         if rc < 0 || header_len > i32::MAX as usize {
             return 0;
         }
 
         let mut header = vec![0_u8; header_len];
         let rc = mtproto_build_http_ok_header_ffi(
-                unsafe { (*d).query_flags & QF_KEEPALIVE },
-                unsafe { (*d).query_flags & QF_EXTRA_HEADERS },
-                len,
-                header.as_mut_ptr(),
-                header.len(),
-                &mut header_len,
-            );
+            unsafe { (*d).query_flags & QF_KEEPALIVE },
+            unsafe { (*d).query_flags & QF_EXTRA_HEADERS },
+            len,
+            header.as_mut_ptr(),
+            header.len(),
+            &mut header_len,
+        );
         if rc != 0 {
             return 0;
         }
@@ -1769,8 +1767,7 @@ fn mtproto_schedule_job_callback_local(
 fn mtproto_lru_insert_conn_local(c: ConnectionJob) {
     let conn = mtproto_conn_info_ptr(c);
     assert!(!conn.is_null());
-    let rc =
-        mtproto_ext_conn_lru_insert_ffi(unsafe { (*conn).fd }, unsafe { (*conn).generation });
+    let rc = mtproto_ext_conn_lru_insert_ffi(unsafe { (*conn).fd }, unsafe { (*conn).generation });
     assert!(rc >= 0);
 }
 
@@ -2012,26 +2009,26 @@ fn mtproto_forward_build_req(
 
     let mut req_len = 0usize;
     let rc = mtproto_build_rpc_proxy_req_ffi(
-            flags,
-            out_conn_id,
-            remote_ipv6.as_ptr(),
-            remote_port,
-            our_ipv6.as_ptr(),
-            our_port,
-            proxy_tag_ptr,
-            proxy_tag_slice.len(),
-            http_origin_ptr,
-            http_origin_slice.len(),
-            http_referer_ptr,
-            http_referer_slice.len(),
-            http_user_agent_ptr,
-            http_user_agent_slice.len(),
-            payload.as_ptr(),
-            payload.len(),
-            core::ptr::null_mut(),
-            0,
-            &mut req_len,
-        );
+        flags,
+        out_conn_id,
+        remote_ipv6.as_ptr(),
+        remote_port,
+        our_ipv6.as_ptr(),
+        our_port,
+        proxy_tag_ptr,
+        proxy_tag_slice.len(),
+        http_origin_ptr,
+        http_origin_slice.len(),
+        http_referer_ptr,
+        http_referer_slice.len(),
+        http_user_agent_ptr,
+        http_user_agent_slice.len(),
+        payload.as_ptr(),
+        payload.len(),
+        core::ptr::null_mut(),
+        0,
+        &mut req_len,
+    );
     if rc < 0 {
         return None;
     }
@@ -2041,26 +2038,26 @@ fn mtproto_forward_build_req(
 
     let mut req = vec![0u8; req_len];
     let rc = mtproto_build_rpc_proxy_req_ffi(
-            flags,
-            out_conn_id,
-            remote_ipv6.as_ptr(),
-            remote_port,
-            our_ipv6.as_ptr(),
-            our_port,
-            proxy_tag_ptr,
-            proxy_tag_slice.len(),
-            http_origin_ptr,
-            http_origin_slice.len(),
-            http_referer_ptr,
-            http_referer_slice.len(),
-            http_user_agent_ptr,
-            http_user_agent_slice.len(),
-            payload.as_ptr(),
-            payload.len(),
-            req.as_mut_ptr(),
-            req.len(),
-            &mut req_len,
-        );
+        flags,
+        out_conn_id,
+        remote_ipv6.as_ptr(),
+        remote_port,
+        our_ipv6.as_ptr(),
+        our_port,
+        proxy_tag_ptr,
+        proxy_tag_slice.len(),
+        http_origin_ptr,
+        http_origin_slice.len(),
+        http_referer_ptr,
+        http_referer_slice.len(),
+        http_user_agent_ptr,
+        http_user_agent_slice.len(),
+        payload.as_ptr(),
+        payload.len(),
+        req.as_mut_ptr(),
+        req.len(),
+        &mut req_len,
+    );
     if rc != 0 || req_len > 0x7fff_ffffusize {
         return None;
     }
@@ -2117,14 +2114,14 @@ fn mtproto_forward_mtproto_enc_packet_impl(
     let unread = unsafe { crate::tl_parse::abi::mtproxy_ffi_tl_fetch_unread(tlio_in) };
     assert_eq!(unread, len);
     mtproto_forward_tcp_query_ffi(
-            tlio_in.cast::<c_void>(),
-            c,
-            s,
-            rpc_flags,
-            auth_key_id,
-            remote_ip_port,
-            core::ptr::null(),
-        )
+        tlio_in.cast::<c_void>(),
+        c,
+        s,
+        rpc_flags,
+        auth_key_id,
+        remote_ip_port,
+        core::ptr::null(),
+    )
 }
 
 pub(super) fn mtproto_forward_mtproto_packet_ffi(
@@ -2155,24 +2152,24 @@ pub(super) fn mtproto_forward_mtproto_packet_ffi(
 
     let mut inspected = MtproxyMtprotoPacketInspectResult::default();
     let inspect_rc = mtproto_inspect_packet_header_ffi(
-            header.as_ptr(),
-            header.len(),
-            len,
-            core::ptr::addr_of_mut!(inspected),
-        );
+        header.as_ptr(),
+        header.len(),
+        len,
+        core::ptr::addr_of_mut!(inspected),
+    );
     if inspect_rc < 0 {
         return 0;
     }
 
     if inspected.kind == MTPROTO_PACKET_KIND_ENCRYPTED {
         return mtproto_forward_mtproto_enc_packet_impl(
-                tlio_in,
-                c,
-                inspected.auth_key_id,
-                len,
-                remote_ip_port,
-                rpc_flags,
-            );
+            tlio_in,
+            c,
+            inspected.auth_key_id,
+            len,
+            remote_ip_port,
+            rpc_flags,
+        );
     }
     if inspected.kind != MTPROTO_PACKET_KIND_UNENCRYPTED_DH {
         return 0;
@@ -2187,14 +2184,14 @@ pub(super) fn mtproto_forward_mtproto_packet_ffi(
     let unread = unsafe { crate::tl_parse::abi::mtproxy_ffi_tl_fetch_unread(tlio_in) };
     assert_eq!(unread, len);
     mtproto_forward_tcp_query_ffi(
-            tlio_in.cast::<c_void>(),
-            c,
-            s,
-            2 | rpc_flags,
-            0,
-            remote_ip_port,
-            core::ptr::null(),
-        )
+        tlio_in.cast::<c_void>(),
+        c,
+        s,
+        2 | rpc_flags,
+        0,
+        remote_ip_port,
+        core::ptr::null(),
+    )
 }
 
 fn mtproto_notify_remote_closed(c: ConnectionJob, out_conn_id: i64) {
@@ -2617,13 +2614,12 @@ pub(super) fn mtproto_process_http_query_ffi(tlio_in: *mut c_void, hqj: *mut c_v
             if x_real_ip_len > 0 {
                 let mut real_ip = 0u32;
                 let mut parsed_ipv6_len = -1;
-                let parse_ipv4_rc =
-                    mtproto_parse_text_ipv4_ffi(x_real_ip.as_ptr(), &mut real_ip);
+                let parse_ipv4_rc = mtproto_parse_text_ipv4_ffi(x_real_ip.as_ptr(), &mut real_ip);
                 let parse_ipv6_rc = mtproto_parse_text_ipv6_ffi(
-                        x_real_ip.as_ptr(),
-                        tmp_ip_port.as_mut_ptr().cast::<u8>(),
-                        &mut parsed_ipv6_len,
-                    );
+                    x_real_ip.as_ptr(),
+                    tmp_ip_port.as_mut_ptr().cast::<u8>(),
+                    &mut parsed_ipv6_len,
+                );
                 if (parse_ipv4_rc == 0 && real_ip >= (1u32 << 24))
                     || (parse_ipv6_rc == 0 && parsed_ipv6_len > 0)
                 {
@@ -3409,9 +3405,7 @@ pub(super) fn mtproto_update_local_stats_copy_ffi(s: *mut c_void) {
 
     let mut ext_connections = 0_i64;
     let mut ext_connections_created = 0_i64;
-    if mtproto_ext_conn_counts_ffi(&mut ext_connections, &mut ext_connections_created)
-        < 0
-    {
+    if mtproto_ext_conn_counts_ffi(&mut ext_connections, &mut ext_connections_created) < 0 {
         ext_connections = 0;
         ext_connections_created = 0;
     }
@@ -4073,9 +4067,7 @@ pub(super) fn mtproto_mtfront_prepare_stats_ffi(sb: *mut c_void) {
         fetch_tot_dh_rounds_stat(tot_dh_rounds.as_mut_ptr());
         fetch_aes_crypto_stat(&mut allocated_aes_crypto, &mut allocated_aes_crypto_temp);
     }
-    if mtproto_ext_conn_counts_ffi(&mut ext_connections, &mut ext_connections_created)
-        < 0
-    {
+    if mtproto_ext_conn_counts_ffi(&mut ext_connections, &mut ext_connections_created) < 0 {
         ext_connections = 0;
         ext_connections_created = 0;
     }
@@ -5282,8 +5274,7 @@ pub(super) fn mtproto_forward_tcp_query_ffi(
     let mut have_ex = ex_lookup_rc > 0;
 
     if have_ex && ex.auth_key_id != auth_key_id {
-        let update_rc =
-            mtproto_ext_conn_update_auth_key_ffi(ex.in_fd, ex.in_conn_id, auth_key_id);
+        let update_rc = mtproto_ext_conn_update_auth_key_ffi(ex.in_fd, ex.in_conn_id, auth_key_id);
         if update_rc < 0 {
             return 0;
         }
@@ -5387,8 +5378,7 @@ pub(super) fn mtproto_forward_tcp_query_ffi(
     }
 
     let mut remote_ipv6 = [0u8; 16];
-    let remote_port =
-        mtproto_forward_endpoint(conn, remote_ip_port, false, &mut remote_ipv6);
+    let remote_port = mtproto_forward_endpoint(conn, remote_ip_port, false, &mut remote_ipv6);
     let mut our_ipv6 = [0u8; 16];
     let our_port = mtproto_forward_endpoint(conn, our_ip_port, true, &mut our_ipv6);
 
