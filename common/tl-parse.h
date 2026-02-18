@@ -24,8 +24,6 @@
 
 #pragma once
 
-#include "jobs/jobs.h"
-#include "pid.h"
 #include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 
 struct tl_query_header;

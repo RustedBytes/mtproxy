@@ -11,6 +11,7 @@
 extern "C" {
 #endif
 
+
 typedef void *mqn_value_t;
 
 struct mp_queue_block;
@@ -27,6 +28,20 @@ struct async_job;
 typedef struct async_job *job_t;
 
 typedef int (*job_function_t)(job_t job, int op, struct job_thread *JT);
+
+
+#define PTR_MOVE(__ptr_v)                                                      \
+  ({                                                                           \
+    typeof(__ptr_v) __ptr_v_save = __ptr_v;                                    \
+    __ptr_v = NULL;                                                            \
+    __ptr_v_save;                                                              \
+  })
+
+#define JOB_REF_ARG(__name) [[maybe_unused]] int __name##_tag_int, job_t __name
+
+struct job_thread *jobs_get_this_job_thread(void);
+
+int job_free(JOB_REF_ARG(job));
 
 enum {
   JC_MAIN = 3,
