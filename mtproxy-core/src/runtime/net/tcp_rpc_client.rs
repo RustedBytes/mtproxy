@@ -306,7 +306,7 @@ impl RpcClientData {
         &mut self,
         packet: &super::tcp_rpc_common::NoncePacket,
     ) -> Result<(), ClientError> {
-        self.process_nonce_packet_bytes(packet.to_bytes())
+        self.process_nonce_packet_bytes(&packet.to_bytes())
     }
 
     fn process_parsed_handshake_packet(
@@ -347,7 +347,7 @@ impl RpcClientData {
         &mut self,
         packet: &super::tcp_rpc_common::HandshakePacket,
     ) -> Result<(), ClientError> {
-        self.process_handshake_packet_bytes(packet.to_bytes())
+        self.process_handshake_packet_bytes(&packet.to_bytes())
     }
 
     /// Validates a packet number for the current connection state.
@@ -905,7 +905,7 @@ mod tests {
         let mut out_has_dh_params = 0;
 
         let rc = process_nonce_packet_for_compat(
-            packet.to_bytes(),
+            &packet.to_bytes(),
             false,
             true,
             false,

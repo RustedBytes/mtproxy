@@ -1,5 +1,7 @@
 //! Helpers ported from `net/net-tcp-rpc-common.c`.
 
+use alloc::vec::Vec;
+
 /// RPC packet types used in protocol.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(i32)]
@@ -117,8 +119,8 @@ pub trait PacketSerialization: Sized {
     /// Size of the packet in bytes.
     fn packet_size() -> usize;
 
-    /// Serializes the packet to a byte slice.
-    fn to_bytes(&self) -> &[u8];
+    /// Serializes the packet to bytes.
+    fn to_bytes(&self) -> Vec<u8>;
 
     /// Deserializes a packet from a byte slice.
     fn from_bytes(bytes: &[u8]) -> Option<Self>;
@@ -136,6 +138,22 @@ fn read_i32_ne(bytes: &[u8], offset: usize) -> i32 {
     i32::from_ne_bytes(raw)
 }
 
+fn write_i16_ne(out: &mut Vec<u8>, value: i16) {
+    out.extend_from_slice(&value.to_ne_bytes());
+}
+
+fn write_i32_ne(out: &mut Vec<u8>, value: i32) {
+    out.extend_from_slice(&value.to_ne_bytes());
+}
+
+fn write_u16_ne(out: &mut Vec<u8>, value: u16) {
+    out.extend_from_slice(&value.to_ne_bytes());
+}
+
+fn write_u32_ne(out: &mut Vec<u8>, value: u32) {
+    out.extend_from_slice(&value.to_ne_bytes());
+}
+
 fn parse_process_id(bytes: &[u8], offset: usize) -> ProcessId {
     ProcessId {
         ip: u32::from_ne_bytes([
@@ -148,6 +166,13 @@ fn parse_process_id(bytes: &[u8], offset: usize) -> ProcessId {
         pid: u16::from_ne_bytes([bytes[offset + 6], bytes[offset + 7]]),
         utime: read_i32_ne(bytes, offset + 8),
     }
+}
+
+fn write_process_id(out: &mut Vec<u8>, pid: ProcessId) {
+    write_u32_ne(out, pid.ip);
+    write_i16_ne(out, pid.port);
+    write_u16_ne(out, pid.pid);
+    write_i32_ne(out, pid.utime);
 }
 
 const TCP_RPC_NONCE_MIN_LEN: usize = 16;
@@ -407,16 +432,14 @@ impl PacketSerialization for NoncePacket {
         core::mem::size_of::<Self>()
     }
 
-    fn to_bytes(&self) -> &[u8] {
-        // SAFETY: NoncePacket uses #[repr(C, packed(4))], making it safe to view as bytes
-        #[allow(unsafe_code)]
-        #[allow(clippy::ptr_as_ptr)]
-        unsafe {
-            core::slice::from_raw_parts(
-                core::ptr::addr_of!(*self).cast::<u8>(),
-                Self::packet_size(),
-            )
-        }
+    fn to_bytes(&self) -> Vec<u8> {
+        let mut out = Vec::with_capacity(Self::packet_size());
+        write_i32_ne(&mut out, self.packet_type);
+        write_i32_ne(&mut out, self.key_select);
+        write_i32_ne(&mut out, self.crypto_schema);
+        write_i32_ne(&mut out, self.crypto_ts);
+        out.extend_from_slice(&self.crypto_nonce);
+        out
     }
 
     fn from_bytes(bytes: &[u8]) -> Option<Self> {
@@ -424,24 +447,15 @@ impl PacketSerialization for NoncePacket {
             return None;
         }
 
-        let mut packet = Self {
-            packet_type: 0,
-            key_select: 0,
-            crypto_schema: 0,
-            crypto_ts: 0,
-            crypto_nonce: [0; 16],
+        let mut crypto_nonce = [0_u8; 16];
+        crypto_nonce.copy_from_slice(&bytes[16..32]);
+        let packet = Self {
+            packet_type: read_i32_ne(bytes, 0),
+            key_select: read_i32_ne(bytes, 4),
+            crypto_schema: read_i32_ne(bytes, 8),
+            crypto_ts: read_i32_ne(bytes, 12),
+            crypto_nonce,
         };
-
-        // SAFETY: We've verified bytes.len() >= packet_size(), and NoncePacket is repr(C, packed(4))
-        #[allow(unsafe_code)]
-        #[allow(clippy::ptr_as_ptr)]
-        unsafe {
-            core::ptr::copy_nonoverlapping(
-                bytes.as_ptr(),
-                core::ptr::addr_of_mut!(packet).cast::<u8>(),
-                Self::packet_size(),
-            );
-        }
 
         if packet.packet_type != Self::expected_packet_type() {
             return None;
@@ -460,16 +474,13 @@ impl PacketSerialization for HandshakePacket {
         core::mem::size_of::<Self>()
     }
 
-    fn to_bytes(&self) -> &[u8] {
-        // SAFETY: HandshakePacket uses #[repr(C, packed(4))], so raw access is safe.
-        #[allow(unsafe_code)]
-        #[allow(clippy::ptr_as_ptr)]
-        unsafe {
-            core::slice::from_raw_parts(
-                core::ptr::addr_of!(*self).cast::<u8>(),
-                Self::packet_size(),
-            )
-        }
+    fn to_bytes(&self) -> Vec<u8> {
+        let mut out = Vec::with_capacity(Self::packet_size());
+        write_i32_ne(&mut out, self.packet_type);
+        write_i32_ne(&mut out, self.flags);
+        write_process_id(&mut out, self.sender_pid);
+        write_process_id(&mut out, self.peer_pid);
+        out
     }
 
     fn from_bytes(bytes: &[u8]) -> Option<Self> {
@@ -477,22 +488,12 @@ impl PacketSerialization for HandshakePacket {
             return None;
         }
 
-        let mut packet = Self {
-            packet_type: 0,
-            flags: 0,
-            sender_pid: ProcessId::default(),
-            peer_pid: ProcessId::default(),
+        let packet = Self {
+            packet_type: read_i32_ne(bytes, 0),
+            flags: read_i32_ne(bytes, 4),
+            sender_pid: parse_process_id(bytes, 8),
+            peer_pid: parse_process_id(bytes, 20),
         };
-
-        #[allow(unsafe_code)]
-        #[allow(clippy::ptr_as_ptr)]
-        unsafe {
-            core::ptr::copy_nonoverlapping(
-                bytes.as_ptr(),
-                core::ptr::addr_of_mut!(packet).cast::<u8>(),
-                Self::size(),
-            );
-        }
 
         if packet.packet_type != RpcPacketType::Handshake as i32 {
             return None;
@@ -511,16 +512,12 @@ impl PacketSerialization for HandshakeErrorPacket {
         core::mem::size_of::<Self>()
     }
 
-    fn to_bytes(&self) -> &[u8] {
-        // SAFETY: HandshakeErrorPacket uses #[repr(C, packed(4))], so raw access is safe.
-        #[allow(unsafe_code)]
-        #[allow(clippy::ptr_as_ptr)]
-        unsafe {
-            core::slice::from_raw_parts(
-                core::ptr::addr_of!(*self).cast::<u8>(),
-                Self::packet_size(),
-            )
-        }
+    fn to_bytes(&self) -> Vec<u8> {
+        let mut out = Vec::with_capacity(Self::packet_size());
+        write_i32_ne(&mut out, self.packet_type);
+        write_i32_ne(&mut out, self.error_code);
+        write_process_id(&mut out, self.sender_pid);
+        out
     }
 
     fn from_bytes(bytes: &[u8]) -> Option<Self> {
@@ -528,21 +525,11 @@ impl PacketSerialization for HandshakeErrorPacket {
             return None;
         }
 
-        let mut packet = Self {
-            packet_type: 0,
-            error_code: 0,
-            sender_pid: ProcessId::default(),
+        let packet = Self {
+            packet_type: read_i32_ne(bytes, 0),
+            error_code: read_i32_ne(bytes, 4),
+            sender_pid: parse_process_id(bytes, 8),
         };
-
-        #[allow(unsafe_code)]
-        #[allow(clippy::ptr_as_ptr)]
-        unsafe {
-            core::ptr::copy_nonoverlapping(
-                bytes.as_ptr(),
-                core::ptr::addr_of_mut!(packet).cast::<u8>(),
-                Self::size(),
-            );
-        }
 
         if packet.packet_type != RpcPacketType::HandshakeError as i32 {
             return None;
@@ -730,18 +717,11 @@ impl HandshakeErrorPacket {
         core::mem::size_of::<Self>()
     }
 
-    /// Serializes the packet to a byte slice.
+    /// Serializes the packet to bytes.
     ///
-    /// # Safety
-    /// The packet uses `#[repr(C, packed(4))]` so direct byte access is safe.
     #[must_use]
-    pub fn to_bytes(&self) -> &[u8] {
-        // SAFETY: HandshakeErrorPacket uses #[repr(C, packed(4))], making it safe to view as bytes
-        #[allow(unsafe_code)]
-        #[allow(clippy::ptr_as_ptr)]
-        unsafe {
-            core::slice::from_raw_parts(core::ptr::addr_of!(*self).cast::<u8>(), Self::size())
-        }
+    pub fn to_bytes(&self) -> Vec<u8> {
+        <Self as PacketSerialization>::to_bytes(self)
     }
 
     /// Deserializes a packet from a byte slice.
@@ -752,23 +732,11 @@ impl HandshakeErrorPacket {
         if bytes.len() < Self::size() {
             return None;
         }
-
-        let mut packet = Self {
-            packet_type: 0,
-            error_code: 0,
-            sender_pid: ProcessId::default(),
+        let packet = Self {
+            packet_type: read_i32_ne(bytes, 0),
+            error_code: read_i32_ne(bytes, 4),
+            sender_pid: parse_process_id(bytes, 8),
         };
-
-        // SAFETY: We've verified bytes.len() >= size(), and packet is repr(C, packed(4))
-        #[allow(unsafe_code)]
-        #[allow(clippy::ptr_as_ptr)]
-        unsafe {
-            core::ptr::copy_nonoverlapping(
-                bytes.as_ptr(),
-                core::ptr::addr_of_mut!(packet).cast::<u8>(),
-                Self::size(),
-            );
-        }
 
         if packet.packet_type != RpcPacketType::HandshakeError as i32 {
             return None;

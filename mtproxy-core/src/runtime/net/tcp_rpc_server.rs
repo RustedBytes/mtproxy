@@ -225,7 +225,7 @@ impl RpcServerData {
         allow_encrypted: bool,
     ) -> Result<i32, ServerError> {
         self.process_client_nonce_packet_bytes(
-            packet.to_bytes(),
+            &packet.to_bytes(),
             allow_unencrypted,
             allow_encrypted,
         )
@@ -275,7 +275,7 @@ impl RpcServerData {
         packet: &super::tcp_rpc_common::HandshakePacket,
         expected_peer_pid: Option<super::tcp_rpc_common::ProcessId>,
     ) -> Result<(), ServerError> {
-        self.process_client_handshake_packet_bytes(packet.to_bytes(), expected_peer_pid)
+        self.process_client_handshake_packet_bytes(&packet.to_bytes(), expected_peer_pid)
     }
 
     /// Validates a packet number for the current connection state.
@@ -882,7 +882,7 @@ mod tests {
         let mut out_has_dh_params = 0;
 
         let rc = process_nonce_packet_for_compat(
-            packet.to_bytes(),
+            &packet.to_bytes(),
             true,
             false,
             100,

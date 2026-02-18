@@ -540,7 +540,7 @@ pub(super) fn tcp_rpc_server_build_handshake_packet_impl(
     if out_packet.len() < bytes.len() {
         return -1;
     }
-    out_packet[..bytes.len()].copy_from_slice(bytes);
+    out_packet[..bytes.len()].copy_from_slice(&bytes);
     i32::try_from(bytes.len()).unwrap_or(i32::MAX)
 }
 
@@ -556,7 +556,7 @@ pub(super) fn tcp_rpc_server_build_handshake_error_packet_impl(
     if out_packet.len() < bytes.len() {
         return -1;
     }
-    out_packet[..bytes.len()].copy_from_slice(bytes);
+    out_packet[..bytes.len()].copy_from_slice(&bytes);
     i32::try_from(bytes.len()).unwrap_or(i32::MAX)
 }
 
