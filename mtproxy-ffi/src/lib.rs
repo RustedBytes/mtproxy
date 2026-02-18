@@ -65,6 +65,15 @@ static DOUBLE_TIME_LAST_BITS: AtomicU64 = AtomicU64::new((-1.0f64).to_bits());
 static DOUBLE_TIME_NEXT_RDTSC: AtomicI64 = AtomicI64::new(0);
 static LOGGER_INIT: Once = Once::new();
 
+fn verbosity_from_log_level(level: log::LevelFilter) -> c_int {
+    match level {
+        log::LevelFilter::Trace => 3,
+        log::LevelFilter::Debug => 2,
+        log::LevelFilter::Info => 1,
+        log::LevelFilter::Warn | log::LevelFilter::Error | log::LevelFilter::Off => 0,
+    }
+}
+
 mod compat;
 mod crypto;
 mod engine;
@@ -255,6 +264,12 @@ pub unsafe extern "C" fn main(argc: c_int, argv: *mut *mut c_char) -> c_int {
     LOGGER_INIT.call_once(|| {
         let env = env_logger::Env::default().default_filter_or("info");
         let _ = env_logger::Builder::from_env(env).try_init();
+        let env_verbosity = verbosity_from_log_level(log::max_level());
+        unsafe {
+            if KPRINTF_VERBOSITY < env_verbosity {
+                KPRINTF_VERBOSITY = env_verbosity;
+            }
+        }
     });
     mtproto::ffi::mtproxy_ffi_mtproto_legacy_main(argc, argv)
 }

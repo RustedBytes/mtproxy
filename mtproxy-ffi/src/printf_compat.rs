@@ -400,7 +400,19 @@ pub(crate) fn kprintf_with_c_format(format: *const c_char, args: &[CFormatArg]) 
 
     let rendered = c_format_to_string(format, args);
     let message = rendered.trim_end_matches('\n');
-    log::info!("{message}");
+    let lower = message.trim_start().to_ascii_lowercase();
+    let level = if lower.starts_with("fatal") || lower.starts_with("error") {
+        log::Level::Error
+    } else if lower.starts_with("warning") || lower.starts_with("warn") {
+        log::Level::Warn
+    } else {
+        match unsafe { crate::KPRINTF_VERBOSITY } {
+            v if v >= 3 => log::Level::Trace,
+            v if v >= 2 => log::Level::Debug,
+            _ => log::Level::Info,
+        }
+    };
+    log::log!(level, "{message}");
 }
 
 #[macro_export]
