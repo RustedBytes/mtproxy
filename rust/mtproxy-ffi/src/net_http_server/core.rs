@@ -213,6 +213,7 @@ unsafe extern "C" {
         arg_name: *const c_char,
         arg_len: c_int,
     ) -> c_int;
+    fn mtproxy_ffi_mtproto_hts_stats_execute(c: *mut c_void, msg: *mut c_void, op: c_int) -> c_int;
 
     fn cpu_server_close_connection(c: ConnectionJob, who: c_int) -> c_int;
     fn connection_write_close(c: ConnectionJob);
@@ -315,10 +316,17 @@ unsafe fn http_get_error_msg_text(code: &mut c_int) -> *const c_char {
 
 pub(super) unsafe fn hts_default_execute_impl(
     c: ConnectionJob,
-    _raw: *mut RawMessage,
+    raw: *mut RawMessage,
     op: c_int,
 ) -> c_int {
     let d = unsafe { hts_data(c) };
+
+    if op == HTQT_GET {
+        let rc = unsafe { mtproxy_ffi_mtproto_hts_stats_execute(c.cast(), raw.cast(), op) };
+        if rc != -404 && rc != -501 {
+            return rc;
+        }
+    }
 
     unsafe {
         if verbosity >= 1 {
