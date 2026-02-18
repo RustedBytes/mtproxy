@@ -1742,18 +1742,21 @@ pub(super) unsafe fn do_connection_job_impl(job: Job, op: c_int, _jt: *mut c_voi
                 }
 
                 let type_ = unsafe { (*conn).type_ };
-                assert!(!type_.is_null());
-                let connected = unsafe { (*type_).connected };
-                assert!(connected.is_some());
-                unsafe { connected.unwrap()(c) };
+                if !type_.is_null() {
+                    if let Some(connected) = unsafe { (*type_).connected } {
+                        unsafe { connected(c) };
+                    }
+                }
             }
 
             assert!((run_actions & CONN_JOB_RUN_DO_READ_WRITE) != 0);
             let type_ = unsafe { (*conn).type_ };
-            assert!(!type_.is_null());
-            let read_write = unsafe { (*type_).read_write };
-            assert!(read_write.is_some());
-            unsafe { read_write.unwrap()(c) };
+            if type_.is_null() {
+                return 0;
+            }
+            if let Some(read_write) = unsafe { (*type_).read_write } {
+                unsafe { read_write(c) };
+            }
         }
         return 0;
     }
@@ -1765,10 +1768,11 @@ pub(super) unsafe fn do_connection_job_impl(job: Job, op: c_int, _jt: *mut c_voi
             unsafe { (*conn).flags },
         ) {
             let type_ = unsafe { (*conn).type_ };
-            assert!(!type_.is_null());
-            let alarm = unsafe { (*type_).alarm };
-            assert!(alarm.is_some());
-            unsafe { alarm.unwrap()(c) };
+            if !type_.is_null() {
+                if let Some(alarm) = unsafe { (*type_).alarm } {
+                    unsafe { alarm(c) };
+                }
+            }
         }
         return 0;
     }
@@ -1783,10 +1787,11 @@ pub(super) unsafe fn do_connection_job_impl(job: Job, op: c_int, _jt: *mut c_voi
             .fetch_or(C_FAILED, Ordering::SeqCst);
         if mtproxy_core::runtime::net::connections::conn_job_abort_should_close(old_flags) {
             let type_ = unsafe { (*conn).type_ };
-            assert!(!type_.is_null());
-            let close = unsafe { (*type_).close };
-            assert!(close.is_some());
-            unsafe { close.unwrap()(c, 0) };
+            if !type_.is_null() {
+                if let Some(close) = unsafe { (*type_).close } {
+                    unsafe { close(c, 0) };
+                }
+            }
         }
         return JOB_COMPLETED;
     }
@@ -1794,10 +1799,11 @@ pub(super) unsafe fn do_connection_job_impl(job: Job, op: c_int, _jt: *mut c_voi
     if action == CONNECTION_JOB_ACTION_FINISH {
         assert_eq!(unsafe { (*c.cast::<AsyncJob>()).j_refcnt }, 1);
         let type_ = unsafe { (*conn).type_ };
-        assert!(!type_.is_null());
-        let free_cb = unsafe { (*type_).free };
-        assert!(free_cb.is_some());
-        unsafe { free_cb.unwrap()(c) };
+        if !type_.is_null() {
+            if let Some(free_cb) = unsafe { (*type_).free } {
+                unsafe { free_cb(c) };
+            }
+        }
         return unsafe { mtproxy_ffi_net_connections_job_free(c) };
     }
 

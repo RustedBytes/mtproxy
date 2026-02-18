@@ -4361,21 +4361,23 @@ pub(super) unsafe fn mtproto_hts_stats_execute_ffi(
         return -429;
     }
 
-    if op != HTQT_GET || unsafe { (*d).data_size } != -1 {
-        unsafe {
-            (*d).query_flags &= !QF_KEEPALIVE;
-        }
+    let data_size = unsafe { core::ptr::addr_of!((*d).data_size).read_unaligned() };
+    if op != HTQT_GET || data_size != -1 {
+        let mut query_flags = unsafe { mtproto_http_query_flags_get(c) };
+        query_flags &= !QF_KEEPALIVE;
+        unsafe { mtproto_http_query_flags_set(c, query_flags) };
         return -501;
     }
     if unsafe { (*conn).remote_ip } != 0x7f00_0001 {
         return -404;
     }
 
-    if unsafe { (*d).uri_size } != 6 {
+    let uri_size = unsafe { core::ptr::addr_of!((*d).uri_size).read_unaligned() };
+    if uri_size != 6 {
         return -404;
     }
 
-    let header_size = unsafe { (*d).header_size };
+    let header_size = unsafe { core::ptr::addr_of!((*d).header_size).read_unaligned() };
     if !(0..=MAX_HTTP_HEADER_SIZE).contains(&header_size) {
         return -404;
     }
@@ -4384,7 +4386,10 @@ pub(super) unsafe fn mtproto_hts_stats_execute_ffi(
         unsafe { rwm_fetch_data(msg, req_hdr.as_mut_ptr().cast(), header_size) } == header_size
     );
 
-    let uri_offset = usize::try_from(unsafe { (*d).uri_offset }).ok();
+    let uri_offset = usize::try_from(unsafe {
+        core::ptr::addr_of!((*d).uri_offset).read_unaligned()
+    })
+    .ok();
     let Some(uri_offset) = uri_offset else {
         return -404;
     };

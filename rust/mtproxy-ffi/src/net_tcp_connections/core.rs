@@ -291,19 +291,23 @@ pub(super) unsafe fn cpu_tcp_server_writer_impl(c: ConnectionJob) -> c_int {
         if raw.is_null() {
             break;
         }
-        let Some(write_packet) = (unsafe { (*conn_type).write_packet }) else {
-            unreachable!();
-        };
-        unsafe {
-            write_packet(c, raw);
-            libc::free(raw.cast());
+        if let Some(write_packet) = unsafe { (*conn_type).write_packet } {
+            unsafe {
+                write_packet(c, raw);
+                libc::free(raw.cast());
+            }
+        } else {
+            unsafe {
+                libc::free(raw.cast());
+                fail_connection(c, -1);
+            }
+            return -1;
         }
     }
 
-    let Some(flush) = (unsafe { (*conn_type).flush }) else {
-        unreachable!();
-    };
-    unsafe { flush(c) };
+    if let Some(flush) = unsafe { (*conn_type).flush } {
+        unsafe { flush(c) };
+    }
 
     let raw = unsafe { alloc_raw_message() };
     if unsafe { (*conn_type).crypto_encrypt_output.is_some() && !(*conn).crypto.is_null() } {
@@ -369,10 +373,12 @@ pub(super) unsafe fn cpu_tcp_server_reader_impl(c: ConnectionJob) -> c_int {
     }
 
     if unsafe { !(*conn).crypto.is_null() } {
-        let Some(decrypt) = (unsafe { (*conn_type).crypto_decrypt_input }) else {
-            unreachable!();
-        };
-        assert!(unsafe { decrypt(c) } >= 0);
+        if let Some(decrypt) = unsafe { (*conn_type).crypto_decrypt_input } {
+            assert!(unsafe { decrypt(c) } >= 0);
+        } else {
+            unsafe { fail_connection(c, -1) };
+            return -1;
+        }
     }
 
     let r = unsafe { (*conn).in_data.total_bytes };
@@ -437,10 +443,12 @@ pub(super) unsafe fn cpu_tcp_server_reader_impl(c: ConnectionJob) -> c_int {
             break;
         }
 
-        let Some(parse_execute) = (unsafe { (*conn_type).parse_execute }) else {
-            unreachable!();
+        let res = if let Some(parse_execute) = unsafe { (*conn_type).parse_execute } {
+            unsafe { parse_execute(c) }
+        } else {
+            unsafe { fail_connection(c, -1) };
+            return -1;
         };
-        let res = unsafe { parse_execute(c) };
 
         if res != 0 {
             let buffered = if unsafe { !(*conn).crypto.is_null() } {
