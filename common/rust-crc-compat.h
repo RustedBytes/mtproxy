@@ -24,11 +24,6 @@ int crc32_check_and_repair(void *input, int l, unsigned *input_crc32,
 unsigned crc32_partial_generic(const void *data, long len, unsigned crc);
 unsigned crc32c_partial_four_tables(const void *data, long len, unsigned crc);
 
-
-static inline unsigned compute_crc32(const void *data, long len) {
-  return crc32_partial(data, len, -1) ^ -1;
-}
-
 #ifdef __cplusplus
 }
 #endif

@@ -24,13 +24,7 @@
 
 #pragma once
 
-#include <stddef.h>
 #include <sys/types.h>
-
-enum {
-  AM_GET_MEMORY_USAGE_SELF = 1,
-  AM_GET_MEMORY_USAGE_OVERALL = 2,
-};
 
 typedef struct {
   long long vm_size;
@@ -62,31 +56,6 @@ void sb_printf(stats_buffer_t *sb, const char *format, ...)
     __attribute__((format(printf, 2, 3)));
 void sb_memory(stats_buffer_t *sb, int flags);
 void sbp_print_date(stats_buffer_t *sb, const char *key, time_t unix_time);
-
-static inline void sb_print_i32_key(stats_buffer_t *sb, const char *key,
-                                    int value) {
-  sb_printf(sb, "%s\t%d\n", key, value);
-}
-
-static inline void sb_print_i64_key(stats_buffer_t *sb, const char *key,
-                                    long long value) {
-  sb_printf(sb, "%s\t%lld\n", key, value);
-}
-
-static inline void sb_print_double_key(stats_buffer_t *sb, const char *key,
-                                       double value) {
-  sb_printf(sb, "%s\t%.6lf\n", key, value);
-}
-
-static inline void sb_print_time_key(stats_buffer_t *sb, const char *key,
-                                     double value) {
-  sb_printf(sb, "%s\t%.6lfs\n", key, value);
-}
-
-static inline void sb_print_percent_key(stats_buffer_t *sb, const char *key,
-                                        double value) {
-  sb_printf(sb, "%s\t%.3lf%%\n", key, value);
-}
 
 typedef void (*stat_fun_t)(stats_buffer_t *sb);
 int sb_register_stat_fun(stat_fun_t fun);

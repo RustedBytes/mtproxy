@@ -24,34 +24,12 @@
 
 #pragma once
 
-#include <string.h>
-
 #include "jobs/jobs.h"
 #include "pid.h"
-#include "rpc-const.h"
-
-// #define RPC_INVOKE_REQ 0x2374df3d
-// #define RPC_REQ_RESULT 0x63aeda4e
-// #define RPC_REQ_ERROR 0x7ae432f5
-
-enum {
-  TL_FETCH_FLAG_ALLOW_DATA_AFTER_QUERY = 1,
-  TL_ENGINE_NOP = 0x166bb7c6,
-  TLF_CRC32 = 1,
-  TLF_PERMANENT = 2,
-  TLF_ALLOW_PREPEND = 4,
-  TLF_DISABLE_PREPEND = 8,
-  TLF_NOALIGN = 16,
-  TLF_NO_AUTOFLUSH = 32,
-};
 
 struct tl_query_header;
 struct tl_query_header *tl_query_header_dup(struct tl_query_header *h);
 void tl_query_header_delete(struct tl_query_header *h);
-
-enum {
-  RPC_REQ_ERROR_WRAPPED = RPC_REQ_ERROR + 1,
-};
 
 struct tl_in_state;
 struct tl_out_state;
@@ -148,38 +126,6 @@ struct tl_query_header {
   struct query_work_params *qw_params;
 };
 
-#define TL_IN (tlio_in->in)
-#define TL_IN_CONN ((connection_job_t)(tlio_in->in))
-#define TL_IN_NBIT ((nb_iterator_t *)(tlio_in->in))
-#define TL_IN_RAW_MSG ((struct raw_message *)(tlio_in->in))
-#define TL_IN_STR ((char *)(tlio_in->in))
-#define TL_IN_TYPE (tlio_in->in_type)
-#define TL_IN_REMAINING (tlio_in->in_remaining)
-#define TL_IN_POS (tlio_in->in_pos)
-#define TL_IN_METHODS (tlio_in->in_methods)
-#define TL_IN_MARK (tlio_in->in_mark)
-#define TL_IN_MARK_POS (tlio_in->in_mark_pos)
-#define TL_IN_PID (tlio_in->in_pid)
-#define TL_IN_FLAGS (tlio_in->in_methods->flags)
-#define TL_IN_CUR_FLAGS (tlio_in->in_flags)
-
-#define TL_OUT ((tlio_out->out))
-#define TL_OUT_TYPE (tlio_out->out_type)
-#define TL_OUT_SIZE (tlio_out->out_size)
-#define TL_OUT_CONN ((connection_job_t)(tlio_out->out))
-#define TL_OUT_RAW_MSG ((struct raw_message *)(tlio_out->out))
-#define TL_OUT_STR ((char *)(tlio_out->out))
-#define TL_OUT_POS (tlio_out->out_pos)
-#define TL_OUT_REMAINING (tlio_out->out_remaining)
-#define TL_OUT_METHODS (tlio_out->out_methods)
-#define TL_OUT_QID (tlio_out->out_qid)
-#define TL_OUT_EXTRA (tlio_out->out_extra)
-#define TL_OUT_PID (tlio_out->out_pid)
-#define TL_OUT_FLAGS (tlio_out->out_methods->flags)
-
-#define TL_ERROR (tlio_in->error)
-#define TL_ERRNUM (tlio_in->errnum)
-
 int tlf_set_error(struct tl_in_state *tlio_in, int errnum, const char *s);
 
 int tls_set_error_format(struct tl_out_state *tlio_out, int errnum,
@@ -221,24 +167,6 @@ int tls_raw_msg_rust(struct tl_out_state *tlio_out, struct raw_message *raw,
 int tls_string_rust(struct tl_out_state *tlio_out, const char *s, int len);
 int tl_copy_through_rust(struct tl_in_state *tlio_in,
                          struct tl_out_state *tlio_out, int len, int advance);
-
-static inline int tlf_init_empty(struct tl_in_state *tlio_in) {
-  return tlf_init_str(tlio_in, "", 0);
-}
-
-static inline int tl_store_end_simple(struct tl_out_state *tlio_out) {
-  return tls_end_ext(tlio_out, 0);
-}
-
-static inline void tlf_copy_error(struct tl_in_state *tlio_in,
-                                  struct tl_out_state *tlio_out) {
-  if (!tlio_out->error) {
-    if (tlio_in->error) {
-      tlio_out->error = strdup(tlio_in->error);
-      tlio_out->errnum = tlio_in->errnum;
-    }
-  }
-}
 
 struct tl_in_state *tl_in_state_alloc(void);
 void tl_in_state_free(struct tl_in_state *tlio_in);

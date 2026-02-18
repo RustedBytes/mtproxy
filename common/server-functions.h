@@ -30,14 +30,6 @@
 
 #pragma once
 
-#include <assert.h>
-#include <getopt.h>
-#include <stdarg.h>
-#include <stdio.h>
-#include <stdlib.h>
-
-#include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -52,15 +44,6 @@ void set_debug_handlers(void);
 
 extern int start_time;
 
-/* keep mask defines */
-enum {
-  LONGOPT_JOBS_SET = 0x00000400,
-  LONGOPT_COMMON_SET = 0x00001000,
-  LONGOPT_TCP_SET = 0x00002000,
-  LONGOPT_NET_SET = LONGOPT_TCP_SET,
-  LONGOPT_CUSTOM_SET = 0x10000000,
-};
-
 /* init_parse_option should be called before parse_option and parse_option_alias
  */
 // void init_parse_options (int keep_mask, const unsigned char
@@ -73,49 +56,6 @@ int parse_usage(void);
 
 int default_parse_option_func(int a);
 void usage(void);
-
-static inline void parse_option_ex(const char *name, int arg, int *var, int val,
-                                   unsigned flags, int (*func)(int),
-                                   const char *help, ...)
-    __attribute__((format(printf, 7, 8)));
-static inline void parse_option_ex(const char *name, int arg, int *var, int val,
-                                   unsigned flags, int (*func)(int),
-                                   const char *help, ...) {
-  (void)var;
-
-  char *formatted_help = NULL;
-  if (help) {
-    va_list ap;
-    va_start(ap, help);
-    const int rc = vasprintf(&formatted_help, help, ap);
-    va_end(ap);
-    assert(rc >= 0);
-  }
-
-  rust_sf_register_parse_option_ex_or_die(name, arg, val, flags, func,
-                                          formatted_help);
-  free(formatted_help);
-}
-
-static inline void parse_option(const char *name, int arg, int *var, int val,
-                                const char *help, ...)
-    __attribute__((format(printf, 5, 6)));
-static inline void parse_option(const char *name, int arg, int *var, int val,
-                                const char *help, ...) {
-  (void)var;
-
-  char *formatted_help = NULL;
-  if (help) {
-    va_list ap;
-    va_start(ap, help);
-    const int rc = vasprintf(&formatted_help, help, ap);
-    va_end(ap);
-    assert(rc >= 0);
-  }
-
-  rust_sf_register_parse_option_or_die(name, arg, val, formatted_help);
-  free(formatted_help);
-}
 
 void parse_option_alias(const char *name, int val);
 void parse_option_long_alias(const char *name, const char *alias_name);
