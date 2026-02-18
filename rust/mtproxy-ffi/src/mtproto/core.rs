@@ -3712,8 +3712,8 @@ pub(super) unsafe fn mtproto_setup_front_functions_ffi() {
         signal_handlers: [None; 65],
         custom_ops: core::ptr::null_mut(),
         tcp_methods: core::ptr::null_mut(),
-        http_type: core::ptr::null_mut(),
-        http_functions: core::ptr::null_mut(),
+        http_type: core::ptr::addr_of_mut!(ct_http_server),
+        http_functions: core::ptr::addr_of_mut!(http_methods_stats).cast::<c_void>(),
         cron_subclass: 0,
         precise_cron_subclass: 0,
     };
@@ -4361,8 +4361,9 @@ pub(super) unsafe fn mtproto_hts_stats_execute_ffi(
         return -429;
     }
 
+    let query_type = unsafe { core::ptr::addr_of!((*d).query_type).read_unaligned() };
     let data_size = unsafe { core::ptr::addr_of!((*d).data_size).read_unaligned() };
-    if op != HTQT_GET || data_size != -1 {
+    if query_type != HTQT_GET || data_size > 0 {
         let mut query_flags = unsafe { mtproto_http_query_flags_get(c) };
         query_flags &= !QF_KEEPALIVE;
         unsafe { mtproto_http_query_flags_set(c, query_flags) };
