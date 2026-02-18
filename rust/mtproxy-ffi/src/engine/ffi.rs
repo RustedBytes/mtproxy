@@ -504,6 +504,6 @@ pub unsafe extern "C" fn mtproxy_ffi_engine_check_conn_functions_bridge(
 
 /// Prints usage information (migrated from engine/engine.c)
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_engine_usage_bridge() {
+pub unsafe extern "C" fn mtproxy_ffi_engine_usage_bridge() -> ! {
     unsafe { usage() }
 }
