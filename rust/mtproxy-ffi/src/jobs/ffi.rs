@@ -3640,26 +3640,30 @@ pub extern "C" fn assert_net_cpu_thread() {
 pub extern "C" fn assert_engine_thread() {
     unsafe {
         let jt = jobs_get_this_job_thread_c_impl();
+        assert!(!jt.is_null(), "JobThread pointer is null");
         assert!(
-            !jt.is_null()
-                && ((*jt).thread_class == JC_ENGINE || (*jt).thread_class == JC_MAIN)
+            (*jt).thread_class == JC_ENGINE || (*jt).thread_class == JC_MAIN,
+            "Thread class must be JC_ENGINE or JC_MAIN"
         );
     }
 }
 
 /// Frees a job (migrated from net/net-connections.c)
+/// Note: JOB_REF_TAG value matches C macro JOB_REF_PASS which expands to "1, PTR_MOVE(job)"
 #[no_mangle]
 pub extern "C" fn mtproxy_ffi_net_connections_job_free(job: JobT) -> i32 {
-    const JOB_REF_TAG: i32 = 1;
+    const JOB_REF_TAG: i32 = 1; // From C macro: #define JOB_REF_PASS(__ptr) 1, PTR_MOVE(__ptr)
     unsafe { job_free(JOB_REF_TAG, job) }
 }
 
 /// Decrements jobs_active counter (migrated from net/net-connections.c)
+/// Note: Direct field access without atomics matches original C behavior.
+/// The JobThread structure ensures this is accessed from the correct thread context.
 #[no_mangle]
 pub extern "C" fn mtproxy_ffi_net_connections_job_thread_dec_jobs_active() {
     unsafe {
         let jt = jobs_get_this_job_thread_c_impl();
-        assert!(!jt.is_null());
+        assert!(!jt.is_null(), "JobThread pointer is null");
         (*jt).jobs_active -= 1;
     }
 }
