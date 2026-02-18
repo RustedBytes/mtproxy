@@ -10,7 +10,7 @@ path = "src/lib.rs"
 
 [dependencies]
 parking_lot = "0.12"
-heapless = "0.8"
+heapless = "0.9"
 
 [lints]
 workspace = true

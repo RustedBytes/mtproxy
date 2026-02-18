@@ -6,11 +6,13 @@
 //! - Signal handling and debugging support
 //! - Memory limit parsing
 
-#![allow(unsafe_code)]
-
-use std::collections::HashSet;
+use nix::sys::resource::{getrlimit, setrlimit, Resource};
+use nix::unistd::{Gid, Group, Uid, User};
+use signal_hook::iterator::Signals;
+use std::backtrace::Backtrace;
+use std::collections::{HashMap, HashSet};
 use std::ffi::CString;
-use std::os::raw::{c_char, c_int};
+use std::os::raw::c_int;
 use std::process;
 use std::sync::{LazyLock, Mutex, MutexGuard};
 
@@ -416,7 +418,11 @@ static PARSE_OPTION_REGISTRY: LazyLock<Mutex<ParseOptionRegistry>> =
     LazyLock::new(|| Mutex::new(ParseOptionRegistry::default()));
 static SERVER_OPTION_STATE: LazyLock<Mutex<ServerOptionState>> =
     LazyLock::new(|| Mutex::new(ServerOptionState::default()));
-static DEBUG_MAIN_PTHREAD_ID: LazyLock<Mutex<Option<libc::pthread_t>>> =
+static DEBUG_MAIN_THREAD_ID: LazyLock<Mutex<Option<std::thread::ThreadId>>> =
+    LazyLock::new(|| Mutex::new(None));
+static SIGNAL_HANDLERS: LazyLock<Mutex<HashMap<c_int, SignalHandler>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+static SIGNAL_LISTENER_HANDLE: LazyLock<Mutex<Option<signal_hook::iterator::Handle>>> =
     LazyLock::new(|| Mutex::new(None));
 
 fn lock_unpoisoned<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -1088,37 +1094,58 @@ pub fn usage() -> ! {
     process::exit(2);
 }
 
-fn ksignal_raw(sig: c_int, handler: usize, siginfo: bool, fatal_on_fail: bool) {
-    // SAFETY: zero-initializing a C sigaction struct is valid.
-    let mut action: libc::sigaction = unsafe { std::mem::zeroed() };
-    action.sa_sigaction = handler;
-    action.sa_flags =
-        libc::SA_ONSTACK | libc::SA_RESTART | if siginfo { libc::SA_SIGINFO } else { 0 };
+#[derive(Clone, Copy)]
+enum SignalHandler {
+    Simple(extern "C" fn(c_int)),
+    Extended(extern "C" fn(c_int, *mut libc::siginfo_t, *mut libc::c_void)),
+}
 
-    // SAFETY: `sigemptyset` and `sigaction` receive a valid `sigaction` object.
-    let rc = unsafe {
-        libc::sigemptyset(&raw mut action.sa_mask);
-        libc::sigaction(sig, &raw const action, std::ptr::null_mut())
+fn ensure_signal_listener(sig: c_int) -> bool {
+    let mut listener = lock_unpoisoned(&SIGNAL_LISTENER_HANDLE);
+    if let Some(handle) = listener.as_ref() {
+        return handle.add_signal(sig).is_ok();
+    }
+
+    let Ok(mut signals) = Signals::new([sig]) else {
+        return false;
     };
 
-    if rc != 0 {
-        let message = b"failed sigaction\n";
-        // SAFETY: message pointer and length are valid.
-        unsafe {
-            libc::write(2, message.as_ptr().cast(), message.len());
+    let handle = signals.handle();
+    *listener = Some(handle);
+    std::thread::spawn(move || {
+        for signal in signals.forever() {
+            dispatch_signal(signal);
         }
-        if fatal_on_fail {
-            // SAFETY: async-signal-safe immediate process termination.
-            unsafe {
-                libc::_exit(libc::EXIT_FAILURE);
+    });
+    true
+}
+
+fn dispatch_signal(sig: c_int) {
+    let handler = lock_unpoisoned(&SIGNAL_HANDLERS).get(&sig).copied();
+    if let Some(handler) = handler {
+        match handler {
+            SignalHandler::Simple(func) => func(sig),
+            SignalHandler::Extended(func) => {
+                func(sig, std::ptr::null_mut(), std::ptr::null_mut());
             }
+        }
+    }
+}
+
+fn ksignal_raw(sig: c_int, handler: SignalHandler, fatal_on_fail: bool) {
+    lock_unpoisoned(&SIGNAL_HANDLERS).insert(sig, handler);
+
+    if !ensure_signal_listener(sig) {
+        eprintln!("failed to install signal handler for signal {sig}");
+        if fatal_on_fail {
+            process::exit(libc::EXIT_FAILURE);
         }
     }
 }
 
 /// Safe wrapper for installing simple signal handlers.
 pub fn ksignal(sig: c_int, handler: extern "C" fn(c_int)) {
-    ksignal_raw(sig, handler as usize, false, false);
+    ksignal_raw(sig, SignalHandler::Simple(handler), false);
 }
 
 /// Safe wrapper for installing `SA_SIGINFO` signal handlers.
@@ -1126,35 +1153,28 @@ pub fn ksignal_ex(
     sig: c_int,
     handler: extern "C" fn(c_int, *mut libc::siginfo_t, *mut libc::c_void),
 ) {
-    ksignal_raw(sig, handler as usize, true, true);
+    ksignal_raw(sig, SignalHandler::Extended(handler), true);
 }
 
 /// Sends `SIGABRT` to the main debug thread, if called from another thread.
 pub fn kill_main() {
-    let maybe_main_thread = *lock_unpoisoned(&DEBUG_MAIN_PTHREAD_ID);
+    let maybe_main_thread = *lock_unpoisoned(&DEBUG_MAIN_THREAD_ID);
     let Some(main_thread) = maybe_main_thread else {
         return;
     };
-
-    let current_thread = libc_pthread_self();
-    if libc_pthread_equal(main_thread, current_thread) == 0 {
-        libc_pthread_kill(main_thread, libc::SIGABRT);
+    if std::thread::current().id() != main_thread {
+        process::abort();
     }
 }
 
 extern "C" fn extended_debug_handler(
-    sig: c_int,
+    _sig: c_int,
     _info: *mut libc::siginfo_t,
     _cont: *mut libc::c_void,
 ) {
-    ksignal_raw(sig, libc::SIG_DFL, false, false);
     print_backtrace();
     kill_main();
-
-    // SAFETY: async-signal-safe immediate process termination.
-    unsafe {
-        libc::_exit(libc::EXIT_FAILURE);
-    }
+    process::exit(libc::EXIT_FAILURE);
 }
 
 /// Installs crash-signal handlers mirroring `set_debug_handlers()` in C.
@@ -1163,12 +1183,12 @@ pub fn set_debug_handlers() {
     ksignal_ex(libc::SIGABRT, extended_debug_handler);
     ksignal_ex(libc::SIGFPE, extended_debug_handler);
     ksignal_ex(libc::SIGBUS, extended_debug_handler);
-    let mut debug_tid = lock_unpoisoned(&DEBUG_MAIN_PTHREAD_ID);
-    *debug_tid = Some(libc_pthread_self());
+    let mut debug_tid = lock_unpoisoned(&DEBUG_MAIN_THREAD_ID);
+    *debug_tid = Some(std::thread::current().id());
 }
 
 // ============================================================================
-// libc wrapper functions (marked as unsafe internally)
+// platform wrapper functions
 // ============================================================================
 
 struct PasswdInfo {
@@ -1181,35 +1201,32 @@ struct GroupInfo {
 }
 
 fn get_passwd_by_name(username: &str) -> Result<PasswdInfo, PrivilegeError> {
-    let c_username =
-        CString::new(username).map_err(|_| PrivilegeError::UserNotFound(username.to_string()))?;
-
-    let pw_ptr = libc_getpwnam(c_username.as_ptr());
-    if pw_ptr.is_null() {
+    let user = User::from_name(username)
+        .ok()
+        .flatten()
+        .ok_or_else(|| PrivilegeError::UserNotFound(username.to_string()))?;
+    if user.name.is_empty() {
         return Err(PrivilegeError::UserNotFound(username.to_string()));
     }
 
-    let uid = libc_passwd_get_uid(pw_ptr);
-    let gid = libc_passwd_get_gid(pw_ptr);
-
     Ok(PasswdInfo {
-        pw_uid: uid,
-        pw_gid: gid,
+        pw_uid: user.uid.as_raw(),
+        pw_gid: user.gid.as_raw(),
     })
 }
 
 fn get_group_by_name(groupname: &str) -> Result<GroupInfo, PrivilegeError> {
-    let c_groupname = CString::new(groupname)
-        .map_err(|_| PrivilegeError::GroupNotFound(groupname.to_string()))?;
-
-    let gr_ptr = libc_getgrnam(c_groupname.as_ptr());
-    if gr_ptr.is_null() {
+    let group = Group::from_name(groupname)
+        .ok()
+        .flatten()
+        .ok_or_else(|| PrivilegeError::GroupNotFound(groupname.to_string()))?;
+    if group.name.is_empty() {
         return Err(PrivilegeError::GroupNotFound(groupname.to_string()));
     }
 
-    let gr_gid = libc_group_get_gid(gr_ptr);
-
-    Ok(GroupInfo { gr_gid })
+    Ok(GroupInfo {
+        gr_gid: group.gid.as_raw(),
+    })
 }
 
 struct RLimit {
@@ -1218,7 +1235,8 @@ struct RLimit {
 }
 
 fn get_rlimit_nofile() -> Result<RLimit, ResourceLimitError> {
-    let (cur, max) = libc_getrlimit_nofile()?;
+    let (cur, max) = getrlimit(Resource::RLIMIT_NOFILE)
+        .map_err(|_| ResourceLimitError::GetLimitFailed)?;
     Ok(RLimit {
         rlim_cur: cur,
         rlim_max: max,
@@ -1226,61 +1244,27 @@ fn get_rlimit_nofile() -> Result<RLimit, ResourceLimitError> {
 }
 
 fn set_rlimit_nofile(rlim: &RLimit) -> bool {
-    libc_setrlimit_nofile(rlim.rlim_cur, rlim.rlim_max)
+    setrlimit(Resource::RLIMIT_NOFILE, rlim.rlim_cur, rlim.rlim_max).is_ok()
 }
 
 // ============================================================================
-// Platform-specific libc bindings
+// Platform-specific wrappers
 // ============================================================================
 
 #[cfg(unix)]
 fn libc_getuid() -> u32 {
-    // SAFETY: getuid() is always safe to call
-    unsafe { libc::getuid() }
+    nix::unistd::getuid().as_raw()
 }
 
 #[cfg(unix)]
 fn libc_geteuid() -> u32 {
-    // SAFETY: geteuid() is always safe to call
-    unsafe { libc::geteuid() }
-}
-
-#[cfg(unix)]
-fn libc_getpwnam(name: *const c_char) -> *mut libc::passwd {
-    // SAFETY: getpwnam() is safe when passed a valid C string
-    unsafe { libc::getpwnam(name) }
-}
-
-#[cfg(unix)]
-fn libc_passwd_get_uid(pw: *mut libc::passwd) -> u32 {
-    // SAFETY: Caller guarantees pw is non-null and valid
-    unsafe { (*pw).pw_uid }
-}
-
-#[cfg(unix)]
-fn libc_passwd_get_gid(pw: *mut libc::passwd) -> u32 {
-    // SAFETY: Caller guarantees pw is non-null and valid
-    unsafe { (*pw).pw_gid }
-}
-
-#[cfg(unix)]
-fn libc_getgrnam(name: *const c_char) -> *mut libc::group {
-    // SAFETY: getgrnam() is safe when passed a valid C string
-    unsafe { libc::getgrnam(name) }
-}
-
-#[cfg(unix)]
-fn libc_group_get_gid(gr: *mut libc::group) -> u32 {
-    // SAFETY: Caller guarantees gr is non-null and valid
-    unsafe { (*gr).gr_gid }
+    nix::unistd::geteuid().as_raw()
 }
 
 #[cfg(unix)]
 fn libc_setgroups(groups: &[u32]) -> bool {
-    let gid_list: Vec<libc::gid_t> = groups.iter().map(|&g| g as libc::gid_t).collect();
-    // SAFETY: setgroups() is safe when passed valid arrays
-    let result = unsafe { libc::setgroups(gid_list.len(), gid_list.as_ptr()) };
-    result == 0
+    let gid_list: Vec<Gid> = groups.iter().copied().map(Gid::from_raw).collect();
+    nix::unistd::setgroups(&gid_list).is_ok()
 }
 
 #[cfg(unix)]
@@ -1289,114 +1273,30 @@ fn libc_initgroups(username: &str, gid: u32) -> bool {
         return false;
     };
 
-    // SAFETY: initgroups() is safe when passed valid C string and gid
-    let result = unsafe { libc::initgroups(c_username.as_ptr(), gid as libc::gid_t) };
-    result == 0
+    nix::unistd::initgroups(&c_username, Gid::from_raw(gid)).is_ok()
 }
 
 #[cfg(unix)]
 fn libc_setgid(gid: u32) -> bool {
-    // SAFETY: setgid() is safe to call with any gid value
-    let result = unsafe { libc::setgid(gid as libc::gid_t) };
-    result == 0
+    nix::unistd::setgid(Gid::from_raw(gid)).is_ok()
 }
 
 #[cfg(unix)]
 fn libc_setuid(uid: u32) -> bool {
-    // SAFETY: setuid() is safe to call with any uid value
-    let result = unsafe { libc::setuid(uid as libc::uid_t) };
-    result == 0
+    nix::unistd::setuid(Uid::from_raw(uid)).is_ok()
 }
 
 #[cfg(unix)]
 fn libc_adjust_nice(nice_delta: i32) {
-    // SAFETY: nice() is safe to call with any integer delta.
-    let _ = unsafe { libc::nice(nice_delta) };
+    let _ = rustix::process::nice(nice_delta);
 }
 
 #[cfg(unix)]
-fn libc_pthread_self() -> libc::pthread_t {
-    // SAFETY: pthread_self() is always safe to call.
-    unsafe { libc::pthread_self() }
-}
-
-#[cfg(unix)]
-fn libc_pthread_equal(lhs: libc::pthread_t, rhs: libc::pthread_t) -> c_int {
-    // SAFETY: pthread_equal() is safe for pthread_t values.
-    unsafe { libc::pthread_equal(lhs, rhs) }
-}
-
-#[cfg(unix)]
-fn libc_pthread_kill(thread: libc::pthread_t, signal: c_int) {
-    // SAFETY: pthread_kill() is safe for pthread_t values and known signal.
-    let _ = unsafe { libc::pthread_kill(thread, signal) };
-}
-
-#[cfg(unix)]
-fn libc_getrlimit_nofile() -> Result<(u64, u64), ResourceLimitError> {
-    let mut rlim = libc::rlimit {
-        rlim_cur: 0,
-        rlim_max: 0,
-    };
-
-    // SAFETY: getrlimit() is safe when passed valid rlimit pointer
-    let result = unsafe { libc::getrlimit(libc::RLIMIT_NOFILE, &raw mut rlim) };
-
-    if result != 0 {
-        return Err(ResourceLimitError::GetLimitFailed);
-    }
-
-    Ok((rlim.rlim_cur, rlim.rlim_max))
-}
-
-#[cfg(unix)]
-fn libc_setrlimit_nofile(cur: u64, max: u64) -> bool {
-    let rlim = libc::rlimit {
-        rlim_cur: cur,
-        rlim_max: max,
-    };
-
-    // SAFETY: setrlimit() is safe when passed valid rlimit pointer
-    let result = unsafe { libc::setrlimit(libc::RLIMIT_NOFILE, &raw const rlim) };
-    result == 0
-}
-
-#[cfg(unix)]
-#[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
 fn libc_print_backtrace() {
-    const MAX_FRAMES: usize = 64;
-    let mut buffer: [*mut std::ffi::c_void; MAX_FRAMES] = [std::ptr::null_mut(); MAX_FRAMES];
-
-    // SAFETY: backtrace() is safe when passed valid buffer
-    // We allow the cast since MAX_FRAMES (64) fits comfortably in i32
-    let nptrs = unsafe { libc::backtrace(buffer.as_mut_ptr(), MAX_FRAMES as c_int) };
-
-    if nptrs > 0 {
-        let msg = b"\n------- Stack Backtrace -------\n";
-        // SAFETY: write() is safe with valid buffer
-        unsafe {
-            libc::write(2, msg.as_ptr().cast(), msg.len());
-        }
-
-        // SAFETY: backtrace_symbols_fd() is safe with valid buffer
-        unsafe {
-            libc::backtrace_symbols_fd(buffer.as_ptr(), nptrs, 2);
-        }
-
-        let msg2 = b"-------------------------------\n";
-        // SAFETY: write() is safe with valid buffer
-        unsafe {
-            libc::write(2, msg2.as_ptr().cast(), msg2.len());
-        }
-
-        let version = get_version_string();
-        let version_bytes = version.as_bytes();
-        // SAFETY: write() is safe with valid buffer
-        unsafe {
-            libc::write(2, version_bytes.as_ptr().cast(), version_bytes.len());
-            libc::write(2, b"\n".as_ptr().cast(), 1);
-        }
-    }
+    eprintln!("\n------- Stack Backtrace -------");
+    eprintln!("{}", Backtrace::force_capture());
+    eprintln!("-------------------------------");
+    eprintln!("{}", get_version_string());
 }
 
 #[cfg(not(unix))]

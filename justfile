@@ -7,13 +7,13 @@ lib_dir := obj_dir + "/lib"
 rust_ffi_debug := "target/debug/libmtproxy_ffi.a"
 rust_ffi_release := "target/release/libmtproxy_ffi.a"
 rust_runtime_release := "target/release/mtproxy-rust"
+legacy_link_libs := "-ggdb -rdynamic -lm -lrt -lpthread -ldl"
 
 default:
   @just --list
 
 dirs:
-  mkdir -p {{dep_dir}}/{common,jobs,mtproto,net,crypto,engine}
-  mkdir -p {{obj_dir}}/{common,jobs,mtproto,net,crypto,engine}
+  mkdir -p {{dep_dir}} {{obj_dir}}
   mkdir -p {{bin_dir}} {{lib_dir}}
 
 libkdb: dirs
@@ -36,14 +36,21 @@ ffi-release:
   fi
 
 build: dirs libkdb ffi-debug
-  clang -o {{bin_dir}}/mtproto-proxy {{lib_dir}}/libkdb.a {{rust_ffi_debug}} {{lib_dir}}/libkdb.a {{rust_ffi_debug}} {{lib_dir}}/libkdb.a -ggdb -rdynamic -lm -lrt -lpthread -ldl
+  just _link-legacy {{rust_ffi_debug}}
 
 release: dirs
   cargo build --release -p mtproxy-bin --bin mtproxy-rust
   cp {{rust_runtime_release}} {{bin_dir}}/mtproxy-rust
 
 release-legacy: dirs libkdb ffi-release
-  clang -o {{bin_dir}}/mtproto-proxy {{lib_dir}}/libkdb.a {{rust_ffi_release}} {{lib_dir}}/libkdb.a {{rust_ffi_release}} {{lib_dir}}/libkdb.a -ggdb -rdynamic -lm -lrt -lpthread -ldl
+  just _link-legacy {{rust_ffi_release}}
+
+_link-legacy rust_ffi_lib:
+  clang -o {{bin_dir}}/mtproto-proxy \
+    -Wl,--start-group \
+    {{lib_dir}}/libkdb.a {{rust_ffi_lib}} {{lib_dir}}/libkdb.a {{rust_ffi_lib}} {{lib_dir}}/libkdb.a \
+    -Wl,--end-group \
+    {{legacy_link_libs}}
 
 clean:
   rm -rf {{obj_dir}} {{dep_dir}} {{bin_dir}} target || true
