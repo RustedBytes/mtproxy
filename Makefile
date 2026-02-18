@@ -47,7 +47,6 @@ LIB_OBJS_NORMAL := \
 	${OBJ}/common/parse-config.o \
 	${OBJ}/net/net-connections.o \
 	${OBJ}/common/tl-parse.o ${OBJ}/common/common-stats.o \
-	${OBJ}/engine/engine.o \
 	${OBJ}/common/kprintf.o \
 
 LIB_OBJS := ${LIB_OBJS_NORMAL}

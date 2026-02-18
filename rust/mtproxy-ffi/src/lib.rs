@@ -156,3 +156,96 @@ pub extern "C" fn mtproxy_ffi_precise_time_set_now(now_value: c_int) {
 pub extern "C" fn mtproxy_ffi_precise_time_get_now() -> c_int {
     TLS_NOW.get()
 }
+
+// ============================================================================
+// Engine global variables (migrated from engine/engine.c)
+// ============================================================================
+
+/// Global progname variable (migrated from engine/engine.c)
+#[no_mangle]
+#[export_name = "local_progname"]
+static mut GLOBAL_LOCAL_PROGNAME: *mut c_char = core::ptr::null_mut();
+
+/// Global precise_now_diff variable (migrated from engine/engine.c)
+#[no_mangle]
+#[export_name = "precise_now_diff"]
+static mut GLOBAL_PRECISE_NOW_DIFF: c_double = 0.0;
+
+/// Global server_ipv6 variable (migrated from engine/engine.c)
+#[no_mangle]
+#[export_name = "server_ipv6"]
+static mut GLOBAL_SERVER_IPV6: [u8; 16] = [0; 16];
+
+// EventPreciseCron struct definition (not exported to avoid conflicts)
+#[repr(C)]
+struct EventPreciseCronInternal {
+    next: *mut EventPreciseCronInternal,
+    prev: *mut EventPreciseCronInternal,
+    wakeup: Option<unsafe extern "C" fn(*mut EventPreciseCronInternal)>,
+}
+
+/// Global precise_cron_events variable (migrated from engine/engine.c)
+/// Initialized to point to itself (circular list)
+#[no_mangle]
+#[export_name = "precise_cron_events"]
+static mut GLOBAL_PRECISE_CRON_EVENTS: EventPreciseCronInternal = EventPreciseCronInternal {
+    next: core::ptr::null_mut(),
+    prev: core::ptr::null_mut(),
+    wakeup: None,
+};
+
+// Forward declaration for engine_state type (defined in engine module)
+#[repr(C)]
+struct EngineStateInternal {
+    _private: [u8; 0],
+}
+
+/// Global engine_state variable (migrated from engine/engine.c)
+#[no_mangle]
+#[export_name = "engine_state"]
+static mut GLOBAL_ENGINE_STATE: *mut EngineStateInternal = core::ptr::null_mut();
+
+// ============================================================================
+// Net connections global variables (migrated from net/net-connections.c)
+// ============================================================================
+
+// Forward declaration for conn_target_job_t type
+#[repr(C)]
+struct ConnTargetJobOpaque {
+    _private: [u8; 0],
+}
+
+type ConnTargetJobT = *mut ConnTargetJobOpaque;
+
+const PRIME_TARGETS: usize = 99961; // From mtproxy_ffi.h
+
+/// Global HTarget array (migrated from net/net-connections.c)
+#[no_mangle]
+#[export_name = "HTarget"]
+static mut GLOBAL_HTARGET: [ConnTargetJobT; PRIME_TARGETS] = [core::ptr::null_mut(); PRIME_TARGETS];
+
+/// Global TargetsLock mutex (migrated from net/net-connections.c)
+#[no_mangle]
+#[export_name = "TargetsLock"]
+static mut GLOBAL_TARGETS_LOCK: libc::pthread_mutex_t = libc::PTHREAD_MUTEX_INITIALIZER;
+
+/// Global active_special_connections variable (migrated from net/net-connections.c)
+#[no_mangle]
+#[export_name = "active_special_connections"]
+static mut GLOBAL_ACTIVE_SPECIAL_CONNECTIONS: c_int = 0;
+
+/// Global max_special_connections variable (migrated from net/net-connections.c)
+#[no_mangle]
+#[export_name = "max_special_connections"]
+static mut GLOBAL_MAX_SPECIAL_CONNECTIONS: c_int = 65536; // MAX_CONNECTIONS default
+
+/// Initialize precise_cron_events to point to itself (called during engine init)
+/// This mimics the C initialization: {.next = &precise_cron_events, .prev = &precise_cron_events}
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_init_precise_cron_events() {
+    unsafe {
+        let ptr = core::ptr::addr_of_mut!(GLOBAL_PRECISE_CRON_EVENTS);
+        (*ptr).next = ptr;
+        (*ptr).prev = ptr;
+    }
+}

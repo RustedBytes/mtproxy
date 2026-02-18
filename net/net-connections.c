@@ -30,15 +30,14 @@
 #define _FILE_OFFSET_BITS 64
 
 #include <assert.h>
-#include <pthread.h>
 
 #include "jobs/jobs.h"
 #include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 
-// Global variables (still referenced from C/Rust interop)
-int active_special_connections, max_special_connections = MAX_CONNECTIONS;
-conn_target_job_t HTarget[PRIME_TARGETS];
-pthread_mutex_t TargetsLock = PTHREAD_MUTEX_INITIALIZER;
+// Global variables moved to rust/mtproxy-ffi/src/lib.rs:
+// - active_special_connections, max_special_connections
+// - HTarget[PRIME_TARGETS]
+// - TargetsLock
 
 // Assertion functions (must remain in C for now due to private JobThread fields)
 void assert_net_cpu_thread(void) {}
