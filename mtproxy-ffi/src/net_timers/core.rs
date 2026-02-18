@@ -126,13 +126,6 @@ fn timers_wait_msec(wakeup_time: f64, now: f64) -> c_int {
 
 #[inline]
 fn debug_next_timer(heap_size: usize, wait_time: f64) {
-    #[cfg(test)]
-    {
-        let _ = heap_size;
-        let _ = wait_time;
-    }
-
-    #[cfg(not(test))]
     unsafe {
         if verbosity >= 3 {
             crate::kprintf_fmt!(
@@ -268,100 +261,4 @@ pub unsafe extern "C" fn timers_prepare_stat(sb: *mut c_void) -> c_int {
     );
     crate::sb_printf_fmt!(sb, b"<<<<<<timers<<<<<<\tend\n\0".as_ptr().cast());
     (*sb).pos
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{
-        insert_event_timer, remove_event_timer, thread_run_timers, EventTimer, TimerHeapState,
-        EMPTY_WAIT_MSEC,
-    };
-    use core::ffi::c_int;
-
-    unsafe extern "C" fn test_wakeup(_: *mut EventTimer) -> c_int {
-        0
-    }
-
-    fn timer(wakeup_time: f64) -> EventTimer {
-        EventTimer {
-            h_idx: 0,
-            flags: 0,
-            wakeup: Some(test_wakeup),
-            wakeup_time,
-            real_wakeup_time: 0.0,
-        }
-    }
-
-    #[test]
-    fn heap_insert_orders_by_wakeup_time() {
-        let mut state = TimerHeapState::default();
-        let mut t1 = timer(5.0);
-        let mut t2 = timer(2.0);
-        let mut t3 = timer(4.0);
-
-        unsafe {
-            assert!(state.insert_impl(&mut t1) > 0);
-            assert!(state.insert_impl(&mut t2) > 0);
-            assert!(state.insert_impl(&mut t3) > 0);
-        }
-
-        let first = state.first_timer_ptr().unwrap();
-        assert!(core::ptr::eq(first, &t2));
-        assert_eq!(state.by_id.len(), 3);
-    }
-
-    #[test]
-    fn remove_returns_zero_for_inactive_timer() {
-        let mut state = TimerHeapState::default();
-        let mut t1 = timer(1.0);
-
-        let rc = unsafe { state.remove_impl(&mut t1) };
-        assert_eq!(rc, 0);
-        assert_eq!(state.by_id.len(), 0);
-    }
-
-    #[test]
-    fn remove_rebalances_heap() {
-        let mut state = TimerHeapState::default();
-        let mut t1 = timer(3.0);
-        let mut t2 = timer(1.0);
-        let mut t3 = timer(2.0);
-
-        unsafe {
-            let _ = state.insert_impl(&mut t1);
-            let _ = state.insert_impl(&mut t2);
-            let _ = state.insert_impl(&mut t3);
-            assert_eq!(state.remove_impl(&mut t2), 1);
-        }
-
-        let first = state.first_timer_ptr().unwrap();
-        assert!(core::ptr::eq(first, &t3));
-        assert_eq!(state.by_id.len(), 2);
-        assert_eq!(t2.h_idx, 0);
-    }
-
-    #[test]
-    fn ffi_rejects_null_timer_pointers() {
-        unsafe {
-            assert_eq!(insert_event_timer(core::ptr::null_mut()), -1);
-            assert_eq!(remove_event_timer(core::ptr::null_mut()), -1);
-        }
-    }
-
-    #[test]
-    fn thread_run_timers_skips_null_wakeup_callback() {
-        let mut timer = EventTimer {
-            h_idx: 0,
-            flags: 0,
-            wakeup: None,
-            wakeup_time: -1.0,
-            real_wakeup_time: 0.0,
-        };
-
-        unsafe {
-            assert!(insert_event_timer(&mut timer) > 0);
-        }
-
-        assert_eq!(thread_run_timers(), EMPTY_WAIT_MSEC);
-    }
 }

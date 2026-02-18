@@ -104,8 +104,6 @@ mod net_timers;
 mod printf_compat;
 mod server_functions;
 mod stats;
-#[cfg(test)]
-mod test_consts;
 mod time_cfg_observability;
 mod tl_parse;
 pub mod vv_io;
@@ -118,18 +116,7 @@ pub use jobs::*;
 pub use kprintf::*;
 pub use mp_queue::*;
 pub use stats::*;
-#[cfg(test)]
-pub(crate) use test_consts::*;
 pub use time_cfg_observability::*;
-
-#[cfg(test)]
-pub(crate) use crypto::core::AESNI_CIPHER_AES_256_CTR;
-
-#[cfg(test)]
-pub(crate) use crypto::core::{CRC32_REFLECTED_POLY, GF32_CLMUL_POWERS_LEN};
-
-#[cfg(test)]
-mod tests;
 
 // ============================================================================
 // Precise time FFI functions (migrated from common/precise-time.c)

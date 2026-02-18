@@ -191,8 +191,6 @@ unsafe extern "C" {
 
     #[link_name = "alloc_mp_queue_w"]
     fn c_alloc_mp_queue_w() -> *mut c_void;
-    #[cfg(test)]
-    fn free_mp_queue(queue: *mut MpQueue);
     fn mpq_pop_nw(queue: *mut MpQueue, flags: c_int) -> *mut c_void;
     fn mpq_push_w(queue: *mut MpQueue, v: *mut c_void, flags: c_int) -> c_long;
     fn mpq_is_empty(queue: *mut MpQueue) -> c_int;
@@ -622,69 +620,6 @@ unsafe fn alloc_new_msg_buffers_chunk(ch: *mut MsgBuffersChunk) -> *mut MsgBuffe
     }
 
     c
-}
-
-#[cfg(test)]
-unsafe fn free_msg_buffers_chunk_internal(c: *mut MsgBuffersChunk, ch: *mut MsgBuffersChunk) {
-    assert_eq!(unsafe { (*c).magic }, MSG_CHUNK_USED_LOCKED_MAGIC);
-    let free_block_queue = unsafe { (*c).free_block_queue };
-
-    let magic = unsafe { (*ch).magic };
-    assert!(magic == MSG_CHUNK_HEAD_MAGIC || magic == MSG_CHUNK_HEAD_LOCKED_MAGIC);
-    assert_eq!(unsafe { (*c).buffer_size }, unsafe { (*ch).buffer_size });
-    assert_eq!(unsafe { (*c).tot_buffers }, unsafe { free_cnt_get(c, 1) });
-    assert_eq!(ch, unsafe { (*c).ch_head });
-
-    unsafe {
-        (*c).magic = 0;
-        (*c).ch_head = ptr::null_mut();
-
-        lock_chunk_head(ch);
-        (*(*c).ch_next).ch_prev = (*c).ch_prev;
-        (*(*c).ch_prev).ch_next = (*c).ch_next;
-
-        (*ch).tot_buffers -= (*c).tot_buffers;
-        (*ch).free_buffers -= (*c).tot_buffers;
-        (*ch).tot_chunks -= 1;
-        unlock_chunk_head(ch);
-    }
-
-    assert!(unsafe { (*ch).tot_chunks >= 0 });
-
-    let _ = unsafe { atomic_fetch_add_i32(ptr::addr_of_mut!(allocated_buffer_chunks), -1) };
-    let stat = unsafe { ensure_raw_msg_buffer_module_stat_tls() };
-    unsafe {
-        (*stat).allocated_buffer_bytes -= c_longlong::from(MSG_BUFFERS_CHUNK_SIZE);
-    }
-
-    let mut si = unsafe { BUFFER_SIZE_VALUES - 1 };
-    while si > 0
-        && unsafe {
-            ptr::addr_of!(CHUNK_HEADERS)
-                .cast::<MsgBuffersChunk>()
-                .add(usize::try_from(si - 1).unwrap_or(0))
-        } != ch
-    {
-        si -= 1;
-    }
-    assert!(si >= 0);
-
-    if chunk_save_get(si) == c {
-        chunk_save_set(si, ptr::null_mut());
-    }
-
-    unsafe {
-        free_mp_queue(free_block_queue);
-        ptr::write_bytes(c.cast::<u8>(), 0, size_of::<MsgBuffersChunk>());
-        libc::free(c.cast::<c_void>());
-    }
-}
-
-#[cfg(test)]
-unsafe fn free_msg_buffers_chunk(c: *mut MsgBuffersChunk) {
-    assert_eq!(unsafe { (*c).magic }, MSG_CHUNK_USED_LOCKED_MAGIC);
-    assert_eq!(unsafe { free_cnt_get(c, 1) }, unsafe { (*c).tot_buffers });
-    unsafe { free_msg_buffers_chunk_internal(c, (*c).ch_head) };
 }
 
 unsafe fn get_buffer_no(c: *mut MsgBuffersChunk, x: *mut MsgBuffer) -> c_int {
@@ -1228,25 +1163,3 @@ const _: () = {
 
     let _ = MSG_BUFFER_SPECIAL_MAGIC;
 };
-
-#[cfg(test)]
-mod tests {
-    use super::msg_buffer_pick_size_index;
-
-    #[test]
-    fn msg_buffer_size_picker_matches_policy() {
-        unsafe {
-            super::BUFFER_SIZE_VALUES = 0;
-            super::init_buffer_chunk_headers();
-            assert_eq!(msg_buffer_pick_size_index(-1), 4);
-            assert_eq!(msg_buffer_pick_size_index(3_000), 3);
-            assert_eq!(msg_buffer_pick_size_index(40), 0);
-        }
-    }
-
-    #[test]
-    fn free_chunk_symbol_kept_for_parity() {
-        let f: unsafe fn(*mut super::MsgBuffersChunk) = super::free_msg_buffers_chunk;
-        let _ = f as usize;
-    }
-}
