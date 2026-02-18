@@ -79,7 +79,7 @@ pub fn tls_has_bytes(pos: i32, length: i32, len: i32) -> bool {
 /// with invalid bounds.
 #[must_use]
 pub fn tls_read_length(response: &[u8], pos: &mut i32) -> i32 {
-    let idx = *pos as usize;
+    let idx = usize::try_from(*pos).expect("pos must be non-negative");
     *pos += 2;
     i32::from(response[idx]) * 256 + i32::from(response[idx + 1])
 }
@@ -87,7 +87,9 @@ pub fn tls_read_length(response: &[u8], pos: &mut i32) -> i32 {
 /// TLS parsing helper: checks if buffer matches expected bytes.
 #[must_use]
 pub fn tls_expect_bytes(response: &[u8], pos: i32, expected: &[u8]) -> bool {
-    let start = pos as usize;
+    let Ok(start) = usize::try_from(pos) else {
+        return false;
+    };
     let end = start + expected.len();
     if end > response.len() {
         return false;
@@ -178,9 +180,7 @@ pub fn add_length(buffer: &mut [u8], pos: &mut usize, length: i32) -> bool {
         return false;
     }
 
-    let length_u16 = if (0..=65535).contains(&length) {
-        length as u16
-    } else {
+    let Ok(length_u16) = u16::try_from(length) else {
         return false;
     };
 

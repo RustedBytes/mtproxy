@@ -409,6 +409,23 @@ pub fn packet_len_state(packet_len: i32, max_packet_len: i32) -> i32 {
 }
 
 /// C-compat nonce packet policy for `net-tcp-rpc-server.c`.
+#[derive(Debug, Clone, Copy)]
+pub struct NonceCompatPolicy {
+    pub allow_unencrypted: bool,
+    pub allow_encrypted: bool,
+    pub now_ts: i32,
+    pub main_secret_len: i32,
+    pub main_key_signature: i32,
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+pub struct NonceCompatOutput {
+    pub schema: i32,
+    pub key_select: i32,
+    pub has_dh_params: i32,
+}
+
+/// C-compat nonce packet policy for `net-tcp-rpc-server.c`.
 ///
 /// Return codes:
 /// - `0` success
@@ -418,14 +435,8 @@ pub fn packet_len_state(packet_len: i32, max_packet_len: i32) -> i32 {
 /// - `-6` timestamp skew too large
 pub fn process_nonce_packet_for_compat(
     packet: &[u8],
-    allow_unencrypted: bool,
-    allow_encrypted: bool,
-    now_ts: i32,
-    main_secret_len: i32,
-    main_key_signature: i32,
-    out_schema: &mut i32,
-    out_key_select: &mut i32,
-    out_has_dh_params: &mut i32,
+    policy: NonceCompatPolicy,
+    output: &mut NonceCompatOutput,
 ) -> i32 {
     let Some(parsed) = parse_nonce_packet(packet) else {
         return -1;
@@ -433,71 +444,71 @@ pub fn process_nonce_packet_for_compat(
 
     let selected_key = super::tcp_rpc_common::select_nonce_key_signature(
         &parsed,
-        main_secret_len,
-        main_key_signature,
+        policy.main_secret_len,
+        policy.main_key_signature,
     );
 
-    *out_schema = parsed.crypto_schema.to_i32();
-    *out_key_select = 0;
-    *out_has_dh_params = 0;
+    output.schema = parsed.crypto_schema.to_i32();
+    output.key_select = 0;
+    output.has_dh_params = 0;
 
     match parsed.crypto_schema {
         super::tcp_rpc_common::CryptoSchema::None => {
             if parsed.key_select != 0 {
                 return -3;
             }
-            if !allow_unencrypted {
+            if !policy.allow_unencrypted {
                 return -5;
             }
         }
         super::tcp_rpc_common::CryptoSchema::Aes => {
             if selected_key == 0 {
-                if allow_unencrypted {
-                    *out_schema = super::tcp_rpc_common::CryptoSchema::None.to_i32();
+                if policy.allow_unencrypted {
+                    output.schema = super::tcp_rpc_common::CryptoSchema::None.to_i32();
                     return 0;
                 }
                 return -3;
             }
-            if !allow_encrypted {
-                if allow_unencrypted {
-                    *out_schema = super::tcp_rpc_common::CryptoSchema::None.to_i32();
+            if !policy.allow_encrypted {
+                if policy.allow_unencrypted {
+                    output.schema = super::tcp_rpc_common::CryptoSchema::None.to_i32();
                     return 0;
                 }
                 return -5;
             }
-            if (f64::from(parsed.crypto_ts) - f64::from(now_ts)).abs() > 30.0 {
+            if (f64::from(parsed.crypto_ts) - f64::from(policy.now_ts)).abs() > 30.0 {
                 return -6;
             }
-            *out_key_select = selected_key;
-            *out_schema = super::tcp_rpc_common::CryptoSchema::Aes.to_i32();
+            output.key_select = selected_key;
+            output.schema = super::tcp_rpc_common::CryptoSchema::Aes.to_i32();
         }
         super::tcp_rpc_common::CryptoSchema::AesExt
         | super::tcp_rpc_common::CryptoSchema::AesDh => {
             if selected_key == 0 {
-                if allow_unencrypted {
-                    *out_schema = super::tcp_rpc_common::CryptoSchema::None.to_i32();
+                if policy.allow_unencrypted {
+                    output.schema = super::tcp_rpc_common::CryptoSchema::None.to_i32();
                     return 0;
                 }
                 return -3;
             }
-            if !allow_encrypted {
-                if allow_unencrypted {
-                    *out_schema = super::tcp_rpc_common::CryptoSchema::None.to_i32();
+            if !policy.allow_encrypted {
+                if policy.allow_unencrypted {
+                    output.schema = super::tcp_rpc_common::CryptoSchema::None.to_i32();
                     return 0;
                 }
                 return -5;
             }
-            if (f64::from(parsed.crypto_ts) - f64::from(now_ts)).abs() > 30.0 {
+            if (f64::from(parsed.crypto_ts) - f64::from(policy.now_ts)).abs() > 30.0 {
                 return -6;
             }
             if parsed.crypto_schema == super::tcp_rpc_common::CryptoSchema::AesDh
                 && parsed.has_dh_params
                 && parsed.dh_params_select != 0
             {
-                *out_has_dh_params = 1;
+                output.has_dh_params = 1;
             }
-            *out_key_select = selected_key;
-            *out_schema = parsed.crypto_schema.to_i32();
+            output.key_select = selected_key;
+            output.schema = parsed.crypto_schema.to_i32();
         }
     }
 
@@ -638,8 +649,8 @@ pub const fn default_check_perm(default_rpc_flags: i32) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::{
-        packet_header_malformed, packet_len_state, process_nonce_packet_for_compat, ProcessId,
-        RpcServerData, ServerError, ServerState,
+        packet_header_malformed, packet_len_state, process_nonce_packet_for_compat,
+        NonceCompatOutput, NonceCompatPolicy, ProcessId, RpcServerData, ServerError, ServerState,
     };
     use crate::runtime::net::tcp_rpc_client::{
         PACKET_LEN_STATE_INVALID, PACKET_LEN_STATE_READY, PACKET_LEN_STATE_SKIP,
@@ -877,25 +888,23 @@ mod tests {
         use crate::runtime::net::tcp_rpc_common::{CryptoSchema, NoncePacket};
 
         let packet = NoncePacket::new(0, CryptoSchema::Aes, 100, [0_u8; 16]);
-        let mut out_schema = 0;
-        let mut out_key_select = 0;
-        let mut out_has_dh_params = 0;
+        let mut output = NonceCompatOutput::default();
 
         let rc = process_nonce_packet_for_compat(
             &packet.to_bytes(),
-            true,
-            false,
-            100,
-            32,
-            12345,
-            &mut out_schema,
-            &mut out_key_select,
-            &mut out_has_dh_params,
+            NonceCompatPolicy {
+                allow_unencrypted: true,
+                allow_encrypted: false,
+                now_ts: 100,
+                main_secret_len: 32,
+                main_key_signature: 12345,
+            },
+            &mut output,
         );
 
         assert_eq!(rc, 0);
-        assert_eq!(out_schema, CryptoSchema::None.to_i32());
-        assert_eq!(out_key_select, 0);
-        assert_eq!(out_has_dh_params, 0);
+        assert_eq!(output.schema, CryptoSchema::None.to_i32());
+        assert_eq!(output.key_select, 0);
+        assert_eq!(output.has_dh_params, 0);
     }
 }

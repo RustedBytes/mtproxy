@@ -575,6 +575,27 @@ pub fn default_check_ready(
 }
 
 /// C-compat nonce packet policy for `net-tcp-rpc-client.c`.
+#[derive(Debug, Clone, Copy)]
+pub struct NonceCompatPolicy {
+    pub flags: i32,
+    pub nonce_time: i32,
+    pub main_secret_len: i32,
+    pub main_key_signature: i32,
+}
+
+pub const NONCE_POLICY_ALLOW_UNENCRYPTED: i32 = 1 << 0;
+pub const NONCE_POLICY_ALLOW_ENCRYPTED: i32 = 1 << 1;
+pub const NONCE_POLICY_REQUIRE_DH: i32 = 1 << 2;
+pub const NONCE_POLICY_HAS_CRYPTO_TEMP: i32 = 1 << 3;
+
+#[derive(Debug, Default, Clone, Copy)]
+pub struct NonceCompatOutput {
+    pub schema: i32,
+    pub key_select: i32,
+    pub has_dh_params: i32,
+}
+
+/// C-compat nonce packet policy for `net-tcp-rpc-client.c`.
 ///
 /// Return codes:
 /// - `0` success
@@ -585,16 +606,8 @@ pub fn default_check_ready(
 /// - `-7` DH prerequisites missing
 pub fn process_nonce_packet_for_compat(
     packet: &[u8],
-    allow_unencrypted: bool,
-    allow_encrypted: bool,
-    require_dh: bool,
-    has_crypto_temp: bool,
-    nonce_time: i32,
-    main_secret_len: i32,
-    main_key_signature: i32,
-    out_schema: &mut i32,
-    out_key_select: &mut i32,
-    out_has_dh_params: &mut i32,
+    policy: NonceCompatPolicy,
+    output: &mut NonceCompatOutput,
 ) -> i32 {
     let Some(parsed) = parse_nonce_packet(packet) else {
         return -1;
@@ -602,20 +615,20 @@ pub fn process_nonce_packet_for_compat(
 
     let selected_key = super::tcp_rpc_common::select_nonce_key_signature(
         &parsed,
-        main_secret_len,
-        main_key_signature,
+        policy.main_secret_len,
+        policy.main_key_signature,
     );
 
-    *out_schema = parsed.crypto_schema.to_i32();
-    *out_key_select = selected_key;
-    *out_has_dh_params = 0;
+    output.schema = parsed.crypto_schema.to_i32();
+    output.key_select = selected_key;
+    output.has_dh_params = 0;
 
     match parsed.crypto_schema {
         super::tcp_rpc_common::CryptoSchema::None => {
             if selected_key != 0 {
                 return -3;
             }
-            if !allow_unencrypted {
+            if (policy.flags & NONCE_POLICY_ALLOW_UNENCRYPTED) == 0 {
                 return -5;
             }
         }
@@ -623,10 +636,10 @@ pub fn process_nonce_packet_for_compat(
             if selected_key == 0 {
                 return -3;
             }
-            if !allow_encrypted {
+            if (policy.flags & NONCE_POLICY_ALLOW_ENCRYPTED) == 0 {
                 return -5;
             }
-            if (f64::from(parsed.crypto_ts) - f64::from(nonce_time)).abs() > 30.0 {
+            if (f64::from(parsed.crypto_ts) - f64::from(policy.nonce_time)).abs() > 30.0 {
                 return -6;
             }
         }
@@ -636,7 +649,8 @@ pub fn process_nonce_packet_for_compat(
                 return -3;
             }
             if parsed.crypto_schema == super::tcp_rpc_common::CryptoSchema::AesDh
-                && (!require_dh || !has_crypto_temp)
+                && ((policy.flags & NONCE_POLICY_REQUIRE_DH) == 0
+                    || (policy.flags & NONCE_POLICY_HAS_CRYPTO_TEMP) == 0)
             {
                 return -7;
             }
@@ -645,13 +659,13 @@ pub fn process_nonce_packet_for_compat(
             {
                 return -7;
             }
-            if !allow_encrypted {
+            if (policy.flags & NONCE_POLICY_ALLOW_ENCRYPTED) == 0 {
                 return -5;
             }
-            if (f64::from(parsed.crypto_ts) - f64::from(nonce_time)).abs() > 30.0 {
+            if (f64::from(parsed.crypto_ts) - f64::from(policy.nonce_time)).abs() > 30.0 {
                 return -6;
             }
-            *out_has_dh_params = i32::from(
+            output.has_dh_params = i32::from(
                 parsed.crypto_schema == super::tcp_rpc_common::CryptoSchema::AesDh
                     && parsed.has_dh_params
                     && parsed.dh_params_select != 0,
@@ -685,7 +699,8 @@ mod tests {
         default_check_perm, default_check_ready, default_connected_crypto_flags,
         default_outbound_crypto_flags, init_fake_crypto_state, normalize_perm_flags,
         packet_len_state, process_nonce_packet_for_compat, requires_dh_accept, ClientError,
-        ClientState, CryptoFlags, DefaultReadyState, ProcessId, RpcClientData,
+        ClientState, CryptoFlags, DefaultReadyState, NonceCompatOutput, NonceCompatPolicy,
+        ProcessId, RpcClientData, NONCE_POLICY_ALLOW_ENCRYPTED,
         PACKET_LEN_STATE_INVALID, PACKET_LEN_STATE_READY, PACKET_LEN_STATE_SHORT,
         PACKET_LEN_STATE_SKIP, RPCF_ALLOW_ENC, RPCF_ALLOW_SKIP_DH, RPCF_ALLOW_UNENC, RPCF_ENC_SENT,
         RPCF_REQ_DH,
@@ -900,28 +915,23 @@ mod tests {
     #[test]
     fn compat_nonce_policy_accepts_aes_with_selected_key() {
         let packet = NoncePacket::new(12345, CryptoSchema::Aes, 100, [0_u8; 16]);
-        let mut out_schema = 0;
-        let mut out_key_select = 0;
-        let mut out_has_dh_params = 0;
+        let mut output = NonceCompatOutput::default();
 
         let rc = process_nonce_packet_for_compat(
             &packet.to_bytes(),
-            false,
-            true,
-            false,
-            false,
-            100,
-            32,
-            12345,
-            &mut out_schema,
-            &mut out_key_select,
-            &mut out_has_dh_params,
+            NonceCompatPolicy {
+                flags: NONCE_POLICY_ALLOW_ENCRYPTED,
+                nonce_time: 100,
+                main_secret_len: 32,
+                main_key_signature: 12345,
+            },
+            &mut output,
         );
 
         assert_eq!(rc, 0);
-        assert_eq!(out_schema, CryptoSchema::Aes.to_i32());
-        assert_eq!(out_key_select, 12345);
-        assert_eq!(out_has_dh_params, 0);
+        assert_eq!(output.schema, CryptoSchema::Aes.to_i32());
+        assert_eq!(output.key_select, 12345);
+        assert_eq!(output.has_dh_params, 0);
     }
 
     #[test]
