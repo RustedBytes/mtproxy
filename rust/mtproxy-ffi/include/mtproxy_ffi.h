@@ -1312,6 +1312,10 @@ int32_t mtproxy_ffi_mtproto_client_send_message_runtime(
 void mtproxy_ffi_mtproto_add_stats(void *w);
 void mtproxy_ffi_mtproto_compute_stats_sum(void);
 void mtproxy_ffi_mtproto_update_local_stats_copy(void *s);
+void mtproxy_ffi_mtproto_precise_cron(void);
+void mtproxy_ffi_mtproto_on_child_termination_handler(void);
+int32_t mtproxy_ffi_mtproto_data_received(void *c, int32_t bytes_received);
+int32_t mtproxy_ffi_mtproto_data_sent(void *c, int32_t bytes_sent);
 void mtproxy_ffi_mtproto_mtfront_prepare_stats(void *sb);
 int32_t mtproxy_ffi_mtproto_hts_stats_execute(
   void *c,
@@ -1447,6 +1451,10 @@ int32_t mtproxy_ffi_mtproto_http_send_message(
 int32_t mtproxy_ffi_mtproto_proxy_main(
   int32_t argc,
   const char *const *argv
+);
+int32_t mtproxy_ffi_mtproto_legacy_main(
+  int32_t argc,
+  char **argv
 );
 
 // mtproto-config helpers for Step 15 parser/apply runtime migration.

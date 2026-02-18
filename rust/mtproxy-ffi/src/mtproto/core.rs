@@ -101,15 +101,19 @@ const OPT_P: c_int = b'P' as c_int;
 const AM_GET_MEMORY_USAGE_SELF: c_int = 1;
 const MAX_HTTP_HEADER_SIZE: c_int = 16384;
 const MAX_POST_SIZE: c_int = 262_144 * 4 - 4096;
+const STATS_BUFF_SIZE: usize = 1 << 20;
 const MAX_CONNECTION_BUFFER_SPACE: c_int = 1 << 25;
 const MAX_HTTP_LISTEN_PORTS: usize = 128;
 const MAX_CONNECTIONS: usize = 65536;
 const MAX_WORKERS: usize = 256;
 const MAX_EVENTS: usize = 1 << 19;
 const ENGINE_NO_PORT: u64 = 4;
+const OUR_SIGRTMAX: c_int = 64;
 const ENGINE_ENABLE_IPV6: u64 = 0x4;
 const ENGINE_ENABLE_SLAVE_MODE: u64 = 0x20_00000;
 const DEFAULT_PING_INTERVAL: c_double = 5.0;
+const DEFAULT_CFG_MIN_CONNECTIONS: c_int = 4;
+const DEFAULT_CFG_MAX_CONNECTIONS: c_int = 8;
 const DEFAULT_WINDOW_CLAMP: c_int = 131_072;
 const SM_IPV6: c_int = 2;
 const SM_LOWPRIO: c_int = 8;
@@ -126,6 +130,9 @@ const ENCRYPTED_MESSAGE_MIN_LEN: c_int = 56; // offsetof(struct encrypted_messag
 const PROCESS_HTTP_URI_MAX_LEN: usize = 20;
 const PROCESS_HTTP_OPTIONS_CORS_HEADERS: &str = "Access-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: POST, OPTIONS\r\nAccess-Control-Allow-Headers: origin, content-type\r\nAccess-Control-Max-Age: 1728000\r\n";
 const CONN_STATUS_WORKING: c_int = 2;
+const SHORT_VERSION_STR: &[u8] = b"mtproxy\0";
+const FULL_VERSION_STR: &[u8] = b"mtproxy-rust-ffi\0";
+const MTPROXY_CORS_HTTP_HEADERS: &[u8] = b"Access-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: POST, OPTIONS\r\nAccess-Control-Allow-Headers: origin, content-type\r\nAccess-Control-Max-Age: 1728000\r\n\0";
 const TL_ERROR_NOT_ENOUGH_DATA: c_int =
     mtproxy_core::runtime::config::tl_parse::TL_ERROR_NOT_ENOUGH_DATA;
 const TL_ERROR_INTERNAL: c_int = mtproxy_core::runtime::config::tl_parse::TL_ERROR_INTERNAL;
@@ -346,15 +353,47 @@ struct MtprotoHtsData {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy)]
-struct MtprotoConnTypePrefix {
+#[derive(Clone, Copy, Default)]
+pub(crate) struct MtprotoConnType {
     magic: c_int,
     flags: c_int,
+    title: *mut c_char,
+    accept: Option<unsafe extern "C" fn(ConnectionJob) -> c_int>,
+    init_accepted: Option<unsafe extern "C" fn(ConnectionJob) -> c_int>,
+    reader: Option<unsafe extern "C" fn(ConnectionJob) -> c_int>,
+    writer: Option<unsafe extern "C" fn(ConnectionJob) -> c_int>,
+    close: Option<unsafe extern "C" fn(ConnectionJob, c_int) -> c_int>,
+    parse_execute: Option<unsafe extern "C" fn(ConnectionJob) -> c_int>,
+    init_outbound: Option<unsafe extern "C" fn(ConnectionJob) -> c_int>,
+    connected: Option<unsafe extern "C" fn(ConnectionJob) -> c_int>,
+    check_ready: Option<unsafe extern "C" fn(ConnectionJob) -> c_int>,
+    wakeup_aio: Option<unsafe extern "C" fn(ConnectionJob, c_int) -> c_int>,
+    write_packet: Option<unsafe extern "C" fn(ConnectionJob, *mut MtprotoRawMessage) -> c_int>,
+    flush: Option<unsafe extern "C" fn(ConnectionJob) -> c_int>,
+    free: Option<unsafe extern "C" fn(ConnectionJob) -> c_int>,
+    free_buffers: Option<unsafe extern "C" fn(ConnectionJob) -> c_int>,
+    read_write: Option<unsafe extern "C" fn(ConnectionJob) -> c_int>,
+    wakeup: Option<unsafe extern "C" fn(ConnectionJob) -> c_int>,
+    alarm: Option<unsafe extern "C" fn(ConnectionJob) -> c_int>,
+    socket_read_write: Option<unsafe extern "C" fn(ConnectionJob) -> c_int>,
+    socket_reader: Option<unsafe extern "C" fn(ConnectionJob) -> c_int>,
+    socket_writer: Option<unsafe extern "C" fn(ConnectionJob) -> c_int>,
+    socket_connected: Option<unsafe extern "C" fn(ConnectionJob) -> c_int>,
+    socket_free: Option<unsafe extern "C" fn(ConnectionJob) -> c_int>,
+    socket_close: Option<unsafe extern "C" fn(ConnectionJob) -> c_int>,
+    data_received: Option<unsafe extern "C" fn(ConnectionJob, c_int) -> c_int>,
+    data_sent: Option<unsafe extern "C" fn(ConnectionJob, c_int) -> c_int>,
+    ready_to_write: Option<unsafe extern "C" fn(ConnectionJob) -> c_int>,
+    crypto_init: Option<unsafe extern "C" fn(ConnectionJob, *mut c_void, c_int) -> c_int>,
+    crypto_free: Option<unsafe extern "C" fn(ConnectionJob) -> c_int>,
+    crypto_encrypt_output: Option<unsafe extern "C" fn(ConnectionJob) -> c_int>,
+    crypto_decrypt_input: Option<unsafe extern "C" fn(ConnectionJob) -> c_int>,
+    crypto_needed_output_bytes: Option<unsafe extern "C" fn(ConnectionJob) -> c_int>,
 }
 
 #[repr(C)]
-#[derive(Clone, Copy)]
-struct MtprotoTcpRpcClientFunctions {
+#[derive(Clone, Copy, Default)]
+pub(crate) struct MtprotoTcpRpcClientFunctions {
     info: *mut c_void,
     rpc_extra: *mut c_void,
     execute: *mut c_void,
@@ -369,6 +408,39 @@ struct MtprotoTcpRpcClientFunctions {
     rpc_close: *mut c_void,
     max_packet_len: c_int,
     mode_flags: c_int,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+pub(crate) struct MtprotoHttpServerFunctions {
+    info: *mut c_void,
+    execute: Option<unsafe extern "C" fn(ConnectionJob, *mut MtprotoRawMessage, c_int) -> c_int>,
+    ht_wakeup: Option<unsafe extern "C" fn(ConnectionJob) -> c_int>,
+    ht_alarm: Option<unsafe extern "C" fn(ConnectionJob) -> c_int>,
+    ht_close: Option<unsafe extern "C" fn(ConnectionJob, c_int) -> c_int>,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+pub(crate) struct MtprotoTcpRpcServerFunctions {
+    info: *mut c_void,
+    rpc_extra: *mut c_void,
+    execute: Option<unsafe extern "C" fn(ConnectionJob, c_int, *mut MtprotoRawMessage) -> c_int>,
+    check_ready: Option<unsafe extern "C" fn(ConnectionJob) -> c_int>,
+    flush_packet: Option<unsafe extern "C" fn(ConnectionJob) -> c_int>,
+    rpc_check_perm: *mut c_void,
+    rpc_init_crypto: *mut c_void,
+    nop: *mut c_void,
+    rpc_wakeup: *mut c_void,
+    rpc_alarm: *mut c_void,
+    rpc_ready: Option<unsafe extern "C" fn(ConnectionJob) -> c_int>,
+    rpc_close: Option<unsafe extern "C" fn(ConnectionJob, c_int) -> c_int>,
+    max_packet_len: c_int,
+    mode_flags: c_int,
+    memcache_fallback_type: *mut c_void,
+    memcache_fallback_extra: *mut c_void,
+    http_fallback_type: *mut c_void,
+    http_fallback_extra: *mut c_void,
 }
 
 #[repr(C)]
@@ -417,7 +489,7 @@ struct MtprotoConnectionsStat {
 
 #[repr(C)]
 #[derive(Clone, Copy, Default)]
-struct MtprotoWorkerStats {
+pub(crate) struct MtprotoWorkerStats {
     cnt: c_int,
     updated_at: c_int,
     bufs: MtprotoBuffersStat,
@@ -463,14 +535,40 @@ struct MtprotoStatsBuffer {
 }
 
 #[repr(C)]
-struct MtprotoServerFunctionsPrefix {
-    cron: *mut c_void,
-    precise_cron: *mut c_void,
-    on_exit: *mut c_void,
-    on_waiting_exit: *mut c_void,
-    on_safe_quit: *mut c_void,
-    close_net_sockets: *mut c_void,
+#[derive(Clone, Copy)]
+pub(crate) struct MtprotoServerFunctions {
+    cron: Option<unsafe extern "C" fn()>,
+    precise_cron: Option<unsafe extern "C" fn()>,
+    on_exit: Option<unsafe extern "C" fn()>,
+    on_waiting_exit: Option<unsafe extern "C" fn() -> c_int>,
+    on_safe_quit: Option<unsafe extern "C" fn()>,
+    close_net_sockets: Option<unsafe extern "C" fn()>,
     flags: u64,
+    allowed_signals: u64,
+    forbidden_signals: u64,
+    default_modules: u64,
+    default_modules_disabled: u64,
+    prepare_stats: Option<unsafe extern "C" fn(*mut MtprotoStatsBuffer)>,
+    prepare_parse_options: Option<unsafe extern "C" fn()>,
+    parse_option: Option<unsafe extern "C" fn(c_int) -> c_int>,
+    parse_extra_args: Option<unsafe extern "C" fn(c_int, *mut *mut c_char)>,
+    pre_init: Option<unsafe extern "C" fn()>,
+    pre_start: Option<unsafe extern "C" fn()>,
+    pre_loop: Option<unsafe extern "C" fn()>,
+    run_script: Option<unsafe extern "C" fn() -> c_int>,
+    full_version_str: *const c_char,
+    short_version_str: *const c_char,
+    epoll_timeout: c_int,
+    aio_timeout: c_double,
+    parse_function: Option<unsafe extern "C" fn(*mut c_void, i64) -> *mut c_void>,
+    get_op: Option<unsafe extern "C" fn(*mut c_void) -> c_int>,
+    signal_handlers: [Option<unsafe extern "C" fn()>; 65],
+    custom_ops: *mut c_void,
+    tcp_methods: *mut c_void,
+    http_type: *mut MtprotoConnType,
+    http_functions: *mut c_void,
+    cron_subclass: c_int,
+    precise_cron_subclass: c_int,
 }
 
 #[repr(C)]
@@ -486,6 +584,181 @@ struct MtprotoEngineStatePrefix {
     end_port: c_int,
     backlog: c_int,
 }
+
+const ZERO_CONN_TYPE: MtprotoConnType = unsafe { core::mem::zeroed() };
+const ZERO_TCP_RPC_CLIENT_FUNCTIONS: MtprotoTcpRpcClientFunctions = unsafe { core::mem::zeroed() };
+const ZERO_HTTP_SERVER_FUNCTIONS: MtprotoHttpServerFunctions = unsafe { core::mem::zeroed() };
+const ZERO_TCP_RPC_SERVER_FUNCTIONS: MtprotoTcpRpcServerFunctions = unsafe { core::mem::zeroed() };
+const ZERO_WORKER_STATS: MtprotoWorkerStats = unsafe { core::mem::zeroed() };
+const ZERO_SERVER_FUNCTIONS: MtprotoServerFunctions = unsafe { core::mem::zeroed() };
+
+#[no_mangle]
+pub static mut FullVersionStr: *const c_char = FULL_VERSION_STR.as_ptr().cast::<c_char>();
+
+#[no_mangle]
+pub static mut ping_interval: c_double = DEFAULT_PING_INTERVAL;
+#[no_mangle]
+pub static mut window_clamp: c_int = 0;
+#[no_mangle]
+pub static mut proxy_mode: c_int = 0;
+#[no_mangle]
+pub static mut ct_http_server_mtfront: MtprotoConnType = MtprotoConnType {
+    ..ZERO_CONN_TYPE
+};
+#[no_mangle]
+pub static mut ct_tcp_rpc_ext_server_mtfront: MtprotoConnType = MtprotoConnType {
+    ..ZERO_CONN_TYPE
+};
+#[no_mangle]
+pub static mut ct_tcp_rpc_server_mtfront: MtprotoConnType = MtprotoConnType {
+    ..ZERO_CONN_TYPE
+};
+#[no_mangle]
+pub static mut connections_failed_lru: i64 = 0;
+#[no_mangle]
+pub static mut connections_failed_flood: i64 = 0;
+#[no_mangle]
+pub static mut api_invoke_requests: i64 = 0;
+#[no_mangle]
+pub static mut sigpoll_cnt: c_int = 0;
+#[no_mangle]
+pub static mut stats_buff_len: c_int = 0;
+#[no_mangle]
+pub static mut stats_buff: [u8; STATS_BUFF_SIZE] = [0; STATS_BUFF_SIZE];
+#[no_mangle]
+pub static mut cur_http_origin: [c_char; 1024] = [0; 1024];
+#[no_mangle]
+pub static mut cur_http_referer: [c_char; 1024] = [0; 1024];
+#[no_mangle]
+pub static mut cur_http_user_agent: [c_char; 1024] = [0; 1024];
+#[no_mangle]
+pub static mut cur_http_origin_len: c_int = 0;
+#[no_mangle]
+pub static mut cur_http_referer_len: c_int = 0;
+#[no_mangle]
+pub static mut cur_http_user_agent_len: c_int = 0;
+#[no_mangle]
+pub static mut default_cfg_min_connections: c_int = DEFAULT_CFG_MIN_CONNECTIONS;
+#[no_mangle]
+pub static mut default_cfg_max_connections: c_int = DEFAULT_CFG_MAX_CONNECTIONS;
+#[no_mangle]
+pub static mut mtfront_rpc_client: MtprotoTcpRpcClientFunctions = MtprotoTcpRpcClientFunctions {
+    ..ZERO_TCP_RPC_CLIENT_FUNCTIONS
+};
+#[no_mangle]
+pub static mut ct_tcp_rpc_client_mtfront: MtprotoConnType = MtprotoConnType {
+    ..ZERO_CONN_TYPE
+};
+#[no_mangle]
+pub static mut default_cfg_ct: MtproxyConnTargetInfo = MtproxyConnTargetInfo {
+    timer: MtproxyEventTimer {
+        h_idx: 0,
+        flags: 0,
+        wakeup: None,
+        wakeup_time: 0.0,
+        real_wakeup_time: 0.0,
+    },
+    min_connections: DEFAULT_CFG_MIN_CONNECTIONS,
+    max_connections: DEFAULT_CFG_MAX_CONNECTIONS,
+    conn_tree: core::ptr::null_mut(),
+    type_: core::ptr::null_mut(),
+    extra: core::ptr::null_mut(),
+    target: MtproxyInAddr { s_addr: 0 },
+    target_ipv6: [0; 16],
+    port: 0,
+    active_outbound_connections: 0,
+    outbound_connections: 0,
+    ready_outbound_connections: 0,
+    next_reconnect: 0.0,
+    reconnect_timeout: 17.0,
+    next_reconnect_timeout: 0.0,
+    custom_field: 0,
+    next_target: core::ptr::null_mut(),
+    prev_target: core::ptr::null_mut(),
+    hnext: core::ptr::null_mut(),
+    global_refcnt: 0,
+};
+#[no_mangle]
+pub static mut WStats: *mut MtprotoWorkerStats = core::ptr::null_mut();
+#[no_mangle]
+pub static mut SumStats: MtprotoWorkerStats = MtprotoWorkerStats {
+    ..ZERO_WORKER_STATS
+};
+#[no_mangle]
+pub static mut worker_id: c_int = 0;
+#[no_mangle]
+pub static mut workers: c_int = 0;
+#[no_mangle]
+pub static mut slave_mode: c_int = 0;
+#[no_mangle]
+pub static mut parent_pid: c_int = 0;
+#[no_mangle]
+pub static mut pids: [c_int; MAX_WORKERS] = [0; MAX_WORKERS];
+#[no_mangle]
+pub static mut get_queries: i64 = 0;
+#[no_mangle]
+pub static mut pending_http_queries: c_int = 0;
+#[no_mangle]
+pub static mut active_rpcs: i64 = 0;
+#[no_mangle]
+pub static mut active_rpcs_created: i64 = 0;
+#[no_mangle]
+pub static mut rpc_dropped_running: i64 = 0;
+#[no_mangle]
+pub static mut rpc_dropped_answers: i64 = 0;
+#[no_mangle]
+pub static mut tot_forwarded_queries: i64 = 0;
+#[no_mangle]
+pub static mut expired_forwarded_queries: i64 = 0;
+#[no_mangle]
+pub static mut dropped_queries: i64 = 0;
+#[no_mangle]
+pub static mut tot_forwarded_responses: i64 = 0;
+#[no_mangle]
+pub static mut dropped_responses: i64 = 0;
+#[no_mangle]
+pub static mut tot_forwarded_simple_acks: i64 = 0;
+#[no_mangle]
+pub static mut dropped_simple_acks: i64 = 0;
+#[no_mangle]
+pub static mut mtproto_proxy_errors: i64 = 0;
+#[no_mangle]
+pub static mut proxy_tag: [c_char; 16] = [0; 16];
+#[no_mangle]
+pub static mut proxy_tag_set: c_int = 0;
+#[no_mangle]
+pub static mut rpcc_exists: c_int = 0;
+#[no_mangle]
+pub static mut http_methods: MtprotoHttpServerFunctions = MtprotoHttpServerFunctions {
+    ..ZERO_HTTP_SERVER_FUNCTIONS
+};
+#[no_mangle]
+pub static mut http_methods_stats: MtprotoHttpServerFunctions = MtprotoHttpServerFunctions {
+    ..ZERO_HTTP_SERVER_FUNCTIONS
+};
+#[no_mangle]
+pub static mut ext_rpc_methods: MtprotoTcpRpcServerFunctions = MtprotoTcpRpcServerFunctions {
+    ..ZERO_TCP_RPC_SERVER_FUNCTIONS
+};
+#[no_mangle]
+pub static mut mtproto_cors_http_headers: *mut c_char =
+    MTPROXY_CORS_HTTP_HEADERS.as_ptr().cast_mut().cast::<c_char>();
+#[no_mangle]
+pub static mut sfd: c_int = 0;
+#[no_mangle]
+pub static mut http_ports_num: c_int = 0;
+#[no_mangle]
+pub static mut http_sfd: [c_int; MAX_HTTP_LISTEN_PORTS] = [0; MAX_HTTP_LISTEN_PORTS];
+#[no_mangle]
+pub static mut http_port: [c_int; MAX_HTTP_LISTEN_PORTS] = [0; MAX_HTTP_LISTEN_PORTS];
+#[no_mangle]
+pub static mut domain_count: c_int = 0;
+#[no_mangle]
+pub static mut secret_count: c_int = 0;
+#[no_mangle]
+pub static mut mtproto_front_functions: MtprotoServerFunctions = MtprotoServerFunctions {
+    ..ZERO_SERVER_FUNCTIONS
+};
 
 unsafe extern "C" {
     fn init_listening_tcpv6_connection(
@@ -605,81 +878,45 @@ unsafe extern "C" {
         help: *const c_char,
     );
     fn parse_usage() -> c_int;
-    fn usage();
     fn reopen_logs_ext(slave_mode: c_int);
     fn signal_check_pending(sig: c_int) -> c_int;
     fn kprintf(format: *const c_char, ...);
-    fn init_ct_server_mtfront();
     fn tcp_rpc_init_proxy_domains();
     fn server_socket(port: c_int, in_addr: MtproxyInAddr, backlog: c_int, mode: c_int) -> c_int;
+    fn tcp_rpc_flush_packet(c: ConnectionJob) -> c_int;
+    fn tcp_rpcc_default_check_perm(c: ConnectionJob) -> c_int;
+    fn tcp_rpcc_init_crypto(c: ConnectionJob) -> c_int;
+    fn tcp_rpcc_start_crypto(
+        c: ConnectionJob,
+        nonce: *mut c_char,
+        key_select: c_int,
+        temp_key: *mut u8,
+        temp_key_len: c_int,
+    ) -> c_int;
+    fn tcp_rpcc_default_check_ready(c: ConnectionJob) -> c_int;
+    fn server_check_ready(c: ConnectionJob) -> c_int;
     fn kdb_load_hosts() -> c_int;
+    fn default_main(f: *mut MtprotoServerFunctions, argc: c_int, argv: *mut *mut c_char) -> c_int;
 
-    static mut ct_http_server_mtfront: u8;
-    static mut ct_tcp_rpc_ext_server_mtfront: u8;
-    static mut ct_tcp_rpc_client_mtfront: MtprotoConnTypePrefix;
-    static mut mtfront_rpc_client: MtprotoTcpRpcClientFunctions;
-    static mut ext_rpc_methods: u8;
-    static mut ct_http_server: u8;
-    static mut http_methods_stats: u8;
-    static mut mtproto_cors_http_headers: c_char;
-    static mut mtproto_front_functions: MtprotoServerFunctionsPrefix;
+    static mut ct_http_server: MtprotoConnType;
+    static mut ct_tcp_rpc_ext_server: MtprotoConnType;
+    static mut ct_tcp_rpc_server: MtprotoConnType;
+    static mut ct_tcp_rpc_client: MtprotoConnType;
     static mut progname: *const c_char;
     static mut engine_state: *mut MtprotoEngineStatePrefix;
     static mut optarg: *mut c_char;
     static mut max_special_connections: c_int;
     static mut active_special_connections: c_int;
-    static mut ping_interval: c_double;
-    static mut window_clamp: c_int;
-    static mut http_ports_num: c_int;
-    static mut http_sfd: [c_int; MAX_HTTP_LISTEN_PORTS];
-    static mut http_port: [c_int; MAX_HTTP_LISTEN_PORTS];
-    static mut domain_count: c_int;
-    static mut secret_count: c_int;
     static mut kdb_hosts_loaded: c_int;
-    static mut WStats: *mut MtprotoWorkerStats;
-    static mut SumStats: MtprotoWorkerStats;
-    static mut worker_id: c_int;
-    static mut workers: c_int;
-    static mut slave_mode: c_int;
-    static mut parent_pid: c_int;
-    static mut pids: [c_int; MAX_WORKERS];
     static mut Events: [MtprotoEventDescr; MAX_EVENTS];
     static mut tcp_maximize_buffers: c_int;
 
-    static mut dropped_queries: i64;
-    static mut expired_forwarded_queries: i64;
-    static mut tot_forwarded_queries: i64;
-    static mut tot_forwarded_responses: i64;
-    static mut dropped_responses: i64;
-    static mut tot_forwarded_simple_acks: i64;
-    static mut dropped_simple_acks: i64;
-    static mut active_rpcs: i64;
-    static mut active_rpcs_created: i64;
-    static mut rpc_dropped_running: i64;
-    static mut rpc_dropped_answers: i64;
-    static mut mtproto_proxy_errors: i64;
-    static mut connections_failed_lru: i64;
-    static mut connections_failed_flood: i64;
-    static mut get_queries: i64;
     static mut http_queries: i64;
     static mut http_bad_headers: i64;
     static mut http_connections: c_int;
     static mut ev_heap_size: c_int;
-    static mut pending_http_queries: c_int;
-    static mut api_invoke_requests: i64;
-    static mut proxy_mode: c_int;
-    static mut rpcc_exists: c_int;
     static mut extra_http_response_headers: *mut c_char;
-    static mut proxy_tag_set: c_int;
-    static mut proxy_tag: [c_char; 16];
-    static mut cur_http_origin: [c_char; 1024];
-    static mut cur_http_referer: [c_char; 1024];
-    static mut cur_http_user_agent: [c_char; 1024];
-    static mut cur_http_origin_len: c_int;
-    static mut cur_http_referer_len: c_int;
-    static mut cur_http_user_agent_len: c_int;
     static mut start_time: c_int;
-    static FullVersionStr: c_char;
     static mut verbosity: c_int;
 }
 
@@ -2303,7 +2540,7 @@ pub(super) unsafe fn mtproto_process_http_query_ffi(
             query_flags |= QF_EXTRA_HEADERS;
             unsafe {
                 mtproto_http_query_flags_set(c, query_flags);
-                extra_http_response_headers = core::ptr::addr_of_mut!(mtproto_cors_http_headers);
+                extra_http_response_headers = mtproto_cors_http_headers;
             }
         } else {
             query_flags &= !QF_EXTRA_HEADERS;
@@ -3230,6 +3467,281 @@ pub(super) unsafe fn mtproto_update_local_stats_copy_ffi(s: *mut c_void) {
     core::sync::atomic::fence(core::sync::atomic::Ordering::SeqCst);
 }
 
+pub(super) unsafe fn mtproto_update_local_stats_ffi() {
+    if unsafe { slave_mode } == 0 {
+        return;
+    }
+    let base = unsafe { WStats };
+    if base.is_null() {
+        return;
+    }
+    let worker_index = unsafe { worker_id };
+    if worker_index < 0 {
+        return;
+    }
+    let worker_index = usize::try_from(worker_index).unwrap_or(0);
+    let offset = worker_index.saturating_mul(2);
+    unsafe {
+        mtproto_update_local_stats_copy_ffi(base.add(offset).cast::<c_void>());
+        mtproto_update_local_stats_copy_ffi(base.add(offset + 1).cast::<c_void>());
+    }
+}
+
+fn mtproto_sig2int(sig: c_int) -> u64 {
+    if sig == OUR_SIGRTMAX {
+        1
+    } else {
+        1_u64 << u32::try_from(sig).unwrap_or(0)
+    }
+}
+
+pub(super) unsafe fn mtproto_init_ct_server_mtfront_ffi() {
+    unsafe {
+        ct_http_server_mtfront = ct_http_server;
+        ct_tcp_rpc_ext_server_mtfront = ct_tcp_rpc_ext_server;
+        ct_tcp_rpc_server_mtfront = ct_tcp_rpc_server;
+        ct_tcp_rpc_client_mtfront = ct_tcp_rpc_client;
+
+        ct_http_server_mtfront.data_received = Some(mtproto_data_received_ffi);
+        ct_tcp_rpc_ext_server_mtfront.data_received = Some(mtproto_data_received_ffi);
+        ct_tcp_rpc_server_mtfront.data_received = Some(mtproto_data_received_ffi);
+
+        ct_http_server_mtfront.data_sent = Some(mtproto_data_sent_ffi);
+        ct_tcp_rpc_ext_server_mtfront.data_sent = Some(mtproto_data_sent_ffi);
+        ct_tcp_rpc_server_mtfront.data_sent = Some(mtproto_data_sent_ffi);
+    }
+}
+
+pub(super) unsafe fn mtproto_precise_cron_ffi() {
+    unsafe { mtproto_update_local_stats_ffi() };
+}
+
+pub(super) unsafe extern "C" fn mtproto_on_child_termination_handler_ffi() {}
+
+pub(super) unsafe extern "C" fn mtproto_data_received_ffi(
+    _c: ConnectionJob,
+    _bytes_received: c_int,
+) -> c_int {
+    0
+}
+
+pub(super) unsafe extern "C" fn mtproto_data_sent_ffi(
+    _c: ConnectionJob,
+    _bytes_sent: c_int,
+) -> c_int {
+    0
+}
+
+unsafe extern "C" fn mtproto_rpcc_execute_bridge(
+    c: ConnectionJob,
+    op: c_int,
+    raw: *mut MtprotoRawMessage,
+) -> c_int {
+    unsafe { mtproto_rpcc_execute_ffi(c, op, raw.cast::<c_void>()) }
+}
+
+unsafe extern "C" fn mtproto_mtfront_client_ready_bridge(c: ConnectionJob) -> c_int {
+    unsafe { mtproto_mtfront_client_ready_ffi(c) }
+}
+
+unsafe extern "C" fn mtproto_mtfront_client_close_bridge(c: ConnectionJob, who: c_int) -> c_int {
+    unsafe { mtproto_mtfront_client_close_ffi(c, who) }
+}
+
+unsafe extern "C" fn mtproto_hts_execute_bridge(
+    c: ConnectionJob,
+    raw: *mut MtprotoRawMessage,
+    op: c_int,
+) -> c_int {
+    unsafe { mtproto_hts_execute_ffi(c, raw.cast::<c_void>(), op) }
+}
+
+unsafe extern "C" fn mtproto_hts_stats_execute_bridge(
+    c: ConnectionJob,
+    raw: *mut MtprotoRawMessage,
+    op: c_int,
+) -> c_int {
+    unsafe { mtproto_hts_stats_execute_ffi(c, raw.cast::<c_void>(), op) }
+}
+
+unsafe extern "C" fn mtproto_http_alarm_bridge(c: ConnectionJob) -> c_int {
+    unsafe { mtproto_http_alarm_ffi(c) }
+}
+
+unsafe extern "C" fn mtproto_http_close_bridge(c: ConnectionJob, who: c_int) -> c_int {
+    unsafe { mtproto_http_close_ffi(c, who) }
+}
+
+unsafe extern "C" fn mtproto_ext_rpcs_execute_bridge(
+    c: ConnectionJob,
+    op: c_int,
+    raw: *mut MtprotoRawMessage,
+) -> c_int {
+    unsafe { mtproto_ext_rpcs_execute_ffi(c, op, raw.cast::<c_void>()) }
+}
+
+unsafe extern "C" fn mtproto_ext_rpc_ready_bridge(c: ConnectionJob) -> c_int {
+    unsafe { mtproto_ext_rpc_ready_ffi(c) }
+}
+
+unsafe extern "C" fn mtproto_ext_rpc_close_bridge(c: ConnectionJob, who: c_int) -> c_int {
+    unsafe { mtproto_ext_rpc_close_ffi(c, who) }
+}
+
+pub(super) unsafe fn mtproto_init_runtime_globals_ffi() {
+    unsafe {
+        mtfront_rpc_client = MtprotoTcpRpcClientFunctions {
+            execute: mtproto_rpcc_execute_bridge as *mut c_void,
+            check_ready: tcp_rpcc_default_check_ready as *mut c_void,
+            flush_packet: tcp_rpc_flush_packet as *mut c_void,
+            rpc_check_perm: tcp_rpcc_default_check_perm as *mut c_void,
+            rpc_init_crypto: tcp_rpcc_init_crypto as *mut c_void,
+            rpc_start_crypto: tcp_rpcc_start_crypto as *mut c_void,
+            rpc_ready: mtproto_mtfront_client_ready_bridge as *mut c_void,
+            rpc_close: mtproto_mtfront_client_close_bridge as *mut c_void,
+            ..MtprotoTcpRpcClientFunctions::default()
+        };
+
+        http_methods = MtprotoHttpServerFunctions {
+            execute: Some(mtproto_hts_execute_bridge),
+            ht_alarm: Some(mtproto_http_alarm_bridge),
+            ht_close: Some(mtproto_http_close_bridge),
+            ..MtprotoHttpServerFunctions::default()
+        };
+
+        http_methods_stats = MtprotoHttpServerFunctions {
+            execute: Some(mtproto_hts_stats_execute_bridge),
+            ..MtprotoHttpServerFunctions::default()
+        };
+
+        ext_rpc_methods = MtprotoTcpRpcServerFunctions {
+            execute: Some(mtproto_ext_rpcs_execute_bridge),
+            check_ready: Some(server_check_ready),
+            flush_packet: Some(tcp_rpc_flush_packet),
+            rpc_ready: Some(mtproto_ext_rpc_ready_bridge),
+            rpc_close: Some(mtproto_ext_rpc_close_bridge),
+            max_packet_len: MAX_POST_SIZE,
+            ..MtprotoTcpRpcServerFunctions::default()
+        };
+
+        default_cfg_ct.min_connections = default_cfg_min_connections;
+        default_cfg_ct.max_connections = default_cfg_max_connections;
+        default_cfg_ct.type_ = core::ptr::addr_of_mut!(ct_tcp_rpc_client_mtfront).cast::<c_void>();
+        default_cfg_ct.extra = core::ptr::addr_of_mut!(mtfront_rpc_client).cast::<c_void>();
+        default_cfg_ct.reconnect_timeout = 17.0;
+    }
+}
+
+unsafe extern "C" fn mtproto_cron_bridge() {
+    unsafe { mtproto_cron_ffi() };
+}
+
+unsafe extern "C" fn mtproto_precise_cron_bridge() {
+    unsafe { mtproto_precise_cron_ffi() };
+}
+
+unsafe extern "C" fn mtproto_on_exit_bridge() {
+    unsafe { mtproto_mtfront_on_exit_ffi() };
+}
+
+unsafe extern "C" fn mtproto_prepare_stats_bridge(sb: *mut MtprotoStatsBuffer) {
+    unsafe { mtproto_mtfront_prepare_stats_ffi(sb.cast::<c_void>()) };
+}
+
+unsafe extern "C" fn mtproto_prepare_parse_options_bridge() {
+    unsafe { mtproto_mtfront_prepare_parse_options_ffi() };
+}
+
+unsafe extern "C" fn mtproto_parse_option_bridge(val: c_int) -> c_int {
+    unsafe { mtproto_f_parse_option_ffi(val) }
+}
+
+unsafe extern "C" fn mtproto_parse_extra_args_bridge(argc: c_int, argv: *mut *mut c_char) {
+    unsafe { mtproto_mtfront_parse_extra_args_ffi(argc, argv) };
+}
+
+unsafe extern "C" fn mtproto_pre_init_bridge() {
+    unsafe { mtproto_mtfront_pre_init_ffi() };
+}
+
+unsafe extern "C" fn mtproto_pre_start_bridge() {
+    unsafe { mtproto_mtfront_pre_start_ffi() };
+}
+
+unsafe extern "C" fn mtproto_pre_loop_bridge() {
+    unsafe { mtproto_mtfront_pre_loop_ffi() };
+}
+
+unsafe extern "C" fn mtproto_parse_function_bridge(tlio_in: *mut c_void, actor_id: i64) -> *mut c_void {
+    unsafe { mtproto_mtfront_parse_function_runtime_ffi(tlio_in, actor_id) }
+}
+
+unsafe extern "C" fn mtproto_sigusr1_handler_bridge() {
+    unsafe { mtproto_mtfront_sigusr1_handler_ffi() };
+}
+
+pub(super) unsafe fn mtproto_setup_front_functions_ffi() {
+    unsafe { mtproto_init_runtime_globals_ffi() };
+
+    let mut f = MtprotoServerFunctions {
+        cron: Some(mtproto_cron_bridge),
+        precise_cron: Some(mtproto_precise_cron_bridge),
+        on_exit: Some(mtproto_on_exit_bridge),
+        on_waiting_exit: None,
+        on_safe_quit: None,
+        close_net_sockets: None,
+        flags: ENGINE_NO_PORT,
+        allowed_signals: 0,
+        forbidden_signals: 0,
+        default_modules: 0,
+        default_modules_disabled: 0,
+        prepare_stats: Some(mtproto_prepare_stats_bridge),
+        prepare_parse_options: Some(mtproto_prepare_parse_options_bridge),
+        parse_option: Some(mtproto_parse_option_bridge),
+        parse_extra_args: Some(mtproto_parse_extra_args_bridge),
+        pre_init: Some(mtproto_pre_init_bridge),
+        pre_start: Some(mtproto_pre_start_bridge),
+        pre_loop: Some(mtproto_pre_loop_bridge),
+        run_script: None,
+        full_version_str: FullVersionStr,
+        short_version_str: SHORT_VERSION_STR.as_ptr().cast::<c_char>(),
+        epoll_timeout: 1,
+        aio_timeout: 0.0,
+        parse_function: Some(mtproto_parse_function_bridge),
+        get_op: None,
+        signal_handlers: [None; 65],
+        custom_ops: core::ptr::null_mut(),
+        tcp_methods: core::ptr::null_mut(),
+        http_type: core::ptr::null_mut(),
+        http_functions: core::ptr::null_mut(),
+        cron_subclass: 0,
+        precise_cron_subclass: 0,
+    };
+
+    f.allowed_signals |= mtproto_sig2int(libc::SIGCHLD);
+    if let Ok(sigchld_idx) = usize::try_from(libc::SIGCHLD) {
+        if sigchld_idx < f.signal_handlers.len() {
+            f.signal_handlers[sigchld_idx] = Some(mtproto_on_child_termination_handler_ffi);
+        }
+    }
+    if let Ok(sigusr1_idx) = usize::try_from(libc::SIGUSR1) {
+        if sigusr1_idx < f.signal_handlers.len() {
+            f.signal_handlers[sigusr1_idx] = Some(mtproto_sigusr1_handler_bridge);
+        }
+    }
+
+    unsafe {
+        mtproto_front_functions = f;
+    }
+}
+
+pub(super) unsafe fn mtproto_legacy_main_ffi(argc: c_int, argv: *mut *mut c_char) -> c_int {
+    unsafe {
+        mtproto_setup_front_functions_ffi();
+        default_main(core::ptr::addr_of_mut!(mtproto_front_functions), argc, argv)
+    }
+}
+
 pub(super) unsafe fn mtproto_check_all_conn_buffers_ffi() {
     let mut bufs = MtprotoBuffersStat::default();
     unsafe {
@@ -3824,7 +4336,7 @@ proxy_tag_set\t%d\n\0"
         sb_printf(
             sb,
             b"version\t%s\n\0".as_ptr().cast(),
-            core::ptr::addr_of!(FullVersionStr),
+            FullVersionStr,
         );
     }
 }
@@ -4190,7 +4702,7 @@ pub(super) unsafe fn mtproto_f_parse_option_ffi(val: c_int) -> c_int {
         OPT_H => unsafe {
             let mut ptr = optarg;
             if ptr.is_null() || *ptr == 0 {
-                usage();
+                mtproto_usage_ffi();
                 return 2;
             }
             while (*ptr as u8) >= b'1'
@@ -4210,7 +4722,7 @@ pub(super) unsafe fn mtproto_f_parse_option_ffi(val: c_int) -> c_int {
                 ptr = ptr.add(1);
             }
             if *ptr != 0 {
-                usage();
+                mtproto_usage_ffi();
                 return 2;
             }
         },
@@ -4243,11 +4755,11 @@ pub(super) unsafe fn mtproto_f_parse_option_ffi(val: c_int) -> c_int {
                         .cast(),
                     val,
                 );
-                usage();
+                mtproto_usage_ffi();
                 return 2;
             }
             let Some(hex) = slice_from_ptr(optarg.cast::<u8>(), 32) else {
-                usage();
+                mtproto_usage_ffi();
                 return 2;
             };
             let mut secret = [0_u8; 16];
@@ -4260,7 +4772,7 @@ pub(super) unsafe fn mtproto_f_parse_option_ffi(val: c_int) -> c_int {
                             .cast(),
                         c_int::from(ch),
                     );
-                    usage();
+                    mtproto_usage_ffi();
                     return 2;
                 };
                 b = b.wrapping_mul(16).wrapping_add(nib);
@@ -4482,12 +4994,17 @@ pub(super) unsafe fn mtproto_usage_ffi() {
         );
         libc::printf(
             b"%s\n\0".as_ptr().cast(),
-            core::ptr::addr_of!(FullVersionStr).cast::<c_char>(),
+            FullVersionStr,
         );
         libc::printf(b"\tSimple MT-Proto proxy\n\0".as_ptr().cast());
         parse_usage();
         libc::exit(2);
     }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn usage() {
+    unsafe { mtproto_usage_ffi() };
 }
 
 pub(super) unsafe fn mtproto_mtfront_parse_extra_args_ffi(argc: c_int, argv: *mut *mut c_char) {
@@ -4523,7 +5040,7 @@ pub(super) unsafe fn mtproto_mtfront_on_exit_ffi() {
 
 pub(super) unsafe fn mtproto_mtfront_pre_init_ffi() {
     unsafe {
-        init_ct_server_mtfront();
+        mtproto_init_ct_server_mtfront_ffi();
         mtproto_ext_conn_reset_ffi();
     }
 

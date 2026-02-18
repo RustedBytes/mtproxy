@@ -24,6 +24,14 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_proxy_main(
     unsafe { mtproto_proxy_main_ffi(argc, argv) }
 }
 
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_legacy_main(
+    argc: c_int,
+    argv: *mut *mut c_char,
+) -> i32 {
+    unsafe { mtproto_legacy_main_ffi(argc, argv) }
+}
+
 /// Clears runtime config snapshot and optionally destroys target objects.
 ///
 /// # Safety
@@ -251,6 +259,29 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_check_conn_buffers_runtime(c: *mut 
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_mtproto_update_local_stats_copy(s: *mut c_void) {
     unsafe { mtproto_update_local_stats_copy_ffi(s) };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_precise_cron() {
+    unsafe { mtproto_precise_cron_ffi() };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_on_child_termination_handler() {
+    unsafe { mtproto_on_child_termination_handler_ffi() };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_data_received(
+    c: *mut c_void,
+    bytes_received: c_int,
+) -> i32 {
+    unsafe { mtproto_data_received_ffi(c, bytes_received) }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_mtproto_data_sent(c: *mut c_void, bytes_sent: c_int) -> i32 {
+    unsafe { mtproto_data_sent_ffi(c, bytes_sent) }
 }
 
 #[no_mangle]
@@ -565,7 +596,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_build_rpc_proxy_req(
     remote_port: c_int,
     our_ipv6: *const u8,
     our_port: c_int,
-    proxy_tag: *const u8,
+    proxy_tag_ptr: *const u8,
     proxy_tag_len: usize,
     http_origin: *const u8,
     http_origin_len: usize,
@@ -587,7 +618,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_build_rpc_proxy_req(
             remote_port,
             our_ipv6,
             our_port,
-            proxy_tag,
+            proxy_tag_ptr,
             proxy_tag_len,
             http_origin,
             http_origin_len,
