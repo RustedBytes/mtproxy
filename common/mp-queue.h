@@ -22,15 +22,7 @@
 
 #pragma once
 
-typedef void *mqn_value_t;
-
-struct mp_queue_block;
-
-struct mp_queue {
-  struct mp_queue_block *mq_head __attribute__((aligned(64)));
-  int mq_magic;
-  struct mp_queue_block *mq_tail __attribute__((aligned(64)));
-};
+#include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 
 /* initialize this thread id and return it */
 int get_this_thread_id(void);

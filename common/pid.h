@@ -25,26 +25,7 @@
 
 #pragma once
 
-#pragma pack(push, 4)
-
-struct process_id {
-  unsigned ip;
-  short port;
-  unsigned short pid;
-  int utime;
-};
-
-struct process_id_ext {
-  unsigned ip;
-  short port;
-  unsigned short pid;
-  int utime;
-  int actor_id;
-};
-
-#pragma pack(pop)
-
-typedef struct process_id npid_t;
+#include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 
 extern npid_t PID;
 

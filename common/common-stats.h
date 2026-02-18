@@ -26,26 +26,10 @@
 
 #include <sys/types.h>
 
-typedef struct {
-  long long vm_size;
-  long long vm_rss;
-  long long vm_data;
-  long long mem_free;
-  long long swap_total;
-  long long swap_free;
-  long long swap_used;
-  long long mem_cached;
-} am_memory_stat_t;
+#include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 
 int am_get_memory_usage(pid_t pid, long long *a, int m);
 int am_get_memory_stats(am_memory_stat_t *S, int flags);
-
-typedef struct stats_buffer {
-  char *buff;
-  int pos;
-  int size;
-  int flags;
-} stats_buffer_t;
 
 void sb_init(stats_buffer_t *sb, char *buff, int size);
 void sb_alloc(stats_buffer_t *sb, int size);
@@ -57,7 +41,6 @@ void sb_printf(stats_buffer_t *sb, const char *format, ...)
 void sb_memory(stats_buffer_t *sb, int flags);
 void sbp_print_date(stats_buffer_t *sb, const char *key, time_t unix_time);
 
-typedef void (*stat_fun_t)(stats_buffer_t *sb);
 int sb_register_stat_fun(stat_fun_t fun);
 
 int sb_sum_i(void **base, int len, int offset);

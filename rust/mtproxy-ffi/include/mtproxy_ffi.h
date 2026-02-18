@@ -2,10 +2,324 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <pthread.h>
+#include <stdlib.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+typedef void *mqn_value_t;
+
+struct mp_queue_block;
+
+struct mp_queue {
+  struct mp_queue_block *mq_head __attribute__((aligned(64)));
+  int mq_magic;
+  struct mp_queue_block *mq_tail __attribute__((aligned(64)));
+};
+
+struct job_thread;
+struct job_class;
+struct async_job;
+typedef struct async_job *job_t;
+
+typedef int (*job_function_t)(job_t job, int op, struct job_thread *JT);
+
+enum {
+  JC_MAIN = 3,
+  JC_ENGINE = 8,
+  JC_MAX = 0xf,
+};
+
+struct async_job {
+  int j_flags;
+  int j_status;
+  int j_sigclass;
+  int j_refcnt;
+  int j_error;
+  int j_children;
+  int j_align;
+  int j_custom_bytes;
+  unsigned int j_type;
+  int j_subclass;
+  struct job_thread *j_thread;
+  job_function_t j_execute;
+  job_t j_parent;
+  long long j_custom[0] __attribute__((aligned(64)));
+} __attribute__((aligned(64)));
+
+struct job_thread {
+  pthread_t pthread_id;
+  int id;
+  int thread_class;
+  int job_class_mask;
+  int status;
+  long long jobs_performed;
+  struct mp_queue *job_queue;
+  struct async_job *current_job;
+  double current_job_start_time, last_job_time, tot_jobs_time;
+  int jobs_running[JC_MAX + 1];
+  long long jobs_created;
+  long long jobs_active;
+  int thread_system_id;
+  struct drand48_data rand_data;
+  job_t timer_manager;
+  double wakeup_time;
+  struct job_class *job_class;
+} __attribute__((aligned(128)));
+
+typedef struct {
+  long long vm_size;
+  long long vm_rss;
+  long long vm_data;
+  long long mem_free;
+  long long swap_total;
+  long long swap_free;
+  long long swap_used;
+  long long mem_cached;
+} am_memory_stat_t;
+
+typedef struct stats_buffer {
+  char *buff;
+  int pos;
+  int size;
+  int flags;
+} stats_buffer_t;
+
+typedef void (*stat_fun_t)(stats_buffer_t *sb);
+
+#pragma pack(push, 4)
+struct process_id {
+  unsigned ip;
+  short port;
+  unsigned short pid;
+  int utime;
+};
+
+struct process_id_ext {
+  unsigned ip;
+  short port;
+  unsigned short pid;
+  int utime;
+  int actor_id;
+};
+#pragma pack(pop)
+
+typedef struct process_id npid_t;
+
+struct proc_stats {
+  int pid;
+  char comm[256];
+  char state;
+  int ppid;
+  int pgrp;
+  int session;
+  int tty_nr;
+  int tpgid;
+  unsigned long flags;
+  unsigned long minflt;
+  unsigned long cminflt;
+  unsigned long majflt;
+  unsigned long cmajflt;
+  unsigned long utime;
+  unsigned long stime;
+  long cutime;
+  long cstime;
+  long priority;
+  long nice;
+  long num_threads;
+  long itrealvalue;
+  unsigned long starttime;
+  unsigned long vsize;
+  long rss;
+  unsigned long rlim;
+  unsigned long startcode;
+  unsigned long endcode;
+  unsigned long startstack;
+  unsigned long kstkesp;
+  unsigned long kstkeip;
+  unsigned long signal;
+  unsigned long blocked;
+  unsigned long sigignore;
+  unsigned long sigcatch;
+  unsigned long wchan;
+  unsigned long nswap;
+  unsigned long cnswap;
+  int exit_signal;
+  int processor;
+  unsigned long rt_priority;
+  unsigned long policy;
+  unsigned long long delayacct_blkio_ticks;
+};
+
+struct raw_message;
+struct query_work_params;
+struct tl_in_state;
+struct tl_out_state;
+
+struct tl_in_methods {
+  void (*fetch_raw_data)(struct tl_in_state *tlio, void *buf, int len);
+  void (*fetch_move)(struct tl_in_state *tlio, int len);
+  void (*fetch_lookup)(struct tl_in_state *tlio, void *buf, int len);
+  void (*fetch_clear)(struct tl_in_state *tlio);
+  void (*fetch_mark)(struct tl_in_state *tlio);
+  void (*fetch_mark_restore)(struct tl_in_state *tlio);
+  void (*fetch_mark_delete)(struct tl_in_state *tlio);
+  void (*fetch_raw_message)(struct tl_in_state *tlio, struct raw_message *raw,
+                            int len);
+  void (*fetch_lookup_raw_message)(struct tl_in_state *tlio,
+                                   struct raw_message *raw, int len);
+  int flags;
+  int prepend_bytes;
+};
+
+struct tl_out_methods {
+  void *(*store_get_ptr)(struct tl_out_state *tlio, int len);
+  void *(*store_get_prepend_ptr)(struct tl_out_state *tlio, int len);
+  void (*store_raw_data)(struct tl_out_state *tlio, const void *buf, int len);
+  void (*store_raw_msg)(struct tl_out_state *tlio, struct raw_message *raw);
+  void (*store_read_back)(struct tl_out_state *tlio, int len);
+  void (*store_read_back_nondestruct)(struct tl_out_state *tlio, void *buf,
+                                      int len);
+  unsigned (*store_crc32_partial)(struct tl_out_state *tlio, int len,
+                                  unsigned start);
+  void (*store_flush)(struct tl_out_state *tlio);
+  void (*store_clear)(struct tl_out_state *tlio);
+  void (*copy_through[10])(struct tl_in_state *tlio_src,
+                           struct tl_out_state *tlio_dst, int len, int advance);
+  void (*store_prefix)(struct tl_out_state *tlio);
+  int flags;
+  int prepend_bytes;
+};
+
+enum tl_type {
+  tl_type_none,
+  tl_type_str,
+  tl_type_raw_msg,
+  tl_type_tcp_raw_msg,
+};
+
+struct tl_in_state {
+  enum tl_type in_type;
+  const struct tl_in_methods *in_methods;
+  void *in;
+  void *in_mark;
+  int in_remaining;
+  int in_pos;
+  int in_mark_pos;
+  int in_flags;
+  char *error;
+  int errnum;
+  struct process_id in_pid_buf;
+  struct process_id *in_pid;
+};
+
+struct tl_out_state {
+  enum tl_type out_type;
+  const struct tl_out_methods *out_methods;
+  void *out;
+  void *out_extra;
+  int out_pos;
+  int out_remaining;
+  int *out_size;
+  char *error;
+  int errnum;
+  long long out_qid;
+  struct process_id out_pid_buf;
+  struct process_id *out_pid;
+};
+
+struct tl_query_header {
+  long long qid;
+  long long actor_id;
+  int flags;
+  int op;
+  int real_op;
+  int ref_cnt;
+  struct query_work_params *qw_params;
+};
+
+enum {
+  TL_STAT = 0x9d56e6b2,
+  RPC_INVOKE_REQ = 0x2374df3d,
+  RPC_INVOKE_KPHP_REQ = 0x99a37fda,
+  RPC_REQ_RUNNING = 0x346d5efa,
+  RPC_REQ_ERROR = 0x7ae432f5,
+  RPC_REQ_RESULT = 0x63aeda4e,
+  RPC_READY = 0x6a34cac7,
+  RPC_STOP_READY = 0x59d86654,
+  RPC_SEND_SESSION_MSG = 0x1ed5a3cc,
+  RPC_RESPONSE_INDIRECT = 0x2194f56e,
+  RPC_PING = 0x5730a2df,
+  RPC_PONG = 0x8430eaa7,
+  RPC_DEST_ACTOR = 0x7568aabd,
+  RPC_DEST_ACTOR_FLAGS = 0xf0a5acf7,
+  RPC_DEST_FLAGS = 0xe352035e,
+  RPC_REQ_RESULT_FLAGS = 0x8cc84ce1,
+  MAX_TL_STRING_LENGTH = 0xffffff,
+  TL_ERROR_RETRY = 503,
+  TL_BOOL_TRUE = 0x997275b5,
+  TL_BOOL_FALSE = 0xbc799737,
+  TL_BOOL_STAT = 0x92cbcbfa,
+  TL_INT = 0xa8509bda,
+  TL_LONG = 0x22076cba,
+  TL_DOUBLE = 0x2210c154,
+  TL_STRING = 0xb5286e24,
+  TL_MAYBE_TRUE = 0x3f9c8ef8,
+  TL_MAYBE_FALSE = 0x27930a7b,
+  TL_VECTOR = 0x1cb5c415,
+  TL_VECTOR_TOTAL = 0x10133f47,
+  TL_TUPLE = 0x9770768a,
+  TL_DICTIONARY = 0x1f4c618f,
+};
+
+enum {
+  TL_ERROR_SYNTAX = -1000,
+  TL_ERROR_EXTRA_DATA = -1001,
+  TL_ERROR_HEADER = -1002,
+  TL_ERROR_WRONG_QUERY_ID = -1003,
+  TL_ERROR_NOT_ENOUGH_DATA = -1004,
+};
+
+enum {
+  TL_ERROR_UNKNOWN_FUNCTION_ID = -2000,
+  TL_ERROR_PROXY_NO_TARGET = -2001,
+  TL_ERROR_WRONG_ACTOR_ID = -2002,
+  TL_ERROR_TOO_LONG_STRING = -2003,
+  TL_ERROR_VALUE_NOT_IN_RANGE = -2004,
+  TL_ERROR_QUERY_INCORRECT = -2005,
+  TL_ERROR_BAD_VALUE = -2006,
+  TL_ERROR_BINLOG_DISABLED = -2007,
+  TL_ERROR_FEATURE_DISABLED = -2008,
+  TL_ERROR_QUERY_IS_EMPTY = -2009,
+  TL_ERROR_INVALID_CONNECTION_ID = -2010,
+  TL_ERROR_WRONG_SPLIT = -2011,
+  TL_ERROR_TOO_BIG_OFFSET = -2012,
+};
+
+enum {
+  TL_ERROR_QUERY_TIMEOUT = -3000,
+  TL_ERROR_PROXY_INVALID_RESPONSE = -3001,
+  TL_ERROR_NO_CONNECTIONS = -3002,
+  TL_ERROR_INTERNAL = -3003,
+  TL_ERROR_AIO_FAIL = -3004,
+  TL_ERROR_AIO_TIMEOUT = -3005,
+  TL_ERROR_BINLOG_WAIT_TIMEOUT = -3006,
+  TL_ERROR_AIO_MAX_RETRY_EXCEEDED = -3007,
+  TL_ERROR_TTL = -3008,
+  TL_ERROR_BAD_METAFILE = -3009,
+  TL_ERROR_NOT_READY = -3010,
+  TL_ERROR_STORAGE_CACHE_MISS = -3500,
+  TL_ERROR_STORAGE_CACHE_NO_MTPROTO_CONN = -3501,
+};
+
+enum {
+  TL_ERROR_UNKNOWN = -4000,
+};
+
+typedef unsigned (*crc32_partial_func_t)(const void *data, long len,
+                                         unsigned crc);
 
 typedef struct mtproxy_ffi_process_id {
   uint32_t ip;
@@ -169,6 +483,41 @@ typedef struct mtproxy_ffi_mtproto_ext_connection {
   int64_t out_conn_id;
   int64_t auth_key_id;
 } mtproxy_ffi_mtproto_ext_connection_t;
+
+enum { MTPROXY_FFI_MAX_CFG_CLUSTERS = 1024 };
+enum { MTPROXY_FFI_MAX_CFG_TARGETS = 4096 };
+
+typedef void *mtproxy_ffi_conn_target_job_t;
+
+struct mf_cluster {
+  int targets_num;
+  int write_targets_num;
+  int targets_allocated;
+  int flags;
+  int cluster_id;
+  mtproxy_ffi_conn_target_job_t *cluster_targets;
+};
+
+struct mf_group_stats {
+  int tot_clusters;
+};
+
+struct mf_config {
+  int tot_targets;
+  int auth_clusters;
+  int default_cluster_id;
+  int min_connections;
+  int max_connections;
+  double timeout;
+  int config_bytes;
+  int config_loaded_at;
+  char *config_md5_hex;
+  struct mf_group_stats auth_stats;
+  int have_proxy;
+  struct mf_cluster *default_cluster;
+  mtproxy_ffi_conn_target_job_t targets[MTPROXY_FFI_MAX_CFG_TARGETS];
+  struct mf_cluster auth_cluster[MTPROXY_FFI_MAX_CFG_CLUSTERS];
+};
 
 typedef struct mtproxy_ffi_mtproto_client_packet_process_result {
   int32_t kind;

@@ -280,6 +280,50 @@ pub(crate) struct MtproxyMfConfig {
     pub(crate) auth_cluster: [MtproxyMfCluster; MTPROTO_CFG_MAX_CLUSTERS],
 }
 
+const EMPTY_MTPROXY_MF_CLUSTER: MtproxyMfCluster = MtproxyMfCluster {
+    targets_num: 0,
+    write_targets_num: 0,
+    targets_allocated: 0,
+    flags: 0,
+    cluster_id: 0,
+    cluster_targets: core::ptr::null_mut(),
+};
+
+const EMPTY_MTPROXY_MF_GROUP_STATS: MtproxyMfGroupStats = MtproxyMfGroupStats { tot_clusters: 0 };
+
+const EMPTY_MTPROXY_MF_CONFIG: MtproxyMfConfig = MtproxyMfConfig {
+    tot_targets: 0,
+    auth_clusters: 0,
+    default_cluster_id: 0,
+    min_connections: 0,
+    max_connections: 0,
+    timeout: 0.0,
+    config_bytes: 0,
+    config_loaded_at: 0,
+    config_md5_hex: core::ptr::null_mut(),
+    auth_stats: EMPTY_MTPROXY_MF_GROUP_STATS,
+    have_proxy: 0,
+    default_cluster: core::ptr::null_mut(),
+    targets: [core::ptr::null_mut(); MTPROTO_CFG_MAX_TARGETS],
+    auth_cluster: [EMPTY_MTPROXY_MF_CLUSTER; MTPROTO_CFG_MAX_CLUSTERS],
+};
+
+#[no_mangle]
+pub static mut MTPROXY_FFI_CUR_CONF_SLOT: MtproxyMfConfig = EMPTY_MTPROXY_MF_CONFIG;
+
+#[no_mangle]
+pub static mut MTPROXY_FFI_NEXT_CONF_SLOT: MtproxyMfConfig = EMPTY_MTPROXY_MF_CONFIG;
+
+#[no_mangle]
+pub static mut CurConf: *mut MtproxyMfConfig = core::ptr::addr_of_mut!(MTPROXY_FFI_CUR_CONF_SLOT);
+
+#[no_mangle]
+pub static mut NextConf: *mut MtproxyMfConfig =
+    core::ptr::addr_of_mut!(MTPROXY_FFI_NEXT_CONF_SLOT);
+
+#[no_mangle]
+pub static mut config_filename: *mut c_char = core::ptr::null_mut();
+
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub(crate) struct MtproxyEventTimer {
@@ -579,8 +623,5 @@ unsafe extern "C" {
     pub(crate) static mut default_cfg_min_connections: c_int;
     pub(crate) static mut default_cfg_max_connections: c_int;
     pub(crate) static mut default_cfg_ct: MtproxyConnTargetInfo;
-    pub(crate) static mut config_filename: *mut c_char;
-    pub(crate) static mut CurConf: *mut MtproxyMfConfig;
-    pub(crate) static mut NextConf: *mut MtproxyMfConfig;
     pub(crate) static mut verbosity: c_int;
 }

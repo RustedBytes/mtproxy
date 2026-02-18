@@ -5,13 +5,11 @@
 #pragma once
 
 #include <stdint.h>
+#include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-typedef unsigned (*crc32_partial_func_t)(const void *data, long len,
-                                         unsigned crc);
 
 unsigned crc32_partial(const void *data, long len, unsigned crc);
 uint64_t crc64_partial(const void *data, long len, uint64_t crc);

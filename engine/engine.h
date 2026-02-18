@@ -29,8 +29,6 @@
 
 #pragma once
 
-#include <signal.h>
-
 // GLIBC DEFINES RTMAX as function
 // engine_init () asserts, that OUT_SIGRTMAX == SIGRTMAX
 static constexpr int OUR_SIGRTMAX = 64;

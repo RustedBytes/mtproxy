@@ -29,7 +29,8 @@
 #pragma once
 
 #include "common/tl-parse.h"
-#include "net/net-connections.h"
+#include "net/net-msg.h"
+#include "net/net-timers.h"
 
 struct tl_act_extra;
 
