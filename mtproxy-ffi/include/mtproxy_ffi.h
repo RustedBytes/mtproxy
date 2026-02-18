@@ -24,18 +24,9 @@ typedef struct async_job *job_t;
 typedef int (*job_function_t)(job_t job, int op, struct job_thread *JT);
 
 
-#define PTR_MOVE(__ptr_v)                                                      \
-  ({                                                                           \
-    typeof(__ptr_v) __ptr_v_save = __ptr_v;                                    \
-    __ptr_v = NULL;                                                            \
-    __ptr_v_save;                                                              \
-  })
-
-#define JOB_REF_ARG(__name) [[maybe_unused]] int __name##_tag_int, job_t __name
-
 struct job_thread *jobs_get_this_job_thread(void);
 
-int job_free(JOB_REF_ARG(job));
+int job_free([[maybe_unused]] int job_tag_int, job_t job);
 
 enum {
   JC_MAIN = 3,
@@ -1545,11 +1536,6 @@ struct aes_key_data {
 
 enum {
   AES_KEY_DATA_LEN = sizeof(struct aes_key_data),
-};
-
-struct aes_crypto {
-  void *read_aeskey;
-  void *write_aeskey;
 };
 
 extern int aes_initialized;
