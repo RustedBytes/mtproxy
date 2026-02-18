@@ -7,6 +7,8 @@ use core::ptr;
 use libc::pthread_attr_t;
 use std::cell::Cell;
 use std::sync::atomic::{AtomicI32, Ordering};
+use crate::crypto::ffi::StatsBuffer;
+
 
 const JOB_SUBCLASS_OFFSET: i32 = 3;
 const JOB_THREAD_STACK_SIZE: usize = 4 << 20;

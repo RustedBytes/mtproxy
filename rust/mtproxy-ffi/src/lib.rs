@@ -24,7 +24,9 @@
     clippy::too_many_lines,
     clippy::trivially_copy_pass_by_ref,
     clippy::uninlined_format_args,
-    clippy::wildcard_imports
+    clippy::wildcard_imports,
+    dead_code,
+    unused_unsafe
 )]
 
 use aes::Aes256;

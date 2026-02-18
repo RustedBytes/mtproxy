@@ -7,7 +7,7 @@ use core::ptr;
 #[repr(C)]
 pub struct StatsBuffer {
     buff: *mut c_char,
-    pos: c_int,
+    pub pos: c_int,
     size: c_int,
     flags: c_int,
 }

@@ -150,7 +150,7 @@ pub struct JobThreadStat {
 }
 
 #[repr(C)]
-pub struct StatsBuffer {
+struct StatsBuffer {
     pub(super) buff: *mut c_char,
     pub(super) pos: i32,
     pub(super) size: i32,
