@@ -3,6 +3,7 @@ pub(super) use crate::ffi_util::{
 };
 use crate::*;
 use std::ffi::CString;
+use std::ffi::c_longlong;
 
 pub(super) fn mtproto_proxy_collect_argv(
     argc: i32,
@@ -783,13 +784,16 @@ unsafe extern "C" {
     fn job_decref(job_tag_int: c_int, job: ConnectionJob);
     fn get_utime_monotonic() -> c_double;
 
-    fn tl_out_state_alloc() -> *mut crate::tl_parse::abi::TlOutState;
-    fn tl_out_state_free(tlio_out: *mut crate::tl_parse::abi::TlOutState);
-    fn tls_init_tcp_raw_msg(
-        tlio_out: *mut crate::tl_parse::abi::TlOutState,
+    #[link_name = "tl_out_state_alloc"]
+    fn c_tl_out_state_alloc() -> *mut c_void;
+    #[link_name = "tl_out_state_free"]
+    fn c_tl_out_state_free(tlio_out: *mut c_void);
+    #[link_name = "tls_init_tcp_raw_msg"]
+    fn c_tls_init_tcp_raw_msg(
+        tlio_out: *mut c_void,
         c_tag_int: c_int,
         c: ConnectionJob,
-        qid: i64,
+        qid: c_longlong,
     ) -> c_int;
     fn tls_init_tcp_raw_msg_unaligned(
         tlio_out: *mut crate::tl_parse::abi::TlOutState,
@@ -835,14 +839,17 @@ unsafe extern "C" {
     fn write_http_error(c: ConnectionJob, code: c_int) -> c_int;
     fn mtproxy_ffi_net_connections_job_free(job: ConnectionJob) -> c_int;
     fn connection_write_close(c: ConnectionJob);
-    fn tlf_init_raw_message(
-        tlio_in: *mut crate::tl_parse::abi::TlInState,
-        msg: *mut MtprotoRawMessage,
+    #[link_name = "tlf_init_raw_message"]
+    fn c_tlf_init_raw_message(
+        tlio_in: *mut c_void,
+        msg: *mut c_void,
         size: c_int,
         dup: c_int,
     ) -> c_int;
-    fn tl_in_state_alloc() -> *mut crate::tl_parse::abi::TlInState;
-    fn tl_in_state_free(tlio_in: *mut crate::tl_parse::abi::TlInState);
+    #[link_name = "tl_in_state_alloc"]
+    fn c_tl_in_state_alloc() -> *mut c_void;
+    #[link_name = "tl_in_state_free"]
+    fn c_tl_in_state_free(tlio_in: *mut c_void);
     fn create_async_job(
         run_job: MtprotoJobExecuteFn,
         job_signals: u64,
@@ -1458,7 +1465,7 @@ pub(super) fn mtproto_http_send_message_ffi(
             return 0;
         }
 
-        let tlio_out = unsafe { tl_out_state_alloc() };
+        let tlio_out = unsafe { c_tl_out_state_alloc() }.cast::<crate::tl_parse::abi::TlOutState>();
         if tlio_out.is_null() {
             return 0;
         }
@@ -1475,7 +1482,7 @@ pub(super) fn mtproto_http_send_message_ffi(
             );
             let mut sent_kind = 0;
             let _ = crate::tl_parse::abi::mtproxy_ffi_tl_store_end_ext(tlio_out, 0, &mut sent_kind);
-            tl_out_state_free(tlio_out);
+            c_tl_out_state_free(tlio_out.cast());
         }
     }
 
@@ -1577,13 +1584,13 @@ pub(super) fn mtproto_client_send_message_runtime_ffi(
         return unsafe { mtproto_http_send_message_ffi(c, tlio_in, flags) };
     }
 
-    let tlio_out = unsafe { tl_out_state_alloc() };
+    let tlio_out = unsafe { c_tl_out_state_alloc() }.cast::<crate::tl_parse::abi::TlOutState>();
     assert!(!tlio_out.is_null());
     unsafe {
-        tls_init_tcp_raw_msg(tlio_out, c_tag_int, job_incref(c), 0);
+        c_tls_init_tcp_raw_msg(tlio_out.cast(), c_tag_int, job_incref(c), 0);
         let rc = mtproto_client_send_non_http_wrap_ffi(tlio_in, tlio_out.cast::<c_void>());
         assert!(rc == 0);
-        tl_out_state_free(tlio_out);
+        c_tl_out_state_free(tlio_out.cast());
     }
 
     if unsafe { mtproto_check_conn_buffers_runtime_ffi(c) } < 0 {
@@ -2082,12 +2089,12 @@ unsafe fn mtproto_forward_build_req(
 }
 
 unsafe fn mtproto_forward_send_req(d: ConnectionJob, req: &[u8]) -> bool {
-    let tlio_out = unsafe { tl_out_state_alloc() };
+    let tlio_out = unsafe { c_tl_out_state_alloc() }.cast::<crate::tl_parse::abi::TlOutState>();
     if tlio_out.is_null() {
         return false;
     }
     unsafe {
-        tls_init_tcp_raw_msg(tlio_out, 1, d, 0);
+        c_tls_init_tcp_raw_msg(tlio_out.cast(), 1, d, 0);
     }
     let req_len = c_int::try_from(req.len()).unwrap_or(c_int::MAX);
     unsafe {
@@ -2096,7 +2103,7 @@ unsafe fn mtproto_forward_send_req(d: ConnectionJob, req: &[u8]) -> bool {
     let mut sent_kind = 0;
     unsafe {
         crate::tl_parse::abi::mtproxy_ffi_tl_store_end_ext(tlio_out, 0, &mut sent_kind);
-        tl_out_state_free(tlio_out);
+        c_tl_out_state_free(tlio_out.cast());
     }
     true
 }
@@ -2222,17 +2229,17 @@ unsafe fn mtproto_notify_remote_closed(c: ConnectionJob, out_conn_id: i64) {
     if c.is_null() {
         return;
     }
-    let tlio_out = unsafe { tl_out_state_alloc() };
+    let tlio_out = unsafe { c_tl_out_state_alloc() }.cast::<crate::tl_parse::abi::TlOutState>();
     if tlio_out.is_null() {
         return;
     }
     let c_ref = unsafe { job_incref(c) };
     if c_ref.is_null() {
-        unsafe { tl_out_state_free(tlio_out) };
+        unsafe { c_tl_out_state_free(tlio_out.cast()) };
         return;
     }
     unsafe {
-        tls_init_tcp_raw_msg(tlio_out, 1, c_ref, 0);
+        c_tls_init_tcp_raw_msg(tlio_out.cast(), 1, c_ref, 0);
         crate::tl_parse::abi::mtproxy_ffi_tl_store_int(
             tlio_out,
             mtproxy_core::runtime::mtproto::proxy::RPC_CLOSE_CONN,
@@ -2242,7 +2249,7 @@ unsafe fn mtproto_notify_remote_closed(c: ConnectionJob, out_conn_id: i64) {
     let mut sent_kind = 0;
     unsafe {
         crate::tl_parse::abi::mtproxy_ffi_tl_store_end_ext(tlio_out, 0, &mut sent_kind);
-        tl_out_state_free(tlio_out);
+        c_tl_out_state_free(tlio_out.cast());
     }
 }
 
@@ -2250,12 +2257,12 @@ unsafe fn mtproto_notify_remote_closed_owned(c: ConnectionJob, out_conn_id: i64)
     if c.is_null() {
         return;
     }
-    let tlio_out = unsafe { tl_out_state_alloc() };
+    let tlio_out = unsafe { c_tl_out_state_alloc() }.cast::<crate::tl_parse::abi::TlOutState>();
     if tlio_out.is_null() {
         return;
     }
     unsafe {
-        tls_init_tcp_raw_msg(tlio_out, 1, c, 0);
+        c_tls_init_tcp_raw_msg(tlio_out.cast(), 1, c, 0);
         crate::tl_parse::abi::mtproxy_ffi_tl_store_int(
             tlio_out,
             mtproxy_core::runtime::mtproto::proxy::RPC_CLOSE_CONN,
@@ -2265,7 +2272,7 @@ unsafe fn mtproto_notify_remote_closed_owned(c: ConnectionJob, out_conn_id: i64)
     let mut sent_kind = 0;
     unsafe {
         crate::tl_parse::abi::mtproxy_ffi_tl_store_end_ext(tlio_out, 0, &mut sent_kind);
-        tl_out_state_free(tlio_out);
+        c_tl_out_state_free(tlio_out.cast());
     }
 }
 
@@ -2754,21 +2761,21 @@ pub(super) fn mtproto_http_query_job_run_ffi(
             unsafe {
                 mtproto_lru_insert_conn_local(conn);
             }
-            let tlio_in = unsafe { tl_in_state_alloc() };
+            let tlio_in = unsafe { c_tl_in_state_alloc() }.cast::<crate::tl_parse::abi::TlInState>();
             if tlio_in.is_null() {
                 return JOB_COMPLETED;
             }
             unsafe {
-                tlf_init_raw_message(
-                    tlio_in,
-                    core::ptr::addr_of_mut!((*hq).msg),
+                c_tlf_init_raw_message(
+                    tlio_in.cast(),
+                    core::ptr::addr_of_mut!((*hq).msg).cast(),
                     (*hq).msg.total_bytes,
                     0,
                 );
             }
             let res = unsafe { mtproto_process_http_query_ffi(tlio_in.cast::<c_void>(), job) };
             unsafe {
-                tl_in_state_free(tlio_in);
+                c_tl_in_state_free(tlio_in.cast());
             }
             assert!(unsafe { (*hq).msg.magic } == 0);
             if res < 0 {
@@ -2869,17 +2876,17 @@ pub(super) fn mtproto_client_packet_job_run_ffi(
 
     match op {
         JS_RUN => {
-            let tlio_in = unsafe { tl_in_state_alloc() };
+            let tlio_in = unsafe { c_tl_in_state_alloc() }.cast::<crate::tl_parse::abi::TlInState>();
             if !tlio_in.is_null() {
                 unsafe {
-                    tlf_init_raw_message(
-                        tlio_in,
-                        core::ptr::addr_of_mut!((*d).msg),
+                    c_tlf_init_raw_message(
+                        tlio_in.cast(),
+                        core::ptr::addr_of_mut!((*d).msg).cast(),
                         (*d).msg.total_bytes,
                         0,
                     );
                     mtproto_process_client_packet_runtime_ffi(tlio_in.cast::<c_void>(), (*d).conn);
-                    tl_in_state_free(tlio_in);
+                    c_tl_in_state_free(tlio_in.cast());
                 }
             }
             JOB_COMPLETED
@@ -3300,10 +3307,10 @@ pub(super) fn mtproto_do_rpcs_execute_ffi(data: *mut c_void, s_len: c_int) -> c_
     unsafe { mtproto_lru_insert_conn_local(conn) };
 
     let len = unsafe { (*data).msg.total_bytes };
-    let tlio_in = unsafe { tl_in_state_alloc() };
+    let tlio_in = unsafe { c_tl_in_state_alloc() }.cast::<crate::tl_parse::abi::TlInState>();
     assert!(!tlio_in.is_null());
     unsafe {
-        tlf_init_raw_message(tlio_in, core::ptr::addr_of_mut!((*data).msg), len, 0);
+        c_tlf_init_raw_message(tlio_in.cast(), core::ptr::addr_of_mut!((*data).msg).cast(), len, 0);
     }
 
     let res = unsafe {
@@ -3316,7 +3323,7 @@ pub(super) fn mtproto_do_rpcs_execute_ffi(data: *mut c_void, s_len: c_int) -> c_
         )
     };
     unsafe {
-        tl_in_state_free(tlio_in);
+        c_tl_in_state_free(tlio_in.cast());
         mtproto_job_decref(conn);
     }
 

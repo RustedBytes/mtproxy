@@ -150,7 +150,7 @@ pub struct JobThreadStat {
 }
 
 #[repr(C)]
-struct StatsBuffer {
+pub(super) struct StatsBuffer {
     pub(super) buff: *mut c_char,
     pub(super) pos: i32,
     pub(super) size: i32,
@@ -254,7 +254,8 @@ unsafe extern "C" {
     pub(super) fn remove_event_timer(et: *mut EventTimer) -> i32;
     pub(super) fn thread_run_timers() -> i32;
     pub(super) fn timers_get_first() -> f64;
-    pub(super) fn alloc_mp_queue_w() -> *mut MpQueue;
+    #[link_name = "alloc_mp_queue_w"]
+    pub(super) fn c_alloc_mp_queue_w() -> *mut c_void;
     pub(super) fn get_this_thread_id() -> i32;
     pub(super) fn pthread_create(
         thread: *mut usize,

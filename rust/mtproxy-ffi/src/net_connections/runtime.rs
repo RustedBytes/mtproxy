@@ -39,7 +39,7 @@ use super::legacy::{
     mtproxy_ffi_net_connections_stats_add_tcp_read,
     mtproxy_ffi_net_connections_stats_add_tcp_write, net_accept_new_connections,
     net_server_socket_free, net_server_socket_read_write,
-    net_server_socket_read_write_gateway_event_descr as net_server_socket_read_write_gateway,
+    net_server_socket_read_write_gateway,
     net_server_socket_reader, net_server_socket_writer, new_conn_generation, remove_event_from_heap,
     rwm_free, rwm_init, rwm_prepare_iovec, rwm_skip_data, schedule_job, server_check_ready,
     server_failed, server_flush, server_noop, show_ipv6, tree_act_connection,

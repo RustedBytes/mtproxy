@@ -10,7 +10,7 @@ pub(super) type ConnTargetJob = Job;
 
 pub(crate) type JobFunction = Option<unsafe extern "C" fn(Job, c_int, *mut c_void) -> c_int>;
 pub(crate) type EventHandler =
-    Option<unsafe extern "C" fn(c_int, *mut c_void, *mut EventDescr) -> c_int>;
+    Option<unsafe extern "C" fn(c_int, *mut c_void, *mut c_void) -> c_int>;
 
 pub(crate) type ConnFn1 = Option<unsafe extern "C" fn(ConnectionJob) -> c_int>;
 pub(crate) type ConnFn2 = Option<unsafe extern "C" fn(ConnectionJob, c_int) -> c_int>;

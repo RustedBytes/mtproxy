@@ -9,7 +9,6 @@ use std::cell::Cell;
 use std::sync::atomic::{AtomicI32, Ordering};
 use crate::crypto::ffi::StatsBuffer;
 
-
 const JOB_SUBCLASS_OFFSET: i32 = 3;
 const JOB_THREAD_STACK_SIZE: usize = 4 << 20;
 const JOB_THREAD_REFRESH_RDTSC_DELTA: i64 = 1_000_000;
@@ -1151,7 +1150,7 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_create_job_class_sub(
         let subclass = unsafe { (*list).subclasses.offset(i as isize) };
         abort_if(subclass.is_null());
         unsafe {
-            (*subclass).job_queue = alloc_mp_queue_w();
+            (*subclass).job_queue = c_alloc_mp_queue_w().cast::<MpQueue>();
             (*subclass).subclass_id = i;
         }
         i += 1;
@@ -2348,7 +2347,7 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_create_job_thread_ex(
     let main_queue_ptr = ptr::addr_of_mut!(MainJobQueue);
     if thread_class != JC_MAIN && ptr::eq(jc.job_queue, main_queue_ptr) {
         abort_if(unsafe { main_job_thread }.is_null());
-        jc.job_queue = unsafe { alloc_mp_queue_w() };
+        jc.job_queue = unsafe { c_alloc_mp_queue_w().cast::<MpQueue>() };
         unsafe {
             (*main_job_thread).job_class_mask &= !(1 << thread_class);
         }

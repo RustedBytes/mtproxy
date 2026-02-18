@@ -189,7 +189,8 @@ unsafe extern "C" {
     fn get_this_thread_id() -> c_int;
     static mut max_job_thread_id: c_int;
 
-    fn alloc_mp_queue_w() -> *mut MpQueue;
+    #[link_name = "alloc_mp_queue_w"]
+    fn c_alloc_mp_queue_w() -> *mut c_void;
     #[allow(dead_code)]
     fn free_mp_queue(queue: *mut MpQueue);
     fn mpq_pop_nw(queue: *mut MpQueue, flags: c_int) -> *mut c_void;
@@ -213,7 +214,8 @@ unsafe extern "C" {
     ) -> *mut AsyncJob;
     #[allow(clashing_extern_declarations)]
     fn schedule_job(job_tag_int: c_int, job: *mut AsyncJob) -> c_int;
-    fn job_free(job_tag_int: c_int, job: *mut AsyncJob) -> c_int;
+    #[link_name = "job_free"]
+    fn c_job_free(job_tag_int: c_int, job: *mut c_void) -> c_int;
 
     fn sb_printf(sb: *mut StatsBuffer, format: *const c_char, ...);
 
@@ -618,7 +620,7 @@ unsafe fn alloc_new_msg_buffers_chunk(ch: *mut MsgBuffersChunk) -> *mut MsgBuffe
             free_cnt_set(c, i, v);
         }
 
-        (*c).free_block_queue = alloc_mp_queue_w();
+        (*c).free_block_queue = c_alloc_mp_queue_w().cast();
     }
 
     c
@@ -991,7 +993,7 @@ unsafe extern "C" fn free_msg_buffer_job(
         }
         JS_FINISH => {
             assert_eq!(unsafe { (*job).j_refcnt }, 1);
-            unsafe { job_free(1, job) }
+            unsafe { c_job_free(1, job.cast::<c_void>()) }
         }
         _ => {
             assert!(false, "unexpected job opcode {}", op);
