@@ -24,9 +24,3 @@
 #include "net/net-connections.h"
 
 extern conn_type_t ct_tcp_rpc_ext_server;
-
-void tcp_rpcs_set_ext_secret(unsigned char secret[16]);
-
-void tcp_rpc_add_proxy_domain(const char *domain);
-
-void tcp_rpc_init_proxy_domains();

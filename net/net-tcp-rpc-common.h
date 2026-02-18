@@ -142,13 +142,6 @@ enum {
 };
 
 int tcp_rpc_flush_packet(connection_job_t C);
-int tcp_rpc_write_packet(connection_job_t C, struct raw_message *raw);
-int tcp_rpc_write_packet_compact(connection_job_t C, struct raw_message *raw);
-int tcp_rpc_flush(connection_job_t C);
-unsigned tcp_set_default_rpc_flags(unsigned and_flags, unsigned or_flags);
-unsigned tcp_get_default_rpc_flags(void);
-void tcp_set_max_dh_accept_rate(int rate);
-int tcp_add_dh_accept(void);
 
 // Copies TCP RPC remote pid from connection custom data into `out_pid`.
 // Returns 0 on success, -1 on null args.

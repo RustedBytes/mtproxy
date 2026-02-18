@@ -41,7 +41,6 @@ int aes_crypto_init(connection_job_t c, void *key_data,
                     int key_data_len); /* < 0 = error */
 int aes_crypto_ctr128_init(connection_job_t c, void *key_data,
                            int key_data_len);
-int aes_crypto_free(connection_job_t c);
 
 void fetch_aes_crypto_stat(int *allocated_aes_crypto_ptr,
                            int *allocated_aes_crypto_temp_ptr);
@@ -77,9 +76,6 @@ struct aes_crypto {
 
 extern int aes_initialized;
 
-int aes_load_pwd_file(const char *filename);
-int aes_generate_nonce(char res[16]);
-
 int aes_create_keys(struct aes_key_data *R, int am_client,
                     const char nonce_server[16], const char nonce_client[16],
                     int client_timestamp, unsigned server_ip,
@@ -90,5 +86,4 @@ int aes_create_keys(struct aes_key_data *R, int am_client,
                     const aes_secret_t *key, const unsigned char *temp_key,
                     int temp_key_len);
 
-void free_crypto_temp(void *crypto, int len);
 void *alloc_crypto_temp(int len);

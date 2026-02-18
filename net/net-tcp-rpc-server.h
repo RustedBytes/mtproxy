@@ -55,17 +55,3 @@ struct tcp_rpc_server_functions {
 };
 
 extern conn_type_t ct_tcp_rpc_server;
-
-int tcp_rpcs_wakeup(connection_job_t c);
-int tcp_rpcs_parse_execute(connection_job_t c);
-int tcp_rpcs_close_connection(connection_job_t c, int who);
-int tcp_rpcs_init_accepted_nohs(connection_job_t c);
-// int tcp_rpcs_flush_packet (connection_job_t c); -- use tcp_rpc_flush_packet
-// () instead
-int tcp_rpcs_default_check_perm(connection_job_t c);
-int tcp_rpcs_init_crypto(connection_job_t c, struct tcp_rpc_nonce_packet *P);
-
-static inline struct tcp_rpc_server_functions *
-TCP_RPCS_FUNC(connection_job_t c) {
-  return (struct tcp_rpc_server_functions *)CONN_INFO(c)->extra;
-}

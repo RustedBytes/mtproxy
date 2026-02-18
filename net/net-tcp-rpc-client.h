@@ -56,4 +56,3 @@ int tcp_rpcc_init_crypto(connection_job_t c);
 int tcp_rpcc_start_crypto(connection_job_t c, char *nonce, int key_select,
                           unsigned char *temp_key, int temp_key_len);
 int tcp_rpcc_default_check_ready(connection_job_t c);
-void tcp_force_enable_dh(void);

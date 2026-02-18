@@ -41,5 +41,3 @@ int dh_second_round(unsigned char g_ab[256], unsigned char g_a[256],
                     const unsigned char g_b[256]);
 int dh_third_round(unsigned char g_ab[256], const unsigned char g_b[256],
                    struct crypto_temp_dh_params *dh_params);
-
-void fetch_tot_dh_rounds_stat(long long _tot_dh_rounds[3]);

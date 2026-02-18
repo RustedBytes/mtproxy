@@ -33,6 +33,3 @@ struct event_timer {
   double wakeup_time;
   double real_wakeup_time;
 };
-
-int thread_run_timers(void);
-double timers_get_first(void);

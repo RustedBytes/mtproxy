@@ -87,15 +87,6 @@ extern event_t Events[MAX_EVENTS];
 
 extern double tot_idle_time, a_idle_time, a_idle_quotient;
 
-int init_epoll(void);
-
-int remove_event_from_heap(event_t *ev, int allow_hole);
-
-int epoll_sethandler(int fd, int prio, event_handler_t handler, void *data);
-int epoll_work(int timeout);
-int epoll_insert(int fd, int flags);
-int epoll_remove(int fd);
-
 extern int epoll_fd;
 
 // extern volatile unsigned long long pending_signals;
@@ -119,23 +110,9 @@ enum {
   SM_RAWMSG = 0x40000,
 };
 
-int server_socket(int port, struct in_addr in_addr, int backlog, int mode);
-int client_socket(in_addr_t in_addr, int port, int mode);
-int client_socket_ipv6(const unsigned char in6_addr_ptr[16], int port,
-                       int mode);
-
-void maximize_sndbuf(int sfd, int max);
-void maximize_rcvbuf(int sfd, int max);
-
-unsigned get_my_ipv4(void);
-int get_my_ipv6(unsigned char ipv6[16]);
-
 union sockaddr_in46 {
   struct sockaddr_in a4;
   struct sockaddr_in6 a6;
 };
-
-const char *show_ip(unsigned ip);
-const char *show_ipv6(const unsigned char ipv6[16]);
 
 extern int epoll_sleep_ns;

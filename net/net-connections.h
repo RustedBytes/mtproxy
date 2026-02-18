@@ -38,79 +38,8 @@
 
 enum {
   MAX_CONNECTIONS = 65536,
-  MAX_TARGETS = 65536,
   PRIME_TARGETS = 99961,
-  MAX_SPECIAL_LISTEN_SOCKETS = 64,
-  MAX_TCP_RECV_BUFFERS = 128,
-  TCP_RECV_BUFFER_SIZE = 1024,
-  MAX_NET_RES = (1 << 16),
   CONN_CUSTOM_DATA_BYTES = 256,
-  NEED_MORE_BYTES = 0x7fffffff,
-  SKIP_ALL_BYTES = (-0x7fffffff - 1),
-};
-
-/* for connection flags */
-enum {
-  C_WANTRD = 1,
-  C_WANTWR = 2,
-  C_WANTRW = C_WANTRD | C_WANTWR,
-  C_INCONN = 4,
-  C_ERROR = 8,
-  C_NORD = 0x10,
-  C_NOWR = 0x20,
-  C_NORW = C_NORD | C_NOWR,
-  C_INQUERY = 0x40,
-  C_FAILED = 0x80,
-  C_ALARM = 0x100,
-  C_AIO = 0x200,
-  C_INTIMEOUT = 0x400,
-  C_STOPREAD = 0x800,
-  C_REPARSE = 0x1000,
-  C_DFLUSH = 0x2000,
-  C_IPV6 = 0x4000,
-  C_EXTERNAL = 0x8000,
-  C_SPECIAL = 0x10000,
-  C_NOQACK = 0x20000,
-  C_RAWMSG = 0x40000,
-  C_NET_FAILED = 0x80000,
-  C_CRYPTOIN = 0x100000,
-  C_CRYPTOOUT = 0x200000,
-  C_STOPPARSE = 0x400000,
-  C_ISDH = 0x800000,
-  C_READY_PENDING = 0x1000000,
-  C_CONNECTED = 0x2000000,
-  C_STOPWRITE = 0x4000000,
-  C_IS_TLS = 0x8000000,
-  C_PERMANENT = C_IPV6 | C_RAWMSG,
-};
-/* for connection status */
-enum {
-  conn_none, // closed/uninitialized
-  conn_connecting,
-  conn_working,
-  conn_error,       // connection in bad state (it will be probably closed)
-  conn_listen,      // listening for inbound connections
-  conn_write_close, // write all output buffer, then close; don't read input
-  conn_total_states // total number of connection states
-};
-
-/* for connection basic_type */
-enum {
-  ct_none,     // no connection (closed)
-  ct_listen,   // listening socket
-  ct_inbound,  // inbound connection
-  ct_outbound, // outbound connection
-  ct_pipe,     // used for pipe reading
-  ct_job       // used for async jobs ( net-jobs.h )
-};
-
-/* for connection->ready of outbound connections */
-enum {
-  cr_notyet,  // not ready yet (e.g. logging in)
-  cr_ok,      // working
-  cr_stopped, // stopped (don't send more queries)
-  cr_busy,    // busy (sending queries not allowed by protocol)
-  cr_failed   // failed (possibly timed out)
 };
 
 typedef job_t connection_job_t;
@@ -121,10 +50,6 @@ typedef job_t query_job_t;
 struct query_info;
 
 /* connection function table */
-
-enum {
-  CONN_FUNC_MAGIC = 0x11ef55aa,
-};
 
 typedef struct conn_functions {
   int magic;
@@ -357,96 +282,18 @@ struct connections_stat {
   long long accept_connection_limit_failed;
 };
 
-static inline struct query_info *QUERY_INFO(query_job_t query) {
-  return (struct query_info *)query->j_custom;
-}
-
 static inline struct connection_info *CONN_INFO(connection_job_t conn) {
   return (struct connection_info *)conn->j_custom;
 }
 
-static inline struct listening_connection_info *
-LISTEN_CONN_INFO(listening_connection_job_t conn) {
-  return (struct listening_connection_info *)conn->j_custom;
-}
-
-static inline struct socket_connection_info *
-SOCKET_CONN_INFO(socket_connection_job_t conn) {
-  return (struct socket_connection_info *)conn->j_custom;
-}
-
-static inline struct conn_target_info *
-CONN_TARGET_INFO(conn_target_job_t conn) {
-  return (struct conn_target_info *)conn->j_custom;
-}
-
-static inline const char *show_ip46(unsigned ip, const unsigned char ipv6[16]) {
-  return ip ? show_ip(ip) : show_ipv6(ipv6);
-}
-static inline const char *show_our_ip(connection_job_t c) {
-  return show_ip46(CONN_INFO(c)->our_ip, CONN_INFO(c)->our_ipv6);
-}
-static inline const char *show_remote_ip(connection_job_t c) {
-  return show_ip46(CONN_INFO(c)->remote_ip, CONN_INFO(c)->remote_ipv6);
-}
-static inline const char *show_our_socket_ip(socket_connection_job_t c) {
-  return show_ip46(SOCKET_CONN_INFO(c)->our_ip, SOCKET_CONN_INFO(c)->our_ipv6);
-}
-static inline const char *show_remote_socket_ip(socket_connection_job_t c) {
-  return show_ip46(SOCKET_CONN_INFO(c)->remote_ip,
-                   SOCKET_CONN_INFO(c)->remote_ipv6);
-}
-
-void fetch_connections_stat(struct connections_stat *st);
-
-void compute_next_reconnect(conn_target_job_t CT);
-int create_all_outbound_connections(void);
-int clean_unused_target(conn_target_job_t S);
-
-int set_connection_timeout(connection_job_t C, double timeout);
-int clear_connection_timeout(connection_job_t C);
-
 int prepare_stats(char *buf, int size);
-void fail_connection(connection_job_t C, int who);
-void fail_socket_connection(socket_connection_job_t C, int who);
-
-int destroy_target(JOB_REF_ARG(CTJ));
-conn_target_job_t create_target(struct conn_target_info *source,
-                                int *was_created);
-
-connection_job_t connection_get_by_fd(int fd);
-connection_job_t connection_get_by_fd_generation(int fd, int generation);
-
-int cpu_server_read_write(connection_job_t C);
-// int cpu_free_tmp_buffers (connection_job_t C);
-int cpu_server_free_connection(connection_job_t C);
-int cpu_server_close_connection(connection_job_t C, int who);
-
-int net_server_socket_reader(connection_job_t C);
-int net_server_socket_writer(connection_job_t C);
-int net_server_socket_read_write(connection_job_t C);
-
-int net_accept_new_connections(connection_job_t C);
 
 int server_check_ready(connection_job_t C);
-int server_noop(connection_job_t C);
-int server_failed(connection_job_t C);
-
-void connection_write_close(connection_job_t C);
 
 void assert_net_cpu_thread(void);
 void assert_engine_thread(void);
 
-connection_job_t conn_target_get_connection(conn_target_job_t CT,
-                                            int allow_stopped);
-
 // void wakeup_main_thread (void);
-
-int init_listening_connection_ext(int fd, conn_type_t *type, void *extra,
-                                  int mode, int prio);
-int init_listening_connection(int fd, conn_type_t *type, void *extra);
-int init_listening_tcpv6_connection(int fd, conn_type_t *type, void *extra,
-                                    int mode);
 
 // struct tree_connection *get_connection_tree_ptr (struct tree_connection **);
 // void free_connection_tree_ptr (struct tree_connection *);
@@ -464,24 +311,6 @@ struct query_info {
   void *conn;
 };
 
-void free_later_act(void);
-
-void incr_active_dh_connections(void);
 int check_conn_functions(conn_type_t *type, int listening);
 
-int new_conn_generation(void);
-
-void tcp_set_max_accept_rate(int rate);
-void tcp_set_max_connections(int maxconn);
-
 extern int max_special_connections, active_special_connections;
-
-int net_add_nat_info(char *str);
-unsigned nat_translate_ip(unsigned local_ip);
-
-connection_job_t alloc_new_connection(int cfd, conn_target_job_t CTJ,
-                                      listening_connection_job_t LCJ,
-                                      int basic_type, conn_type_t *conn_type,
-                                      void *conn_extra, unsigned peer,
-                                      unsigned char peer_ipv6[16],
-                                      int peer_port);

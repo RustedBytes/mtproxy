@@ -34,16 +34,3 @@ struct rpc_target_info {
   struct tree_connection *conn_tree;
   struct process_id PID;
 };
-
-rpc_target_job_t rpc_target_lookup(struct process_id *PID);
-
-connection_job_t rpc_target_choose_connection(rpc_target_job_t S,
-                                              struct process_id *PID);
-connection_job_t mtproxy_ffi_rpc_target_choose_connection_by_pid(
-    struct process_id *PID);
-int rpc_target_choose_random_connections(rpc_target_job_t S,
-                                         struct process_id *PID, int limit,
-                                         connection_job_t buf[]);
-
-void rpc_target_insert_conn(connection_job_t c);
-void rpc_target_delete_conn(connection_job_t c);
