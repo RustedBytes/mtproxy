@@ -6,6 +6,7 @@ bin_dir := obj_dir + "/bin"
 lib_dir := obj_dir + "/lib"
 rust_ffi_debug := "target/debug/libmtproxy_ffi.a"
 rust_ffi_release := "target/release/libmtproxy_ffi.a"
+rust_runtime_debug := "target/debug/mtproxy-rust"
 rust_runtime_release := "target/release/mtproxy-rust"
 legacy_link_libs := "-ggdb -rdynamic -lm -lrt -lpthread -ldl"
 
@@ -35,7 +36,11 @@ ffi-release:
     cp "$$latest" "{{rust_ffi_release}}"; \
   fi
 
-build: dirs libkdb ffi-debug
+build: dirs
+  cargo build -p mtproxy-bin --bin mtproxy-rust
+  cp {{rust_runtime_debug}} {{bin_dir}}/mtproxy-rust
+
+build-legacy: dirs libkdb ffi-debug
   just _link-legacy {{rust_ffi_debug}}
 
 release: dirs
