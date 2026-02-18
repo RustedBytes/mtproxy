@@ -97,17 +97,17 @@ fn atomic_f64_store(bits: &AtomicU64, value: c_double) {
 
 #[inline]
 unsafe fn sb_print_i32_key(sb: *mut StatsBuffer, key: *const c_char, value: c_int) {
-    unsafe { sb_printf(sb, c"%s\t%d\n".as_ptr(), key, value) };
+    unsafe { crate::sb_printf_fmt!(sb, c"%s\t%d\n".as_ptr(), key, value) };
 }
 
 #[inline]
 unsafe fn sb_print_i64_key(sb: *mut StatsBuffer, key: *const c_char, value: c_longlong) {
-    unsafe { sb_printf(sb, c"%s\t%lld\n".as_ptr(), key, value) };
+    unsafe { crate::sb_printf_fmt!(sb, c"%s\t%lld\n".as_ptr(), key, value) };
 }
 
 #[inline]
 unsafe fn sb_print_double_key(sb: *mut StatsBuffer, key: *const c_char, value: c_double) {
-    unsafe { sb_printf(sb, c"%s\t%.6lf\n".as_ptr(), key, value) };
+    unsafe { crate::sb_printf_fmt!(sb, c"%s\t%.6lf\n".as_ptr(), key, value) };
 }
 
 #[no_mangle]
@@ -598,7 +598,7 @@ pub unsafe extern "C" fn connections_prepare_stat(sb: *mut StatsBuffer) -> c_int
             FREE_TARGETS.load(Ordering::Relaxed),
         );
 
-            sb_printf(
+            crate::sb_printf_fmt!(
                 sb,
                 c"max_connections\t%d\nactive_special_connections\t%d\nmax_special_connections\t%d\n"
                     .as_ptr(),

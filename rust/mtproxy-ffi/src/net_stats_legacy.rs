@@ -90,7 +90,7 @@ pub unsafe extern "C" fn prepare_stats(buff: *mut c_char, buff_size: c_int) -> c
     let time_after_epoll = unsafe { get_utime(libc::CLOCK_MONOTONIC) - last_epoll_wait_at };
 
     unsafe {
-        sb_printf(
+        crate::sb_printf_fmt!(
             &raw mut sb,
             c"pid\t%d\n\
 start_time\t%d\n\
@@ -138,6 +138,6 @@ PID\t[%d.%d.%d.%d:%d:%d:%d]\n"
     unsafe { rpc_targets_prepare_stat(&raw mut sb) };
 
     let elapsed = unsafe { get_utime_monotonic() - started_at };
-    unsafe { sb_printf(&raw mut sb, c"stats_generate_time\t%.6f\n".as_ptr(), elapsed) };
+    unsafe { crate::sb_printf_fmt!(&raw mut sb, c"stats_generate_time\t%.6f\n".as_ptr(), elapsed) };
     sb.pos
 }

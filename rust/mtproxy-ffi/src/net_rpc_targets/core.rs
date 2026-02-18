@@ -326,7 +326,7 @@ unsafe fn rpc_target_log(pid: &MtproxyProcessId, fd: c_int) {
     }
 
     unsafe {
-        kprintf(
+        crate::kprintf_fmt!(
             RPC_TARGET_INSERT_LOG_FMT.as_ptr().cast(),
             ((pid.ip >> 24) & 0xff) as c_int,
             ((pid.ip >> 16) & 0xff) as c_int,
@@ -720,8 +720,8 @@ pub(super) unsafe fn rpc_targets_prepare_stat_runtime_impl(
     let (total_rpc_targets, total_connections) =
         unsafe { rpc_targets_stats_totals(module_stat_array, module_stat_len) };
     unsafe {
-        sb_printf(sb, RPC_TARGETS_TOTAL_FMT.as_ptr().cast(), total_rpc_targets);
-        sb_printf(
+        crate::sb_printf_fmt!(sb, RPC_TARGETS_TOTAL_FMT.as_ptr().cast(), total_rpc_targets);
+        crate::sb_printf_fmt!(
             sb,
             RPC_TARGETS_TOTAL_CONNECTIONS_FMT.as_ptr().cast(),
             total_connections,

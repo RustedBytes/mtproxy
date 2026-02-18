@@ -1019,28 +1019,28 @@ pub(super) unsafe fn raw_msg_buffer_prepare_stat_impl(sb: *mut StatsBuffer) -> c
     };
 
     unsafe {
-        sb_printf(
+        crate::sb_printf_fmt!(
             sb,
             b"total_used_buffers_size\t%lld\n\0".as_ptr().cast(),
             total_used_buffers_size,
         );
-        sb_printf(
+        crate::sb_printf_fmt!(
             sb,
             b"total_used_buffers\t%d\n\0".as_ptr().cast(),
             total_used_buffers,
         );
-        sb_printf(
+        crate::sb_printf_fmt!(
             sb,
             b"allocated_buffer_bytes\t%lld\n\0".as_ptr().cast(),
             allocated_buffer_bytes,
         );
-        sb_printf(
+        crate::sb_printf_fmt!(
             sb,
             b"buffer_chunk_alloc_ops\t%lld\n\0".as_ptr().cast(),
             buffer_chunk_alloc_ops,
         );
 
-        sb_printf(
+        crate::sb_printf_fmt!(
             sb,
             b"allocated_buffer_chunks\t%d\nmax_allocated_buffer_chunks\t%d\nmax_buffer_chunks\t%d\nmax_allocated_buffer_bytes\t%lld\n\0"
                 .as_ptr()

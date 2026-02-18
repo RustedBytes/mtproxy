@@ -1487,7 +1487,7 @@ pub(super) unsafe fn mtproto_http_send_message_ffi(
 
     unsafe {
         if verbosity >= 3 {
-            kprintf(
+            crate::kprintf_fmt!(
                 b"detaching http connection (%d)\n\0".as_ptr().cast(),
                 (*conn).fd,
             );
@@ -2941,7 +2941,7 @@ pub(super) unsafe fn mtproto_rpcc_execute_ffi(
 
     if unsafe { verbosity } >= 2 {
         unsafe {
-            kprintf(
+            crate::kprintf_fmt!(
                 b"rpcc_execute: fd=%d, op=%08x, len=%d\n\0".as_ptr().cast(),
                 (*conn).fd,
                 op,
@@ -2990,7 +2990,7 @@ pub(super) unsafe fn mtproto_rpcc_execute_ffi(
         _ => {
             if unsafe { verbosity } >= 1 {
                 unsafe {
-                    kprintf(
+                    crate::kprintf_fmt!(
                         b"unknown RPC operation %08x, ignoring\n\0".as_ptr().cast(),
                         op,
                     );
@@ -3027,7 +3027,7 @@ pub(super) unsafe fn mtproto_mtfront_client_ready_ffi(c: *mut c_void) -> c_int {
 
     if unsafe { verbosity } >= 1 {
         unsafe {
-            kprintf(
+            crate::kprintf_fmt!(
                 b"Connected to RPC Middle-End (fd=%d)\n\0".as_ptr().cast(),
                 fd,
             );
@@ -3059,7 +3059,7 @@ pub(super) unsafe fn mtproto_mtfront_client_close_ffi(c: *mut c_void, _who: c_in
 
     if unsafe { verbosity } >= 1 {
         unsafe {
-            kprintf(
+            crate::kprintf_fmt!(
                 b"Disconnected from RPC Middle-End (fd=%d)\n\0"
                     .as_ptr()
                     .cast(),
@@ -3117,7 +3117,7 @@ pub(super) unsafe fn mtproto_ext_rpc_ready_ffi(c: *mut c_void) -> c_int {
     assert!((fd as u32) < MAX_CONNECTIONS as u32);
     if unsafe { verbosity } >= 1 {
         unsafe {
-            kprintf(
+            crate::kprintf_fmt!(
                 b"Client connected to proxy (fd=%d, %s:%d -> %s:%d)\n\0"
                     .as_ptr()
                     .cast(),
@@ -3131,7 +3131,7 @@ pub(super) unsafe fn mtproto_ext_rpc_ready_ffi(c: *mut c_void) -> c_int {
     }
     if unsafe { verbosity } >= 3 {
         unsafe {
-            kprintf(b"ext_rpc connection ready (%d)\n\0".as_ptr().cast(), fd);
+            crate::kprintf_fmt!(b"ext_rpc connection ready (%d)\n\0".as_ptr().cast(), fd);
         }
     }
     unsafe {
@@ -3153,7 +3153,7 @@ pub(super) unsafe fn mtproto_ext_rpc_close_ffi(c: *mut c_void, who: c_int) -> c_
     assert!((fd as u32) < MAX_CONNECTIONS as u32);
     if unsafe { verbosity } >= 3 {
         unsafe {
-            kprintf(
+            crate::kprintf_fmt!(
                 b"ext_rpc connection closing (%d) by %d\n\0".as_ptr().cast(),
                 fd,
                 who,
@@ -3186,7 +3186,7 @@ pub(super) unsafe fn mtproto_proxy_rpc_ready_ffi(c: *mut c_void) -> c_int {
     assert!((fd as u32) < MAX_CONNECTIONS as u32);
     if unsafe { verbosity } >= 3 {
         unsafe {
-            kprintf(b"proxy_rpc connection ready (%d)\n\0".as_ptr().cast(), fd);
+            crate::kprintf_fmt!(b"proxy_rpc connection ready (%d)\n\0".as_ptr().cast(), fd);
         }
     }
     assert!(unsafe { (*d).extra_int == 0 });
@@ -3213,7 +3213,7 @@ pub(super) unsafe fn mtproto_http_close_ffi(c: *mut c_void, who: c_int) -> c_int
 
     if unsafe { verbosity } >= 3 {
         unsafe {
-            kprintf(
+            crate::kprintf_fmt!(
                 b"http connection closing (%d) by %d, %d queries pending\n\0"
                     .as_ptr()
                     .cast(),
@@ -3263,7 +3263,7 @@ pub(super) unsafe fn mtproto_proxy_rpc_close_ffi(c: *mut c_void, who: c_int) -> 
 
     if unsafe { verbosity } >= 3 {
         unsafe {
-            kprintf(
+            crate::kprintf_fmt!(
                 b"proxy_rpc connection closing (%d) by %d\n\0"
                     .as_ptr()
                     .cast(),
@@ -3322,7 +3322,7 @@ pub(super) unsafe fn mtproto_do_rpcs_execute_ffi(data: *mut c_void, s_len: c_int
 
     if res == 0 && unsafe { verbosity } >= 1 {
         unsafe {
-            kprintf(
+            crate::kprintf_fmt!(
                 b"ext_rpcs_execute: cannot forward mtproto packet\n\0"
                     .as_ptr()
                     .cast(),
@@ -3353,7 +3353,7 @@ pub(super) unsafe fn mtproto_ext_rpcs_execute_ffi(
 
     if unsafe { verbosity } >= 2 {
         unsafe {
-            kprintf(
+            crate::kprintf_fmt!(
                 b"ext_rpcs_execute: fd=%d, op=%08x, len=%d\n\0"
                     .as_ptr()
                     .cast(),
@@ -3367,7 +3367,7 @@ pub(super) unsafe fn mtproto_ext_rpcs_execute_ffi(
     if len > MAX_POST_SIZE {
         if unsafe { verbosity } >= 1 {
             unsafe {
-                kprintf(
+                crate::kprintf_fmt!(
                     b"ext_rpcs_execute: packet too long (%d bytes), skipping\n\0"
                         .as_ptr()
                         .cast(),
@@ -3758,7 +3758,7 @@ pub(super) unsafe fn mtproto_check_all_conn_buffers_ffi() {
         }
         if unsafe { verbosity } >= 2 {
             unsafe {
-                kprintf(
+                crate::kprintf_fmt!(
                     b"check_all_conn_buffers(): closing connection %d because of %lld total used buffer vytes (%lld max, %lld bytes to free)\n\0"
                         .as_ptr()
                         .cast(),
@@ -3810,7 +3810,7 @@ pub(super) unsafe fn mtproto_check_conn_buffers_runtime_ffi(c: *mut c_void) -> c
     if tot_used_bytes > MAX_CONNECTION_BUFFER_SPACE {
         if unsafe { verbosity } >= 2 {
             unsafe {
-                kprintf(
+                crate::kprintf_fmt!(
                     b"check_conn_buffers(): closing connection %d because of %d buffer bytes used (%d max)\n\0"
                         .as_ptr()
                         .cast(),
@@ -4205,7 +4205,7 @@ pub(super) unsafe fn mtproto_mtfront_prepare_stats_ffi(sb: *mut c_void) {
     };
 
     unsafe {
-        sb_printf(
+        crate::sb_printf_fmt!(
             sb,
             b"config_filename\t%s\n\
 config_loaded_at\t%d\n\
@@ -4333,7 +4333,7 @@ proxy_tag_set\t%d\n\0"
             proxy_mode,
             proxy_tag_set,
         );
-        sb_printf(
+        crate::sb_printf_fmt!(
             sb,
             b"version\t%s\n\0".as_ptr().cast(),
             FullVersionStr,
@@ -4448,7 +4448,7 @@ pub(super) unsafe fn mtproto_hts_execute_ffi(c: *mut c_void, msg: *mut c_void, o
     }
 
     unsafe {
-        kprintf(
+        crate::kprintf_fmt!(
             b"in hts_execute: connection #%d, op=%d, header_size=%d, data_size=%d, http_version=%d\n\0"
                 .as_ptr()
                 .cast(),
@@ -4501,7 +4501,7 @@ pub(super) unsafe fn mtproto_hts_execute_ffi(c: *mut c_void, msg: *mut c_void, o
         let need_bytes = unsafe { (*d).data_size + (*d).header_size - (*msg).total_bytes };
         if need_bytes > 0 {
             unsafe {
-                kprintf(
+                crate::kprintf_fmt!(
                     b"-- need %d more bytes, waiting\n\0".as_ptr().cast(),
                     need_bytes,
                 );
@@ -4581,7 +4581,7 @@ pub(super) unsafe fn mtproto_http_alarm_ffi(c: *mut c_void) -> c_int {
 
     if unsafe { verbosity } >= 2 {
         unsafe {
-            kprintf(
+            crate::kprintf_fmt!(
                 b"http_alarm() for connection %d\n\0".as_ptr().cast(),
                 (*conn).fd,
             );
@@ -4749,7 +4749,7 @@ pub(super) unsafe fn mtproto_f_parse_option_ffi(val: c_int) -> c_int {
         },
         OPT_S | OPT_P => unsafe {
             if libc::strlen(optarg.cast_const()) != 32 {
-                kprintf(
+                crate::kprintf_fmt!(
                     b"'%c' option requires exactly 32 hex digits\n\0"
                         .as_ptr()
                         .cast(),
@@ -4766,7 +4766,7 @@ pub(super) unsafe fn mtproto_f_parse_option_ffi(val: c_int) -> c_int {
             let mut b = 0_u8;
             for (i, ch) in hex.iter().copied().enumerate() {
                 let Some(nib) = mtproto_parse_hex_nibble(ch) else {
-                    kprintf(
+                    crate::kprintf_fmt!(
                         b"'S' option requires exactly 32 hex digits. '%c' is not hexdigit\n\0"
                             .as_ptr()
                             .cast(),
@@ -4854,7 +4854,7 @@ pub(super) unsafe fn mtproto_check_children_dead_ffi() {
             }
         }
         unsafe {
-            kprintf(
+            crate::kprintf_fmt!(
                 b"WARNING: %d children unfinished --> they are now killed\n\0"
                     .as_ptr()
                     .cast(),
@@ -4876,7 +4876,7 @@ pub(super) unsafe fn mtproto_check_children_status_ffi() {
             if res == unsafe { pids[i] } {
                 if libc::WIFEXITED(status) || libc::WIFSIGNALED(status) {
                     unsafe {
-                        kprintf(
+                        crate::kprintf_fmt!(
                             b"Child %d terminated, aborting\n\0".as_ptr().cast(),
                             pids[i],
                         );
@@ -4897,7 +4897,7 @@ pub(super) unsafe fn mtproto_check_children_status_ffi() {
             } else if res == 0 {
             } else if res != -1 || unsafe { *libc::__errno_location() } != libc::EINTR {
                 unsafe {
-                    kprintf(
+                    crate::kprintf_fmt!(
                         b"Child %d: unknown result during wait (%d, %m), aborting\n\0"
                             .as_ptr()
                             .cast(),
@@ -4923,7 +4923,7 @@ pub(super) unsafe fn mtproto_check_children_status_ffi() {
         let ppid = unsafe { libc::getppid() };
         if ppid != unsafe { parent_pid } {
             unsafe {
-                kprintf(
+                crate::kprintf_fmt!(
                     b"Parent %d is changed to %d, aborting\n\0".as_ptr().cast(),
                     parent_pid,
                     ppid,
@@ -4950,7 +4950,7 @@ pub(super) unsafe fn mtproto_check_special_connections_overflow_ffi() {
     };
     if i64::from(cur_user_conn) * 10 > i64::from(max_user_conn) * 9 {
         unsafe {
-            kprintf(
+            crate::kprintf_fmt!(
                 b"CRITICAL: used %d user connections out of %d\n\0"
                     .as_ptr()
                     .cast(),
@@ -5013,7 +5013,7 @@ pub(super) unsafe fn mtproto_mtfront_parse_extra_args_ffi(argc: c_int, argv: *mu
     }
     unsafe {
         config_filename = *argv;
-        kprintf(
+        crate::kprintf_fmt!(
             b"config_filename = '%s'\n\0".as_ptr().cast(),
             config_filename,
         );
@@ -5069,20 +5069,20 @@ pub(super) unsafe fn mtproto_mtfront_pre_init_ffi() {
         unsafe { libc::exit(-res) };
     }
 
-    unsafe { kprintf(b"config loaded!\n\0".as_ptr().cast()) };
+    unsafe { crate::kprintf_fmt!(b"config loaded!\n\0".as_ptr().cast()) };
 
     if unsafe { domain_count != 0 } {
         unsafe {
             tcp_rpc_init_proxy_domains();
             if workers != 0 {
-                kprintf(
+                crate::kprintf_fmt!(
                     b"It is recommended to not use workers with TLS-transport\0"
                         .as_ptr()
                         .cast(),
                 );
             }
             if secret_count == 0 {
-                kprintf(
+                crate::kprintf_fmt!(
                     b"You must specify at least one mtproto-secret to use when using TLS-transport\0"
                         .as_ptr()
                         .cast(),
@@ -5122,7 +5122,7 @@ pub(super) unsafe fn mtproto_mtfront_pre_init_ffi() {
         unsafe {
             http_sfd[idx] = server_socket(http_port[idx], settings_addr, backlog, enable_ipv6);
             if http_sfd[idx] < 0 {
-                kprintf(
+                crate::kprintf_fmt!(
                     b"cannot open http/tcp server socket at port %d: %m\n\0"
                         .as_ptr()
                         .cast(),
@@ -5155,7 +5155,7 @@ pub(super) unsafe fn mtproto_mtfront_pre_init_ffi() {
             .cast::<MtprotoWorkerStats>();
             assert!(!WStats.is_null());
             let real_parent_pid = libc::getpid();
-            kprintf(b"creating %d workers\n\0".as_ptr().cast(), workers_count);
+            crate::kprintf_fmt!(b"creating %d workers\n\0".as_ptr().cast(), workers_count);
             let mut j = 0;
             while j < workers_count {
                 let pid = libc::fork();
@@ -5266,7 +5266,7 @@ pub(super) unsafe fn mtproto_mtfront_pre_loop_ffi() {
                 };
                 if set_rc < 0 && unsafe { verbosity } >= 0 {
                     unsafe {
-                        kprintf(
+                        crate::kprintf_fmt!(
                             b"error while setting window size for socket #%d to %d: %m\n\0"
                                 .as_ptr()
                                 .cast(),
@@ -6035,7 +6035,7 @@ pub(super) unsafe fn clear_config_ffi(mc: *mut MtproxyMfConfig, do_destroy_targe
         for idx in 0..tot_targets {
             let target = mc_ref.targets[idx];
             if unsafe { verbosity } >= 1 {
-                unsafe { kprintf(b"destroying target %p\n\0".as_ptr().cast(), target) };
+                unsafe { crate::kprintf_fmt!(b"destroying target %p\n\0".as_ptr().cast(), target) };
             }
             unsafe {
                 destroy_target(1, target);
@@ -6160,7 +6160,7 @@ pub(super) unsafe fn mtproto_cfg_create_target_ffi(mc: *mut MtproxyMfConfig, tar
     if unsafe { verbosity } >= 3 {
         let ipv4 = unsafe { default_cfg_ct.target.s_addr.to_ne_bytes() };
         unsafe {
-            kprintf(
+            crate::kprintf_fmt!(
                 b"new target %p created (%d): ip %d.%d.%d.%d, port %d\n\0"
                     .as_ptr()
                     .cast(),
@@ -7203,7 +7203,7 @@ pub(super) unsafe fn mtproto_cfg_parse_config_ffi(
             {
                 if unsafe { verbosity } >= 3 {
                     unsafe {
-                        kprintf(
+                        crate::kprintf_fmt!(
                             b"-> added target to new auth_cluster #%d\n\0"
                                 .as_ptr()
                                 .cast(),
@@ -7216,7 +7216,7 @@ pub(super) unsafe fn mtproto_cfg_parse_config_ffi(
                 && unsafe { verbosity } >= 3
             {
                 unsafe {
-                    kprintf(
+                    crate::kprintf_fmt!(
                         b"-> added target to old auth_cluster #%d\n\0"
                             .as_ptr()
                             .cast(),
@@ -7261,7 +7261,7 @@ pub(super) unsafe fn mtproto_cfg_do_reload_config_ffi(flags: i32) -> i32 {
         fd = unsafe { open(config_filename.cast_const(), O_RDONLY_FLAG) };
         if fd < 0 {
             unsafe {
-                kprintf(
+                crate::kprintf_fmt!(
                     b"cannot re-read config file %s: %m\n\0".as_ptr().cast(),
                     config_filename,
                 );
@@ -7271,7 +7271,7 @@ pub(super) unsafe fn mtproto_cfg_do_reload_config_ffi(flags: i32) -> i32 {
 
         let reload_hosts = unsafe { kdb_load_hosts() };
         if reload_hosts > 0 && unsafe { verbosity } >= 1 {
-            unsafe { kprintf(b"/etc/hosts changed, reloaded\n\0".as_ptr().cast()) };
+            unsafe { crate::kprintf_fmt!(b"/etc/hosts changed, reloaded\n\0".as_ptr().cast()) };
         }
     }
 
@@ -7283,7 +7283,7 @@ pub(super) unsafe fn mtproto_cfg_do_reload_config_ffi(flags: i32) -> i32 {
 
     if res < 0 {
         unsafe {
-            kprintf(
+            crate::kprintf_fmt!(
                 b"error while re-reading config file %s, new configuration NOT applied\n\0"
                     .as_ptr()
                     .cast(),
@@ -7301,7 +7301,7 @@ pub(super) unsafe fn mtproto_cfg_do_reload_config_ffi(flags: i32) -> i32 {
     if res < 0 {
         unsafe { clear_config_ffi(NextConf, 0) };
         unsafe {
-            kprintf(
+            crate::kprintf_fmt!(
                 b"fatal error while re-reading config file %s\n\0"
                     .as_ptr()
                     .cast(),
@@ -7338,7 +7338,7 @@ pub(super) unsafe fn mtproto_cfg_do_reload_config_ffi(flags: i32) -> i32 {
     }
 
     unsafe {
-        kprintf(
+        crate::kprintf_fmt!(
             b"configuration file %s re-read successfully (%d bytes parsed), new configuration active\n\0"
                 .as_ptr()
                 .cast(),

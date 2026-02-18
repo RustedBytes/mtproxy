@@ -82,7 +82,7 @@ unsafe fn set_tl_out_error_message(tlio_out: *mut c_void, errnum: c_int, message
 
     let c_message = cstring_sanitized(message);
     if unsafe { verbosity } >= 2 {
-        unsafe { kprintf(ERR_LOG_FMT.as_ptr().cast(), c_message.as_ptr()) };
+        unsafe { crate::kprintf_fmt!(ERR_LOG_FMT.as_ptr().cast(), c_message.as_ptr()) };
     }
 
     unsafe {
@@ -652,7 +652,7 @@ pub(super) unsafe fn default_parse_function_impl(
 unsafe fn log_unknown_query_type(query_type_id: c_int, qid: c_longlong) {
     if unsafe { verbosity } >= 1 {
         unsafe {
-            kprintf(
+            crate::kprintf_fmt!(
                 UNKNOWN_QUERY_TYPE_FMT.as_ptr().cast(),
                 query_type_id,
                 qid as c_ulonglong,

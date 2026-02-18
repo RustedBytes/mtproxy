@@ -889,7 +889,7 @@ unsafe extern "C" fn rust_parse_option_engine(val: c_int) -> c_int {
 unsafe fn vkprintf_no_args(level: c_int, format: *const c_char) {
     unsafe {
         if level <= verbosity {
-            kprintf(format);
+            crate::kprintf_fmt!(format);
         }
     }
 }
@@ -898,7 +898,7 @@ unsafe fn vkprintf_no_args(level: c_int, format: *const c_char) {
 unsafe fn vkprintf_pipe_close(level: c_int, format: *const c_char, fd: c_int) {
     unsafe {
         if level <= verbosity {
-            kprintf(format, CREATE_PIPE_FUNC_NAME.as_ptr().cast::<c_char>(), fd);
+            crate::kprintf_fmt!(format, CREATE_PIPE_FUNC_NAME.as_ptr().cast::<c_char>(), fd);
         }
     }
 }
@@ -968,7 +968,7 @@ pub(super) unsafe extern "C" fn try_open_port_impl(port: c_int, quit_on_fail: c_
         if unsafe { (*e).sfd } < 0 {
             if quit_on_fail != 0 {
                 unsafe {
-                    kprintf(CANNOT_OPEN_SERVER_SOCKET_FMT.as_ptr().cast(), port);
+                    crate::kprintf_fmt!(CANNOT_OPEN_SERVER_SOCKET_FMT.as_ptr().cast(), port);
                     libc::exit(1);
                 }
             }
@@ -1011,7 +1011,7 @@ pub(super) unsafe extern "C" fn try_open_port_range_impl(
     }
     if quit_on_fail != 0 {
         unsafe {
-            kprintf(
+            crate::kprintf_fmt!(
                 CANNOT_OPEN_SERVER_SOCKET_RANGE_FMT.as_ptr().cast(),
                 start_port,
                 end_port,
@@ -1060,7 +1060,7 @@ pub(super) unsafe extern "C" fn engine_do_open_port_impl() {
 
     if unsafe { (*e).port } > 0 && unsafe { (*e).port } < PRIVILEGED_TCP_PORTS {
         unsafe {
-            kprintf(CANNOT_OPEN_SERVER_SOCKET_FMT.as_ptr().cast(), (*e).port);
+            crate::kprintf_fmt!(CANNOT_OPEN_SERVER_SOCKET_FMT.as_ptr().cast(), (*e).port);
             libc::exit(1);
         }
     }
@@ -1069,7 +1069,7 @@ pub(super) unsafe extern "C" fn engine_do_open_port_impl() {
         && unsafe { (*e).start_port } < PRIVILEGED_TCP_PORTS
     {
         unsafe {
-            kprintf(
+            crate::kprintf_fmt!(
                 CANNOT_OPEN_SERVER_SOCKET_RANGE_FMT.as_ptr().cast(),
                 (*e).start_port,
                 (*e).end_port,
@@ -1190,7 +1190,7 @@ unsafe extern "C" fn parse_option_net_impl(val: c_int) -> c_int {
                 ptr::addr_of_mut!((*e).settings_addr).cast(),
             ) != 1
             {
-                kprintf(CANNOT_CONVERT_IP_FMT.as_ptr().cast(), optarg.cast_const());
+                crate::kprintf_fmt!(CANNOT_CONVERT_IP_FMT.as_ptr().cast(), optarg.cast_const());
                 libc::exit(4);
             }
         },
@@ -1561,7 +1561,7 @@ unsafe fn raise_file_limit_impl(maxconn: c_int) {
         let mut rlim: libc::rlimit = unsafe { zeroed() };
         if unsafe { libc::getrlimit(libc::RLIMIT_NOFILE, &mut rlim) } < 0 {
             unsafe {
-                kprintf(RAISE_FILE_RLIMIT_FAIL_FMT.as_ptr().cast());
+                crate::kprintf_fmt!(RAISE_FILE_RLIMIT_FAIL_FMT.as_ptr().cast());
                 libc::exit(1);
             }
         }
@@ -1580,7 +1580,7 @@ unsafe fn raise_file_limit_impl(maxconn: c_int) {
         }
     } else if unsafe { raise_file_rlimit(maxconn_local + RAISE_FILE_GAP) } < 0 {
         unsafe {
-            kprintf(
+            crate::kprintf_fmt!(
                 FATAL_RAISE_FILE_LIMIT_FMT.as_ptr().cast(),
                 maxconn_local + RAISE_FILE_GAP,
             );
@@ -1695,7 +1695,7 @@ pub(super) unsafe fn server_init_impl(
     match listen_plan {
         mtproxy_core::runtime::engine::EngineServerListenPlan::Skip => {}
         mtproxy_core::runtime::engine::EngineServerListenPlan::FatalPortUndefined => unsafe {
-            kprintf(FATAL_PORT_UNDEFINED_FMT.as_ptr().cast());
+            crate::kprintf_fmt!(FATAL_PORT_UNDEFINED_FMT.as_ptr().cast());
             libc::exit(1);
         },
         mtproxy_core::runtime::engine::EngineServerListenPlan::OpenAndInit {
@@ -1759,9 +1759,9 @@ pub(super) unsafe fn server_exit_impl() {
         }
 
         if signal_check_pending_impl(libc::SIGTERM) != 0 {
-            kprintf(TERMINATED_BY_SIGTERM_FMT.as_ptr().cast());
+            crate::kprintf_fmt!(TERMINATED_BY_SIGTERM_FMT.as_ptr().cast());
         } else if signal_check_pending_impl(libc::SIGINT) != 0 {
-            kprintf(TERMINATED_BY_SIGINT_FMT.as_ptr().cast());
+            crate::kprintf_fmt!(TERMINATED_BY_SIGINT_FMT.as_ptr().cast());
         }
     }
 }
@@ -1936,7 +1936,7 @@ pub(super) unsafe fn engine_init_impl(pwd_filename: *const c_char, do_not_open_p
         && (aes_load_res != AES_LOAD_PWD_FILE_OPTIONAL_ERROR || !pwd_filename.is_null())
     {
         unsafe {
-            kprintf(FATAL_CANNOT_LOAD_SECRET_FMT.as_ptr().cast(), pwd_filename);
+            crate::kprintf_fmt!(FATAL_CANNOT_LOAD_SECRET_FMT.as_ptr().cast(), pwd_filename);
             libc::exit(1);
         }
     }
@@ -1948,7 +1948,7 @@ pub(super) unsafe fn engine_init_impl(pwd_filename: *const c_char, do_not_open_p
             unsafe { username }
         };
         unsafe {
-            kprintf(FATAL_CANNOT_CHANGE_USER_FMT.as_ptr().cast(), username_str);
+            crate::kprintf_fmt!(FATAL_CANNOT_CHANGE_USER_FMT.as_ptr().cast(), username_str);
             libc::exit(1);
         }
     }
@@ -1982,7 +1982,7 @@ pub(super) unsafe fn engine_init_impl(pwd_filename: *const c_char, do_not_open_p
             ipv4 = addr;
         }
         mtproxy_core::runtime::engine::EngineBindIpv4Plan::RejectProvided(addr) => unsafe {
-            kprintf(
+            crate::kprintf_fmt!(
                 BAD_BINDED_IP_FMT.as_ptr().cast(),
                 ip_octet_1(addr),
                 ip_octet_2(addr),
@@ -2033,7 +2033,7 @@ pub(super) unsafe fn engine_init_impl(pwd_filename: *const c_char, do_not_open_p
 
     let pid = unsafe { PID };
     unsafe {
-        kprintf(
+        crate::kprintf_fmt!(
             STARTED_AS_FMT.as_ptr().cast(),
             ip_octet_1(pid.ip),
             ip_octet_2(pid.ip),
@@ -2259,7 +2259,7 @@ pub(super) unsafe fn default_engine_server_start_impl() {
         }
 
         libc::sleep(120);
-        kprintf(DID_NOT_EXIT_FMT.as_ptr().cast());
+        crate::kprintf_fmt!(DID_NOT_EXIT_FMT.as_ptr().cast());
         assert!(false);
     }
 }
@@ -2304,7 +2304,7 @@ pub(super) unsafe fn default_main_impl(
     }
 
     unsafe {
-        kprintf(INVOKING_ENGINE_FMT.as_ptr().cast(), (*f).full_version_str);
+        crate::kprintf_fmt!(INVOKING_ENGINE_FMT.as_ptr().cast(), (*f).full_version_str);
     }
 
     let argv0 = if argv.is_null() {

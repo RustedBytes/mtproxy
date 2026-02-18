@@ -88,6 +88,7 @@ mod net_tcp_rpc_common;
 mod net_tcp_rpc_ext_server;
 mod net_tcp_rpc_server;
 mod net_timers;
+mod printf_compat;
 mod server_functions;
 mod stats;
 #[cfg(test)]

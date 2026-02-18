@@ -805,7 +805,7 @@ unsafe extern "C" fn notify_job_receive_message_rust(
         }
         other => {
             unsafe {
-                kprintf(
+                crate::kprintf_fmt!(
                     c"notify_job_receive_message_rust: unknown message type 0x%08x\n".as_ptr(),
                     other,
                 );
@@ -876,7 +876,7 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_job_interrupt_signal_handler(_sig: i32
         unsafe { (*thread).current_job.cast::<c_void>() }
     };
     unsafe {
-        kprintf(
+        crate::kprintf_fmt!(
             c"SIGRTMAX-7 (JOB INTERRUPT) caught in thread #%d running job %p.\n".as_ptr(),
             thread_id,
             current_job,
@@ -1380,7 +1380,7 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_alloc_timer_manager(thread_class: i32)
     let queue_id = mtproxy_ffi_jobs_tokio_timer_queue_create();
     if queue_id <= 0 {
         unsafe {
-            kprintf(
+            crate::kprintf_fmt!(
                 c"fatal: rust tokio timer queue create failed (rc=%d)\n".as_ptr(),
                 queue_id,
             );
@@ -1542,7 +1542,7 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_job_message_queue_init(job: JobT) {
     let qid = mtproxy_ffi_jobs_tokio_message_queue_create();
     if qid <= 0 {
         unsafe {
-            kprintf(
+            crate::kprintf_fmt!(
                 c"fatal: rust tokio message queue create failed (rc=%d)\n".as_ptr(),
                 qid,
             );
@@ -1655,7 +1655,7 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_do_timer_manager_job(
         let rc = unsafe { mtproxy_ffi_jobs_tokio_timer_queue_pop(queue_id, &raw mut queued_job) };
         if rc < 0 {
             unsafe {
-                kprintf(
+                crate::kprintf_fmt!(
                     c"fatal: rust tokio timer queue pop failed (qid=%d rc=%d)\n".as_ptr(),
                     queue_id,
                     rc,
@@ -1776,7 +1776,7 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_job_thread_ex(
         }
         if rc < 0 {
             unsafe {
-                kprintf(
+                crate::kprintf_fmt!(
                     c"fatal: rust tokio class dequeue failed (class=%d rc=%d)\n".as_ptr(),
                     thread_class,
                     rc,
@@ -2070,17 +2070,17 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_prepare_stat(sb: *mut StatsBuffer) -> 
         i += 1;
     }
 
-    unsafe { sb_printf(sb, c"thread_average_idle_percent\t".as_ptr()) };
+    unsafe { crate::sb_printf_fmt!(sb, c"thread_average_idle_percent\t".as_ptr()) };
     let mut idx = 0_usize;
     while idx < JOB_CLASS_COUNT {
         if idx != 0 {
-            unsafe { sb_printf(sb, c" ".as_ptr()) };
+            unsafe { crate::sb_printf_fmt!(sb, c" ".as_ptr()) };
             if (idx & 3) == 0 {
-                unsafe { sb_printf(sb, c" ".as_ptr()) };
+                unsafe { crate::sb_printf_fmt!(sb, c" ".as_ptr()) };
             }
         }
         unsafe {
-            sb_printf(
+            crate::sb_printf_fmt!(
                 sb,
                 c"%.3f".as_ptr(),
                 safe_div(tot_idle[idx], f64::from(uptime * tot_threads[idx])) * 100.0,
@@ -2088,19 +2088,19 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_prepare_stat(sb: *mut StatsBuffer) -> 
         }
         idx += 1;
     }
-    unsafe { sb_printf(sb, c"\n".as_ptr()) };
+    unsafe { crate::sb_printf_fmt!(sb, c"\n".as_ptr()) };
 
-    unsafe { sb_printf(sb, c"thread_recent_idle_percent\t".as_ptr()) };
+    unsafe { crate::sb_printf_fmt!(sb, c"thread_recent_idle_percent\t".as_ptr()) };
     let mut idx = 0_usize;
     while idx < JOB_CLASS_COUNT {
         if idx != 0 {
-            unsafe { sb_printf(sb, c" ".as_ptr()) };
+            unsafe { crate::sb_printf_fmt!(sb, c" ".as_ptr()) };
             if (idx & 3) == 0 {
-                unsafe { sb_printf(sb, c" ".as_ptr()) };
+                unsafe { crate::sb_printf_fmt!(sb, c" ".as_ptr()) };
             }
         }
         unsafe {
-            sb_printf(
+            crate::sb_printf_fmt!(
                 sb,
                 c"%.3f".as_ptr(),
                 safe_div(tot_recent_idle[idx], tot_recent_q[idx]) * 100.0,
@@ -2108,21 +2108,21 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_prepare_stat(sb: *mut StatsBuffer) -> 
         }
         idx += 1;
     }
-    unsafe { sb_printf(sb, c"\n".as_ptr()) };
+    unsafe { crate::sb_printf_fmt!(sb, c"\n".as_ptr()) };
 
-    unsafe { sb_printf(sb, c"tot_threads\t".as_ptr()) };
+    unsafe { crate::sb_printf_fmt!(sb, c"tot_threads\t".as_ptr()) };
     let mut idx = 0_usize;
     while idx < JOB_CLASS_COUNT {
         if idx != 0 {
-            unsafe { sb_printf(sb, c" ".as_ptr()) };
+            unsafe { crate::sb_printf_fmt!(sb, c" ".as_ptr()) };
             if (idx & 3) == 0 {
-                unsafe { sb_printf(sb, c" ".as_ptr()) };
+                unsafe { crate::sb_printf_fmt!(sb, c" ".as_ptr()) };
             }
         }
-        unsafe { sb_printf(sb, c"%d".as_ptr(), tot_threads[idx]) };
+        unsafe { crate::sb_printf_fmt!(sb, c"%d".as_ptr(), tot_threads[idx]) };
         idx += 1;
     }
-    unsafe { sb_printf(sb, c"\n".as_ptr()) };
+    unsafe { crate::sb_printf_fmt!(sb, c"\n".as_ptr()) };
 
     let mut jb_cpu_load_u = [0.0_f64; JOB_CLASS_COUNT];
     let mut jb_cpu_load_s = [0.0_f64; JOB_CLASS_COUNT];
@@ -2207,18 +2207,18 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_prepare_stat(sb: *mut StatsBuffer) -> 
             4 => (c"thread_load_recent_sys\t".as_ptr(), &jb_cpu_load_rs, 10.0),
             _ => (c"thread_load_recent\t".as_ptr(), &jb_cpu_load_rt, 10.0),
         };
-        unsafe { sb_printf(sb, title) };
+        unsafe { crate::sb_printf_fmt!(sb, title) };
 
         let mut i = 0_usize;
         while i < JOB_CLASS_COUNT {
             if i != 0 {
-                unsafe { sb_printf(sb, c" ".as_ptr()) };
+                unsafe { crate::sb_printf_fmt!(sb, c" ".as_ptr()) };
                 if (i & 3) == 0 {
-                    unsafe { sb_printf(sb, c" ".as_ptr()) };
+                    unsafe { crate::sb_printf_fmt!(sb, c" ".as_ptr()) };
                 }
             }
             unsafe {
-                sb_printf(
+                crate::sb_printf_fmt!(
                     sb,
                     c"%.3f".as_ptr(),
                     safe_div(m_clk_to_hs * b[i], d * f64::from(tot_threads[i])),
@@ -2226,12 +2226,12 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_prepare_stat(sb: *mut StatsBuffer) -> 
             }
             i += 1;
         }
-        unsafe { sb_printf(sb, c"\n".as_ptr()) };
+        unsafe { crate::sb_printf_fmt!(sb, c"\n".as_ptr()) };
         j += 1;
     }
 
     unsafe {
-        sb_printf(
+        crate::sb_printf_fmt!(
             sb,
             c"load_average_user\t%.3f\nload_average_sys\t%.3f\nload_average_total\t%.3f\nload_recent_user\t%.3f\nload_recent_sys\t%.3f\nload_recent_total\t%.3f\nmax_average_user\t%.3f\nmax_average_sys\t%.3f\nmax_average_total\t%.3f\nmax_recent_user\t%.3f\nmax_recent_sys\t%.3f\nmax_recent_total\t%.3f\n".as_ptr(),
             safe_div(m_clk_to_hs * tot_cpu_load_u, f64::from(uptime)),
@@ -2266,7 +2266,7 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_prepare_stat(sb: *mut StatsBuffer) -> 
         i += 1;
     }
     unsafe {
-        sb_printf(
+        crate::sb_printf_fmt!(
             sb,
             c"job_timers_allocated\t%d\n".as_ptr(),
             sum_job_timers_allocated,
@@ -2291,7 +2291,7 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_prepare_stat(sb: *mut StatsBuffer) -> 
         i += 1;
     }
     unsafe {
-        sb_printf(
+        crate::sb_printf_fmt!(
             sb,
             c"jobs_created\t%lld\njobs_active\t%d\n".as_ptr(),
             jb_created,
@@ -2299,28 +2299,28 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_prepare_stat(sb: *mut StatsBuffer) -> 
         )
     };
 
-    unsafe { sb_printf(sb, c"jobs_running\t".as_ptr()) };
+    unsafe { crate::sb_printf_fmt!(sb, c"jobs_running\t".as_ptr()) };
     let mut i = 0_usize;
     while i < JOB_CLASS_COUNT {
         if i != 0 {
-            unsafe { sb_printf(sb, c" ".as_ptr()) };
+            unsafe { crate::sb_printf_fmt!(sb, c" ".as_ptr()) };
             if (i & 3) == 0 {
-                unsafe { sb_printf(sb, c" ".as_ptr()) };
+                unsafe { crate::sb_printf_fmt!(sb, c" ".as_ptr()) };
             }
         }
-        unsafe { sb_printf(sb, c"%d".as_ptr(), jb_running[i]) };
+        unsafe { crate::sb_printf_fmt!(sb, c"%d".as_ptr(), jb_running[i]) };
         i += 1;
     }
-    unsafe { sb_printf(sb, c"\n".as_ptr()) };
+    unsafe { crate::sb_printf_fmt!(sb, c"\n".as_ptr()) };
 
     unsafe {
-        sb_printf(
+        crate::sb_printf_fmt!(
             sb,
             c"jobs_allocated_memory\t%lld\n".as_ptr(),
             sum_jobs_allocated_memory,
         );
-        sb_printf(sb, c"timer_ops\t%lld\n".as_ptr(), sum_timer_ops);
-        sb_printf(
+        crate::sb_printf_fmt!(sb, c"timer_ops\t%lld\n".as_ptr(), sum_timer_ops);
+        crate::sb_printf_fmt!(
             sb,
             c"timer_ops_scheduler\t%lld\n".as_ptr(),
             sum_timer_ops_scheduler,
@@ -2399,7 +2399,7 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_create_job_thread_ex(
         unsafe { pthread_attr_destroy(attr.as_mut_ptr()) };
         if r != 0 {
             unsafe {
-                kprintf(
+                crate::kprintf_fmt!(
                     c"create_job_thread: pthread_create() failed: %s\n".as_ptr(),
                     strerror(r),
                 );
@@ -2521,7 +2521,7 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_unlock_job(job_tag_int: i32, job: JobT
             }
             if res == JOB_ERROR {
                 unsafe {
-                    kprintf(
+                    crate::kprintf_fmt!(
                         c"fatal: thread %p of class %d: error while invoking method %d of job %p (type %p)\n".as_ptr(),
                         jt,
                         thread_class,
@@ -2567,7 +2567,7 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_unlock_job(job_tag_int: i32, job: JobT
                 let rc = mtproxy_ffi_jobs_tokio_enqueue_class(tokio_class, queued_job);
                 if rc < 0 {
                     unsafe {
-                        kprintf(
+                        crate::kprintf_fmt!(
                             c"fatal: rust tokio class enqueue failed (class=%d rc=%d job=%p)\n"
                                 .as_ptr(),
                             tokio_class,
@@ -2600,7 +2600,7 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_unlock_job(job_tag_int: i32, job: JobT
                     mtproxy_ffi_jobs_tokio_enqueue_subclass(req_class, cur_subclass, subclass_job);
                 if rc < 0 {
                     unsafe {
-                        kprintf(
+                        crate::kprintf_fmt!(
                             c"fatal: rust tokio subclass enqueue failed (class=%d subclass=%d rc=%d job=%p)\n".as_ptr(),
                             req_class,
                             cur_subclass,
@@ -2622,7 +2622,7 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_unlock_job(job_tag_int: i32, job: JobT
                 let rc = mtproxy_ffi_jobs_tokio_enqueue_class(tokio_class, subclass_token);
                 if rc < 0 {
                     unsafe {
-                        kprintf(
+                        crate::kprintf_fmt!(
                             c"fatal: rust tokio subclass token enqueue failed (class=%d rc=%d token=%p)\n".as_ptr(),
                             tokio_class,
                             rc,
@@ -2759,7 +2759,7 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_job_timer_insert(job: JobT, timeout: f
     );
     if rc < 0 {
         unsafe {
-            kprintf(
+            crate::kprintf_fmt!(
                 c"fatal: rust tokio timer queue push failed (qid=%d rc=%d)\n".as_ptr(),
                 (*extra).tokio_queue_id,
                 rc,

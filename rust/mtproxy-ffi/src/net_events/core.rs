@@ -310,7 +310,7 @@ pub(super) unsafe fn epoll_remove_impl(fd: c_int) -> c_int {
     if ((*ev).state & EVT_IN_EPOLL) != 0 {
         (*ev).state &= !EVT_IN_EPOLL;
         if verbosity >= 2 {
-            kprintf(
+            crate::kprintf_fmt!(
                 b"epoll_del(%d,0x%08x,%d,%d,%08x)\n\0".as_ptr().cast(),
                 epoll_fd,
                 libc::EPOLL_CTL_DEL,
@@ -357,7 +357,7 @@ pub(super) unsafe fn epoll_insert_impl(fd: c_int, flags: c_int) -> c_int {
         };
 
         if verbosity >= 2 {
-            kprintf(
+            crate::kprintf_fmt!(
                 b"epoll_mod(%d,0x%08x,%d,%d,%08x)\n\0".as_ptr().cast(),
                 epoll_fd,
                 (*ev).state,
@@ -374,7 +374,7 @@ pub(super) unsafe fn epoll_insert_impl(fd: c_int, flags: c_int) -> c_int {
         };
 
         if libc::epoll_ctl(epoll_fd, op, fd, ptr::addr_of_mut!(ee)) < 0 && verbosity >= 0 {
-            kprintf(
+            crate::kprintf_fmt!(
                 b"epoll_ctl(%d,0x%x,%d,%d,%08x): %m\n\0".as_ptr().cast(),
                 epoll_fd,
                 (*ev).state,
@@ -396,7 +396,7 @@ pub(super) unsafe fn epoll_runqueue_impl() -> c_int {
     }
 
     if verbosity >= 3 {
-        kprintf(
+        crate::kprintf_fmt!(
             b"epoll_runqueue: %d events\n\0".as_ptr().cast(),
             ev_heap_size,
         );
@@ -479,7 +479,7 @@ pub(super) unsafe fn epoll_fetch_events_impl(timeout: c_int) -> c_int {
         perror(CSTR_EPOLL_WAIT);
     }
     if verbosity > 2 && res != 0 {
-        kprintf(
+        crate::kprintf_fmt!(
             b"epoll_wait(%d, ...) = %d\n\0".as_ptr().cast(),
             epoll_fd,
             res,
@@ -614,7 +614,7 @@ pub(super) unsafe fn maximize_buf_impl(
     }
 
     if verbosity >= 2 {
-        kprintf(log_fmt.as_ptr().cast(), socket_fd, old_size, last_good);
+        crate::kprintf_fmt!(log_fmt.as_ptr().cast(), socket_fd, old_size, last_good);
     }
 }
 
@@ -1043,7 +1043,7 @@ pub(super) unsafe fn get_my_ipv4_impl() -> c_uint {
             my_iface
         };
         let prefix = (!my_netmask).leading_zeros() as c_int;
-        kprintf(
+        crate::kprintf_fmt!(
             b"using main IP %d.%d.%d.%d/%d at interface %s\n\0"
                 .as_ptr()
                 .cast(),
@@ -1098,7 +1098,7 @@ pub(super) unsafe fn get_my_ipv6_impl(ipv6_out: *mut u8) -> c_int {
 
         if verbosity >= 2 {
             let ip_text = crate::vv_io::vv_format_ipv6(ip.as_ptr().cast());
-            kprintf(
+            crate::kprintf_fmt!(
                 b"test IP %s at interface %s\n\0".as_ptr().cast(),
                 ip_text,
                 current.ifa_name,
@@ -1108,7 +1108,7 @@ pub(super) unsafe fn get_my_ipv6_impl(ipv6_out: *mut u8) -> c_int {
         let top = ip[0] & 0xf0;
         if top != 0x30 && top != 0x20 {
             if verbosity >= 2 {
-                kprintf(b"not a global ipv6 address\n\0".as_ptr().cast());
+                crate::kprintf_fmt!(b"not a global ipv6 address\n\0".as_ptr().cast());
             }
             ifa = current.ifa_next;
             continue;
@@ -1163,7 +1163,7 @@ pub(super) unsafe fn get_my_ipv6_impl(ipv6_out: *mut u8) -> c_int {
         } else {
             my_iface
         };
-        kprintf(
+        crate::kprintf_fmt!(
             b"using main IP %s/%d at interface %s\n\0".as_ptr().cast(),
             ip_text,
             m,

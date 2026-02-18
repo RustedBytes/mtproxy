@@ -72,7 +72,7 @@ pub unsafe extern "C" fn rust_sf_register_parse_option_ex_or_die(
     let effective_func = func.or(Some(default_parse_option_func));
     if unsafe { rust_sf_parse_option_add(name, arg, val, flags, effective_func, help) } < 0 {
         unsafe {
-            kprintf(
+            crate::kprintf_fmt!(
                 c"failed to register parse option %s (%d)\n".as_ptr(),
                 if name.is_null() {
                     c"(null)".as_ptr()
@@ -105,7 +105,7 @@ pub unsafe extern "C" fn rust_sf_register_parse_option_or_die(
     } < 0
     {
         unsafe {
-            kprintf(
+            crate::kprintf_fmt!(
                 c"failed to register custom parse option %s (%d)\n".as_ptr(),
                 if name.is_null() {
                     c"(null)".as_ptr()
@@ -231,7 +231,7 @@ pub unsafe extern "C" fn parse_memory_limit(s: *const c_char) -> c_longlong {
     let value = unsafe { rust_parse_memory_limit(s) };
     if value < 0 {
         unsafe {
-            kprintf(
+            crate::kprintf_fmt!(
                 c"Parsing limit for option fail: %s\n".as_ptr(),
                 if s.is_null() { c"(null)".as_ptr() } else { s },
             );
@@ -258,7 +258,7 @@ pub unsafe extern "C" fn init_parse_options(keep_mask: u32, keep_options_custom_
 pub extern "C" fn remove_parse_option(val: c_int) {
     if rust_sf_remove_parse_option(val) < 0 {
         unsafe {
-            kprintf(c"Can not remove unknown option %d\n".as_ptr(), val);
+            crate::kprintf_fmt!(c"Can not remove unknown option %d\n".as_ptr(), val);
             usage();
         }
     }
@@ -269,9 +269,9 @@ pub unsafe extern "C" fn parse_option_alias(name: *const c_char, val: c_int) {
     if unsafe { rust_sf_parse_option_alias(name, val) } < 0 {
         unsafe {
             if (33..=127).contains(&val) {
-                kprintf(c"Duplicate option `%c`\n".as_ptr(), val);
+                crate::kprintf_fmt!(c"Duplicate option `%c`\n".as_ptr(), val);
             } else {
-                kprintf(c"Duplicate option %d\n".as_ptr(), val);
+                crate::kprintf_fmt!(c"Duplicate option %d\n".as_ptr(), val);
             }
             usage();
         }
@@ -282,7 +282,7 @@ pub unsafe extern "C" fn parse_option_alias(name: *const c_char, val: c_int) {
 pub unsafe extern "C" fn parse_option_long_alias(name: *const c_char, alias_name: *const c_char) {
     if unsafe { rust_sf_parse_option_long_alias(name, alias_name) } < 0 {
         unsafe {
-            kprintf(
+            crate::kprintf_fmt!(
                 c"Duplicate option %s\n".as_ptr(),
                 if alias_name.is_null() {
                     c"(null)".as_ptr()
@@ -304,7 +304,7 @@ pub extern "C" fn parse_usage() -> c_int {
 pub unsafe extern "C" fn parse_engine_options_long(argc: c_int, argv: *mut *mut c_char) -> c_int {
     if unsafe { rust_sf_parse_engine_options_long(argc, argv) } < 0 {
         unsafe {
-            kprintf(c"Unrecognized option\n".as_ptr());
+            crate::kprintf_fmt!(c"Unrecognized option\n".as_ptr());
             usage();
         }
     }
@@ -315,7 +315,7 @@ pub unsafe extern "C" fn parse_engine_options_long(argc: c_int, argv: *mut *mut 
 pub extern "C" fn add_builtin_parse_options() {
     if rust_sf_add_builtin_parse_options() < 0 {
         unsafe {
-            kprintf(c"failed to register builtin parse options\n".as_ptr());
+            crate::kprintf_fmt!(c"failed to register builtin parse options\n".as_ptr());
             usage();
         }
     }

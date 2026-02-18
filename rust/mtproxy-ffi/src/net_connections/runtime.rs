@@ -482,7 +482,7 @@ unsafe fn prealloc_tcp_buffers_impl() -> c_int {
         };
         let x = unsafe { alloc_msg_buffer(neighbor, TCP_RECV_BUFFER_SIZE) };
         if x.is_null() {
-            unsafe { kprintf(FATAL_TCP_RECV_BUFFER_MSG.as_ptr().cast()) };
+            unsafe { crate::kprintf_fmt!(FATAL_TCP_RECV_BUFFER_MSG.as_ptr().cast()) };
             unsafe { libc::exit(2) };
         }
 
@@ -759,7 +759,7 @@ pub(super) unsafe fn net_server_socket_reader_impl(c: SocketConnectionJob) -> c_
             let x = unsafe { alloc_msg_buffer(TCP_RECV_BUFFERS[i], TCP_RECV_BUFFER_SIZE) };
             if x.is_null() {
                 unsafe {
-                    kprintf(FATAL_TCP_RECV_BUFFER_MSG.as_ptr().cast());
+                    crate::kprintf_fmt!(FATAL_TCP_RECV_BUFFER_MSG.as_ptr().cast());
                 }
                 assert!(false);
             }
@@ -863,7 +863,7 @@ pub(super) unsafe fn net_server_socket_writer_impl(c: SocketConnectionJob) -> c_
         }
         if io_action == SOCKET_WRITER_IO_FATAL_EAGAIN_LIMIT {
             unsafe {
-                kprintf(TOO_MUCH_EAGAIN_MSG.as_ptr().cast(), (*socket).fd);
+                crate::kprintf_fmt!(TOO_MUCH_EAGAIN_MSG.as_ptr().cast(), (*socket).fd);
                 job_signal_create_pass(c, JS_ABORT);
                 atomic_i32(ptr::addr_of_mut!((*socket).flags))
                     .fetch_or(C_NET_FAILED, Ordering::SeqCst);
@@ -1105,7 +1105,7 @@ pub(super) unsafe fn alloc_new_connection_impl(
     };
     if flags != 0 || unsafe { libc::fcntl(cfd, libc::F_SETFL, flags | libc::O_NONBLOCK) } < 0 {
         unsafe {
-            kprintf(ACCEPT_NONBLOCK_FAIL_MSG.as_ptr().cast(), cfd);
+            crate::kprintf_fmt!(ACCEPT_NONBLOCK_FAIL_MSG.as_ptr().cast(), cfd);
             mtproxy_ffi_net_connections_stat_inc_accept_nonblock_set_failed();
             libc::close(cfd);
         }
@@ -1540,7 +1540,7 @@ pub(super) unsafe fn init_listening_connection_ext_impl(
     assert!(fd_action == LISTENING_INIT_FD_OK || fd_action == LISTENING_INIT_FD_REJECT);
     if fd_action == LISTENING_INIT_FD_REJECT {
         unsafe {
-            kprintf(
+            crate::kprintf_fmt!(
                 LISTENING_FD_REJECT_MSG.as_ptr().cast(),
                 fd,
                 max_connection_fd,
@@ -2272,7 +2272,7 @@ pub(super) unsafe fn server_noop_impl(_c: ConnectionJob) -> c_int {
 pub(super) unsafe fn server_failed_impl(c: ConnectionJob) -> c_int {
     let conn = unsafe { conn_info(c) };
     unsafe {
-        kprintf(SERVER_FAILED_MSG.as_ptr().cast(), (*conn).fd);
+        crate::kprintf_fmt!(SERVER_FAILED_MSG.as_ptr().cast(), (*conn).fd);
     }
     assert!(false);
     -1
@@ -3180,7 +3180,7 @@ pub(super) unsafe fn free_target_impl(ctj: ConnTargetJob) -> c_int {
             let type_ = unsafe { (*target).type_ };
             let extra = unsafe { (*target).extra };
             unsafe {
-                kprintf(
+                crate::kprintf_fmt!(
                     FREE_UNUSED_TARGET_IPV4_MSG.as_ptr().cast(),
                     inet_ntoa(ad),
                     port,
@@ -3204,7 +3204,7 @@ pub(super) unsafe fn free_target_impl(ctj: ConnTargetJob) -> c_int {
             let type_ = unsafe { (*target).type_ };
             let extra = unsafe { (*target).extra };
             unsafe {
-                kprintf(
+                crate::kprintf_fmt!(
                     FREE_UNUSED_TARGET_IPV6_MSG.as_ptr().cast(),
                     show_ipv6(ad_ipv6.as_ptr()),
                     port,

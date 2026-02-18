@@ -592,7 +592,7 @@ unsafe fn state_lookup_domain_info(domain: *const u8, len: c_int) -> *const Doma
         }
         if unsafe { verbosity } > 0 {
             unsafe {
-                kprintf(
+                crate::kprintf_fmt!(
                     b"Receive request for unknown domain %.*s\n\0"
                         .as_ptr()
                         .cast(),
@@ -686,7 +686,7 @@ fn tls_expect_bytes(response: &[u8], pos: c_int, expected: &[u8]) -> bool {
 #[inline]
 unsafe fn tls_fail_response_parse(error: &'static [u8]) -> c_int {
     unsafe {
-        kprintf(
+        crate::kprintf_fmt!(
             TLS_PARSE_FAIL_FMT.as_ptr().cast(),
             error.as_ptr().cast::<c_char>(),
         );
@@ -1170,7 +1170,7 @@ unsafe fn update_domain_info_inner(info: *mut DomainInfo) -> c_int {
     };
     if host.is_null() || h_addr.is_null() {
         unsafe {
-            kprintf(PROBE_FAIL_RESOLVE_FMT.as_ptr().cast(), domain_ptr);
+            crate::kprintf_fmt!(PROBE_FAIL_RESOLVE_FMT.as_ptr().cast(), domain_ptr);
         }
         return 0;
     }
@@ -1185,7 +1185,7 @@ unsafe fn update_domain_info_inner(info: *mut DomainInfo) -> c_int {
         let fd = unsafe { libc::socket(h_addrtype, libc::SOCK_STREAM, libc::IPPROTO_TCP) };
         if fd < 0 {
             unsafe {
-                kprintf(
+                crate::kprintf_fmt!(
                     PROBE_FAIL_SOCKET_FMT.as_ptr().cast(),
                     domain_ptr,
                     strerror_ptr(),
@@ -1196,7 +1196,7 @@ unsafe fn update_domain_info_inner(info: *mut DomainInfo) -> c_int {
         }
         if unsafe { libc::fcntl(fd, libc::F_SETFL, libc::O_NONBLOCK) } == -1 {
             unsafe {
-                kprintf(PROBE_FAIL_NONBLOCK_FMT.as_ptr().cast(), strerror_ptr());
+                crate::kprintf_fmt!(PROBE_FAIL_NONBLOCK_FMT.as_ptr().cast(), strerror_ptr());
                 libc::close(fd);
                 close_sockets(&sockets);
             }
@@ -1253,7 +1253,7 @@ unsafe fn update_domain_info_inner(info: *mut DomainInfo) -> c_int {
 
         if e_connect == -1 && unsafe { errno_value() } != libc::EINPROGRESS {
             unsafe {
-                kprintf(
+                crate::kprintf_fmt!(
                     PROBE_FAIL_CONNECT_FMT.as_ptr().cast(),
                     domain_ptr,
                     strerror_ptr(),
@@ -1370,7 +1370,7 @@ unsafe fn update_domain_info_inner(info: *mut DomainInfo) -> c_int {
                     };
                     if read_res != 5 {
                         unsafe {
-                            kprintf(
+                            crate::kprintf_fmt!(
                                 PROBE_FAIL_HEADER_FMT.as_ptr().cast(),
                                 domain_ptr,
                                 if read_res == -1 {
@@ -1385,7 +1385,7 @@ unsafe fn update_domain_info_inner(info: *mut DomainInfo) -> c_int {
                     }
                     if header[0..3] != [0x16, 0x03, 0x03] {
                         unsafe {
-                            kprintf(
+                            crate::kprintf_fmt!(
                                 PROBE_NON_TLS_FMT.as_ptr().cast(),
                                 domain_ptr,
                                 i32::from(header[0]),
@@ -1418,7 +1418,7 @@ unsafe fn update_domain_info_inner(info: *mut DomainInfo) -> c_int {
                     };
                     if read_res == -1 {
                         unsafe {
-                            kprintf(
+                            crate::kprintf_fmt!(
                                 PROBE_FAIL_READ_FMT.as_ptr().cast(),
                                 domain_ptr,
                                 strerror_ptr(),
@@ -1437,7 +1437,7 @@ unsafe fn update_domain_info_inner(info: *mut DomainInfo) -> c_int {
                                     != TLS_CLIENT_CCS_PREFIX[..9]
                             {
                                 unsafe {
-                                    kprintf(PROBE_NO_TLS13_FMT.as_ptr().cast(), domain_ptr);
+                                    crate::kprintf_fmt!(PROBE_NO_TLS13_FMT.as_ptr().cast(), domain_ptr);
                                 }
                                 have_error = true;
                                 break;
@@ -1500,7 +1500,7 @@ unsafe fn update_domain_info_inner(info: *mut DomainInfo) -> c_int {
                 };
                 if write_res != TLS_REQUEST_LENGTH as isize {
                     unsafe {
-                        kprintf(
+                        crate::kprintf_fmt!(
                             PROBE_FAIL_WRITE_FMT.as_ptr().cast(),
                             domain_ptr,
                             if write_res == -1 {
@@ -1518,7 +1518,7 @@ unsafe fn update_domain_info_inner(info: *mut DomainInfo) -> c_int {
 
             if (revents & (libc::POLLERR | libc::POLLHUP | libc::POLLNVAL)) != 0 {
                 unsafe {
-                    kprintf(
+                    crate::kprintf_fmt!(
                         PROBE_FAIL_EXCEPT_FMT.as_ptr().cast(),
                         domain_ptr,
                         strerror_ptr(),
@@ -1537,7 +1537,7 @@ unsafe fn update_domain_info_inner(info: *mut DomainInfo) -> c_int {
     if finished_count != TLS_PROBE_TRIES {
         if !have_error {
             unsafe {
-                kprintf(PROBE_TIMEOUT_FMT.as_ptr().cast(), domain_ptr);
+                crate::kprintf_fmt!(PROBE_TIMEOUT_FMT.as_ptr().cast(), domain_ptr);
             }
         }
         return 0;
@@ -1545,7 +1545,7 @@ unsafe fn update_domain_info_inner(info: *mut DomainInfo) -> c_int {
 
     if reversed_min != reversed_max {
         unsafe {
-            kprintf(PROBE_NON_DETERMINISTIC_EXT_FMT.as_ptr().cast(), domain_ptr);
+            crate::kprintf_fmt!(PROBE_NON_DETERMINISTIC_EXT_FMT.as_ptr().cast(), domain_ptr);
         }
     }
 
@@ -1566,7 +1566,7 @@ unsafe fn update_domain_info_inner(info: *mut DomainInfo) -> c_int {
 
     if selected_profile == SERVER_HELLO_PROFILE_RANDOM_AVG {
         unsafe {
-            kprintf(
+            crate::kprintf_fmt!(
                 PROBE_UNRECOGNIZED_PATTERN_FMT.as_ptr().cast(),
                 encrypted_len_min,
                 encrypted_len_max,
@@ -1588,7 +1588,7 @@ unsafe fn update_domain_info_inner(info: *mut DomainInfo) -> c_int {
             1
         };
 
-        kprintf(
+        crate::kprintf_fmt!(
             PROBE_SUCCESS_FMT.as_ptr().cast(),
             domain_ptr,
             get_utime_monotonic() - start_time,
@@ -1600,7 +1600,7 @@ unsafe fn update_domain_info_inner(info: *mut DomainInfo) -> c_int {
         if (*info).is_reversed_extension_order != 0
             && c_int::from((*info).server_hello_encrypted_size) <= 1250
         {
-            kprintf(
+            crate::kprintf_fmt!(
                 PROBE_UNSUPPORTED_MULTI_PACKET_FMT.as_ptr().cast(),
                 domain_ptr,
             );
@@ -1678,7 +1678,7 @@ unsafe fn parse_execute_inner(c: ConnectionJob) -> c_int {
 
         if unsafe { (*d).in_packet_num } == -3 {
             unsafe {
-                kprintf(
+                crate::kprintf_fmt!(
                     PARSE_TRY_TYPE_FMT.as_ptr().cast(),
                     mtproxy_ffi_net_tcp_rpc_ext_show_remote_ip(c),
                     (*conn).remote_port,
@@ -1691,7 +1691,7 @@ unsafe fn parse_execute_inner(c: ConnectionJob) -> c_int {
                 }
 
                 unsafe {
-                    kprintf(
+                    crate::kprintf_fmt!(
                         PARSE_TLS_ESTABLISHED_FMT.as_ptr().cast(),
                         mtproxy_ffi_net_tcp_rpc_ext_show_remote_ip(c),
                         (*conn).remote_port,
@@ -1710,7 +1710,7 @@ unsafe fn parse_execute_inner(c: ConnectionJob) -> c_int {
                 );
                 if header[..9] != TLS_CLIENT_CCS_PREFIX[..9] {
                     unsafe {
-                        kprintf(PARSE_BAD_CCS_FMT.as_ptr().cast());
+                        crate::kprintf_fmt!(PARSE_BAD_CCS_FMT.as_ptr().cast());
                         fail_connection(c, -1);
                     }
                     return 0;
@@ -1726,7 +1726,7 @@ unsafe fn parse_execute_inner(c: ConnectionJob) -> c_int {
                 unsafe {
                     (*conn).left_tls_packet_length =
                         i32::from(header[9]) * 256 + i32::from(header[10]);
-                    kprintf(
+                    crate::kprintf_fmt!(
                         PARSE_TLS_FIRST_PACKET_FMT.as_ptr().cast(),
                         (*conn).left_tls_packet_length,
                     );
@@ -1734,7 +1734,7 @@ unsafe fn parse_execute_inner(c: ConnectionJob) -> c_int {
 
                 if unsafe { (*conn).left_tls_packet_length } < 64 {
                     unsafe {
-                        kprintf(
+                        crate::kprintf_fmt!(
                             PARSE_TLS_FIRST_TOO_SHORT_FMT.as_ptr().cast(),
                             (*conn).left_tls_packet_length,
                         );
@@ -1792,7 +1792,7 @@ unsafe fn parse_execute_inner(c: ConnectionJob) -> c_int {
                 }
 
                 unsafe {
-                    kprintf(
+                    crate::kprintf_fmt!(
                         PARSE_TLS_DOMAIN_FMT.as_ptr().cast(),
                         (*info).domain,
                         mtproxy_ffi_net_tcp_rpc_ext_show_remote_ip(c),
@@ -1802,7 +1802,7 @@ unsafe fn parse_execute_inner(c: ConnectionJob) -> c_int {
 
                 if unsafe { (*conn).our_port } == 80 {
                     unsafe {
-                        kprintf(
+                        crate::kprintf_fmt!(
                             PARSE_TLS_PORT80_FMT.as_ptr().cast(),
                             (*conn).our_port,
                             (*info).domain,
@@ -1813,13 +1813,13 @@ unsafe fn parse_execute_inner(c: ConnectionJob) -> c_int {
 
                 if len > min_len {
                     unsafe {
-                        kprintf(PARSE_TLS_TOO_MUCH_DATA_FMT.as_ptr().cast(), len, min_len);
+                        crate::kprintf_fmt!(PARSE_TLS_TOO_MUCH_DATA_FMT.as_ptr().cast(), len, min_len);
                     }
                     return unsafe { proxy_connection_impl(c, info) };
                 }
                 if c_int::try_from(read_len).unwrap_or(-1) != len {
                     unsafe {
-                        kprintf(PARSE_TLS_TOO_BIG_FMT.as_ptr().cast(), len);
+                        crate::kprintf_fmt!(PARSE_TLS_TOO_BIG_FMT.as_ptr().cast(), len);
                     }
                     return unsafe { proxy_connection_impl(c, info) };
                 }
@@ -1836,7 +1836,7 @@ unsafe fn parse_execute_inner(c: ConnectionJob) -> c_int {
                     != 0
                 {
                     unsafe {
-                        kprintf(PARSE_TLS_DUP_RANDOM_FMT.as_ptr().cast());
+                        crate::kprintf_fmt!(PARSE_TLS_DUP_RANDOM_FMT.as_ptr().cast());
                     }
                     return unsafe { proxy_connection_impl(c, info) };
                 }
@@ -1873,7 +1873,7 @@ unsafe fn parse_execute_inner(c: ConnectionJob) -> c_int {
                 }
                 if secret_id == secret_cnt {
                     unsafe {
-                        kprintf(PARSE_TLS_UNMATCHED_RANDOM_FMT.as_ptr().cast());
+                        crate::kprintf_fmt!(PARSE_TLS_UNMATCHED_RANDOM_FMT.as_ptr().cast());
                     }
                     return unsafe { proxy_connection_impl(c, info) };
                 }
@@ -1896,7 +1896,7 @@ unsafe fn parse_execute_inner(c: ConnectionJob) -> c_int {
 
                 if pos + usize::try_from(cipher_suites_length).unwrap_or(usize::MAX) > read_len {
                     unsafe {
-                        kprintf(
+                        crate::kprintf_fmt!(
                             PARSE_TLS_CIPHER_LIST_TOO_LONG_FMT.as_ptr().cast(),
                             cipher_suites_length,
                         );
@@ -1917,7 +1917,7 @@ unsafe fn parse_execute_inner(c: ConnectionJob) -> c_int {
                     || !(0x01..=0x03).contains(&client_hello[pos + 1])
                 {
                     unsafe {
-                        kprintf(PARSE_TLS_NO_CIPHER_FMT.as_ptr().cast());
+                        crate::kprintf_fmt!(PARSE_TLS_NO_CIPHER_FMT.as_ptr().cast());
                     }
                     return unsafe { proxy_connection_impl(c, info) };
                 }
@@ -2025,14 +2025,14 @@ unsafe fn parse_execute_inner(c: ConnectionJob) -> c_int {
 
             if unsafe { allow_only_tls() } && (unsafe { (*conn).flags & C_IS_TLS } == 0) {
                 unsafe {
-                    kprintf(PARSE_EXPECT_TLS_FMT.as_ptr().cast());
+                    crate::kprintf_fmt!(PARSE_EXPECT_TLS_FMT.as_ptr().cast());
                 }
                 return unsafe { proxy_connection_impl(c, default_domain_info()) };
             }
 
             if len < 64 {
                 unsafe {
-                    kprintf(
+                    crate::kprintf_fmt!(
                         PARSE_NEED_MORE_RANDOM_HEADER_FMT.as_ptr().cast(),
                         len,
                         64 - len,
@@ -2120,7 +2120,7 @@ unsafe fn parse_execute_inner(c: ConnectionJob) -> c_int {
                 if tag == 0xdddd_dddd || tag == 0xeeee_eeee || tag == 0xefef_efef {
                     if tag != 0xdddd_dddd && unsafe { allow_only_tls() } {
                         unsafe {
-                            kprintf(PARSE_EXPECT_PAD_MODE_FMT.as_ptr().cast());
+                            crate::kprintf_fmt!(PARSE_EXPECT_PAD_MODE_FMT.as_ptr().cast());
                         }
                         return unsafe { proxy_connection_impl(c, default_domain_info()) };
                     }
@@ -2156,7 +2156,7 @@ unsafe fn parse_execute_inner(c: ConnectionJob) -> c_int {
                         i16::from_ne_bytes(random_header[60..62].try_into().unwrap_or([0u8; 2]));
                     unsafe {
                         (*d).extra_int4 = c_int::from(target);
-                        kprintf(
+                        crate::kprintf_fmt!(
                             PARSE_OPPORTUNISTIC_FMT.as_ptr().cast(),
                             tag,
                             (*d).extra_int4,
@@ -2178,7 +2178,7 @@ unsafe fn parse_execute_inner(c: ConnectionJob) -> c_int {
 
             if unsafe { ext_secret_count() } > 0 {
                 unsafe {
-                    kprintf(PARSE_INVALID_SKIP_FMT.as_ptr().cast());
+                    crate::kprintf_fmt!(PARSE_INVALID_SKIP_FMT.as_ptr().cast());
                 }
                 return -268_435_456;
             }
@@ -2194,7 +2194,7 @@ unsafe fn parse_execute_inner(c: ConnectionJob) -> c_int {
             }
 
             unsafe {
-                kprintf(PARSE_INVALID_SKIP_FMT.as_ptr().cast());
+                crate::kprintf_fmt!(PARSE_INVALID_SKIP_FMT.as_ptr().cast());
             }
             return -268_435_456;
         }
@@ -2221,7 +2221,7 @@ unsafe fn parse_execute_inner(c: ConnectionJob) -> c_int {
                 packet_len = ((packet_len as u32) >> 8) as c_int;
                 if packet_len < 0x7f {
                     unsafe {
-                        kprintf(PARSE_OVERLONG_LEN_FMT.as_ptr().cast(), packet_len);
+                        crate::kprintf_fmt!(PARSE_OVERLONG_LEN_FMT.as_ptr().cast(), packet_len);
                         fail_connection(c, -1);
                     }
                     return 0;
@@ -2238,7 +2238,7 @@ unsafe fn parse_execute_inner(c: ConnectionJob) -> c_int {
             || (unsafe { (*d).flags & RPC_F_PAD } == 0 && (packet_len & 3) != 0)
         {
             unsafe {
-                kprintf(PARSE_BAD_PACKET_LEN_FMT.as_ptr().cast(), packet_len);
+                crate::kprintf_fmt!(PARSE_BAD_PACKET_LEN_FMT.as_ptr().cast(), packet_len);
                 fail_connection(c, -1);
             }
             return 0;
@@ -2246,7 +2246,7 @@ unsafe fn parse_execute_inner(c: ConnectionJob) -> c_int {
 
         if unsafe { (*funcs).max_packet_len > 0 && packet_len > (*funcs).max_packet_len } {
             unsafe {
-                kprintf(PARSE_BAD_PACKET_LEN_FMT.as_ptr().cast(), packet_len);
+                crate::kprintf_fmt!(PARSE_BAD_PACKET_LEN_FMT.as_ptr().cast(), packet_len);
                 fail_connection(c, -1);
             }
             return 0;
@@ -2290,7 +2290,7 @@ unsafe fn parse_execute_inner(c: ConnectionJob) -> c_int {
 
         if unsafe { verbosity } > 2 {
             unsafe {
-                kprintf(
+                crate::kprintf_fmt!(
                     PARSE_RECEIVED_PACKET_FMT.as_ptr().cast(),
                     (*conn).fd,
                     packet_len,
@@ -2355,7 +2355,7 @@ pub(super) unsafe fn tcp_proxy_pass_parse_execute_impl(c: ConnectionJob) -> c_in
 
     if unsafe { verbosity } > 2 {
         unsafe {
-            kprintf(
+            crate::kprintf_fmt!(
                 PROXY_PASS_FORWARD_FMT.as_ptr().cast(),
                 (*raw).total_bytes,
                 mtproxy_ffi_net_tcp_rpc_ext_show_remote_ip(e),
@@ -2375,7 +2375,7 @@ pub(super) unsafe fn tcp_proxy_pass_close_impl(c: ConnectionJob, who: c_int) -> 
     let conn = unsafe { conn_info(c) };
     if unsafe { verbosity } > 0 {
         unsafe {
-            kprintf(
+            crate::kprintf_fmt!(
                 b"closing proxy pass connection #%d %s:%d -> %s:%d\n\0"
                     .as_ptr()
                     .cast(),
@@ -2416,7 +2416,7 @@ unsafe fn update_domain_info_chain(mut info: *mut DomainInfo) {
     while !info.is_null() {
         if unsafe { update_domain_info_inner(info) } == 0 {
             unsafe {
-                kprintf(INIT_DOMAIN_FAIL_FMT.as_ptr().cast(), (*info).domain);
+                crate::kprintf_fmt!(INIT_DOMAIN_FAIL_FMT.as_ptr().cast(), (*info).domain);
                 (*info).is_reversed_extension_order = 0;
                 (*info).use_random_encrypted_size = 1;
                 (*info).server_hello_encrypted_size = (2500 + libc::rand() % 1120) as c_short;
@@ -2466,7 +2466,7 @@ pub(super) unsafe fn proxy_connection_impl(c: ConnectionJob, info: *const Domain
     let info_ref = unsafe { &*info };
     if info_ref.target.s_addr == 0 && info_ref.target_ipv6.iter().all(|&x| x == 0) {
         unsafe {
-            kprintf(PROXY_FAIL_DOMAIN_FMT.as_ptr().cast(), info_ref.domain);
+            crate::kprintf_fmt!(PROXY_FAIL_DOMAIN_FMT.as_ptr().cast(), info_ref.domain);
             fail_connection(c, -17);
         }
         return 0;
@@ -2486,7 +2486,7 @@ pub(super) unsafe fn proxy_connection_impl(c: ConnectionJob, info: *const Domain
 
     if cfd < 0 {
         unsafe {
-            kprintf(
+            crate::kprintf_fmt!(
                 PROXY_FAIL_SOCKET_FMT.as_ptr().cast(),
                 errno_value(),
                 strerror_ptr(),
@@ -2522,7 +2522,7 @@ pub(super) unsafe fn proxy_connection_impl(c: ConnectionJob, info: *const Domain
 
     if ej.is_null() {
         unsafe {
-            kprintf(PROXY_FAIL_CONN_FMT.as_ptr().cast());
+            crate::kprintf_fmt!(PROXY_FAIL_CONN_FMT.as_ptr().cast());
             mtproxy_ffi_net_tcp_rpc_ext_job_decref(c);
             fail_connection(c, -37);
         }

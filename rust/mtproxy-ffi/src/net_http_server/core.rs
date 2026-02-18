@@ -322,7 +322,7 @@ pub(super) unsafe fn hts_default_execute_impl(
 
     unsafe {
         if verbosity >= 1 {
-            kprintf(
+            crate::kprintf_fmt!(
                 HTTP_SERVER_LOG_PATTERN.as_ptr().cast(),
                 op,
                 (*d).header_size,

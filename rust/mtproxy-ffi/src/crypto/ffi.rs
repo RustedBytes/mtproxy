@@ -1749,16 +1749,16 @@ pub unsafe extern "C" fn crypto_aes_prepare_stat(sb: *mut StatsBuffer) -> c_int 
     let mut allocated_aes_crypto = 0;
     let mut allocated_aes_crypto_temp = 0;
     unsafe { fetch_aes_crypto_stat(&raw mut allocated_aes_crypto, &raw mut allocated_aes_crypto_temp) };
-    unsafe { sb_printf(sb, c"allocated_aes_crypto\t%d\n".as_ptr(), allocated_aes_crypto) };
+    unsafe { crate::sb_printf_fmt!(sb, c"allocated_aes_crypto\t%d\n".as_ptr(), allocated_aes_crypto) };
     unsafe {
-        sb_printf(
+        crate::sb_printf_fmt!(
             sb,
             c"allocated_aes_crypto_temp\t%d\n".as_ptr(),
             allocated_aes_crypto_temp,
         )
     };
     unsafe {
-        sb_printf(
+        crate::sb_printf_fmt!(
             sb,
             c"aes_pwd_hash\t%s\n".as_ptr(),
             ptr::addr_of!(pwd_config_md5).cast::<c_char>(),
@@ -1931,7 +1931,7 @@ pub unsafe extern "C" fn crypto_dh_prepare_stat(sb: *mut StatsBuffer) -> c_int {
     let mut rounds = [0_i64; 3];
     unsafe { fetch_tot_dh_rounds_stat(rounds.as_mut_ptr()) };
     unsafe {
-        sb_printf(
+        crate::sb_printf_fmt!(
             sb,
             c"tot_dh_rounds\t%lld %lld %lld\n".as_ptr(),
             rounds[0],
@@ -1986,7 +1986,7 @@ pub unsafe extern "C" fn dh_second_round(g_ab: *mut u8, g_a: *mut u8, g_b: *cons
 
     if unsafe { verbosity } >= 2 {
         unsafe {
-            kprintf(
+            crate::kprintf_fmt!(
                 c"DH key is %02x%02x%02x...%02x%02x%02x\n".as_ptr(),
                 c_int::from(*g_ab.add(0)),
                 c_int::from(*g_ab.add(1)),
@@ -2016,7 +2016,7 @@ pub unsafe extern "C" fn dh_third_round(
 
     if unsafe { verbosity } >= 2 {
         unsafe {
-            kprintf(
+            crate::kprintf_fmt!(
                 c"DH key is %02x%02x%02x...%02x%02x%02x\n".as_ptr(),
                 c_int::from(*g_ab.add(0)),
                 c_int::from(*g_ab.add(1)),

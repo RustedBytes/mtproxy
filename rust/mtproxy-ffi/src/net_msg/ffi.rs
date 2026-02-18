@@ -392,10 +392,10 @@ pub unsafe extern "C" fn raw_msg_prepare_stat(sb: *mut RawMsgStatsBuffer) -> c_i
     let rc = unsafe { mtproxy_ffi_net_msg_fetch_stats(&raw mut total_msgs, &raw mut total_msg_parts) };
     assert_eq!(rc, 0);
 
-    unsafe { sb_printf(sb, c">>>>>>raw_msg>>>>>>\tstart\n".as_ptr()) };
-    unsafe { sb_printf(sb, c"rwm_total_msgs\t%d\n".as_ptr(), total_msgs) };
-    unsafe { sb_printf(sb, c"rwm_total_msg_parts\t%d\n".as_ptr(), total_msg_parts) };
-    unsafe { sb_printf(sb, c"<<<<<<raw_msg<<<<<<\tend\n".as_ptr()) };
+    unsafe { crate::sb_printf_fmt!(sb, c">>>>>>raw_msg>>>>>>\tstart\n".as_ptr()) };
+    unsafe { crate::sb_printf_fmt!(sb, c"rwm_total_msgs\t%d\n".as_ptr(), total_msgs) };
+    unsafe { crate::sb_printf_fmt!(sb, c"rwm_total_msg_parts\t%d\n".as_ptr(), total_msg_parts) };
+    unsafe { crate::sb_printf_fmt!(sb, c"<<<<<<raw_msg<<<<<<\tend\n".as_ptr()) };
     unsafe { (*sb).pos }
 }
 

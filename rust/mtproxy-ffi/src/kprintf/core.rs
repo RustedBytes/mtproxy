@@ -1,8 +1,6 @@
 //! Rust implementation of kprintf.c logging utilities.
 //!
-//! This module provides the core logging functionality previously implemented in C.
-//! The main kprintf() function with varargs remains in C for ABI compatibility,
-//! but all other utilities are fully ported to Rust.
+//! This module provides logging and I/O helpers migrated from C.
 
 use crate::*;
 
@@ -170,11 +168,7 @@ pub unsafe extern "C" fn mtproxy_ffi_reopen_logs_ext(slave_mode: c_int) {
     }
 
     if slave_mode == 0 {
-        // Call back to C kprintf to log "logs reopened"
-        extern "C" {
-            fn kprintf(format: *const c_char, ...);
-        }
-        kprintf(b"logs reopened.\n\0".as_ptr().cast());
+        crate::kprintf_fmt!(b"logs reopened.\n\0".as_ptr().cast());
     }
 }
 

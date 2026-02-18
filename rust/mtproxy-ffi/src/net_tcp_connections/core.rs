@@ -403,7 +403,7 @@ pub(super) unsafe fn cpu_tcp_server_reader_impl(c: ConnectionJob) -> c_int {
         }
 
         if unsafe { verbosity } >= 2 {
-            unsafe { kprintf(SKIPPED_FMT.as_ptr().cast(), r1, -s) };
+            unsafe { crate::kprintf_fmt!(SKIPPED_FMT.as_ptr().cast(), r1, -s) };
         }
 
         if s != 0 {
@@ -419,7 +419,7 @@ pub(super) unsafe fn cpu_tcp_server_reader_impl(c: ConnectionJob) -> c_int {
 
         if unsafe { verbosity } >= 1 {
             let more = if s != 0 { s - r1 } else { 0 };
-            unsafe { kprintf(FETCHED_FMT.as_ptr().cast(), r, r1, more) };
+            unsafe { crate::kprintf_fmt!(FETCHED_FMT.as_ptr().cast(), r, r1, more) };
         }
         if s != 0 {
             return 0;
@@ -550,7 +550,7 @@ pub(super) unsafe fn cpu_tcp_aes_crypto_ctr128_encrypt_output_impl(c: Connection
                 c_int::try_from(header.len()).unwrap_or(0)
             );
             if unsafe { verbosity } >= 2 {
-                unsafe { kprintf(TLS_SEND_FMT.as_ptr().cast(), len) };
+                unsafe { crate::kprintf_fmt!(TLS_SEND_FMT.as_ptr().cast(), len) };
             }
         }
 
@@ -585,7 +585,7 @@ pub(super) unsafe fn cpu_tcp_aes_crypto_ctr128_decrypt_input_impl(c: ConnectionJ
                 let need = tcp_connections_core::tls_header_needed_bytes(len);
                 if need > 0 {
                     if unsafe { verbosity } >= 2 {
-                        unsafe { kprintf(TLS_NEED_HEADER_FMT.as_ptr().cast(), need) };
+                        unsafe { crate::kprintf_fmt!(TLS_NEED_HEADER_FMT.as_ptr().cast(), need) };
                     }
                     return need;
                 }
@@ -605,7 +605,7 @@ pub(super) unsafe fn cpu_tcp_aes_crypto_ctr128_decrypt_input_impl(c: ConnectionJ
                 let Some(payload_len) = tcp_connections_core::tls_header_payload_len(&header)
                 else {
                     if unsafe { verbosity } >= 1 {
-                        unsafe { kprintf(TLS_HEADER_ERR_FMT.as_ptr().cast()) };
+                        unsafe { crate::kprintf_fmt!(TLS_HEADER_ERR_FMT.as_ptr().cast()) };
                     }
                     unsafe { fail_connection(c, -1) };
                     return 0;
@@ -616,7 +616,7 @@ pub(super) unsafe fn cpu_tcp_aes_crypto_ctr128_decrypt_input_impl(c: ConnectionJ
                 }
                 if unsafe { verbosity } >= 2 {
                     unsafe {
-                        kprintf(TLS_RECV_FMT.as_ptr().cast(), (*conn).left_tls_packet_length)
+                        crate::kprintf_fmt!(TLS_RECV_FMT.as_ptr().cast(), (*conn).left_tls_packet_length)
                     };
                 }
                 assert_eq!(
@@ -635,7 +635,7 @@ pub(super) unsafe fn cpu_tcp_aes_crypto_ctr128_decrypt_input_impl(c: ConnectionJ
         }
 
         if unsafe { verbosity } >= 2 {
-            unsafe { kprintf(TLS_READ_FMT.as_ptr().cast(), len, (*conn).in_u.total_bytes) };
+            unsafe { crate::kprintf_fmt!(TLS_READ_FMT.as_ptr().cast(), len, (*conn).in_u.total_bytes) };
         }
         assert_eq!(
             unsafe {

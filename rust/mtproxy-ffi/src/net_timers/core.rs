@@ -179,7 +179,7 @@ fn debug_next_timer(heap_size: usize, wait_time: f64) {
     #[cfg(not(test))]
     unsafe {
         if verbosity >= 3 {
-            kprintf(
+            crate::kprintf_fmt!(
                 b"%d event timers, next in %.3f seconds\n\0".as_ptr().cast(),
                 i32::try_from(heap_size).unwrap_or(i32::MAX),
                 wait_time,
@@ -298,28 +298,28 @@ pub unsafe extern "C" fn timers_prepare_stat(sb: *mut c_void) -> c_int {
         return -1;
     }
     let sb = sb.cast::<StatsBuffer>();
-    sb_printf(sb, b">>>>>>timers>>>>>>\tstart\n\0".as_ptr().cast());
-    sb_printf(
+    crate::sb_printf_fmt!(sb, b">>>>>>timers>>>>>>\tstart\n\0".as_ptr().cast());
+    crate::sb_printf_fmt!(
         sb,
         b"event_timer_insert_ops\t%lld\n\0".as_ptr().cast(),
         EVENT_TIMER_INSERT_OPS.load(Ordering::Relaxed),
     );
-    sb_printf(
+    crate::sb_printf_fmt!(
         sb,
         b"event_timer_remove_ops\t%lld\n\0".as_ptr().cast(),
         EVENT_TIMER_REMOVE_OPS.load(Ordering::Relaxed),
     );
-    sb_printf(
+    crate::sb_printf_fmt!(
         sb,
         b"event_timer_alarms\t%lld\n\0".as_ptr().cast(),
         EVENT_TIMER_ALARMS.load(Ordering::Relaxed),
     );
-    sb_printf(
+    crate::sb_printf_fmt!(
         sb,
         b"total_timers\t%d\n\0".as_ptr().cast(),
         TOTAL_TIMERS.load(Ordering::Relaxed),
     );
-    sb_printf(sb, b"<<<<<<timers<<<<<<\tend\n\0".as_ptr().cast());
+    crate::sb_printf_fmt!(sb, b"<<<<<<timers<<<<<<\tend\n\0".as_ptr().cast());
     (*sb).pos
 }
 
