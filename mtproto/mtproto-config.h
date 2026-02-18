@@ -64,6 +64,3 @@ extern char *config_filename;
 
 extern struct conn_target_info default_cfg_ct;
 extern int default_cfg_min_connections, default_cfg_max_connections;
-
-struct mf_cluster *mf_cluster_lookup(struct mf_config *MC, int cluster_id,
-                                     int force);

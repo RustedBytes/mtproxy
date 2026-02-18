@@ -47,10 +47,6 @@ static inline unsigned long long SIG2INT(const int sig) {
   return (sig == OUR_SIGRTMAX) ? 1ull : (1ull << (unsigned long long)sig);
 }
 
-static constexpr unsigned long long SIG_INTERRUPT_MASK =
-    (1ull << (unsigned long long)SIGTERM) |
-    (1ull << (unsigned long long)SIGINT);
-
 extern double precise_now_diff;
 
 #pragma pack(push, 4)
@@ -63,14 +59,6 @@ struct rpc_custom_op {
 #pragma pack(pop)
 
 static constexpr unsigned long long ENGINE_NO_PORT = 4ull;
-
-static constexpr unsigned long long ENGINE_ENABLE_IPV6 = 0x4ull;
-static constexpr unsigned long long ENGINE_ENABLE_TCP = 0x10ull;
-static constexpr unsigned long long ENGINE_ENABLE_MULTITHREAD = 0x1000000ull;
-static constexpr unsigned long long ENGINE_ENABLE_SLAVE_MODE = 0x2000000ull;
-
-static constexpr unsigned long long ENGINE_DEFAULT_ENABLED_MODULES =
-    ENGINE_ENABLE_TCP;
 
 typedef struct {
   void (*cron)(void);
@@ -151,113 +139,5 @@ typedef struct event_precise_cron {
 } event_precise_cron_t;
 
 extern engine_t *engine_state;
-
-static inline void engine_enable_ipv6(void) {
-  mtproxy_ffi_engine_enable_ipv6();
-}
-
-static inline void engine_disable_ipv6(void) {
-  mtproxy_ffi_engine_disable_ipv6();
-}
-
-static inline int engine_check_ipv6_enabled(void) {
-  return mtproxy_ffi_engine_check_ipv6_enabled();
-}
-
-static inline int engine_check_ipv6_disabled(void) {
-  return mtproxy_ffi_engine_check_ipv6_disabled();
-}
-
-static inline void engine_enable_tcp(void) {
-  mtproxy_ffi_engine_enable_tcp();
-}
-
-static inline void engine_disable_tcp(void) {
-  mtproxy_ffi_engine_disable_tcp();
-}
-
-static inline int engine_check_tcp_enabled(void) {
-  return mtproxy_ffi_engine_check_tcp_enabled();
-}
-
-static inline int engine_check_tcp_disabled(void) {
-  return mtproxy_ffi_engine_check_tcp_disabled();
-}
-
-static inline void engine_enable_multithread(void) {
-  mtproxy_ffi_engine_enable_multithread();
-}
-
-static inline void engine_disable_multithread(void) {
-  mtproxy_ffi_engine_disable_multithread();
-}
-
-static inline int engine_check_multithread_enabled(void) {
-  return mtproxy_ffi_engine_check_multithread_enabled();
-}
-
-static inline int engine_check_multithread_disabled(void) {
-  return mtproxy_ffi_engine_check_multithread_disabled();
-}
-
-static inline void engine_enable_slave_mode(void) {
-  mtproxy_ffi_engine_enable_slave_mode();
-}
-
-static inline void engine_disable_slave_mode(void) {
-  mtproxy_ffi_engine_disable_slave_mode();
-}
-
-static inline int engine_check_slave_mode_enabled(void) {
-  return mtproxy_ffi_engine_check_slave_mode_enabled();
-}
-
-static inline int engine_check_slave_mode_disabled(void) {
-  return mtproxy_ffi_engine_check_slave_mode_disabled();
-}
-
-static inline void engine_set_aes_pwd_file(const char *s) {
-  mtproxy_ffi_engine_set_aes_pwd_file(s);
-}
-
-static inline const char *engine_get_aes_pwd_file(void) {
-  return mtproxy_ffi_engine_get_aes_pwd_file();
-}
-
-static inline void engine_set_backlog(int s) { mtproxy_ffi_engine_set_backlog(s); }
-
-static inline int engine_get_backlog(void) { return mtproxy_ffi_engine_get_backlog(); }
-
-static inline void engine_set_required_io_threads(int s) {
-  mtproxy_ffi_engine_set_required_io_threads(s);
-}
-
-static inline int engine_get_required_io_threads(void) {
-  return mtproxy_ffi_engine_get_required_io_threads();
-}
-
-static inline void engine_set_required_cpu_threads(int s) {
-  mtproxy_ffi_engine_set_required_cpu_threads(s);
-}
-
-static inline int engine_get_required_cpu_threads(void) {
-  return mtproxy_ffi_engine_get_required_cpu_threads();
-}
-
-static inline void engine_set_required_tcp_cpu_threads(int s) {
-  mtproxy_ffi_engine_set_required_tcp_cpu_threads(s);
-}
-
-static inline int engine_get_required_tcp_cpu_threads(void) {
-  return mtproxy_ffi_engine_get_required_tcp_cpu_threads();
-}
-
-static inline void engine_set_required_tcp_io_threads(int s) {
-  mtproxy_ffi_engine_set_required_tcp_io_threads(s);
-}
-
-static inline int engine_get_required_tcp_io_threads(void) {
-  return mtproxy_ffi_engine_get_required_tcp_io_threads();
-}
 
 int default_main(server_functions_t *F, int argc, char *argv[]);
