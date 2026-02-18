@@ -38,7 +38,6 @@
 #include <time.h>
 #include <unistd.h>
 
-#include "kprintf.h"
 #include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 
 void kprintf(const char *format, ...) {

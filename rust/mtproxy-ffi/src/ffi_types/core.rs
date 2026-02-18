@@ -619,7 +619,6 @@ unsafe extern "C" {
     pub(crate) fn calloc(nmemb: usize, size: usize) -> *mut c_void;
     pub(crate) fn free(ptr: *mut c_void);
     pub(crate) fn kprintf(format: *const c_char, ...);
-    pub(crate) fn syntax(msg: *const c_char, ...);
     pub(crate) fn load_config(file: *const c_char, fd: c_int) -> c_int;
     pub(crate) fn reset_config();
     pub(crate) fn md5_hex_config(out: *mut c_char);

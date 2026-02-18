@@ -50,12 +50,52 @@ const ERR_JOB_CANCELLED: &[u8] = b"Job cancelled\0";
 const ERR_CANCELLED: &[u8] = b"Cancelled\0";
 const ERR_BINLOG_WAIT: &[u8] = b"Binlog wait error\0";
 const ERR_AIO_WAIT: &[u8] = b"Aio wait error\0";
-const PERCENT_S_FMT: &[u8] = b"%s\0";
+const ERR_LOG_FMT: &[u8] = b"Error %s\n\0";
 const TL_STAT: c_int = 0x9d56e6b2_u32 as c_int;
 const RPC_REQ_RESULT_FLAGS: c_int = 0x8cc84ce1_u32 as c_int;
 
 static LAST_QID: AtomicU32 = AtomicU32::new(0);
 const QUERY_RESULT_TYPES: usize = 16;
+
+fn cstr_lossy_or_default(ptr: *const c_char, default: &str) -> String {
+    if ptr.is_null() {
+        return default.to_owned();
+    }
+    unsafe { CStr::from_ptr(ptr) }.to_string_lossy().into_owned()
+}
+
+fn cstring_sanitized(value: &str) -> CString {
+    CString::new(value).unwrap_or_else(|_| {
+        let cleaned = value.replace('\0', "?");
+        CString::new(cleaned).expect("sanitized string must not contain NUL")
+    })
+}
+
+unsafe fn set_tl_out_error_message(tlio_out: *mut c_void, errnum: c_int, message: &str) -> c_int {
+    let out = tlio_out.cast::<TlOutState>();
+    if out.is_null() {
+        return 0;
+    }
+    if unsafe { !(*out).error.is_null() } {
+        return 0;
+    }
+
+    let c_message = cstring_sanitized(message);
+    if unsafe { verbosity } >= 2 {
+        unsafe { kprintf(ERR_LOG_FMT.as_ptr().cast(), c_message.as_ptr()) };
+    }
+
+    unsafe {
+        (*out).errnum = errnum;
+        (*out).error = libc::strdup(c_message.as_ptr());
+    }
+    0
+}
+
+unsafe fn set_tl_out_error_cstr(tlio_out: *mut c_void, errnum: c_int, message: *const c_char) -> c_int {
+    let text = cstr_lossy_or_default(message, "Unknown error");
+    unsafe { set_tl_out_error_message(tlio_out, errnum, &text) }
+}
 
 pub(super) type Job = *mut AsyncJob;
 type ConnectionJob = *mut c_void;
@@ -402,13 +442,6 @@ unsafe extern "C" {
     fn c_tls_int_rust(tlio_out: *mut c_void, value: c_int) -> c_int;
     #[link_name = "tls_string_rust"]
     fn c_tls_string_rust(tlio_out: *mut c_void, s: *const c_char, len: c_int) -> c_int;
-    #[link_name = "tls_set_error_format"]
-    fn c_tls_set_error_format(
-        tlio_out: *mut c_void,
-        errnum: c_int,
-        format: *const c_char,
-        ...
-    ) -> c_int;
     #[link_name = "tls_get_ptr_rust"]
     fn c_tls_get_ptr_rust(tlio_out: *mut c_void, size: c_int) -> *mut c_void;
     #[link_name = "tls_raw_msg_rust"]
@@ -1357,19 +1390,19 @@ pub(super) unsafe fn process_act_atom_subjob_impl(job: Job, op: c_int, _jt: *mut
                 if unsafe { (*io).error }.is_null() {
                     unsafe {
                         if res == -2 && (*e).attempt >= 5 {
-                            c_tls_set_error_format(
+                            set_tl_out_error_cstr(
                                 io.cast(),
                                 TL_ERROR_AIO_MAX_RETRY_EXCEEDED,
                                 ERR_MAX_RETRIES.as_ptr().cast(),
                             );
                         } else if res == -2 {
-                            c_tls_set_error_format(
+                            set_tl_out_error_cstr(
                                 io.cast(),
                                 TL_ERROR_BAD_METAFILE,
                                 ERR_BAD_METAFILE.as_ptr().cast(),
                             );
                         } else {
-                            c_tls_set_error_format(
+                            set_tl_out_error_cstr(
                                 io.cast(),
                                 TL_ERROR_UNKNOWN,
                                 ERR_UNKNOWN.as_ptr().cast(),
@@ -1483,12 +1516,7 @@ pub(super) unsafe fn process_query_job_impl(job: Job, op: c_int, _jt: *mut c_voi
                 assert!(unsafe { (*p).answer_sent } == 0);
                 if unsafe { (*p).error_code } != 0 {
                     unsafe {
-                        c_tls_set_error_format(
-                            io.cast(),
-                            (*p).error_code,
-                            PERCENT_S_FMT.as_ptr().cast(),
-                            (*p).error,
-                        );
+                        set_tl_out_error_cstr(io.cast(), (*p).error_code, (*p).error.cast_const());
                         libc::free((*p).error.cast());
                         (*p).error = ptr::null_mut();
                     }
@@ -1529,18 +1557,13 @@ pub(super) unsafe fn process_query_job_impl(job: Job, op: c_int, _jt: *mut c_voi
             if !io.is_null() {
                 if unsafe { (*p).error_code } != 0 {
                     unsafe {
-                        c_tls_set_error_format(
-                            io.cast(),
-                            (*p).error_code,
-                            PERCENT_S_FMT.as_ptr().cast(),
-                            (*p).error,
-                        );
+                        set_tl_out_error_cstr(io.cast(), (*p).error_code, (*p).error.cast_const());
                         libc::free((*p).error.cast());
                         (*p).error = ptr::null_mut();
                     }
                 } else if !unsafe { (*p).wait_pos }.is_null() {
                     unsafe {
-                        c_tls_set_error_format(
+                        set_tl_out_error_cstr(
                             io.cast(),
                             TL_ERROR_AIO_TIMEOUT,
                             ERR_BINLOG_WAIT.as_ptr().cast(),
@@ -1548,7 +1571,7 @@ pub(super) unsafe fn process_query_job_impl(job: Job, op: c_int, _jt: *mut c_voi
                     }
                 } else {
                     unsafe {
-                        c_tls_set_error_format(
+                        set_tl_out_error_cstr(
                             io.cast(),
                             TL_ERROR_AIO_TIMEOUT,
                             ERR_AIO_WAIT.as_ptr().cast(),
@@ -1583,18 +1606,13 @@ pub(super) unsafe fn process_query_job_impl(job: Job, op: c_int, _jt: *mut c_voi
             if !io.is_null() {
                 if unsafe { (*p).error_code } != 0 {
                     unsafe {
-                        c_tls_set_error_format(
-                            io.cast(),
-                            (*p).error_code,
-                            PERCENT_S_FMT.as_ptr().cast(),
-                            (*p).error,
-                        );
+                        set_tl_out_error_cstr(io.cast(), (*p).error_code, (*p).error.cast_const());
                         libc::free((*p).error.cast());
                         (*p).error = ptr::null_mut();
                     }
                 } else {
                     unsafe {
-                        c_tls_set_error_format(
+                        set_tl_out_error_cstr(
                             io.cast(),
                             TL_ERROR_UNKNOWN,
                             ERR_CANCELLED.as_ptr().cast(),
@@ -1704,12 +1722,7 @@ pub(super) unsafe fn query_job_run_impl(job: Job, fd: c_int, generation: c_int) 
                     .cast::<TlOutState>();
             if !out.is_null() {
                 unsafe {
-                    c_tls_set_error_format(
-                        out.cast(),
-                        (*io).errnum,
-                        PERCENT_S_FMT.as_ptr().cast(),
-                        (*io).error,
-                    );
+                    set_tl_out_error_cstr(out.cast(), (*io).errnum, (*io).error.cast_const());
                     c_tls_end_ext(out.cast(), RPC_REQ_RESULT);
                     c_tl_out_state_free(out.cast());
                 }

@@ -26,7 +26,6 @@
 
 #include <stdarg.h>
 
-#include "common/common-stats.h"
 #include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 
 // Remaining C glue:

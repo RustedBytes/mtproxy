@@ -677,13 +677,14 @@ pub unsafe extern "C" fn mtproxy_ffi_cfg_getint_signed_zero_global() -> i64 {
 /// parse-config: `expect_lexem()` equivalent against global `cfg_lex`.
 ///
 /// # Safety
-/// Calls C `syntax()` for diagnostics on mismatch.
+/// Emits syntax diagnostics on mismatch.
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_cfg_expect_lexem(lexem: i32) -> i32 {
     if unsafe { cfg_lex } == lexem {
         0
     } else {
-        unsafe { syntax(b"%c expected\0".as_ptr().cast(), lexem) };
+        let expected = char::from_u32((lexem as u32) & 0xff).unwrap_or('?');
+        unsafe { cfg_syntax_report(&format!("{expected} expected")) };
         -1
     }
 }
@@ -698,23 +699,24 @@ pub unsafe extern "C" fn mtproxy_ffi_cfg_expect_word(name: *const c_char, len: i
         return -1;
     }
     let l = unsafe { mtproxy_ffi_cfg_getword_global() };
+    let expected_word = cfg_word_from_ptr_len(name, len);
     if l < 0 || l != len {
-        unsafe { syntax(b"Expected %.*s\0".as_ptr().cast(), len, name) };
+        unsafe { cfg_syntax_report(&format!("Expected {expected_word}")) };
         return -1;
     }
     let Ok(len_usize) = usize::try_from(len) else {
-        unsafe { syntax(b"Expected %.*s\0".as_ptr().cast(), len, name) };
+        unsafe { cfg_syntax_report(&format!("Expected {expected_word}")) };
         return -1;
     };
     let src = unsafe { core::slice::from_raw_parts(name.cast::<u8>(), len_usize) };
     let cur = unsafe { cfg_cur };
     if cur.is_null() {
-        unsafe { syntax(b"Expected %.*s\0".as_ptr().cast(), len, name) };
+        unsafe { cfg_syntax_report(&format!("Expected {expected_word}")) };
         return -1;
     }
     let cur_slice = unsafe { core::slice::from_raw_parts(cur.cast::<u8>(), len_usize) };
     if src != cur_slice {
-        unsafe { syntax(b"Expected %.*s\0".as_ptr().cast(), len, name) };
+        unsafe { cfg_syntax_report(&format!("Expected {expected_word}")) };
         return -1;
     }
     unsafe { cfg_cur = cfg_cur.add(len_usize) };
@@ -986,28 +988,28 @@ unsafe fn cfg_gethost_impl(verb: i32) -> *mut MtproxyHostEnt {
     let cursor = unsafe { cfg_cur };
     let end = unsafe { cfg_end };
     if cursor.is_null() || end.is_null() || (cursor as usize) >= (end as usize) {
-        unsafe { syntax(b"hostname expected\0".as_ptr().cast()) };
+        unsafe { cfg_syntax_report("hostname expected") };
         return core::ptr::null_mut();
     }
 
     let rem = unsafe { end.offset_from(cursor) };
     if rem <= 0 {
-        unsafe { syntax(b"hostname expected\0".as_ptr().cast()) };
+        unsafe { cfg_syntax_report("hostname expected") };
         return core::ptr::null_mut();
     }
     let Ok(rem_len) = usize::try_from(rem) else {
-        unsafe { syntax(b"hostname expected\0".as_ptr().cast()) };
+        unsafe { cfg_syntax_report("hostname expected") };
         return core::ptr::null_mut();
     };
 
     let bytes = unsafe { core::slice::from_raw_parts(cursor.cast::<u8>(), rem_len) };
     let word_len_i32 = cfg_getword_len_impl(bytes);
     let Ok(word_len) = usize::try_from(word_len_i32) else {
-        unsafe { syntax(b"hostname expected\0".as_ptr().cast()) };
+        unsafe { cfg_syntax_report("hostname expected") };
         return core::ptr::null_mut();
     };
     if word_len == 0 || word_len > 63 {
-        unsafe { syntax(b"hostname expected\0".as_ptr().cast()) };
+        unsafe { cfg_syntax_report("hostname expected") };
         return core::ptr::null_mut();
     }
 
@@ -1027,7 +1029,8 @@ unsafe fn cfg_gethost_impl(verb: i32) -> *mut MtproxyHostEnt {
 
     if !valid_host {
         if unsafe { verbosity } >= verb {
-            unsafe { syntax(b"cannot resolve '%s'\n\0".as_ptr().cast(), cursor) };
+            let host = cstr_lossy_or_default(cursor.cast_const(), "(null)");
+            unsafe { cfg_syntax_report(&format!("cannot resolve '{host}'")) };
         }
         return core::ptr::null_mut();
     }
@@ -1064,6 +1067,59 @@ fn cstr_lossy_or_default(ptr: *const c_char, default: &str) -> String {
     unsafe { CStr::from_ptr(ptr) }
         .to_string_lossy()
         .into_owned()
+}
+
+fn cfg_word_from_ptr_len(name: *const c_char, len: i32) -> String {
+    if name.is_null() || len <= 0 {
+        return String::new();
+    }
+    let Ok(len_usize) = usize::try_from(len) else {
+        return String::new();
+    };
+    // SAFETY: caller provides a readable pointer with `len` bytes.
+    let bytes = unsafe { core::slice::from_raw_parts(name.cast::<u8>(), len_usize) };
+    String::from_utf8_lossy(bytes).into_owned()
+}
+
+pub(crate) unsafe fn cfg_syntax_report(message: &str) {
+    let file_name = cstr_lossy_or_default(unsafe { config_name }, "(unknown)");
+    let line_no = unsafe { cfg_lno };
+
+    if line_no != 0 {
+        eprint!("{file_name}:{line_no}: ");
+    }
+    eprint!("fatal: {message}");
+
+    let cursor = unsafe { cfg_cur };
+    if cursor.is_null() {
+        eprintln!();
+        return;
+    }
+
+    let mut len = 0usize;
+    while len < 20 {
+        // SAFETY: we stop at NUL/CR/LF or 20 bytes.
+        let ch = unsafe { *cursor.add(len) as u8 };
+        if ch == 0 || ch == b'\r' || ch == b'\n' {
+            break;
+        }
+        len += 1;
+    }
+
+    let near = if len == 0 {
+        String::new()
+    } else {
+        // SAFETY: `cursor` points to config input bytes.
+        let bytes = unsafe { core::slice::from_raw_parts(cursor.cast::<u8>(), len) };
+        String::from_utf8_lossy(bytes).into_owned()
+    };
+    let suffix = if len >= 20 { " ..." } else { "" };
+    eprintln!(" near {near}{suffix}");
+}
+
+pub(crate) unsafe fn cfg_syntax_report_cstr(message: *const c_char) {
+    let text = cstr_lossy_or_default(message, "syntax error");
+    unsafe { cfg_syntax_report(&text) };
 }
 
 /// Legacy C ABI wrapper for `cfg_skipspc()`.
@@ -1141,7 +1197,7 @@ pub unsafe extern "C" fn c_cfg_getint_signed_zero() -> i64 {
 /// Legacy C ABI wrapper for `expect_lexem()`.
 ///
 /// # Safety
-/// Uses process-global parser state and may call `syntax()`.
+/// Uses process-global parser state and may emit syntax diagnostics.
 #[export_name = "expect_lexem"]
 pub unsafe extern "C" fn c_expect_lexem(lexem: i32) -> i32 {
     unsafe { mtproxy_ffi_cfg_expect_lexem(lexem) }

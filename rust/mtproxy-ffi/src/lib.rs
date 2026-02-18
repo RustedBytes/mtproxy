@@ -252,3 +252,9 @@ pub unsafe extern "C" fn mtproxy_ffi_init_precise_cron_events() {
     (*ptr).next = ptr;
     (*ptr).prev = ptr;
 }
+
+/// Legacy binary entrypoint, previously provided by `mtproto/mtproto-proxy.c`.
+#[no_mangle]
+pub unsafe extern "C" fn main(argc: c_int, argv: *mut *mut c_char) -> c_int {
+    mtproto::ffi::mtproxy_ffi_mtproto_legacy_main(argc, argv)
+}

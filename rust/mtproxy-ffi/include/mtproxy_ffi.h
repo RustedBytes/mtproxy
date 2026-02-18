@@ -2875,7 +2875,7 @@ int32_t mtproxy_ffi_tl_parse_answer_header(
   mtproxy_ffi_tl_header_parse_result_t *out
 );
 
-// TL runtime helpers for incremental `common/tl-parse.h` migration.
+// TL runtime helpers for the legacy TL parser ABI.
 int32_t mtproxy_ffi_tl_fetch_check(void *tlio_in, int32_t nbytes);
 int32_t mtproxy_ffi_tl_fetch_lookup_int(void *tlio_in);
 int32_t mtproxy_ffi_tl_fetch_lookup_second_int(void *tlio_in);

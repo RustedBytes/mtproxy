@@ -32,10 +32,8 @@ ALLDIRS := ${DEPDIRS} ${OBJDIRS}
 .PHONY:	all clean test release release-legacy step15-inventory ffi-freeze
 
 EXELIST	:= ${EXE}/mtproto-proxy
-# Legacy C-wrapper build path remains transitional.
-# Canonical runtime entrypoint is rust/mtproxy-bin (mtproxy-rust).
-RUST_OBJECTS	=	\
-  ${OBJ}/mtproto/mtproto-proxy.rust.o
+# Legacy entrypoint is now provided by Rust (`main` in mtproxy-ffi).
+RUST_OBJECTS	=
 RUST_RS_SOURCES := $(shell find rust/mtproxy-core/src rust/mtproxy-ffi/src -type f -name '*.rs')
 RUST_RUNTIME_RELEASE = target/release/mtproxy-rust
 
@@ -44,8 +42,7 @@ DEPENDENCE_STRANGE	:=	$(subst ${OBJ}/,${DEP}/,$(patsubst %.o,%.d,${OBJECTS_STRAN
 DEPENDENCE_RUST	:=	$(subst ${OBJ}/,${DEP}/,$(patsubst %.o,%.d,${RUST_OBJECTS}))
 
 LIB_OBJS_NORMAL := \
-	${OBJ}/common/parse-config.o \
-	${OBJ}/common/tl-parse.o ${OBJ}/common/common-stats.o \
+	${OBJ}/common/common-stats.o \
 	${OBJ}/common/kprintf.o \
 
 LIB_OBJS := ${LIB_OBJS_NORMAL}
@@ -64,9 +61,6 @@ ${ALLDIRS}:
 	@test -d $@ || mkdir -p $@
 
 -include ${DEPENDENCE_ALL}
-
-${OBJ}/mtproto/mtproto-proxy.rust.o: mtproto/mtproto-proxy.c | create_dirs_and_headers
-	${CC} ${CFLAGS} -DUSE_RUST_FFI=1 ${CINCLUDE} -c -MP -MD -MF ${DEP}/mtproto/mtproto-proxy.rust.d -MQ ${OBJ}/mtproto/mtproto-proxy.rust.o -o $@ $<
 
 ${LIB_OBJS_NORMAL}: ${OBJ}/%.o: %.c | create_dirs_and_headers
 	${CC} ${CFLAGS} -fpic ${CINCLUDE} -c -MP -MD -MF ${DEP}/$*.d -MQ ${OBJ}/$*.o -o $@ $<

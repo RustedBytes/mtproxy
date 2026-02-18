@@ -5939,7 +5939,7 @@ pub(super) fn mtproto_old_cluster_to_ffi(
 }
 
 pub(super) fn mtproto_cfg_syntax_literal(msg: &[u8]) {
-    unsafe { syntax(msg.as_ptr().cast()) };
+    unsafe { cfg_syntax_report_cstr(msg.as_ptr().cast()) };
 }
 
 pub(super) fn mtproto_cfg_report_parse_full_pass_error(pass_rc: i32, tot_targets: c_int) {
@@ -5972,7 +5972,7 @@ pub(super) fn mtproto_cfg_report_parse_full_pass_error(pass_rc: i32, tot_targets
             mtproto_cfg_syntax_literal(b"'proxy <ip>:<port>;' expected\0");
         }
         MTPROTO_CFG_PARSE_FULL_PASS_ERR_TOO_MANY_TARGETS => {
-            unsafe { syntax(b"too many targets (%d)\0".as_ptr().cast(), tot_targets) };
+            unsafe { cfg_syntax_report(&format!("too many targets ({tot_targets})")) };
         }
         MTPROTO_CFG_PARSE_FULL_PASS_ERR_HOSTNAME_EXPECTED => {
             mtproto_cfg_syntax_literal(b"hostname expected\0");
