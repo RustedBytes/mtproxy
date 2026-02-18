@@ -4453,6 +4453,15 @@ pub(super) unsafe fn mtproto_hts_execute_ffi(c: *mut c_void, msg: *mut c_void, o
         return 0;
     }
 
+    // Serve local stats from the main HTTP execute path as well, so it works
+    // even if runtime fallback wiring selects generic mtproto HTTP callbacks.
+    if op == HTQT_GET {
+        let stats_rc = unsafe { mtproto_hts_stats_execute_ffi(c, msg.cast::<c_void>(), op) };
+        if stats_rc != -404 && stats_rc != -501 {
+            return stats_rc;
+        }
+    }
+
     unsafe {
         crate::kprintf_fmt!(
             b"in hts_execute: connection #%d, op=%d, header_size=%d, data_size=%d, http_version=%d\n\0"
