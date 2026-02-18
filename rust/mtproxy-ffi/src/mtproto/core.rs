@@ -4351,9 +4351,8 @@ pub(super) unsafe fn mtproto_hts_stats_execute_ffi(
     if c.is_null() || msg.is_null() {
         return -501;
     }
-    let d = unsafe { mtproto_hts_data_ptr(c) };
     let conn = unsafe { mtproto_conn_info_ptr(c) };
-    if d.is_null() || conn.is_null() {
+    if conn.is_null() {
         return -501;
     }
 
@@ -4361,43 +4360,37 @@ pub(super) unsafe fn mtproto_hts_stats_execute_ffi(
         return -429;
     }
 
-    let query_type = unsafe { core::ptr::addr_of!((*d).query_type).read_unaligned() };
-    let data_size = unsafe { core::ptr::addr_of!((*d).data_size).read_unaligned() };
-    if query_type != HTQT_GET || data_size > 0 {
-        let mut query_flags = unsafe { mtproto_http_query_flags_get(c) };
-        query_flags &= !QF_KEEPALIVE;
-        unsafe { mtproto_http_query_flags_set(c, query_flags) };
+    let remote_ip = unsafe { (*conn).remote_ip };
+    let remote_ip_host = u32::from_be(remote_ip);
+    if (remote_ip & 0xff00_0000) != 0x7f00_0000
+        && (remote_ip_host & 0xff00_0000) != 0x7f00_0000
+    {
+        return -404;
+    }
+
+    let total_bytes = unsafe { (*msg).total_bytes };
+    if total_bytes <= 0 {
         return -501;
     }
-    if unsafe { (*conn).remote_ip } != 0x7f00_0001 {
-        return -404;
-    }
-
-    let uri_size = unsafe { core::ptr::addr_of!((*d).uri_size).read_unaligned() };
-    if uri_size != 6 {
-        return -404;
-    }
-
-    let header_size = unsafe { core::ptr::addr_of!((*d).header_size).read_unaligned() };
-    if !(0..=MAX_HTTP_HEADER_SIZE).contains(&header_size) {
+    let header_size = total_bytes.min(MAX_HTTP_HEADER_SIZE);
+    if header_size <= 0 {
         return -404;
     }
     let mut req_hdr = [0_u8; MAX_HTTP_HEADER_SIZE as usize];
-    assert!(
-        unsafe { rwm_fetch_data(msg, req_hdr.as_mut_ptr().cast(), header_size) } == header_size
-    );
-
-    let uri_offset = usize::try_from(unsafe {
-        core::ptr::addr_of!((*d).uri_offset).read_unaligned()
-    })
-    .ok();
-    let Some(uri_offset) = uri_offset else {
+    if unsafe { rwm_fetch_data(msg, req_hdr.as_mut_ptr().cast(), header_size) } != header_size {
         return -404;
-    };
+    }
+
     let header_size_usize = usize::try_from(header_size).unwrap_or(0);
-    if uri_offset.saturating_add(6) > header_size_usize
-        || &req_hdr[uri_offset..uri_offset + 6] != b"/stats"
-    {
+    let first_line_end = req_hdr[..header_size_usize]
+        .windows(2)
+        .position(|w| w == b"\r\n")
+        .unwrap_or(header_size_usize);
+    let first_line = &req_hdr[..first_line_end];
+    let is_stats_get = first_line == b"GET /stats"
+        || first_line.starts_with(b"GET /stats ")
+        || first_line.starts_with(b"GET /stats?");
+    if !is_stats_get {
         return -404;
     }
 
