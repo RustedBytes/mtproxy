@@ -1,6 +1,43 @@
 //! Runtime-side FFI implementations migrated from `net/net-connections.c`.
 
 use super::abi::*;
+use super::legacy::{
+    cpu_server_close_connection, cpu_server_free_connection, cpu_server_read_write,
+    create_async_job, job_decref, job_incref, job_signal, job_timer_check, job_timer_init,
+    job_timer_insert, job_timer_remove,
+    do_conn_target_job, do_connection_job, do_listening_connection_job,
+    do_socket_connection_job, mtproxy_ffi_net_connections_accept_rate_get_max,
+    mtproxy_ffi_net_connections_accept_rate_get_state,
+    mtproxy_ffi_net_connections_accept_rate_set_state,
+    mtproxy_ffi_net_connections_close_connection_signal_special_aux,
+    mtproxy_ffi_net_connections_free_target, mtproxy_ffi_net_connections_get_max_connection,
+    mtproxy_ffi_net_connections_get_max_connection_fd, mtproxy_ffi_net_connections_mpq_pop_nw,
+    mtproxy_ffi_net_connections_mpq_push_w, mtproxy_ffi_net_connections_precise_now,
+    mtproxy_ffi_net_connections_register_special_listen_socket,
+    mtproxy_ffi_net_connections_rwm_union, mtproxy_ffi_net_connections_set_max_connection,
+    mtproxy_ffi_net_connections_stat_add_allocated_targets,
+    mtproxy_ffi_net_connections_stat_dec_active_dh,
+    mtproxy_ffi_net_connections_stat_free_later_dequeued,
+    mtproxy_ffi_net_connections_stat_free_later_enqueued,
+    mtproxy_ffi_net_connections_stat_inc_accept_connection_limit_failed,
+    mtproxy_ffi_net_connections_stat_inc_accept_init_accepted_failed,
+    mtproxy_ffi_net_connections_stat_inc_accept_nonblock_set_failed,
+    mtproxy_ffi_net_connections_stat_inc_allocated_connections,
+    mtproxy_ffi_net_connections_stat_inc_listening,
+    mtproxy_ffi_net_connections_stat_target_freed, mtproxy_ffi_net_connections_stats_add,
+    mtproxy_ffi_net_connections_stats_add_alloc_connection_success,
+    mtproxy_ffi_net_connections_stats_add_close_basic,
+    mtproxy_ffi_net_connections_stats_add_close_failure,
+    mtproxy_ffi_net_connections_job_free,
+    mtproxy_ffi_net_connections_job_thread_dec_jobs_active,
+    mtproxy_ffi_net_connections_stats_add_free_connection_counts,
+    mtproxy_ffi_net_connections_stats_add_ready, mtproxy_ffi_net_connections_stats_add_targets,
+    mtproxy_ffi_net_connections_stats_add_tcp_read,
+    mtproxy_ffi_net_connections_stats_add_tcp_write, net_accept_new_connections,
+    net_server_socket_free, net_server_socket_read_write, net_server_socket_reader,
+    net_server_socket_writer, new_conn_generation, schedule_job, server_check_ready, server_failed,
+    server_flush, server_noop, unlock_job,
+};
 use ::core::ffi::{c_char, c_double, c_int, c_longlong, c_uint, c_void};
 use ::core::mem::size_of;
 use ::core::ptr;
@@ -206,52 +243,12 @@ unsafe extern "C" {
     static mut epoll_fd: c_int;
     static mut Events: [EventDescr; MAX_EVENTS];
 
-    #[allow(clashing_extern_declarations)]
-    fn create_async_job(
-        run_job: JobFunction,
-        job_signals: u64,
-        job_subclass: c_int,
-        custom_bytes: c_int,
-        job_type: u64,
-        parent_job_tag_int: c_int,
-        parent_job: Job,
-    ) -> Job;
-    #[allow(clashing_extern_declarations)]
-    fn unlock_job(job_tag_int: c_int, job: Job) -> c_int;
-    fn job_incref(job: Job) -> Job;
-    fn job_decref(job_tag_int: c_int, job: Job);
-    fn job_signal(job_tag_int: c_int, job: Job, signo: c_int);
-    #[allow(clashing_extern_declarations)]
-    fn schedule_job(job_tag_int: c_int, job: Job) -> c_int;
-    fn job_timer_insert(job: Job, timeout: c_double);
-    fn job_timer_remove(job: Job);
-    fn job_timer_check(job: Job) -> c_int;
-    #[allow(clashing_extern_declarations)]
-    fn job_timer_init(job: Job);
-    fn mtproxy_ffi_net_connections_job_free(job: Job) -> c_int;
-
     fn kprintf(format: *const c_char, ...);
     fn show_ipv6(ipv6: *const u8) -> *const c_char;
     fn inet_ntoa(in_addr: in_addr) -> *mut c_char;
 
-    fn do_connection_job(job: Job, op: c_int, jt: *mut c_void) -> c_int;
-    fn do_listening_connection_job(job: Job, op: c_int, jt: *mut c_void) -> c_int;
-    fn do_socket_connection_job(job: Job, op: c_int, jt: *mut c_void) -> c_int;
-    fn do_conn_target_job(job: Job, op: c_int, jt: *mut c_void) -> c_int;
-
-    fn net_server_socket_read_write(c: ConnectionJob) -> c_int;
-    fn net_server_socket_reader(c: ConnectionJob) -> c_int;
-    fn net_server_socket_writer(c: ConnectionJob) -> c_int;
-    fn net_server_socket_free(c: ConnectionJob) -> c_int;
-    fn net_accept_new_connections(c: ConnectionJob) -> c_int;
-    fn net_server_socket_read_write_gateway(
-        fd: c_int,
-        data: *mut c_void,
-        ev: *mut EventDescr,
-    ) -> c_int;
     fn alloc_mp_queue_w() -> *mut MpQueue;
     fn free_mp_queue(mq: *mut MpQueue);
-    fn mtproxy_ffi_net_connections_mpq_push_w(mq: *mut MpQueue, x: *mut c_void, flags: c_int);
     #[allow(clashing_extern_declarations)]
     #[link_name = "mtproxy_ffi_net_msg_buffers_alloc"]
     fn alloc_msg_buffer(neighbor: *mut MsgBuffer, size_hint: c_int) -> *mut MsgBuffer;
@@ -269,17 +266,11 @@ unsafe extern "C" {
     fn epoll_insert(fd: c_int, flags: c_int) -> c_int;
     fn epoll_remove(fd: c_int) -> c_int;
     fn remove_event_from_heap(ev: *mut EventDescr, allow_hole: c_int) -> c_int;
-    fn mtproxy_ffi_net_connections_mpq_pop_nw(mq: *mut MpQueue, flags: c_int) -> *mut c_void;
-    fn mtproxy_ffi_net_connections_rwm_union(raw: *mut RawMessage, tail: *mut RawMessage) -> c_int;
-
-    fn server_noop(c: ConnectionJob) -> c_int;
-    fn server_failed(c: ConnectionJob) -> c_int;
-    fn server_flush(c: ConnectionJob) -> c_int;
-    fn server_check_ready(c: ConnectionJob) -> c_int;
-
-    fn cpu_server_close_connection(c: ConnectionJob, who: c_int) -> c_int;
-    fn cpu_server_read_write(c: ConnectionJob) -> c_int;
-    fn cpu_server_free_connection(c: ConnectionJob) -> c_int;
+    fn net_server_socket_read_write_gateway(
+        fd: c_int,
+        data: *mut c_void,
+        ev: *mut EventDescr,
+    ) -> c_int;
     #[link_name = "mtproxy_ffi_net_tcp_connections_cpu_tcp_free_connection_buffers"]
     fn cpu_tcp_free_connection_buffers(c: ConnectionJob) -> c_int;
     #[link_name = "mtproxy_ffi_net_tcp_connections_cpu_tcp_server_reader"]
@@ -287,42 +278,10 @@ unsafe extern "C" {
     #[link_name = "mtproxy_ffi_net_tcp_connections_cpu_tcp_server_writer"]
     fn cpu_tcp_server_writer(c: ConnectionJob) -> c_int;
 
-    fn mtproxy_ffi_net_connections_precise_now() -> c_double;
     fn drand48_j() -> c_double;
-    fn mtproxy_ffi_net_connections_stats_add(
-        allocated_socket_connections_delta: c_int,
-        accept_calls_failed_delta: c_longlong,
-        inbound_connections_accepted_delta: c_longlong,
-        accept_rate_limit_failed_delta: c_longlong,
-    );
-    fn mtproxy_ffi_net_connections_accept_rate_get_max() -> c_int;
-    fn mtproxy_ffi_net_connections_accept_rate_get_state(
-        out_remaining: *mut c_double,
-        out_time: *mut c_double,
-    );
-    fn mtproxy_ffi_net_connections_accept_rate_set_state(remaining: c_double, time: c_double);
-    fn mtproxy_ffi_net_connections_get_max_connection_fd() -> c_int;
-    fn mtproxy_ffi_net_connections_get_max_connection() -> c_int;
-    fn mtproxy_ffi_net_connections_set_max_connection(value: c_int);
-    fn mtproxy_ffi_net_connections_register_special_listen_socket(fd: c_int, generation: c_int);
-    fn mtproxy_ffi_net_connections_stat_inc_listening();
-    fn mtproxy_ffi_net_connections_stats_add_ready(
-        ready_outbound_delta: c_int,
-        ready_targets_delta: c_int,
-    );
-    fn mtproxy_ffi_net_connections_stats_add_targets(
-        active_targets_delta: c_int,
-        inactive_targets_delta: c_int,
-    );
-    fn mtproxy_ffi_net_connections_stat_add_allocated_targets(delta: c_int);
-    fn mtproxy_ffi_net_connections_stat_target_freed();
-    fn mtproxy_ffi_net_connections_stat_free_later_enqueued();
-    fn mtproxy_ffi_net_connections_stat_free_later_dequeued();
-    fn mtproxy_ffi_net_connections_free_target(ctj: ConnTargetJob) -> c_int;
-    fn new_conn_generation() -> c_int;
+    fn lrand48_j() -> libc::c_long;
     fn client_socket(in_addr: u32, port: c_int, mode: c_int) -> c_int;
     fn client_socket_ipv6(in6_addr_ptr: *const u8, port: c_int, mode: c_int) -> c_int;
-    fn lrand48_j() -> libc::c_long;
     static mut tcp_maximize_buffers: c_int;
     static mut verbosity: c_int;
     static mut active_special_connections: c_int;
@@ -358,49 +317,6 @@ unsafe extern "C" {
     ) -> *mut TreeConnection;
     fn tree_free_connection(tree: *mut TreeConnection);
     fn free_tree_ptr_connection(tree: *mut TreeConnection);
-    fn mtproxy_ffi_net_connections_stat_inc_accept_nonblock_set_failed();
-    fn mtproxy_ffi_net_connections_stat_inc_accept_connection_limit_failed();
-    fn mtproxy_ffi_net_connections_stats_add_alloc_connection_success(
-        outbound_delta: c_int,
-        allocated_outbound_delta: c_int,
-        outbound_created_delta: c_int,
-        inbound_accepted_delta: c_int,
-        allocated_inbound_delta: c_int,
-        inbound_delta: c_int,
-        active_inbound_delta: c_int,
-        active_connections_delta: c_int,
-    );
-    fn mtproxy_ffi_net_connections_stat_inc_allocated_connections();
-    fn mtproxy_ffi_net_connections_stat_inc_accept_init_accepted_failed();
-    fn mtproxy_ffi_net_connections_job_thread_dec_jobs_active();
-    fn mtproxy_ffi_net_connections_stats_add_tcp_read(
-        calls_delta: c_longlong,
-        intr_delta: c_longlong,
-        bytes_delta: c_longlong,
-    );
-    fn mtproxy_ffi_net_connections_stats_add_tcp_write(
-        calls_delta: c_longlong,
-        intr_delta: c_longlong,
-        bytes_delta: c_longlong,
-    );
-    fn mtproxy_ffi_net_connections_stats_add_close_failure(
-        total_failed_delta: c_int,
-        total_connect_failures_delta: c_int,
-        unused_closed_delta: c_int,
-    );
-    fn mtproxy_ffi_net_connections_stat_dec_active_dh();
-    fn mtproxy_ffi_net_connections_stats_add_close_basic(
-        outbound_delta: c_int,
-        inbound_delta: c_int,
-        active_outbound_delta: c_int,
-        active_inbound_delta: c_int,
-        active_connections_delta: c_int,
-    );
-    fn mtproxy_ffi_net_connections_close_connection_signal_special_aux();
-    fn mtproxy_ffi_net_connections_stats_add_free_connection_counts(
-        allocated_outbound_delta: c_int,
-        allocated_inbound_delta: c_int,
-    );
 }
 
 #[inline]

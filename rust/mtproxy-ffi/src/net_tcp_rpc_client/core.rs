@@ -244,8 +244,6 @@ struct CryptoTempDhParams {
 }
 
 unsafe extern "C" {
-    fn mtproxy_ffi_net_connections_precise_now() -> c_double;
-
     fn fail_connection(c: ConnectionJob, who: c_int);
     fn cpu_server_close_connection(c: ConnectionJob, who: c_int) -> c_int;
     fn notification_event_insert_tcp_conn_ready(c: ConnectionJob);
@@ -383,7 +381,7 @@ unsafe fn send_data(c: ConnectionJob, data: *const u8, len: usize) {
 
 #[inline]
 fn precise_now_value() -> c_double {
-    unsafe { mtproxy_ffi_net_connections_precise_now() }
+    crate::net_connections::precise_now_rust()
 }
 
 #[inline]

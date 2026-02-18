@@ -70,9 +70,19 @@ ${EXE}/mtproto-proxy: ${RUST_OBJECTS} ${LIB}/libkdb.a ${RUST_FFI_STATICLIB}
 
 ${RUST_FFI_STATICLIB}: Cargo.toml Cargo.lock rust/mtproxy-core/Cargo.toml rust/mtproxy-ffi/Cargo.toml ${RUST_RS_SOURCES}
 	cargo build  -p mtproxy-ffi
+	@if [ ! -f "$@" ]; then \
+		latest="$$(ls -1t target/debug/deps/libmtproxy_ffi-*.a 2>/dev/null | head -n1)"; \
+		test -n "$$latest"; \
+		cp "$$latest" "$@"; \
+	fi
 
 ${RUST_FFI_STATICLIB_RELEASE}: Cargo.toml Cargo.lock rust/mtproxy-core/Cargo.toml rust/mtproxy-ffi/Cargo.toml ${RUST_RS_SOURCES}
 	cargo build --release -p mtproxy-ffi
+	@if [ ! -f "$@" ]; then \
+		latest="$$(ls -1t target/release/deps/libmtproxy_ffi-*.a 2>/dev/null | head -n1)"; \
+		test -n "$$latest"; \
+		cp "$$latest" "$@"; \
+	fi
 
 ${RUST_RUNTIME_RELEASE}: Cargo.toml Cargo.lock rust/mtproxy-bin/Cargo.toml rust/mtproxy-core/Cargo.toml ${RUST_RS_SOURCES}
 	cargo build --release -p mtproxy-bin --bin mtproxy-rust

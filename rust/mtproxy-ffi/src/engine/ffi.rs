@@ -3,11 +3,6 @@
 use super::core::*;
 use core::ffi::{c_char, c_double, c_int, c_void};
 
-unsafe extern "C" {
-    fn check_conn_functions(type_: *mut c_void, listening: c_int) -> c_int;
-    fn usage() -> !;
-}
-
 static mut MAIN_THREAD_PIPE_READ_END: c_int = 0;
 static mut MAIN_THREAD_PIPE_WRITE_END: c_int = 0;
 
@@ -498,14 +493,16 @@ pub extern "C" fn mtproxy_ffi_engine_precise_now_value() -> c_double {
 
 /// Checks connection functions (migrated from engine/engine.c)
 #[no_mangle]
+#[cfg(feature = "c-abi")]
 pub unsafe extern "C" fn mtproxy_ffi_engine_check_conn_functions_bridge(
     conn_type: *mut c_void,
 ) -> c_int {
-    unsafe { check_conn_functions(conn_type, 1) }
+    unsafe { crate::net_connections::check_conn_functions_bridge(conn_type) }
 }
 
 /// Prints usage information (migrated from engine/engine.c)
 #[no_mangle]
+#[cfg(feature = "c-abi")]
 pub unsafe extern "C" fn mtproxy_ffi_engine_usage_bridge() -> ! {
-    unsafe { usage() }
+    unsafe { crate::mtproto::usage_or_exit() }
 }

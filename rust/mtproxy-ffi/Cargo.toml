@@ -9,6 +9,10 @@ publish.workspace = true
 path = "src/lib.rs"
 crate-type = ["staticlib", "rlib"]
 
+[features]
+default = ["c-abi"]
+c-abi = []
+
 [dependencies]
 aes = "0.8"
 cbc = "0.1"

@@ -13,10 +13,122 @@ unsafe extern "C" {
     fn mpq_push_w(mq: *mut MpQueue, val: *mut c_void, flags: c_int) -> c_long;
     fn mpq_pop_nw(mq: *mut MpQueue, flags: c_int) -> *mut c_void;
     fn rwm_union(raw: *mut RawMessage, tail: *mut RawMessage) -> c_int;
-    fn job_incref(job: *mut c_void) -> *mut c_void;
-    fn job_signal(job_tag_int: c_int, job: *mut c_void, signal: c_int);
+    #[allow(clashing_extern_declarations)]
+    #[link_name = "create_async_job"]
+    fn ffi_create_async_job(
+        run_job: JobFunction,
+        job_signals: u64,
+        job_subclass: c_int,
+        custom_bytes: c_int,
+        job_type: u64,
+        parent_job_tag_int: c_int,
+        parent_job: Job,
+    ) -> Job;
+    #[allow(clashing_extern_declarations)]
+    #[link_name = "unlock_job"]
+    fn ffi_unlock_job(job_tag_int: c_int, job: Job) -> c_int;
+    #[link_name = "job_incref"]
+    fn ffi_job_incref(job: Job) -> Job;
+    #[link_name = "job_decref"]
+    fn ffi_job_decref(job_tag_int: c_int, job: Job);
+    #[link_name = "job_signal"]
+    fn ffi_job_signal(job_tag_int: c_int, job: Job, signal: c_int);
+    #[allow(clashing_extern_declarations)]
+    #[link_name = "schedule_job"]
+    fn ffi_schedule_job(job_tag_int: c_int, job: Job) -> c_int;
+    #[link_name = "job_timer_insert"]
+    fn ffi_job_timer_insert(job: Job, timeout: c_double);
+    #[link_name = "job_timer_remove"]
+    fn ffi_job_timer_remove(job: Job);
+    #[link_name = "job_timer_check"]
+    fn ffi_job_timer_check(job: Job) -> c_int;
+    #[allow(clashing_extern_declarations)]
+    #[link_name = "job_timer_init"]
+    fn ffi_job_timer_init(job: Job);
+    #[link_name = "mtproxy_ffi_net_connections_job_free"]
+    fn ffi_net_connections_job_free(job: Job) -> c_int;
+    #[link_name = "mtproxy_ffi_net_connections_job_thread_dec_jobs_active"]
+    fn ffi_net_connections_job_thread_dec_jobs_active();
     static mut active_special_connections: c_int;
     static mut max_special_connections: c_int;
+}
+
+#[inline]
+pub(super) unsafe fn create_async_job(
+    run_job: JobFunction,
+    job_signals: u64,
+    job_subclass: c_int,
+    custom_bytes: c_int,
+    job_type: u64,
+    parent_job_tag_int: c_int,
+    parent_job: Job,
+) -> Job {
+    unsafe {
+        ffi_create_async_job(
+            run_job,
+            job_signals,
+            job_subclass,
+            custom_bytes,
+            job_type,
+            parent_job_tag_int,
+            parent_job,
+        )
+    }
+}
+
+#[inline]
+pub(super) unsafe fn unlock_job(job_tag_int: c_int, job: Job) -> c_int {
+    unsafe { ffi_unlock_job(job_tag_int, job) }
+}
+
+#[inline]
+pub(super) unsafe fn job_incref(job: Job) -> Job {
+    unsafe { ffi_job_incref(job) }
+}
+
+#[inline]
+pub(super) unsafe fn job_decref(job_tag_int: c_int, job: Job) {
+    unsafe { ffi_job_decref(job_tag_int, job) };
+}
+
+#[inline]
+pub(super) unsafe fn job_signal(job_tag_int: c_int, job: Job, signal: c_int) {
+    unsafe { ffi_job_signal(job_tag_int, job, signal) };
+}
+
+#[inline]
+pub(super) unsafe fn schedule_job(job_tag_int: c_int, job: Job) -> c_int {
+    unsafe { ffi_schedule_job(job_tag_int, job) }
+}
+
+#[inline]
+pub(super) unsafe fn job_timer_insert(job: Job, timeout: c_double) {
+    unsafe { ffi_job_timer_insert(job, timeout) };
+}
+
+#[inline]
+pub(super) unsafe fn job_timer_remove(job: Job) {
+    unsafe { ffi_job_timer_remove(job) };
+}
+
+#[inline]
+pub(super) unsafe fn job_timer_check(job: Job) -> c_int {
+    unsafe { ffi_job_timer_check(job) }
+}
+
+#[inline]
+pub(super) unsafe fn job_timer_init(job: Job) {
+    unsafe { ffi_job_timer_init(job) };
+}
+
+#[inline]
+pub(super) unsafe fn mtproxy_ffi_net_connections_job_free(job: Job) -> c_int {
+    unsafe { ffi_net_connections_job_free(job) }
+}
+
+#[inline]
+pub(super) unsafe fn mtproxy_ffi_net_connections_job_thread_dec_jobs_active() {
+    unsafe { ffi_net_connections_job_thread_dec_jobs_active() };
 }
 
 #[repr(C)]
@@ -304,6 +416,7 @@ pub unsafe extern "C" fn server_flush(c: ConnectionJob) -> c_int {
 }
 
 #[no_mangle]
+#[cfg(feature = "c-abi")]
 pub unsafe extern "C" fn check_conn_functions(type_: *mut ConnType, listening: c_int) -> c_int {
     unsafe { check_conn_functions_impl(type_, listening) }
 }

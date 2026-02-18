@@ -224,8 +224,6 @@ pub(super) struct TcpRpcData {
 }
 
 unsafe extern "C" {
-    fn mtproxy_ffi_net_connections_precise_now() -> c_double;
-
     fn rwm_clone(dest_raw: *mut RawMessage, src_raw: *mut RawMessage);
     fn rwm_push_data(raw: *mut RawMessage, data: *const c_void, alloc_bytes: c_int) -> c_int;
     fn rwm_push_data_front(raw: *mut RawMessage, data: *const c_void, alloc_bytes: c_int) -> c_int;
@@ -271,7 +269,7 @@ unsafe fn rpc_data(c: ConnectionJob) -> *mut TcpRpcData {
 
 #[inline]
 unsafe fn precise_now_value() -> c_double {
-    unsafe { mtproxy_ffi_net_connections_precise_now() }
+    crate::net_connections::precise_now_rust()
 }
 
 #[inline]

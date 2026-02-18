@@ -416,7 +416,6 @@ unsafe extern "C" {
         peer_ipv6: *mut u8,
         peer_port: c_int,
     ) -> ConnectionJob;
-    fn check_conn_functions(type_: *mut ConnFunctions, listening: c_int) -> c_int;
 
     fn rwm_fetch_lookup(raw: *mut RawMessage, buf: *mut c_void, bytes: c_int) -> c_int;
     fn rwm_move(dest_raw: *mut RawMessage, src_raw: *mut RawMessage);
@@ -440,7 +439,6 @@ unsafe extern "C" {
     fn fail_connection(c: ConnectionJob, who: c_int);
     fn tcp_rpcs_parse_execute(c: ConnectionJob) -> c_int;
     fn tcp_rpcs_default_execute(c: ConnectionJob, op: c_int, msg: *mut RawMessage) -> c_int;
-    fn mtproxy_ffi_net_connections_precise_now() -> c_double;
 
     fn aes_crypto_ctr128_init(
         c: ConnectionJob,
@@ -487,7 +485,7 @@ unsafe fn rpc_funcs(c: ConnectionJob) -> *mut TcpRpcServerFunctions {
 
 #[inline]
 unsafe fn precise_now_value() -> c_double {
-    unsafe { mtproxy_ffi_net_connections_precise_now() }
+    crate::net_connections::precise_now_rust()
 }
 
 #[inline]
@@ -2461,7 +2459,13 @@ pub(super) unsafe fn proxy_connection_impl(c: ConnectionJob, info: *const Domain
     }
 
     let conn = unsafe { conn_info(c) };
-    assert!(unsafe { check_conn_functions(ptr::addr_of_mut!(ct_proxy_pass), 0) } >= 0);
+    assert!(
+        unsafe {
+            crate::net_connections::check_conn_functions_bridge(
+                ptr::addr_of_mut!(ct_proxy_pass).cast::<c_void>(),
+            )
+        } >= 0
+    );
 
     let info_ref = unsafe { &*info };
     if info_ref.target.s_addr == 0 && info_ref.target_ipv6.iter().all(|&x| x == 0) {

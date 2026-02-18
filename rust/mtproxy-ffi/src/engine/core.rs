@@ -323,9 +323,6 @@ unsafe extern "C" {
     fn mtproxy_ffi_engine_precise_now_value() -> c_double;
     static mut verbosity: c_int;
 
-    fn mtproxy_ffi_engine_check_conn_functions_bridge(conn_type: *mut c_void) -> c_int;
-    fn add_builtin_parse_options();
-    fn parse_engine_options_long(argc: c_int, argv: *mut *mut c_char) -> c_int;
     fn rust_sf_register_parse_option_ex_or_die(
         name: *const c_char,
         arg: c_int,
@@ -334,8 +331,6 @@ unsafe extern "C" {
         func: ParseOptionFn,
         help: *const c_char,
     );
-    fn mtproxy_ffi_engine_usage_bridge();
-    fn server_init(listen_connection_type: *mut c_void, listen_connection_extra: *mut c_void);
     fn server_socket(port: c_int, in_addr: libc::in_addr, backlog: c_int, mode: c_int) -> c_int;
     fn mtproxy_ffi_engine_rpc_engine_tl_init(
         parse: ParseFn,
@@ -344,7 +339,6 @@ unsafe extern "C" {
         timeout: c_double,
     );
     fn init_epoll();
-    fn engine_rpc_stats(tlio_out: *mut c_void);
 
     fn set_debug_handlers();
     fn mtproxy_ffi_engine_signal_set_pending(sig: c_int);
@@ -392,7 +386,6 @@ unsafe extern "C" {
     fn init_msg_buffers(max_buffer_bytes: c_long) -> c_int;
     fn init_async_jobs() -> c_int;
     fn create_new_job_class(job_class: c_int, min_threads: c_int, max_threads: c_int) -> c_int;
-    fn create_main_thread_pipe();
     fn alloc_timer_manager(thread_class: c_int) -> Job;
     fn notification_event_job_create();
     fn tcp_set_default_rpc_flags(mask: c_uint, flags: c_int);
@@ -466,6 +459,8 @@ unsafe extern "C" {
 
 static mut LAST_CRON_TIME: c_int = 0;
 static mut ENGINE_STATS_DATA_BUF: [c_char; DATA_BUF_SIZE + 1] = [0; DATA_BUF_SIZE + 1];
+static mut MAIN_THREAD_PIPE_READ_END: c_int = 0;
+static mut MAIN_THREAD_PIPE_WRITE_END: c_int = 0;
 
 unsafe extern "C" fn default_tcp_execute_bridge(
     c: *mut c_void,
@@ -477,6 +472,10 @@ unsafe extern "C" fn default_tcp_execute_bridge(
 
 unsafe extern "C" fn default_tcp_close_bridge(c: *mut c_void, who: c_int) -> c_int {
     unsafe { mtproxy_ffi_engine_rpc_default_tl_close_conn(c, who) }
+}
+
+unsafe extern "C" fn engine_rpc_stats_bridge(tlio_out: *mut c_void) {
+    unsafe { engine_rpc_stats_impl(tlio_out) };
 }
 
 static mut DEFAULT_ENGINE_TCP_RPC_METHODS: TcpRpcServerFunctions = TcpRpcServerFunctions {
@@ -1105,9 +1104,10 @@ pub(super) unsafe extern "C" fn engine_set_http_fallback_impl(
 
 pub(super) unsafe extern "C" fn engine_server_init_impl() {
     unsafe {
-        server_init(
+        server_init_impl(
             ptr::addr_of_mut!(ct_tcp_rpc_server).cast::<c_void>(),
             ptr::addr_of_mut!(DEFAULT_ENGINE_TCP_RPC_METHODS).cast::<c_void>(),
+            MAIN_THREAD_PIPE_READ_END,
         );
     }
 }
@@ -1135,15 +1135,15 @@ unsafe extern "C" fn parse_option_net_impl(val: c_int) -> c_int {
                 &mut end_port,
             );
             if parsed == 0 {
-                mtproxy_ffi_engine_usage_bridge();
+                crate::mtproto::usage_or_exit();
             } else if parsed == 1 {
                 if start_port <= 0 {
-                    mtproxy_ffi_engine_usage_bridge();
+                    crate::mtproto::usage_or_exit();
                 }
                 (*e).port = start_port;
             } else {
                 if start_port <= 0 || start_port > end_port {
-                    mtproxy_ffi_engine_usage_bridge();
+                    crate::mtproto::usage_or_exit();
                 }
                 (*e).start_port = start_port;
                 (*e).end_port = end_port;
@@ -1184,8 +1184,7 @@ unsafe extern "C" fn parse_option_net_impl(val: c_int) -> c_int {
         },
         372 => unsafe {
             if net_add_nat_info(optarg) < 0 {
-                mtproxy_ffi_engine_usage_bridge();
-                libc::exit(2);
+                crate::mtproto::usage_or_exit();
             }
         },
         373 => unsafe {
@@ -1907,7 +1906,7 @@ pub(super) unsafe extern "C" fn default_parse_extra_args_impl(
     if argc != 0 {
         unsafe {
             vkprintf_no_args(0, EXTRA_ARGS_FMT.as_ptr().cast());
-            mtproxy_ffi_engine_usage_bridge();
+            crate::mtproto::usage_or_exit();
         }
     }
 }
@@ -2027,7 +2026,10 @@ pub(super) unsafe fn engine_init_impl(pwd_filename: *const c_char, do_not_open_p
             create_new_job_class(JC_ENGINE, 1, 1);
         }
 
-        create_main_thread_pipe();
+        create_main_thread_pipe_impl(
+            &raw mut MAIN_THREAD_PIPE_READ_END,
+            &raw mut MAIN_THREAD_PIPE_WRITE_END,
+        );
         alloc_timer_manager(JC_EPOLL);
         notification_event_job_create();
     }
@@ -2299,7 +2301,7 @@ pub(super) unsafe fn default_main_impl(
             http_type = ptr::addr_of_mut!(ct_http_server).cast();
         }
         unsafe {
-            assert!(mtproxy_ffi_engine_check_conn_functions_bridge(http_type) >= 0);
+            assert!(crate::net_connections::check_conn_functions_bridge(http_type) >= 0);
             engine_set_http_fallback_impl(http_type, (*f).http_functions);
         }
     }
@@ -2319,7 +2321,7 @@ pub(super) unsafe fn default_main_impl(
     }
 
     unsafe {
-        add_builtin_parse_options();
+        crate::server_functions::add_builtin_parse_options_or_die_rust();
     }
 
     if let Some(prepare_parse_options) = unsafe { (*f).prepare_parse_options } {
@@ -2329,7 +2331,7 @@ pub(super) unsafe fn default_main_impl(
     }
 
     unsafe {
-        parse_engine_options_long(argc, argv);
+        crate::server_functions::parse_engine_options_long_or_die_rust(argc, argv);
     }
 
     let optind_val = unsafe { optind };
@@ -2383,7 +2385,7 @@ pub(super) unsafe fn default_main_impl(
     unsafe {
         mtproxy_ffi_engine_rpc_engine_tl_init(
             (*f).parse_function,
-            Some(engine_rpc_stats),
+            Some(engine_rpc_stats_bridge),
             (*f).get_op,
             (*f).aio_timeout,
         );

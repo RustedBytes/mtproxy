@@ -4,9 +4,6 @@ use super::core::*;
 
 unsafe extern "C" {
     fn kprintf(format: *const c_char, ...);
-    fn engine_add_net_parse_options();
-    fn engine_add_engine_parse_options();
-    fn default_parse_option_func(a: c_int) -> c_int;
 }
 
 const LONGOPT_CUSTOM_SET: u32 = 0x1000_0000;
@@ -69,7 +66,7 @@ pub unsafe extern "C" fn rust_sf_register_parse_option_ex_or_die(
     func: Option<unsafe extern "C" fn(c_int) -> c_int>,
     help: *const c_char,
 ) {
-    let effective_func = func.or(Some(default_parse_option_func));
+    let effective_func = func.or(Some(crate::engine::default_parse_option_func_rust));
     if unsafe { rust_sf_parse_option_add(name, arg, val, flags, effective_func, help) } < 0 {
         unsafe {
             crate::kprintf_fmt!(
@@ -99,7 +96,7 @@ pub unsafe extern "C" fn rust_sf_register_parse_option_or_die(
             arg,
             val,
             LONGOPT_CUSTOM_SET,
-            Some(default_parse_option_func),
+            Some(crate::engine::default_parse_option_func_rust),
             help,
         )
     } < 0
@@ -321,8 +318,8 @@ pub extern "C" fn add_builtin_parse_options() {
     }
 
     unsafe {
-        engine_add_net_parse_options();
-        engine_add_engine_parse_options();
+        crate::engine::engine_add_net_parse_options_rust();
+        crate::engine::engine_add_engine_parse_options_rust();
     }
 }
 
