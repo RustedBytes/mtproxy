@@ -1003,7 +1003,7 @@ pub fn parse_engine_options_long(args: &[String]) -> Result<(), ParseEngineOptio
     Ok(())
 }
 
-/// Adds built-in parse options from the legacy C parser.
+/// Adds built-in parse options from the runtime parser.
 pub fn add_builtin_parse_options() -> Result<(), ParseOptionError> {
     parse_option_builtin(
         "verbosity",
@@ -1078,7 +1078,7 @@ pub fn add_builtin_parse_options() -> Result<(), ParseOptionError> {
     Ok(())
 }
 
-/// Mirrors the default weak C helper.
+/// Mirrors the default weak helper.
 pub fn engine_set_terminal_attributes() {}
 
 /// Prints default usage and exits with code 2.
@@ -1177,7 +1177,7 @@ extern "C" fn extended_debug_handler(
     process::exit(libc::EXIT_FAILURE);
 }
 
-/// Installs crash-signal handlers mirroring `set_debug_handlers()` in C.
+/// Installs crash-signal handlers mirroring `set_debug_handlers()`.
 pub fn set_debug_handlers() {
     ksignal_ex(libc::SIGSEGV, extended_debug_handler);
     ksignal_ex(libc::SIGABRT, extended_debug_handler);

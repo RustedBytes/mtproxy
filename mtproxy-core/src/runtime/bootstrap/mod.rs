@@ -1,3 +1,3 @@
-//! Bootstrap/runtime helpers ported from `common/server-functions.c`.
+//! Bootstrap and runtime helpers.
 
 pub mod server_functions;

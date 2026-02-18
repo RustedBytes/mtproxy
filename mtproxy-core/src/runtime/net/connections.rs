@@ -1,4 +1,4 @@
-//! Helpers ported from `net/net-connections.c`.
+//! Runtime helpers.
 
 use core::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
 

@@ -1,4 +1,4 @@
-//! Helpers ported from `net/net-msg-buffers.c`.
+//! Runtime helpers.
 
 /// Picks a message-buffer size-class index using the original C policy.
 #[must_use]

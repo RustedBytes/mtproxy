@@ -1,4 +1,4 @@
-//! `MTProto` runtime helpers ported from `mtproto/*.c`.
+//! `MTProto` runtime helpers.
 
 pub mod config;
 pub mod proxy;

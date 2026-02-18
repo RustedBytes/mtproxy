@@ -1,4 +1,4 @@
-//! Helpers ported from `net/net-config.c`.
+//! Runtime helpers.
 
 const MAX_EXTRA_KEY_SIGNATURES: usize = 16;
 

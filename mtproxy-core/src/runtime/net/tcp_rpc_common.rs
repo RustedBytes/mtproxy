@@ -1,4 +1,4 @@
-//! Helpers ported from `net/net-tcp-rpc-common.c`.
+//! Runtime helpers.
 
 use alloc::vec::Vec;
 
@@ -41,7 +41,7 @@ impl RpcPacketType {
 
 /// Process identifier for RPC connections (IP address + port + PID).
 ///
-/// This matches the legacy C `struct process_id` layout.
+/// This matches the `process_id` wire layout.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[repr(C)]
 pub struct ProcessId {

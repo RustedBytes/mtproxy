@@ -2,7 +2,7 @@
 
 ## Overview
 
-This module provides idiomatic Rust implementations of the RPC (Remote Procedure Call) client and server protocols used in MTProxy. The implementation is based on the C code in `net/net-tcp-rpc-{client,server,common}.c` but uses Rust idioms for safety and clarity.
+This module provides idiomatic Rust implementations of the RPC (Remote Procedure Call) client and server protocols used in MTProxy. The implementation follows the established RPC behavior while using Rust idioms for safety and clarity.
 
 ## Features
 
@@ -207,7 +207,7 @@ let (decoded_len, header_bytes) = decode_compact_header(first_byte, remaining).u
 
 ## FFI Integration
 
-The RPC implementation is integrated with the C codebase through the FFI layer in `mtproxy-ffi`. The following functions are exported:
+The RPC implementation has FFI wrappers in `mtproxy-ffi`. The following functions are exported:
 
 - `mtproxy_ffi_tcp_rpc_encode_compact_header()`
 - `mtproxy_ffi_tcp_rpc_client_packet_len_state()`
@@ -237,11 +237,10 @@ The current implementation provides the core data structures, state machines, an
 3. Connection pool management
 4. Rate limiting for DH accepts
 5. HTTP/Memcache fallback protocol support
-6. Complete migration of connection handlers from C to Rust
+6. Complete remaining connection handlers
 7. Async packet I/O with tokio integration
 
 ## References
 
-- C Implementation: `net/net-tcp-rpc-client.c`, `net/net-tcp-rpc-server.c`
 - Protocol Documentation: TBD
 - FFI Boundary: `mtproxy-ffi/BOUNDARY.md`

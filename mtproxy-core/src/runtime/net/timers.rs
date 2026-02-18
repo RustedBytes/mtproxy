@@ -1,4 +1,4 @@
-//! Helpers ported from `net/net-timers.c`.
+//! Runtime helpers.
 
 /// Computes milliseconds until wakeup using current C timer policy.
 #[must_use]

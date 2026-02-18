@@ -1,4 +1,4 @@
-//! Helpers ported from `common/resolver.c`.
+//! Runtime helpers.
 //!
 //! This module keeps filesystem and libc DNS I/O outside `mtproxy-core` and
 //! ports the deterministic resolver logic:
@@ -10,7 +10,6 @@
 use alloc::vec;
 use alloc::vec::Vec;
 
-pub const C_TRANSLATION_UNIT: &str = "common/resolver.c";
 pub const HOSTS_FILE: &str = "/etc/hosts";
 pub const MAX_HOSTS_SIZE: usize = 1 << 24;
 pub const MAX_HOSTNAME_LEN: usize = 64;
@@ -50,11 +49,11 @@ pub enum BuildHostsError {
 pub enum HostLookupPlan<'a> {
     /// `name` is `[ipv6-literal]`; strip brackets and use `AF_INET6`.
     Ipv6Literal(&'a [u8]),
-    /// Defer to libc/system resolver (`gethostbyname*` path in C).
+    /// Defer to libc/system resolver (`gethostbyname*` path).
     SystemDns(&'a [u8]),
     /// Name resolved from loaded `/etc/hosts` cache.
     HostsIpv4(u32),
-    /// No dot/colon and absent in hosts table, so C returns `0`.
+    /// No dot/colon and absent in hosts table, so return `0`.
     NotFound,
 }
 
@@ -207,7 +206,7 @@ impl ResolverState {
         self.hosts_metadata
     }
 
-    /// Mirrors `kdb_load_hosts()` return semantics from C:
+    /// Return semantics for `kdb_load_hosts()`:
     /// - `-1`: load failed and no previously loaded cache exists
     /// - `0`: unchanged or load failed while old cache remains active
     /// - `1`: cache loaded/reloaded successfully
@@ -278,7 +277,7 @@ impl ResolverState {
         }
     }
 
-    /// C-equivalent lazy path: load hosts once on the first lookup when state
+    /// Lazy path: load hosts once on the first lookup when state
     /// is still `0`.
     #[must_use]
     pub fn kdb_gethostbyname_plan_with_lazy_load<'a, F>(
@@ -308,7 +307,7 @@ pub const fn host_ip_to_network_order(ip: u32) -> u32 {
     ip.to_be()
 }
 
-/// Extracts hostname token from `/etc/hostname` file bytes using C rules:
+/// Extracts hostname token from `/etc/hostname` file bytes using runtime rules:
 /// - reject `<= 0` or `>= 256` bytes
 /// - skip leading spaces/tabs
 /// - take bytes while `byte > 32`

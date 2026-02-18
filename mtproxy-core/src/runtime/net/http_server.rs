@@ -1,4 +1,4 @@
-//! Helpers ported from `net/net-http-server.c`.
+//! Runtime helpers.
 
 const HTTP_OK: &[u8] = b"OK\0";
 const HTTP_CREATED: &[u8] = b"Created\0";
@@ -87,7 +87,7 @@ const fn is_leap_year_div4(year: i32) -> bool {
     year.trailing_zeros() >= 2
 }
 
-/// Formats unix time to legacy HTTP date representation (`29` bytes, no trailing NUL).
+/// Formats unix time to HTTP date representation (`29` bytes, no trailing NUL).
 #[must_use]
 pub fn gen_http_date(mut time: i32) -> [u8; HTTP_DATE_LEN] {
     if time < 0 {
@@ -273,7 +273,7 @@ fn scanf_like_parse_http_time(date_text: &str) -> Result<ParsedHttpDateTime<'_>,
     Ok((day, month, year, hour, min, sec, tz))
 }
 
-/// Parses legacy HTTP date to unix time.
+/// Parses HTTP date to unix time.
 ///
 /// Error codes mirror C `gen_http_time()` semantics.
 pub fn gen_http_time(date_text: &str) -> Result<i32, i32> {

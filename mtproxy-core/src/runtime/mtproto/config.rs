@@ -311,7 +311,7 @@ pub enum MtprotoDirectiveParseError {
     InternalClusterExtendInvariant,
 }
 
-/// Parsed directive token classification for incremental C-loop migration.
+/// Parsed directive token classification for incremental parser loop refactor.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MtprotoDirectiveTokenKind {
     Eof = 0,

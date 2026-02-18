@@ -1,6 +1,5 @@
-//! Helpers ported from `net/net-msg.c`.
+//! Runtime helpers.
 
-pub const C_TRANSLATION_UNIT: &str = "net/net-msg.c";
 pub const TL_MARKER_SHORT: i32 = 0;
 pub const TL_MARKER_LONG: i32 = 1;
 pub const TL_MARKER_INVALID: i32 = -1;
@@ -30,7 +29,7 @@ pub const fn tl_string_padding(total_bytes: i32) -> i32 {
 
 /// Computes effective bytes processed by `rwm_encrypt_decrypt_to`.
 ///
-/// Mirrors C logic: clamp to available bytes, then align down to block size.
+/// Clamp to available bytes, then align down to block size.
 #[must_use]
 pub const fn encrypt_decrypt_effective_bytes(
     requested_bytes: i32,

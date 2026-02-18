@@ -1,8 +1,6 @@
-//! Helpers ported from `net/net-thread.c`.
+//! Runtime helpers.
 
 use core::ffi::c_void;
-
-pub const C_TRANSLATION_UNIT: &str = "net/net-thread.c";
 
 pub const NEV_TCP_CONN_READY: i32 = 1;
 pub const NEV_TCP_CONN_CLOSE: i32 = 2;
@@ -48,7 +46,7 @@ pub trait NotificationEventOps {
     fn free_event(&mut self, event: *mut c_void);
 }
 
-/// Executes one notification event with the same side effects/order as C.
+/// Executes one notification event with the same side effects/order.
 pub fn run_notification_event<O: NotificationEventOps>(
     event_type: i32,
     who: *mut c_void,

@@ -1,7 +1,6 @@
 //! `MTProxy` Rust implementation - Main entry point
 //!
-//! This is the Rust-native implementation of `MTProxy`, migrated from C.
-//! For the migration status, see `PLAN.md` Step 15.
+//! This is the Rust-native implementation of `MTProxy`.
 
 use clap::Parser;
 use mtproxy_core::runtime::{
@@ -370,8 +369,6 @@ fn runtime_start(args: &Args) -> Result<(), String> {
     if let Some((local, global)) = processed.nat_info {
         eprintln!("  NAT info: {local} -> {global}");
     }
-    eprintln!("\nC/Rust migration details: MIGRATION_STATUS.md");
-
     if args.config.is_none() {
         eprintln!("\nWARNING: no config file specified.");
     }
@@ -398,7 +395,7 @@ fn spawn_workers(worker_processes: u32) -> Result<(), String> {
     Ok(())
 }
 
-fn align_with_c_main_signal_mask() -> Result<(), String> {
+fn align_runtime_signal_mask() -> Result<(), String> {
     let sigchld = u32::try_from(libc::SIGCHLD)
         .map_err(|_| "platform SIGCHLD value is out of u32 range".to_string())?;
     let sigusr1 = u32::try_from(libc::SIGUSR1)
@@ -456,7 +453,7 @@ fn run_with_parsed_args(args: &Args) -> i32 {
         }
     }
 
-    if let Err(e) = align_with_c_main_signal_mask() {
+    if let Err(e) = align_runtime_signal_mask() {
         eprintln!("ERROR: Signal bootstrap failed: {e}");
         return 1;
     }

@@ -1,4 +1,4 @@
-//! RPC Client implementation ported from `net/net-tcp-rpc-client.c`.
+//! Runtime helpers.
 
 use super::tcp_rpc_common::{
     parse_handshake_packet, parse_nonce_packet, PacketSerialization, ParsedHandshakePacket,

@@ -1,6 +1,5 @@
-//! Helpers ported from `net/net-tcp-connections.c`.
+//! Runtime helpers.
 
-pub const C_TRANSLATION_UNIT: &str = "net/net-tcp-connections.c";
 pub const TLS_HEADER_LEN: i32 = 5;
 pub const TLS_MAX_PACKET_LENGTH: i32 = 1425;
 pub const TLS_CONTENT_TYPE_APPLICATION_DATA: u8 = 0x17;

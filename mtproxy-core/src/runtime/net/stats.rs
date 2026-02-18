@@ -1,8 +1,6 @@
-//! Helpers ported from `net/net-stats.c`.
+//! Runtime helpers.
 
-pub const C_TRANSLATION_UNIT: &str = "net/net-stats.c";
-
-/// Computes recent idle percent using net-stats legacy formula.
+/// Computes recent idle percent using net-stats current formula.
 #[must_use]
 pub fn recent_idle_percent(a_idle_time: f64, a_idle_quotient: f64) -> f64 {
     if a_idle_quotient > 0.0 {

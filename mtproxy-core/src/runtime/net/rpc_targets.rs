@@ -1,4 +1,4 @@
-//! Helpers ported from `net/net-rpc-targets.c`.
+//! Runtime helpers.
 
 /// Rust representation of `struct process_id` used by RPC targets.
 #[repr(C)]

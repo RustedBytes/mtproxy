@@ -1,6 +1,4 @@
-//! Helpers ported from `net/net-tcp-rpc-ext-server.c`.
-
-pub const C_TRANSLATION_UNIT: &str = "net/net-tcp-rpc-ext-server.c";
+//! Runtime helpers.
 
 pub const DOMAIN_HASH_MOD: i32 = 257;
 pub const CLIENT_RANDOM_HASH_BITS: i32 = 14;

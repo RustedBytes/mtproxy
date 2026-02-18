@@ -1,6 +1,6 @@
 #![no_std]
 
-//! Core Rust components for the `MTProxy` migration.
+//! Core Rust components for `MTProxy`.
 
 extern crate alloc;
 

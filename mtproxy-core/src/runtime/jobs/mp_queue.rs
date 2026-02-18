@@ -1,6 +1,6 @@
-//! Compatibility queue for the legacy C mp-queue ABI.
+//! Compatibility queue for the mp-queue ABI.
 //!
-//! The legacy C implementation uses a lock-free segmented queue with hazard
+//! The original implementation uses a lock-free segmented queue with hazard
 //! pointers and futex-backed semaphore waiting. This Rust port keeps the same
 //! external contract used by the project:
 //! - FIFO queue semantics
@@ -11,16 +11,16 @@
 use alloc::{collections::VecDeque, sync::Arc};
 use parking_lot::{Condvar, Mutex};
 
-/// Legacy C value for prepared "small block" size.
+/// Original value for prepared "small block" size.
 pub const MPQ_SMALL_BLOCK_SIZE: usize = 64;
-/// Legacy C value for regular block size.
+/// Original value for regular block size.
 pub const MPQ_BLOCK_SIZE: usize = 4096;
-/// Legacy C value for block alignment.
+/// Original value for block alignment.
 pub const MPQ_BLOCK_ALIGNMENT: usize = 64;
 
-/// Internal legacy flag (kept for API parity with C header).
+/// Internal flag kept for ABI parity.
 pub const MPQF_RECURSIVE: u32 = 8_192;
-/// Internal legacy flag (kept for API parity with C header).
+/// Internal flag kept for ABI parity.
 pub const MPQF_STORE_PTR: u32 = 4_096;
 /// Bitmask for fast try-iterations used by `pop_w`/`pop_nw`.
 pub const MPQF_MAX_ITERATIONS: u32 = MPQF_STORE_PTR - 1;
@@ -132,7 +132,7 @@ impl<T> MpQueue<T> {
     /// Pushes one value (`mpq_push` behavior).
     ///
     /// Returned position is a monotonic enqueue index used for diagnostics;
-    /// callers in the C tree do not currently consume this value.
+    /// callers in the runtime do not currently consume this value.
     pub fn push(&self, value: T, _flags: u32) -> i64 {
         let mut state = self.inner.state.lock();
         Self::push_locked(&mut state, value)

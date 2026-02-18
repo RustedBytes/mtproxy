@@ -1,4 +1,4 @@
-//! Helpers ported from `net/net-events.c`.
+//! Runtime helpers.
 
 const EVT_SPEC: u32 = 1;
 const EVT_WRITE: u32 = 2;

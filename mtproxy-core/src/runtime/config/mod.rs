@@ -1,3 +1,3 @@
-//! Runtime helpers ported from `common/*config*.c` and `common/tl-parse.c`.
+//! Runtime configuration helpers.
 
 pub mod tl_parse;

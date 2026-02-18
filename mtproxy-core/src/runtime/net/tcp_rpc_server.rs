@@ -1,4 +1,4 @@
-//! RPC Server implementation ported from `net/net-tcp-rpc-server.c`.
+//! Runtime helpers.
 
 use super::tcp_rpc_client::{
     PACKET_LEN_STATE_INVALID, PACKET_LEN_STATE_READY, PACKET_LEN_STATE_SKIP,
@@ -80,7 +80,7 @@ impl RpcServerData {
         self.out_packet_num = -2;
     }
 
-    /// Initializes server without handshake (legacy mode).
+    /// Initializes server without handshake.
     pub fn init_accepted_no_handshake(&mut self, local_pid: ProcessId) {
         self.state = ServerState::Ready;
         self.local_pid = local_pid;
