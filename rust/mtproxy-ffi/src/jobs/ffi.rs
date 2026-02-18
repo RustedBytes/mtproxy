@@ -3630,9 +3630,13 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_tokio_message_queue_pop(
 // ============================================================================
 
 /// Empty assertion function (migrated from net/net-connections.c)
+/// 
+/// **Compatibility Note:** This is a no-op function maintained for ABI compatibility.
+/// It was originally intended for asserting execution on network CPU threads but
+/// was left empty in the C implementation. Kept here to avoid breaking callers.
 #[no_mangle]
 pub extern "C" fn assert_net_cpu_thread() {
-    // Empty by design - no-op assertion
+    // Empty by design - no-op assertion for ABI compatibility
 }
 
 /// Asserts current thread is engine or main thread (migrated from net/net-connections.c)
@@ -3649,10 +3653,13 @@ pub extern "C" fn assert_engine_thread() {
 }
 
 /// Frees a job (migrated from net/net-connections.c)
-/// Note: JOB_REF_TAG value matches C macro JOB_REF_PASS which expands to "1, PTR_MOVE(job)"
+/// 
+/// **Note:** JOB_REF_TAG value matches C macro `JOB_REF_PASS(__ptr)` which expands to
+/// `1, PTR_MOVE(__ptr)`. The PTR_MOVE macro is for C ownership semantics; in Rust,
+/// ownership transfer is handled implicitly by the type system. We only need the tag (1).
 #[no_mangle]
 pub extern "C" fn mtproxy_ffi_net_connections_job_free(job: JobT) -> i32 {
-    const JOB_REF_TAG: i32 = 1; // From C macro: #define JOB_REF_PASS(__ptr) 1, PTR_MOVE(__ptr)
+    const JOB_REF_TAG: i32 = 1; // From C: #define JOB_REF_PASS(__ptr) 1, PTR_MOVE(__ptr)
     unsafe { job_free(JOB_REF_TAG, job) }
 }
 
