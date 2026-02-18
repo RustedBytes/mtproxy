@@ -4,6 +4,7 @@
 #include <stddef.h>
 #include <pthread.h>
 #include <stdlib.h>
+#include <sys/uio.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -845,6 +846,635 @@ typedef void (*mtproxy_ffi_engine_rpc_query_result_fn)(void *tlio_in, void *quer
 typedef void *(*mtproxy_ffi_engine_rpc_parse_fn)(void *tlio_in, int64_t actor_id);
 typedef void (*mtproxy_ffi_engine_rpc_stat_fn)(void *tlio_out);
 typedef int32_t (*mtproxy_ffi_engine_rpc_get_op_fn)(void *tlio_in);
+
+// Legacy net/*.h compatibility ABI now provided by Rust bindings header.
+enum {
+  MAX_EVENT_TIMERS = (1 << 19),
+};
+
+typedef struct event_timer event_timer_t;
+struct event_timer {
+  int h_idx;
+  int flags;
+  int (*wakeup)(event_timer_t *et);
+  double wakeup_time;
+  double real_wakeup_time;
+};
+
+#ifndef EPOLLRDHUP
+#define EPOLLRDHUP 0x2000
+#endif
+
+enum {
+  MAX_EVENTS = (1 << 19),
+  MAX_UDP_SENDBUF_SIZE = (1 << 24),
+  MAX_UDP_RCVBUF_SIZE = (1 << 24),
+  PRIVILEGED_TCP_PORTS = 1024,
+};
+
+enum {
+  EVT_READ = 4,
+  EVT_WRITE = 2,
+  EVT_SPEC = 1,
+  EVT_RWX = EVT_READ | EVT_WRITE | EVT_SPEC,
+  EVT_LEVEL = 8,
+  EVT_CLOSED = 0x40,
+  EVT_IN_EPOLL = 0x20,
+  EVT_NEW = 0x100,
+  EVT_NOHUP = 0x200,
+  EVT_FROM_EPOLL = 0x400,
+};
+
+enum {
+  EVA_CONTINUE = 0,
+  EVA_RERUN = -2,
+  EVA_REMOVE = -3,
+  EVA_DESTROY = -5,
+  EVA_ERROR = -8,
+  EVA_FATAL = -666,
+};
+
+typedef struct event_descr event_t;
+typedef int (*event_handler_t)(int fd, void *data, event_t *ev);
+
+struct event_descr {
+  int fd;
+  int state;
+  int ready;
+  int epoll_state;
+  int epoll_ready;
+  int timeout;
+  int priority;
+  int in_queue;
+  long long timestamp;
+  long long refcnt;
+  event_handler_t work;
+  void *data;
+};
+
+extern double last_epoll_wait_at;
+extern int ev_heap_size;
+extern event_t Events[MAX_EVENTS];
+extern double tot_idle_time, a_idle_time, a_idle_quotient;
+extern int epoll_fd;
+extern volatile int main_thread_interrupt_status;
+extern int tcp_maximize_buffers;
+
+enum {
+  SM_UDP = 1,
+  SM_IPV6 = 2,
+  SM_IPV6_ONLY = 4,
+  SM_LOWPRIO = 8,
+  SM_REUSE = 16,
+  SM_SPECIAL = 0x10000,
+  SM_NOQACK = 0x20000,
+  SM_RAWMSG = 0x40000,
+};
+
+extern int epoll_sleep_ns;
+
+enum {
+  MSG_STD_BUFFER = 2048,
+  MSG_SMALL_BUFFER = 512,
+  MSG_TINY_BUFFER = 48,
+};
+enum {
+  MSG_BUFFERS_CHUNK_SIZE = ((1 << 21) - 64),
+};
+enum {
+  MSG_DEFAULT_MAX_ALLOCATED_BYTES = (1 << 28),
+};
+#ifdef _LP64
+enum {
+  MSG_MAX_ALLOCATED_BYTES = (1LL << 40),
+};
+#else
+enum {
+  MSG_MAX_ALLOCATED_BYTES = (1LL << 30),
+};
+#endif
+enum {
+  MSG_BUFFER_FREE_MAGIC = 0x4abdc351,
+  MSG_BUFFER_USED_MAGIC = 0x72e39317,
+  MSG_BUFFER_SPECIAL_MAGIC = 0x683caad3,
+};
+enum {
+  MSG_CHUNK_USED_MAGIC = 0x5c75e681,
+  MSG_CHUNK_USED_LOCKED_MAGIC = ~MSG_CHUNK_USED_MAGIC,
+  MSG_CHUNK_HEAD_MAGIC = 0x2dfecca3,
+  MSG_CHUNK_HEAD_LOCKED_MAGIC = ~MSG_CHUNK_HEAD_MAGIC,
+};
+enum {
+  MAX_BUFFER_SIZE_VALUES = 16,
+};
+
+struct msg_buffers_chunk;
+struct msg_buffer {
+  struct msg_buffers_chunk *chunk;
+#ifndef _LP64
+  int resvd;
+#endif
+  int refcnt;
+  int magic;
+  char data[0];
+};
+
+enum {
+  BUFF_HD_BYTES = offsetof(struct msg_buffer, data),
+};
+
+struct msg_buffers_chunk {
+  int magic;
+  int buffer_size;
+  int (*free_buffer)(struct msg_buffers_chunk *C, struct msg_buffer *B);
+  struct msg_buffers_chunk *ch_next, *ch_prev;
+  struct msg_buffers_chunk *ch_head;
+  struct msg_buffer *first_buffer;
+  int two_power;
+  int tot_buffers;
+  int bs_inverse;
+  int bs_shift;
+  struct mp_queue *free_block_queue;
+  int thread_class;
+  int thread_subclass;
+  int refcnt;
+  union {
+    struct {
+      int tot_chunks;
+      int free_buffers;
+    };
+    unsigned short free_cnt[0];
+  };
+};
+
+struct buffers_stat {
+  long long total_used_buffers_size;
+  long long allocated_buffer_bytes;
+  long long buffer_chunk_alloc_ops;
+  int total_used_buffers;
+  int allocated_buffer_chunks, max_allocated_buffer_chunks, max_buffer_chunks;
+  long long max_allocated_buffer_bytes;
+};
+
+void mtproxy_ffi_net_msg_buffers_fetch_buffers_stat(struct buffers_stat *bs);
+int32_t mtproxy_ffi_net_msg_buffers_init(long max_buffer_bytes);
+struct msg_buffer *mtproxy_ffi_net_msg_buffers_alloc(struct msg_buffer *neighbor, int32_t size_hint);
+int32_t mtproxy_ffi_net_msg_buffers_free(struct msg_buffer *buffer);
+int32_t mtproxy_ffi_net_msg_buffers_reach_limit(double ratio);
+double mtproxy_ffi_net_msg_buffers_usage(void);
+
+#define fetch_buffers_stat mtproxy_ffi_net_msg_buffers_fetch_buffers_stat
+#define init_msg_buffers mtproxy_ffi_net_msg_buffers_init
+#define alloc_msg_buffer mtproxy_ffi_net_msg_buffers_alloc
+#define free_msg_buffer mtproxy_ffi_net_msg_buffers_free
+#define msg_buffer_reach_limit mtproxy_ffi_net_msg_buffers_reach_limit
+#define msg_buffer_usage mtproxy_ffi_net_msg_buffers_usage
+
+struct msg_part {
+#ifndef _LP64
+  int resvd;
+#endif
+  int refcnt;
+  int magic;
+  struct msg_part *next;
+  struct msg_buffer *part;
+  int offset;
+  int data_end;
+};
+
+enum {
+  MSG_PART_MAGIC = 0x8341aa7,
+  MSG_PART_LOCKED_MAGIC = ~MSG_PART_MAGIC,
+};
+struct msg_part *new_msg_part(struct msg_part *neighbor, struct msg_buffer *X);
+
+enum {
+  RM_INIT_MAGIC = 0x23513473,
+};
+enum {
+  RM_TMP_MAGIC = 0x52a717f3,
+};
+enum {
+  RM_PREPEND_RESERVE = 128,
+};
+
+struct raw_message {
+  struct msg_part *first, *last;
+  int total_bytes;
+  int magic;
+  int first_offset;
+  int last_offset;
+};
+
+int rwm_free(struct raw_message *raw);
+int rwm_init(struct raw_message *raw, int alloc_bytes);
+int rwm_create(struct raw_message *raw, const void *data, int alloc_bytes);
+void rwm_clone(struct raw_message *dest_raw, struct raw_message *src_raw);
+void rwm_move(struct raw_message *dest_raw, struct raw_message *src_raw);
+int rwm_push_data(struct raw_message *raw, const void *data, int alloc_bytes);
+int rwm_push_data_ext(struct raw_message *raw, const void *data, int alloc_bytes, int prepend, int small_buffer, int std_buffer);
+int rwm_push_data_front(struct raw_message *raw, const void *data, int alloc_bytes);
+int rwm_fetch_data(struct raw_message *raw, void *data, int bytes);
+int rwm_skip_data(struct raw_message *raw, int bytes);
+int rwm_fetch_lookup(struct raw_message *raw, void *buf, int bytes);
+int rwm_fetch_data_back(struct raw_message *raw, void *data, int bytes);
+int rwm_trunc(struct raw_message *raw, int len);
+int rwm_union(struct raw_message *raw, struct raw_message *tail);
+int rwm_split_head(struct raw_message *head, struct raw_message *raw, int bytes);
+void *rwm_prepend_alloc(struct raw_message *raw, int alloc_bytes);
+void *rwm_postpone_alloc(struct raw_message *raw, int alloc_bytes);
+
+int rwm_prepare_iovec(const struct raw_message *raw, struct iovec *iov, int iov_len, int bytes);
+int rwm_dump(struct raw_message *raw);
+unsigned rwm_custom_crc32(struct raw_message *raw, int bytes, crc32_partial_func_t custom_crc32_partial);
+
+int rwm_process(struct raw_message *raw, int bytes, int (*process_block)(void *extra, const void *data, int len), void *extra);
+enum {
+  RMPF_ADVANCE = 1,
+  RMPF_TRUNCATE = 2,
+};
+int rwm_process_ex(struct raw_message *raw, int bytes, int offset, int flags, int (*process_block)(void *extra, const void *data, int len), void *extra);
+int rwm_process_from_offset(struct raw_message *raw, int bytes, int offset, int (*process_block)(void *extra, const void *data, int len), void *extra);
+int rwm_transform_from_offset(struct raw_message *raw, int bytes, int offset, int (*transform_block)(void *extra, void *data, int len), void *extra);
+int rwm_process_and_advance(struct raw_message *raw, int bytes, int (*process_block)(void *extra, const void *data, int len), void *extra);
+int rwm_encrypt_decrypt_to(struct raw_message *raw, struct raw_message *res, int bytes, void *ctx, int block_size);
+
+void *rwm_get_block_ptr(struct raw_message *raw);
+int rwm_get_block_ptr_bytes(struct raw_message *raw);
+
+extern struct raw_message empty_rwm;
+
+enum {
+  MAX_CONNECTIONS = 65536,
+  PRIME_TARGETS = 99961,
+  CONN_CUSTOM_DATA_BYTES = 256,
+};
+
+typedef job_t connection_job_t;
+typedef job_t socket_connection_job_t;
+typedef job_t listening_connection_job_t;
+typedef job_t conn_target_job_t;
+
+typedef struct conn_functions {
+  int magic;
+  int flags;
+  char *title;
+  int (*accept)(connection_job_t c);
+  int (*init_accepted)(connection_job_t c);
+  int (*reader)(connection_job_t c);
+  int (*writer)(connection_job_t c);
+  int (*close)(connection_job_t c, int who);
+  int (*parse_execute)(connection_job_t c);
+  int (*init_outbound)(connection_job_t c);
+  int (*connected)(connection_job_t c);
+  int (*check_ready)(connection_job_t c);
+  int (*wakeup_aio)(connection_job_t c, int r);
+  int (*write_packet)(connection_job_t c, struct raw_message *raw);
+  int (*flush)(connection_job_t c);
+  int (*free)(connection_job_t c);
+  int (*free_buffers)(connection_job_t c);
+  int (*read_write)(connection_job_t c);
+  int (*wakeup)(connection_job_t c);
+  int (*alarm)(connection_job_t c);
+  int (*socket_read_write)(connection_job_t c);
+  int (*socket_reader)(connection_job_t c);
+  int (*socket_writer)(connection_job_t c);
+  int (*socket_connected)(connection_job_t c);
+  int (*socket_free)(connection_job_t c);
+  int (*socket_close)(connection_job_t c);
+  int (*data_received)(connection_job_t c, int r);
+  int (*data_sent)(connection_job_t c, int w);
+  int (*ready_to_write)(connection_job_t c);
+  int (*crypto_init)(connection_job_t c, void *key_data, int key_data_len);
+  int (*crypto_free)(connection_job_t c);
+  int (*crypto_encrypt_output)(connection_job_t c);
+  int (*crypto_decrypt_input)(connection_job_t c);
+  int (*crypto_needed_output_bytes)(connection_job_t c);
+} conn_type_t;
+
+int check_conn_functions(conn_type_t *type, int listening);
+void assert_net_cpu_thread(void);
+void assert_engine_thread(void);
+int prepare_stats(char *buf, int size);
+extern int max_special_connections, active_special_connections;
+
+int32_t mtproxy_ffi_net_select_best_key_signature(
+    int32_t main_secret_len,
+    int32_t main_key_signature,
+    int32_t key_signature,
+    int32_t extra_num,
+    const int32_t *extra_key_signatures);
+
+#pragma pack(push, 4)
+struct tcp_rpc_nonce_packet {
+  int type;
+  int key_select;
+  int crypto_schema;
+  int crypto_ts;
+  char crypto_nonce[16];
+};
+enum { RPC_MAX_EXTRA_KEYS = 8 };
+#pragma pack(pop)
+
+struct tcp_rpc_data {
+  int flags;
+  int in_packet_num;
+  int out_packet_num;
+  int crypto_flags;
+  struct process_id remote_pid;
+  char nonce[16];
+  int nonce_time;
+  int in_rpc_target;
+  union {
+    void *user_data;
+    void *extra;
+  };
+  int extra_int;
+  int extra_int2;
+  int extra_int3;
+  int extra_int4;
+  double extra_double, extra_double2;
+  crc32_partial_func_t custom_crc_partial;
+};
+
+enum {
+  RPCF_ENC_SENT = 16,
+  RPCF_SEQNO_HOLES = 256,
+  RPCF_QUICKACK = 512,
+  RPCF_COMPACT_OFF = 1024,
+  RPCF_USE_CRC32C = 2048,
+};
+
+enum {
+  RPC_F_PAD = 0x8000000,
+  RPC_F_DROPPED = 0x10000000,
+  RPC_F_MEDIUM = 0x20000000,
+  RPC_F_COMPACT = 0x40000000,
+  RPC_F_COMPACT_MEDIUM = RPC_F_COMPACT | RPC_F_MEDIUM,
+  RPC_F_QUICKACK = 0x80000000,
+  RPC_F_EXTMODE1 = 0x10000,
+  RPC_F_EXTMODE2 = 0x20000,
+  RPC_F_EXTMODE3 = 0x30000,
+};
+
+enum {
+  RPC_NONCE = 0x7acb87aa,
+  RPC_HANDSHAKE = 0x7682eef5,
+  RPC_HANDSHAKE_ERROR = 0x6a27beda,
+};
+
+enum {
+  RPC_CRYPTO_NONE = 0,
+  RPC_CRYPTO_AES = 1,
+  RPC_CRYPTO_AES_EXT = 2,
+  RPC_CRYPTO_AES_DH = 3,
+};
+
+void mtproxy_ffi_net_tcp_rpc_common_conn_send(
+    int32_t c_tag_int,
+    connection_job_t c,
+    struct raw_message *raw,
+    int32_t flags);
+void mtproxy_ffi_net_tcp_rpc_common_conn_send_data(
+    int32_t c_tag_int,
+    connection_job_t c,
+    int32_t len,
+    void *data);
+void mtproxy_ffi_net_tcp_rpc_common_conn_send_data_init(
+    connection_job_t c,
+    int32_t len,
+    void *data);
+void mtproxy_ffi_net_tcp_rpc_common_conn_send_data_im(
+    int32_t c_tag_int,
+    connection_job_t c,
+    int32_t len,
+    void *data);
+int32_t mtproxy_ffi_net_tcp_rpc_common_default_execute(
+    connection_job_t c,
+    int32_t op,
+    struct raw_message *raw);
+int32_t mtproxy_ffi_net_tcp_rpc_common_write_packet(
+    connection_job_t c,
+    struct raw_message *raw);
+int32_t mtproxy_ffi_net_tcp_rpc_common_write_packet_compact(
+    connection_job_t c,
+    struct raw_message *raw);
+uint32_t mtproxy_ffi_net_tcp_rpc_common_set_default_rpc_flags(
+    uint32_t and_flags,
+    uint32_t or_flags);
+int mtproxy_ffi_net_tcp_rpc_common_copy_remote_pid(connection_job_t c, struct process_id *out_pid);
+
+void tcp_rpc_conn_send(int32_t c_tag_int, connection_job_t c, struct raw_message *raw, int flags);
+void tcp_rpc_conn_send_data(int32_t c_tag_int, connection_job_t c, int len, void *Q);
+void tcp_rpc_conn_send_data_init(connection_job_t c, int len, void *Q);
+void tcp_rpc_conn_send_data_im(int32_t c_tag_int, connection_job_t c, int len, void *Q);
+int tcp_rpc_default_execute(connection_job_t c, int op, struct raw_message *raw);
+int tcp_rpc_flush_packet(connection_job_t c);
+extern conn_type_t ct_tcp_rpc_ext_server;
+
+typedef job_t rpc_target_job_t;
+struct tree_connection;
+struct rpc_target_info {
+  struct event_timer timer;
+  int a, b;
+  struct tree_connection *conn_tree;
+  struct process_id PID;
+};
+
+enum {
+  RPCF_ALLOW_UNENC = 1,
+  RPCF_ALLOW_ENC = 2,
+  RPCF_REQ_DH = 4,
+  RPCF_ALLOW_SKIP_DH = 8,
+};
+enum {
+  TCP_RPC_IGNORE_PID = 4,
+};
+
+struct http_server_functions {
+  void *info;
+  int (*execute)(connection_job_t c, struct raw_message *raw, int op);
+  int (*ht_wakeup)(connection_job_t c);
+  int (*ht_alarm)(connection_job_t c);
+  int (*ht_close)(connection_job_t c, int who);
+};
+
+struct hts_data {
+  int query_type;
+  int query_flags;
+  int query_words;
+  int header_size;
+  int first_line_size;
+  int data_size;
+  int host_offset;
+  int host_size;
+  int uri_offset;
+  int uri_size;
+  int http_ver;
+  int wlen;
+  char word[16];
+  void *extra;
+  int extra_int;
+  int extra_int2;
+  int extra_int3;
+  int extra_int4;
+  double extra_double, extra_double2;
+  int parse_state;
+  int query_seqno;
+};
+
+enum hts_query_type {
+  htqt_none,
+  htqt_head,
+  htqt_get,
+  htqt_post,
+  htqt_options,
+  htqt_error,
+  htqt_empty
+};
+
+extern conn_type_t ct_http_server;
+extern int http_connections;
+extern long long http_queries, http_bad_headers, http_queries_size;
+extern char *extra_http_response_headers;
+
+struct tcp_rpc_client_functions {
+  void *info;
+  void *rpc_extra;
+  int (*execute)(connection_job_t c, int op, struct raw_message *raw);
+  int (*check_ready)(connection_job_t c);
+  int (*flush_packet)(connection_job_t c);
+  int (*rpc_check_perm)(connection_job_t c);
+  int (*rpc_init_crypto)(connection_job_t c);
+  int (*rpc_start_crypto)(connection_job_t c, char *nonce, int key_select, unsigned char *temp_key, int temp_key_len);
+  int (*rpc_wakeup)(connection_job_t c);
+  int (*rpc_alarm)(connection_job_t c);
+  int (*rpc_ready)(connection_job_t c);
+  int (*rpc_close)(connection_job_t c, int who);
+  int max_packet_len;
+  int mode_flags;
+};
+
+extern conn_type_t ct_tcp_rpc_client;
+int tcp_rpcc_default_check_perm(connection_job_t c);
+int tcp_rpcc_init_crypto(connection_job_t c);
+int tcp_rpcc_start_crypto(connection_job_t c, char *nonce, int key_select, unsigned char *temp_key, int temp_key_len);
+int tcp_rpcc_default_check_ready(connection_job_t c);
+
+struct tcp_rpc_server_functions {
+  void *info;
+  void *rpc_extra;
+  int (*execute)(connection_job_t c, int op, struct raw_message *raw);
+  int (*check_ready)(connection_job_t c);
+  int (*flush_packet)(connection_job_t c);
+  int (*rpc_check_perm)(connection_job_t c);
+  int (*rpc_init_crypto)(connection_job_t c, struct tcp_rpc_nonce_packet *P);
+  void *nop;
+  int (*rpc_wakeup)(connection_job_t c);
+  int (*rpc_alarm)(connection_job_t c);
+  int (*rpc_ready)(connection_job_t c);
+  int (*rpc_close)(connection_job_t c, int who);
+  int max_packet_len;
+  int mode_flags;
+  void *memcache_fallback_type, *memcache_fallback_extra;
+  void *http_fallback_type, *http_fallback_extra;
+};
+
+extern conn_type_t ct_tcp_rpc_server;
+
+enum {
+  MIN_PWD_LEN = 32,
+  MAX_PWD_LEN = 256,
+};
+static const char DEFAULT_PWD_FILE[] = "secret";
+
+int aes_crypto_init(connection_job_t c, void *key_data, int key_data_len);
+int aes_crypto_ctr128_init(connection_job_t c, void *key_data, int key_data_len);
+void fetch_aes_crypto_stat(int *allocated_aes_crypto_ptr, int *allocated_aes_crypto_temp_ptr);
+
+typedef struct aes_secret {
+  int refcnt;
+  int secret_len;
+  union {
+    char secret[MAX_PWD_LEN + 4];
+    int key_signature;
+  };
+} aes_secret_t;
+
+extern aes_secret_t main_secret;
+
+struct aes_key_data {
+  unsigned char read_key[32];
+  unsigned char read_iv[16];
+  unsigned char write_key[32];
+  unsigned char write_iv[16];
+};
+
+enum {
+  AES_KEY_DATA_LEN = sizeof(struct aes_key_data),
+};
+
+struct aes_crypto {
+  void *read_aeskey;
+  void *write_aeskey;
+};
+
+extern int aes_initialized;
+
+int aes_create_keys(
+    struct aes_key_data *R,
+    int am_client,
+    const char nonce_server[16],
+    const char nonce_client[16],
+    int client_timestamp,
+    unsigned server_ip,
+    unsigned short server_port,
+    const unsigned char server_ipv6[16],
+    unsigned client_ip,
+    unsigned short client_port,
+    const unsigned char client_ipv6[16],
+    const aes_secret_t *key,
+    const unsigned char *temp_key,
+    int temp_key_len);
+
+void *alloc_crypto_temp(int len);
+
+enum {
+  CRYPTO_TEMP_DH_PARAMS_MAGIC = 0xab45ccd3,
+};
+
+struct crypto_temp_dh_params {
+  int magic;
+  int dh_params_select;
+  unsigned char a[256];
+};
+
+extern int dh_params_select;
+
+int init_dh_params(void);
+int dh_first_round(unsigned char g_a[256], struct crypto_temp_dh_params *dh_params);
+int dh_second_round(unsigned char g_ab[256], unsigned char g_a[256], const unsigned char g_b[256]);
+int dh_third_round(unsigned char g_ab[256], const unsigned char g_b[256], struct crypto_temp_dh_params *dh_params);
+
+int32_t mtproxy_ffi_net_tcp_connections_cpu_tcp_free_connection_buffers(connection_job_t c);
+int32_t mtproxy_ffi_net_tcp_connections_cpu_tcp_server_writer(connection_job_t c);
+int32_t mtproxy_ffi_net_tcp_connections_cpu_tcp_server_reader(connection_job_t c);
+int32_t mtproxy_ffi_net_tcp_connections_cpu_tcp_aes_crypto_encrypt_output(connection_job_t c);
+int32_t mtproxy_ffi_net_tcp_connections_cpu_tcp_aes_crypto_decrypt_input(connection_job_t c);
+int32_t mtproxy_ffi_net_tcp_connections_cpu_tcp_aes_crypto_needed_output_bytes(connection_job_t c);
+int32_t mtproxy_ffi_net_tcp_connections_cpu_tcp_aes_crypto_ctr128_encrypt_output(connection_job_t c);
+int32_t mtproxy_ffi_net_tcp_connections_cpu_tcp_aes_crypto_ctr128_decrypt_input(connection_job_t c);
+int32_t mtproxy_ffi_net_tcp_connections_cpu_tcp_aes_crypto_ctr128_needed_output_bytes(connection_job_t c);
+
+#define cpu_tcp_free_connection_buffers mtproxy_ffi_net_tcp_connections_cpu_tcp_free_connection_buffers
+#define cpu_tcp_server_writer mtproxy_ffi_net_tcp_connections_cpu_tcp_server_writer
+#define cpu_tcp_server_reader mtproxy_ffi_net_tcp_connections_cpu_tcp_server_reader
+#define cpu_tcp_aes_crypto_encrypt_output mtproxy_ffi_net_tcp_connections_cpu_tcp_aes_crypto_encrypt_output
+#define cpu_tcp_aes_crypto_decrypt_input mtproxy_ffi_net_tcp_connections_cpu_tcp_aes_crypto_decrypt_input
+#define cpu_tcp_aes_crypto_needed_output_bytes mtproxy_ffi_net_tcp_connections_cpu_tcp_aes_crypto_needed_output_bytes
+#define cpu_tcp_aes_crypto_ctr128_encrypt_output mtproxy_ffi_net_tcp_connections_cpu_tcp_aes_crypto_ctr128_encrypt_output
+#define cpu_tcp_aes_crypto_ctr128_decrypt_input mtproxy_ffi_net_tcp_connections_cpu_tcp_aes_crypto_ctr128_decrypt_input
+#define cpu_tcp_aes_crypto_ctr128_needed_output_bytes mtproxy_ffi_net_tcp_connections_cpu_tcp_aes_crypto_ctr128_needed_output_bytes
 
 enum { MTPROXY_FFI_ENGINE_RPC_COMMON_PARSE_NONE = 0 };
 enum { MTPROXY_FFI_ENGINE_RPC_COMMON_PARSE_STAT = 1 };

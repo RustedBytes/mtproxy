@@ -31,7 +31,7 @@
 
 #include "common/precise-time.h"
 #include "common/server-functions.h"
-#include "net/net-connections.h"
+#include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 
 int32_t mtproxy_ffi_engine_check_conn_functions_bridge(void *conn_type) {
   return check_conn_functions(conn_type, 1);

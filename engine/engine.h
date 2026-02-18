@@ -29,17 +29,16 @@
 
 #pragma once
 
-// GLIBC DEFINES RTMAX as function
-// engine_init () asserts, that OUT_SIGRTMAX == SIGRTMAX
-static constexpr int OUR_SIGRTMAX = 64;
+#include <netinet/in.h>
 
-#include "common/common-stats.h"
 #include "common/tl-parse.h"
 #include "engine/engine-rpc.h"
 
-#include "net/net-connections.h"
-#include "net/net-http-server.h"
-#include "net/net-tcp-rpc-server.h"
+#include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
+
+// GLIBC DEFINES RTMAX as function
+// engine_init () asserts, that OUT_SIGRTMAX == SIGRTMAX
+static constexpr int OUR_SIGRTMAX = 64;
 
 static inline unsigned long long SIG2INT(const int sig) {
   return (sig == OUR_SIGRTMAX) ? 1ull : (1ull << (unsigned long long)sig);

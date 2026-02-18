@@ -33,8 +33,8 @@
 #include <pthread.h>
 
 #include "jobs/jobs.h"
-#include "net/net-connections.h"
 #include "precise-time.h"
+#include "rust/mtproxy-ffi/include/mtproxy_ffi.h"
 
 int active_special_connections, max_special_connections = MAX_CONNECTIONS;
 
