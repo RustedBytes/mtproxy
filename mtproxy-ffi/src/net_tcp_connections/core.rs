@@ -624,7 +624,10 @@ pub(super) unsafe fn cpu_tcp_aes_crypto_ctr128_decrypt_input_impl(c: ConnectionJ
                 }
                 if unsafe { verbosity } >= 2 {
                     unsafe {
-                        crate::kprintf_fmt!(TLS_RECV_FMT.as_ptr().cast(), (*conn).left_tls_packet_length)
+                        crate::kprintf_fmt!(
+                            TLS_RECV_FMT.as_ptr().cast(),
+                            (*conn).left_tls_packet_length
+                        )
                     };
                 }
                 assert_eq!(
@@ -643,7 +646,9 @@ pub(super) unsafe fn cpu_tcp_aes_crypto_ctr128_decrypt_input_impl(c: ConnectionJ
         }
 
         if unsafe { verbosity } >= 2 {
-            unsafe { crate::kprintf_fmt!(TLS_READ_FMT.as_ptr().cast(), len, (*conn).in_u.total_bytes) };
+            unsafe {
+                crate::kprintf_fmt!(TLS_READ_FMT.as_ptr().cast(), len, (*conn).in_u.total_bytes)
+            };
         }
         assert_eq!(
             unsafe {

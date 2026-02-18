@@ -287,7 +287,11 @@ pub(super) unsafe fn client_socket(in_addr: c_uint, port: c_int, mode: c_int) ->
 }
 
 #[inline]
-pub(super) unsafe fn client_socket_ipv6(in6_addr_ptr: *const u8, port: c_int, mode: c_int) -> c_int {
+pub(super) unsafe fn client_socket_ipv6(
+    in6_addr_ptr: *const u8,
+    port: c_int,
+    mode: c_int,
+) -> c_int {
     unsafe { ffi_client_socket_ipv6(in6_addr_ptr, port, mode) }
 }
 
@@ -302,7 +306,10 @@ pub(super) unsafe fn lrand48_j() -> c_long {
 }
 
 #[inline]
-pub(super) unsafe fn alloc_msg_buffer(neighbor: *mut MsgBuffer, size_hint: c_int) -> *mut MsgBuffer {
+pub(super) unsafe fn alloc_msg_buffer(
+    neighbor: *mut MsgBuffer,
+    size_hint: c_int,
+) -> *mut MsgBuffer {
     unsafe { ffi_alloc_msg_buffer(neighbor, size_hint) }
 }
 
@@ -362,7 +369,9 @@ pub(super) unsafe fn maximize_rcvbuf(socket_fd: c_int, max: c_int) {
 }
 
 #[inline]
-pub(super) unsafe fn get_tree_ptr_connection(tree: *mut *mut TreeConnection) -> *mut TreeConnection {
+pub(super) unsafe fn get_tree_ptr_connection(
+    tree: *mut *mut TreeConnection,
+) -> *mut TreeConnection {
     unsafe { ffi_get_tree_ptr_connection(tree) }
 }
 
@@ -597,11 +606,7 @@ pub unsafe extern "C" fn cpu_server_read_write(c: ConnectionJob) -> c_int {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn do_connection_job(
-    job: *mut c_void,
-    op: c_int,
-    jt: *mut c_void,
-) -> c_int {
+pub unsafe extern "C" fn do_connection_job(job: *mut c_void, op: c_int, jt: *mut c_void) -> c_int {
     unsafe { do_connection_job_impl(job, op, jt) }
 }
 
@@ -781,11 +786,7 @@ pub unsafe extern "C" fn destroy_target(ctj_tag_int: c_int, ctj: ConnTargetJob) 
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn do_conn_target_job(
-    job: *mut c_void,
-    op: c_int,
-    jt: *mut c_void,
-) -> c_int {
+pub unsafe extern "C" fn do_conn_target_job(job: *mut c_void, op: c_int, jt: *mut c_void) -> c_int {
     unsafe { do_conn_target_job_impl(job, op, jt) }
 }
 
@@ -886,12 +887,8 @@ pub extern "C" fn tcp_set_max_connections(maxconn: c_int) {
         let max_special = atomic_i32_ref(ptr::addr_of_mut!(max_special_connections));
         let mut current = max_special.load(Ordering::SeqCst);
         while current == 0 || current > maxconn {
-            match max_special.compare_exchange(
-                current,
-                maxconn,
-                Ordering::SeqCst,
-                Ordering::SeqCst,
-            ) {
+            match max_special.compare_exchange(current, maxconn, Ordering::SeqCst, Ordering::SeqCst)
+            {
                 Ok(_) => break,
                 Err(actual) => current = actual,
             }
@@ -1050,14 +1047,14 @@ pub unsafe extern "C" fn connections_prepare_stat(sb: *mut StatsBuffer) -> c_int
             FREE_TARGETS.load(Ordering::Relaxed),
         );
 
-            crate::sb_printf_fmt!(
-                sb,
-                c"max_connections\t%d\nactive_special_connections\t%d\nmax_special_connections\t%d\n"
-                    .as_ptr(),
-                MAX_CONNECTION_FD.load(Ordering::Relaxed),
-                atomic_i32_load(&raw mut active_special_connections),
-                atomic_i32_load(&raw mut max_special_connections),
-            );
+        crate::sb_printf_fmt!(
+            sb,
+            c"max_connections\t%d\nactive_special_connections\t%d\nmax_special_connections\t%d\n"
+                .as_ptr(),
+            MAX_CONNECTION_FD.load(Ordering::Relaxed),
+            atomic_i32_load(&raw mut active_special_connections),
+            atomic_i32_load(&raw mut max_special_connections),
+        );
         sb_print_i32_key(sb, c"max_accept_rate".as_ptr(), max_accept_rate);
         sb_print_double_key(
             sb,
@@ -1069,7 +1066,11 @@ pub unsafe extern "C" fn connections_prepare_stat(sb: *mut StatsBuffer) -> c_int
             c"max_connection".as_ptr(),
             MAX_CONNECTION.load(Ordering::Relaxed),
         );
-        sb_print_i32_key(sb, c"conn_generation".as_ptr(), CONN_GENERATION.load(Ordering::SeqCst));
+        sb_print_i32_key(
+            sb,
+            c"conn_generation".as_ptr(),
+            CONN_GENERATION.load(Ordering::SeqCst),
+        );
 
         sb_print_i32_key(
             sb,
@@ -1276,8 +1277,10 @@ pub extern "C" fn mtproxy_ffi_net_connections_stats_add_alloc_connection_success
 ) {
     OUTBOUND_CONNECTIONS.fetch_add(outbound_delta, Ordering::Relaxed);
     ALLOCATED_OUTBOUND_CONNECTIONS.fetch_add(allocated_outbound_delta, Ordering::Relaxed);
-    OUTBOUND_CONNECTIONS_CREATED.fetch_add(c_longlong::from(outbound_created_delta), Ordering::Relaxed);
-    INBOUND_CONNECTIONS_ACCEPTED.fetch_add(c_longlong::from(inbound_accepted_delta), Ordering::Relaxed);
+    OUTBOUND_CONNECTIONS_CREATED
+        .fetch_add(c_longlong::from(outbound_created_delta), Ordering::Relaxed);
+    INBOUND_CONNECTIONS_ACCEPTED
+        .fetch_add(c_longlong::from(inbound_accepted_delta), Ordering::Relaxed);
     ALLOCATED_INBOUND_CONNECTIONS.fetch_add(allocated_inbound_delta, Ordering::Relaxed);
     INBOUND_CONNECTIONS.fetch_add(inbound_delta, Ordering::Relaxed);
     ACTIVE_INBOUND_CONNECTIONS.fetch_add(active_inbound_delta, Ordering::Relaxed);
@@ -1323,7 +1326,10 @@ pub extern "C" fn mtproxy_ffi_net_connections_stats_add_close_failure(
     unused_closed_delta: c_int,
 ) {
     TOTAL_FAILED_CONNECTIONS.fetch_add(c_longlong::from(total_failed_delta), Ordering::Relaxed);
-    TOTAL_CONNECT_FAILURES.fetch_add(c_longlong::from(total_connect_failures_delta), Ordering::Relaxed);
+    TOTAL_CONNECT_FAILURES.fetch_add(
+        c_longlong::from(total_connect_failures_delta),
+        Ordering::Relaxed,
+    );
     UNUSED_CONNECTIONS_CLOSED.fetch_add(c_longlong::from(unused_closed_delta), Ordering::Relaxed);
 }
 
@@ -1363,7 +1369,7 @@ pub extern "C" fn mtproxy_ffi_net_connections_stats_add_free_connection_counts(
 }
 
 // ============================================================================
-// Bridge function migrated from net/net-connections.c  
+// Bridge function migrated from net/net-connections.c
 // ============================================================================
 
 /// Returns thread-local precise_now value (migrated from net/net-connections.c)

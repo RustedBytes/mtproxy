@@ -389,7 +389,8 @@ pub unsafe extern "C" fn raw_msg_prepare_stat(sb: *mut RawMsgStatsBuffer) -> c_i
 
     let mut total_msgs = 0;
     let mut total_msg_parts = 0;
-    let rc = unsafe { mtproxy_ffi_net_msg_fetch_stats(&raw mut total_msgs, &raw mut total_msg_parts) };
+    let rc =
+        unsafe { mtproxy_ffi_net_msg_fetch_stats(&raw mut total_msgs, &raw mut total_msg_parts) };
     assert_eq!(rc, 0);
 
     unsafe { crate::sb_printf_fmt!(sb, c">>>>>>raw_msg>>>>>>\tstart\n".as_ptr()) };
@@ -524,12 +525,18 @@ pub unsafe extern "C" fn rwm_split_head(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn rwm_prepend_alloc(raw: *mut RawMessage, alloc_bytes: c_int) -> *mut c_void {
+pub unsafe extern "C" fn rwm_prepend_alloc(
+    raw: *mut RawMessage,
+    alloc_bytes: c_int,
+) -> *mut c_void {
     unsafe { mtproxy_ffi_net_msg_rwm_prepend_alloc(raw, alloc_bytes) }
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn rwm_postpone_alloc(raw: *mut RawMessage, alloc_bytes: c_int) -> *mut c_void {
+pub unsafe extern "C" fn rwm_postpone_alloc(
+    raw: *mut RawMessage,
+    alloc_bytes: c_int,
+) -> *mut c_void {
     unsafe { mtproxy_ffi_net_msg_rwm_postpone_alloc(raw, alloc_bytes) }
 }
 

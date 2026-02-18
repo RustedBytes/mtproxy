@@ -140,7 +140,9 @@ fn cstr_lossy(ptr: *const c_char) -> String {
     if ptr.is_null() {
         return "(null)".to_owned();
     }
-    unsafe { CStr::from_ptr(ptr) }.to_string_lossy().into_owned()
+    unsafe { CStr::from_ptr(ptr) }
+        .to_string_lossy()
+        .into_owned()
 }
 
 fn take_arg(args: &[CFormatArg], idx: &mut usize) -> Option<CFormatArg> {
@@ -328,11 +330,7 @@ fn sb_truncate_opaque(sb: &mut crate::stats::StatsBuffer) {
     sb.pos = (pos + 1) as i32;
 }
 
-pub(crate) fn sb_printf_with_c_format(
-    sb: *mut c_void,
-    format: *const c_char,
-    args: &[CFormatArg],
-) {
+pub(crate) fn sb_printf_with_c_format(sb: *mut c_void, format: *const c_char, args: &[CFormatArg]) {
     if sb.is_null() || format.is_null() {
         return;
     }

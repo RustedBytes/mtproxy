@@ -2,8 +2,8 @@ pub(super) use crate::ffi_util::{
     mut_ref_from_ptr, mut_slice_from_ptr, ref_from_ptr, slice_from_ptr,
 };
 use crate::*;
-use std::ffi::CString;
 use std::ffi::c_longlong;
+use std::ffi::CString;
 
 pub(super) fn mtproto_proxy_collect_argv(
     argc: i32,
@@ -603,17 +603,12 @@ pub static mut window_clamp: c_int = 0;
 #[no_mangle]
 pub static mut proxy_mode: c_int = 0;
 #[no_mangle]
-pub static mut ct_http_server_mtfront: MtprotoConnType = MtprotoConnType {
-    ..ZERO_CONN_TYPE
-};
+pub static mut ct_http_server_mtfront: MtprotoConnType = MtprotoConnType { ..ZERO_CONN_TYPE };
 #[no_mangle]
-pub static mut ct_tcp_rpc_ext_server_mtfront: MtprotoConnType = MtprotoConnType {
-    ..ZERO_CONN_TYPE
-};
+pub static mut ct_tcp_rpc_ext_server_mtfront: MtprotoConnType =
+    MtprotoConnType { ..ZERO_CONN_TYPE };
 #[no_mangle]
-pub static mut ct_tcp_rpc_server_mtfront: MtprotoConnType = MtprotoConnType {
-    ..ZERO_CONN_TYPE
-};
+pub static mut ct_tcp_rpc_server_mtfront: MtprotoConnType = MtprotoConnType { ..ZERO_CONN_TYPE };
 #[no_mangle]
 pub static mut connections_failed_lru: i64 = 0;
 #[no_mangle]
@@ -647,9 +642,7 @@ pub static mut mtfront_rpc_client: MtprotoTcpRpcClientFunctions = MtprotoTcpRpcC
     ..ZERO_TCP_RPC_CLIENT_FUNCTIONS
 };
 #[no_mangle]
-pub static mut ct_tcp_rpc_client_mtfront: MtprotoConnType = MtprotoConnType {
-    ..ZERO_CONN_TYPE
-};
+pub static mut ct_tcp_rpc_client_mtfront: MtprotoConnType = MtprotoConnType { ..ZERO_CONN_TYPE };
 #[no_mangle]
 pub static mut default_cfg_ct: MtproxyConnTargetInfo = MtproxyConnTargetInfo {
     timer: MtproxyEventTimer {
@@ -742,8 +735,10 @@ pub static mut ext_rpc_methods: MtprotoTcpRpcServerFunctions = MtprotoTcpRpcServ
     ..ZERO_TCP_RPC_SERVER_FUNCTIONS
 };
 #[no_mangle]
-pub static mut mtproto_cors_http_headers: *mut c_char =
-    MTPROXY_CORS_HTTP_HEADERS.as_ptr().cast_mut().cast::<c_char>();
+pub static mut mtproto_cors_http_headers: *mut c_char = MTPROXY_CORS_HTTP_HEADERS
+    .as_ptr()
+    .cast_mut()
+    .cast::<c_char>();
 #[no_mangle]
 pub static mut sfd: c_int = 0;
 #[no_mangle]
@@ -1134,9 +1129,7 @@ pub(super) fn mtproto_ext_conn_lru_delete_ffi(in_fd: c_int) -> i32 {
     }
 }
 
-pub(super) fn mtproto_ext_conn_lru_pop_oldest_ffi(
-    out: *mut MtproxyMtprotoExtConnection,
-) -> i32 {
+pub(super) fn mtproto_ext_conn_lru_pop_oldest_ffi(out: *mut MtproxyMtprotoExtConnection) -> i32 {
     let Some(out_ref) = (unsafe { mut_ref_from_ptr(out) }) else {
         return -1;
     };
@@ -1149,10 +1142,7 @@ pub(super) fn mtproto_ext_conn_lru_pop_oldest_ffi(
     }
 }
 
-pub(super) fn mtproto_ext_conn_counts_ffi(
-    out_current: *mut i64,
-    out_created: *mut i64,
-) -> i32 {
+pub(super) fn mtproto_ext_conn_counts_ffi(out_current: *mut i64, out_created: *mut i64) -> i32 {
     let Some(out_current_ref) = (unsafe { mut_ref_from_ptr(out_current) }) else {
         return -1;
     };
@@ -1521,10 +1511,7 @@ pub(super) fn mtproto_http_send_message_ffi(
     1
 }
 
-pub(super) fn mtproto_finish_postponed_http_response_ffi(
-    data: *mut c_void,
-    len: c_int,
-) -> c_int {
+pub(super) fn mtproto_finish_postponed_http_response_ffi(data: *mut c_void, len: c_int) -> c_int {
     assert!(len == saturating_i32_from_usize(core::mem::size_of::<ConnectionJob>()));
     let conn_ptr = data.cast::<ConnectionJob>();
     assert!(!conn_ptr.is_null());
@@ -2484,10 +2471,7 @@ pub(super) fn mtproto_process_client_packet_runtime_ffi(
     }
 }
 
-pub(super) fn mtproto_process_http_query_ffi(
-    tlio_in: *mut c_void,
-    hqj: *mut c_void,
-) -> c_int {
+pub(super) fn mtproto_process_http_query_ffi(tlio_in: *mut c_void, hqj: *mut c_void) -> c_int {
     if tlio_in.is_null() || hqj.is_null() {
         return -404;
     }
@@ -2692,11 +2676,7 @@ pub(super) fn mtproto_process_http_query_ffi(
     -404
 }
 
-pub(super) fn mtproto_callback_job_run_ffi(
-    job: *mut c_void,
-    op: c_int,
-    _jt: *mut c_void,
-) -> c_int {
+pub(super) fn mtproto_callback_job_run_ffi(job: *mut c_void, op: c_int, _jt: *mut c_void) -> c_int {
     if job.is_null() {
         return JOB_ERROR;
     }
@@ -2761,7 +2741,8 @@ pub(super) fn mtproto_http_query_job_run_ffi(
             unsafe {
                 mtproto_lru_insert_conn_local(conn);
             }
-            let tlio_in = unsafe { c_tl_in_state_alloc() }.cast::<crate::tl_parse::abi::TlInState>();
+            let tlio_in =
+                unsafe { c_tl_in_state_alloc() }.cast::<crate::tl_parse::abi::TlInState>();
             if tlio_in.is_null() {
                 return JOB_COMPLETED;
             }
@@ -2876,7 +2857,8 @@ pub(super) fn mtproto_client_packet_job_run_ffi(
 
     match op {
         JS_RUN => {
-            let tlio_in = unsafe { c_tl_in_state_alloc() }.cast::<crate::tl_parse::abi::TlInState>();
+            let tlio_in =
+                unsafe { c_tl_in_state_alloc() }.cast::<crate::tl_parse::abi::TlInState>();
             if !tlio_in.is_null() {
                 unsafe {
                     c_tlf_init_raw_message(
@@ -2932,11 +2914,7 @@ unsafe extern "C" fn mtproto_client_packet_job_run_bridge(
     unsafe { mtproto_client_packet_job_run_ffi(job.cast::<c_void>(), op, jt) }
 }
 
-pub(super) fn mtproto_rpcc_execute_ffi(
-    c: ConnectionJob,
-    op: c_int,
-    msg: *mut c_void,
-) -> c_int {
+pub(super) fn mtproto_rpcc_execute_ffi(c: ConnectionJob, op: c_int, msg: *mut c_void) -> c_int {
     if c.is_null() || msg.is_null() {
         return 0;
     }
@@ -3310,7 +3288,12 @@ pub(super) fn mtproto_do_rpcs_execute_ffi(data: *mut c_void, s_len: c_int) -> c_
     let tlio_in = unsafe { c_tl_in_state_alloc() }.cast::<crate::tl_parse::abi::TlInState>();
     assert!(!tlio_in.is_null());
     unsafe {
-        c_tlf_init_raw_message(tlio_in.cast(), core::ptr::addr_of_mut!((*data).msg).cast(), len, 0);
+        c_tlf_init_raw_message(
+            tlio_in.cast(),
+            core::ptr::addr_of_mut!((*data).msg).cast(),
+            len,
+            0,
+        );
     }
 
     let res = unsafe {
@@ -3329,11 +3312,9 @@ pub(super) fn mtproto_do_rpcs_execute_ffi(data: *mut c_void, s_len: c_int) -> c_
 
     if res == 0 && unsafe { verbosity } >= 1 {
         unsafe {
-            crate::kprintf_fmt!(
-                b"ext_rpcs_execute: cannot forward mtproto packet\n\0"
-                    .as_ptr()
-                    .cast(),
-            );
+            crate::kprintf_fmt!(b"ext_rpcs_execute: cannot forward mtproto packet\n\0"
+                .as_ptr()
+                .cast(),);
         }
     }
     JOB_COMPLETED
@@ -3343,11 +3324,7 @@ unsafe extern "C" fn mtproto_do_rpcs_execute_bridge(data: *mut c_void, s_len: c_
     unsafe { mtproto_do_rpcs_execute_ffi(data, s_len) }
 }
 
-pub(super) fn mtproto_ext_rpcs_execute_ffi(
-    c: ConnectionJob,
-    op: c_int,
-    msg: *mut c_void,
-) -> c_int {
+pub(super) fn mtproto_ext_rpcs_execute_ffi(c: ConnectionJob, op: c_int, msg: *mut c_void) -> c_int {
     if c.is_null() || msg.is_null() {
         return 0;
     }
@@ -3679,7 +3656,10 @@ unsafe extern "C" fn mtproto_pre_loop_bridge() {
     unsafe { mtproto_mtfront_pre_loop_ffi() };
 }
 
-unsafe extern "C" fn mtproto_parse_function_bridge(tlio_in: *mut c_void, actor_id: i64) -> *mut c_void {
+unsafe extern "C" fn mtproto_parse_function_bridge(
+    tlio_in: *mut c_void,
+    actor_id: i64,
+) -> *mut c_void {
     unsafe { mtproto_mtfront_parse_function_runtime_ffi(tlio_in, actor_id) }
 }
 
@@ -4340,19 +4320,11 @@ proxy_tag_set\t%d\n\0"
             proxy_mode,
             proxy_tag_set,
         );
-        crate::sb_printf_fmt!(
-            sb,
-            b"version\t%s\n\0".as_ptr().cast(),
-            FullVersionStr,
-        );
+        crate::sb_printf_fmt!(sb, b"version\t%s\n\0".as_ptr().cast(), FullVersionStr,);
     }
 }
 
-pub(super) fn mtproto_hts_stats_execute_ffi(
-    c: *mut c_void,
-    msg: *mut c_void,
-    _op: c_int,
-) -> c_int {
+pub(super) fn mtproto_hts_stats_execute_ffi(c: *mut c_void, msg: *mut c_void, _op: c_int) -> c_int {
     let c = c.cast::<c_void>();
     let msg = msg.cast::<MtprotoRawMessage>();
     if c.is_null() || msg.is_null() {
@@ -4369,9 +4341,7 @@ pub(super) fn mtproto_hts_stats_execute_ffi(
 
     let remote_ip = unsafe { (*conn).remote_ip };
     let remote_ip_host = u32::from_be(remote_ip);
-    if (remote_ip & 0xff00_0000) != 0x7f00_0000
-        && (remote_ip_host & 0xff00_0000) != 0x7f00_0000
-    {
+    if (remote_ip & 0xff00_0000) != 0x7f00_0000 && (remote_ip_host & 0xff00_0000) != 0x7f00_0000 {
         return -404;
     }
 
@@ -5007,10 +4977,7 @@ pub(super) fn mtproto_usage_ffi() {
                 .cast(),
             progname,
         );
-        libc::printf(
-            b"%s\n\0".as_ptr().cast(),
-            FullVersionStr,
-        );
+        libc::printf(b"%s\n\0".as_ptr().cast(), FullVersionStr);
         libc::printf(b"\tSimple MT-Proto proxy\n\0".as_ptr().cast());
         parse_usage();
         libc::exit(2);
@@ -5090,11 +5057,9 @@ pub(super) fn mtproto_mtfront_pre_init_ffi() {
         unsafe {
             tcp_rpc_init_proxy_domains();
             if workers != 0 {
-                crate::kprintf_fmt!(
-                    b"It is recommended to not use workers with TLS-transport\0"
-                        .as_ptr()
-                        .cast(),
-                );
+                crate::kprintf_fmt!(b"It is recommended to not use workers with TLS-transport\0"
+                    .as_ptr()
+                    .cast(),);
             }
             if secret_count == 0 {
                 crate::kprintf_fmt!(
@@ -7038,11 +7003,7 @@ pub(super) fn mtproto_cfg_finalize_ffi(
     }
 }
 
-pub(super) fn mtproto_cfg_parse_config_ffi(
-    mc: *mut c_void,
-    flags: i32,
-    config_fd: i32,
-) -> i32 {
+pub(super) fn mtproto_cfg_parse_config_ffi(mc: *mut c_void, flags: i32, config_fd: i32) -> i32 {
     if (flags & 4) == 0 {
         return -1;
     }

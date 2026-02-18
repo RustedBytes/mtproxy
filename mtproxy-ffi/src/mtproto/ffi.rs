@@ -73,11 +73,11 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_set_default_target_endpoint(
     reconnect_timeout: c_double,
 ) {
     mtproto_cfg_set_default_target_endpoint_ffi(
-            port,
-            min_connections,
-            max_connections,
-            reconnect_timeout,
-        );
+        port,
+        min_connections,
+        max_connections,
+        reconnect_timeout,
+    );
 }
 
 /// Creates one target from `default_cfg_ct` and stores it into config slots.
@@ -607,26 +607,26 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_build_rpc_proxy_req(
     out_len: *mut usize,
 ) -> i32 {
     mtproto_build_rpc_proxy_req_ffi(
-            flags,
-            out_conn_id,
-            remote_ipv6,
-            remote_port,
-            our_ipv6,
-            our_port,
-            proxy_tag_ptr,
-            proxy_tag_len,
-            http_origin,
-            http_origin_len,
-            http_referer,
-            http_referer_len,
-            http_user_agent,
-            http_user_agent_len,
-            payload,
-            payload_len,
-            out_buf,
-            out_cap,
-            out_len,
-        )
+        flags,
+        out_conn_id,
+        remote_ipv6,
+        remote_port,
+        our_ipv6,
+        our_port,
+        proxy_tag_ptr,
+        proxy_tag_len,
+        http_origin,
+        http_origin_len,
+        http_referer,
+        http_referer_len,
+        http_user_agent,
+        http_user_agent_len,
+        payload,
+        payload_len,
+        out_buf,
+        out_cap,
+        out_len,
+    )
 }
 
 #[no_mangle]
@@ -639,13 +639,13 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_build_http_ok_header(
     out_len: *mut usize,
 ) -> i32 {
     mtproto_build_http_ok_header_ffi(
-            keep_alive,
-            extra_headers,
-            content_len,
-            out_buf,
-            out_cap,
-            out_len,
-        )
+        keep_alive,
+        extra_headers,
+        content_len,
+        out_buf,
+        out_cap,
+        out_len,
+    )
 }
 
 #[no_mangle]
@@ -676,14 +676,14 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_forward_tcp_query(
     our_ip_port: *const c_int,
 ) -> i32 {
     mtproto_forward_tcp_query_ffi(
-            tlio_in,
-            c,
-            target,
-            flags,
-            auth_key_id,
-            remote_ip_port,
-            our_ip_port,
-        )
+        tlio_in,
+        c,
+        target,
+        flags,
+        auth_key_id,
+        remote_ip_port,
+        our_ip_port,
+    )
 }
 
 #[no_mangle]
@@ -742,13 +742,7 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_decide_cluster_apply(
     max_clusters: u32,
     out: *mut MtproxyMtprotoCfgClusterApplyDecisionResult,
 ) -> i32 {
-    mtproto_cfg_decide_cluster_apply_ffi(
-            cluster_ids,
-            clusters_len,
-            cluster_id,
-            max_clusters,
-            out,
-        )
+    mtproto_cfg_decide_cluster_apply_ffi(cluster_ids, clusters_len, cluster_id, max_clusters, out)
 }
 
 /// Parses one extended lexer token from `mtproto-config`.
@@ -797,15 +791,15 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_parse_directive_step(
     out: *mut MtproxyMtprotoCfgDirectiveStepResult,
 ) -> i32 {
     mtproto_cfg_parse_directive_step_ffi(
-            cur,
-            len,
-            min_connections,
-            max_connections,
-            cluster_ids,
-            clusters_len,
-            max_clusters,
-            out,
-        )
+        cur,
+        len,
+        min_connections,
+        max_connections,
+        cluster_ids,
+        clusters_len,
+        max_clusters,
+        out,
+    )
 }
 
 /// Parses proxy target payload (`host:port;`) and computes cluster/apply mutation.
@@ -834,22 +828,22 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_parse_proxy_target_step(
     out: *mut MtproxyMtprotoCfgParseProxyTargetStepResult,
 ) -> i32 {
     mtproto_cfg_parse_proxy_target_step_ffi(
-            cur,
-            len,
-            current_targets,
-            max_targets,
-            min_connections,
-            max_connections,
-            cluster_ids,
-            clusters_len,
-            target_dc,
-            max_clusters,
-            create_targets,
-            current_auth_tot_clusters,
-            last_cluster_state,
-            has_last_cluster_state,
-            out,
-        )
+        cur,
+        len,
+        current_targets,
+        max_targets,
+        min_connections,
+        max_connections,
+        cluster_ids,
+        clusters_len,
+        target_dc,
+        max_clusters,
+        create_targets,
+        current_auth_tot_clusters,
+        last_cluster_state,
+        has_last_cluster_state,
+        out,
+    )
 }
 
 /// Executes one full `parse_config()` directive pass and returns proxy side-effect plan.
@@ -872,17 +866,17 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_parse_full_pass(
     out: *mut MtproxyMtprotoCfgParseFullResult,
 ) -> i32 {
     mtproto_cfg_parse_full_pass_ffi(
-            cur,
-            len,
-            default_min_connections,
-            default_max_connections,
-            create_targets,
-            max_clusters,
-            max_targets,
-            actions,
-            actions_capacity,
-            out,
-        )
+        cur,
+        len,
+        default_min_connections,
+        default_max_connections,
+        create_targets,
+        max_clusters,
+        max_targets,
+        actions,
+        actions_capacity,
+        out,
+    )
 }
 
 /// Parses a required trailing semicolon from `mtproto-config`.
@@ -914,14 +908,14 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_lookup_cluster_index(
     out_cluster_index: *mut i32,
 ) -> i32 {
     mtproto_cfg_lookup_cluster_index_ffi(
-            cluster_ids,
-            clusters_len,
-            cluster_id,
-            force,
-            default_cluster_index,
-            has_default_cluster_index,
-            out_cluster_index,
-        )
+        cluster_ids,
+        clusters_len,
+        cluster_id,
+        force,
+        default_cluster_index,
+        has_default_cluster_index,
+        out_cluster_index,
+    )
 }
 
 /// Finalizes parse-loop invariants and resolves optional default-cluster index.
@@ -938,12 +932,12 @@ pub unsafe extern "C" fn mtproxy_ffi_mtproto_cfg_finalize(
     out: *mut MtproxyMtprotoCfgFinalizeResult,
 ) -> i32 {
     mtproto_cfg_finalize_ffi(
-            have_proxy,
-            cluster_ids,
-            clusters_len,
-            default_cluster_id,
-            out,
-        )
+        have_proxy,
+        cluster_ids,
+        clusters_len,
+        default_cluster_id,
+        out,
+    )
 }
 
 /// Full `parse_config()` runtime path extracted from C implementation.

@@ -1,60 +1,82 @@
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
+obj_dir := "objs"
+dep_dir := "dep"
+bin_dir := obj_dir + "/bin"
+lib_dir := obj_dir + "/lib"
+rust_ffi_debug := "target/debug/libmtproxy_ffi.a"
+rust_ffi_release := "target/release/libmtproxy_ffi.a"
+rust_runtime_release := "target/release/mtproxy-rust"
+
 default:
   @just --list
 
-build:
-  make
+dirs:
+  mkdir -p {{dep_dir}}/{common,jobs,mtproto,net,crypto,engine}
+  mkdir -p {{obj_dir}}/{common,jobs,mtproto,net,crypto,engine}
+  mkdir -p {{bin_dir}} {{lib_dir}}
 
-release:
-  make release
+libkdb: dirs
+  rm -f {{lib_dir}}/libkdb.a && ar rcs {{lib_dir}}/libkdb.a
+
+ffi-debug:
+  cargo build -p mtproxy-ffi
+  if [ ! -f "{{rust_ffi_debug}}" ]; then \
+    latest="$$(ls -1t target/debug/deps/libmtproxy_ffi-*.a 2>/dev/null | head -n1)"; \
+    test -n "$$latest"; \
+    cp "$$latest" "{{rust_ffi_debug}}"; \
+  fi
+
+ffi-release:
+  cargo build --release -p mtproxy-ffi
+  if [ ! -f "{{rust_ffi_release}}" ]; then \
+    latest="$$(ls -1t target/release/deps/libmtproxy_ffi-*.a 2>/dev/null | head -n1)"; \
+    test -n "$$latest"; \
+    cp "$$latest" "{{rust_ffi_release}}"; \
+  fi
+
+build: dirs libkdb ffi-debug
+  clang -o {{bin_dir}}/mtproto-proxy {{lib_dir}}/libkdb.a {{rust_ffi_debug}} {{lib_dir}}/libkdb.a {{rust_ffi_debug}} {{lib_dir}}/libkdb.a -ggdb -rdynamic -lm -lrt -lpthread -ldl
+
+release: dirs
+  cargo build --release -p mtproxy-bin --bin mtproxy-rust
+  cp {{rust_runtime_release}} {{bin_dir}}/mtproxy-rust
+
+release-legacy: dirs libkdb ffi-release
+  clang -o {{bin_dir}}/mtproto-proxy {{lib_dir}}/libkdb.a {{rust_ffi_release}} {{lib_dir}}/libkdb.a {{rust_ffi_release}} {{lib_dir}}/libkdb.a -ggdb -rdynamic -lm -lrt -lpthread -ldl
 
 clean:
-  make clean
+  rm -rf {{obj_dir}} {{dep_dir}} {{bin_dir}} target || true
 
 test:
-  make test
+  if [ -x tests/run.sh ]; then \
+    tests/run.sh; \
+  else \
+    cargo test --workspace; \
+  fi
 
 test-rust-differential:
-  TEST_INCLUDE_RUST_DIFFERENTIAL=1 make test
+  if [ -x tests/run.sh ]; then \
+    TEST_INCLUDE_RUST_DIFFERENTIAL=1 tests/run.sh; \
+  else \
+    TEST_INCLUDE_RUST_DIFFERENTIAL=1 cargo test --workspace; \
+  fi
 
 rust-format:
-  make rust-fmt
+  cargo fmt --all
+
+format: rust-format
 
 rust-format-check:
-  make rust-fmt-check
+  cargo fmt --all --check
 
 check:
-  make rust-check
+  cargo check --workspace
 
 clippy:
-  make rust-clippy
+  cargo clippy --workspace --all-targets -- -D warnings
 
 rust-test:
-  make rust-test
+  cargo test --workspace
 
-ci:
-  make rust-ci
-
-inventory:
-  make step15-inventory
-
-manifest:
-  ./scripts/generate_refactor_manifest.sh
-
-ffi-freeze:
-  ./scripts/ffi_freeze_check.sh
-
-c-format:
-  rg --files -g '*.c' -g '*.h' common mtproto | xargs -r clang-format -style=file -i
-
-c-format-check:
-  rg --files -g '*.c' -g '*.h' common mtproto | xargs -r clang-format -style=file --dry-run -Werror
-
-format:
-  just c-format
-
-format-check:
-  just ffi-freeze
-  just rust-format-check
-  just c-format-check
+ci: rust-format-check check clippy rust-test

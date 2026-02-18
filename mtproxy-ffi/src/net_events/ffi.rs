@@ -237,7 +237,11 @@ pub unsafe extern "C" fn mtproxy_ffi_net_events_client_socket(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn client_socket(in_addr: libc::in_addr_t, port: c_int, mode: c_int) -> c_int {
+pub unsafe extern "C" fn client_socket(
+    in_addr: libc::in_addr_t,
+    port: c_int,
+    mode: c_int,
+) -> c_int {
     unsafe { client_socket_ffi(in_addr, port, mode) }
 }
 
@@ -251,7 +255,11 @@ pub unsafe extern "C" fn mtproxy_ffi_net_events_client_socket_ipv6(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn client_socket_ipv6(in6_addr_ptr: *const u8, port: c_int, mode: c_int) -> c_int {
+pub unsafe extern "C" fn client_socket_ipv6(
+    in6_addr_ptr: *const u8,
+    port: c_int,
+    mode: c_int,
+) -> c_int {
     unsafe { client_socket_ipv6_ffi(in6_addr_ptr, port, mode) }
 }
 

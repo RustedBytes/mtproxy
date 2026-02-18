@@ -129,13 +129,7 @@ unsafe extern "C" {
     #[link_name = "sha256"]
     fn ffi_sha256(input: *const u8, ilen: c_int, output: *mut u8);
     #[link_name = "sha256_hmac"]
-    fn ffi_sha256_hmac(
-        key: *mut u8,
-        keylen: c_int,
-        input: *mut u8,
-        ilen: c_int,
-        output: *mut u8,
-    );
+    fn ffi_sha256_hmac(key: *mut u8, keylen: c_int, input: *mut u8, ilen: c_int, output: *mut u8);
     fn show_ip(ip: u32) -> *const c_char;
     fn show_ipv6(ipv6: *const u8) -> *const c_char;
     #[link_name = "verbosity"]
@@ -275,7 +269,11 @@ pub(super) unsafe fn client_socket(in_addr: u32, port: c_int, mode: c_int) -> c_
 }
 
 #[inline]
-pub(super) unsafe fn client_socket_ipv6(in6_addr_ptr: *const u8, port: c_int, mode: c_int) -> c_int {
+pub(super) unsafe fn client_socket_ipv6(
+    in6_addr_ptr: *const u8,
+    port: c_int,
+    mode: c_int,
+) -> c_int {
     unsafe { ffi_client_socket_ipv6(in6_addr_ptr, port, mode) }
 }
 
@@ -299,7 +297,11 @@ pub(super) unsafe fn alloc_new_connection(
 }
 
 #[inline]
-pub(super) unsafe fn rwm_fetch_lookup(raw: *mut RawMessage, buf: *mut c_void, bytes: c_int) -> c_int {
+pub(super) unsafe fn rwm_fetch_lookup(
+    raw: *mut RawMessage,
+    buf: *mut c_void,
+    bytes: c_int,
+) -> c_int {
     unsafe { ffi_rwm_fetch_lookup(raw, buf, bytes) }
 }
 
@@ -324,7 +326,11 @@ pub(super) unsafe fn rwm_init(raw: *mut RawMessage, alloc_bytes: c_int) -> c_int
 }
 
 #[inline]
-pub(super) unsafe fn rwm_split_head(head: *mut RawMessage, raw: *mut RawMessage, bytes: c_int) -> c_int {
+pub(super) unsafe fn rwm_split_head(
+    head: *mut RawMessage,
+    raw: *mut RawMessage,
+    bytes: c_int,
+) -> c_int {
     unsafe { ffi_rwm_split_head(head, raw, bytes) }
 }
 
@@ -339,7 +345,11 @@ pub(super) unsafe fn rwm_free(raw: *mut RawMessage) -> c_int {
 }
 
 #[inline]
-pub(super) unsafe fn rwm_create(raw: *mut RawMessage, data: *const c_void, alloc_bytes: c_int) -> c_int {
+pub(super) unsafe fn rwm_create(
+    raw: *mut RawMessage,
+    data: *const c_void,
+    alloc_bytes: c_int,
+) -> c_int {
     unsafe { ffi_rwm_create(raw, data, alloc_bytes) }
 }
 
@@ -452,7 +462,10 @@ pub unsafe extern "C" fn tcp_proxy_pass_close(c: ConnectionJob, who: c_int) -> c
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn tcp_proxy_pass_write_packet(c: ConnectionJob, raw: *mut RawMessage) -> c_int {
+pub unsafe extern "C" fn tcp_proxy_pass_write_packet(
+    c: ConnectionJob,
+    raw: *mut RawMessage,
+) -> c_int {
     unsafe { tcp_proxy_pass_write_packet_impl(c, raw) }
 }
 
@@ -464,7 +477,10 @@ pub unsafe extern "C" fn tcp_rpcs_ext_alarm(c: ConnectionJob) -> c_int {
 #[no_mangle]
 pub unsafe extern "C" fn tcp_rpcs_ext_init_accepted(c: ConnectionJob) -> c_int {
     unsafe {
-        job_timer_insert(c, mtproxy_ffi_net_connections_precise_now() + EXT_ALARM_TIMEOUT_SEC);
+        job_timer_insert(
+            c,
+            mtproxy_ffi_net_connections_precise_now() + EXT_ALARM_TIMEOUT_SEC,
+        );
         tcp_rpcs_init_accepted_nohs(c)
     }
 }
@@ -502,8 +518,12 @@ pub static mut ct_tcp_rpc_ext_server: ConnFunctions = ConnFunctions {
     ready_to_write: None,
     crypto_init: Some(aes_crypto_ctr128_init),
     crypto_free: Some(aes_crypto_free),
-    crypto_encrypt_output: Some(mtproxy_ffi_net_tcp_connections_cpu_tcp_aes_crypto_ctr128_encrypt_output),
-    crypto_decrypt_input: Some(mtproxy_ffi_net_tcp_connections_cpu_tcp_aes_crypto_ctr128_decrypt_input),
+    crypto_encrypt_output: Some(
+        mtproxy_ffi_net_tcp_connections_cpu_tcp_aes_crypto_ctr128_encrypt_output,
+    ),
+    crypto_decrypt_input: Some(
+        mtproxy_ffi_net_tcp_connections_cpu_tcp_aes_crypto_ctr128_decrypt_input,
+    ),
     crypto_needed_output_bytes: Some(
         mtproxy_ffi_net_tcp_connections_cpu_tcp_aes_crypto_ctr128_needed_output_bytes,
     ),
@@ -563,7 +583,9 @@ pub unsafe extern "C" fn tcp_rpc_init_proxy_domains() {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_conn_info(c: ConnectionJob) -> *mut ConnectionInfo {
+pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_conn_info(
+    c: ConnectionJob,
+) -> *mut ConnectionInfo {
     unsafe { conn_info_ptr(c) }
 }
 
@@ -573,7 +595,9 @@ pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_data(c: ConnectionJob) -> *
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_funcs(c: ConnectionJob) -> *mut TcpRpcServerFunctions {
+pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_funcs(
+    c: ConnectionJob,
+) -> *mut TcpRpcServerFunctions {
     unsafe { rpc_funcs_ptr(c) }
 }
 
@@ -588,13 +612,17 @@ pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_unlock_job(c: ConnectionJob
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_show_our_ip(c: ConnectionJob) -> *const c_char {
+pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_show_our_ip(
+    c: ConnectionJob,
+) -> *const c_char {
     let conn = unsafe { conn_info_ptr(c) };
     unsafe { show_ip46((*conn).our_ip, (*conn).our_ipv6.as_ptr()) }
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_show_remote_ip(c: ConnectionJob) -> *const c_char {
+pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_show_remote_ip(
+    c: ConnectionJob,
+) -> *const c_char {
     let conn = unsafe { conn_info_ptr(c) };
     unsafe { show_ip46((*conn).remote_ip, (*conn).remote_ipv6.as_ptr()) }
 }
@@ -618,7 +646,9 @@ pub extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_ext_secret_at(index: c_int) -> *co
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_have_client_random(random: *const u8) -> c_int {
+pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_have_client_random(
+    random: *const u8,
+) -> c_int {
     unsafe { have_client_random_state_impl(random) }
 }
 
@@ -633,7 +663,9 @@ pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_delete_old_client_randoms()
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_is_allowed_timestamp_state(timestamp: c_int) -> c_int {
+pub unsafe extern "C" fn mtproxy_ffi_net_tcp_rpc_ext_is_allowed_timestamp_state(
+    timestamp: c_int,
+) -> c_int {
     unsafe { is_allowed_timestamp_state_impl(timestamp, now_value()) }
 }
 

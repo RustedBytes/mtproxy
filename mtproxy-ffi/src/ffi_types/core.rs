@@ -329,8 +329,7 @@ pub static mut MTPROXY_FFI_NEXT_CONF_SLOT: MtproxyMfConfig = EMPTY_MTPROXY_MF_CO
 pub static mut CurConf: *mut MtproxyMfConfig = core::ptr::addr_of_mut!(MTPROXY_FFI_CUR_CONF_SLOT);
 
 #[no_mangle]
-pub static mut NextConf: *mut MtproxyMfConfig =
-    core::ptr::addr_of_mut!(MTPROXY_FFI_NEXT_CONF_SLOT);
+pub static mut NextConf: *mut MtproxyMfConfig = core::ptr::addr_of_mut!(MTPROXY_FFI_NEXT_CONF_SLOT);
 
 #[no_mangle]
 pub static mut config_filename: *mut c_char = core::ptr::null_mut();

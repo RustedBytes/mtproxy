@@ -147,7 +147,11 @@ pub(super) unsafe fn notification_event_insert_tcp_conn_wakeup(c: ConnectionJob)
 }
 
 #[inline]
-pub(super) unsafe fn rwm_fetch_data(raw: *mut RawMessage, data: *mut c_void, bytes: c_int) -> c_int {
+pub(super) unsafe fn rwm_fetch_data(
+    raw: *mut RawMessage,
+    data: *mut c_void,
+    bytes: c_int,
+) -> c_int {
     unsafe { ffi_rwm_fetch_data(raw, data, bytes) }
 }
 
@@ -157,7 +161,11 @@ pub(super) unsafe fn rwm_skip_data(raw: *mut RawMessage, bytes: c_int) -> c_int 
 }
 
 #[inline]
-pub(super) unsafe fn rwm_fetch_lookup(raw: *mut RawMessage, data: *mut c_void, bytes: c_int) -> c_int {
+pub(super) unsafe fn rwm_fetch_lookup(
+    raw: *mut RawMessage,
+    data: *mut c_void,
+    bytes: c_int,
+) -> c_int {
     unsafe { ffi_rwm_fetch_lookup(raw, data, bytes) }
 }
 
@@ -171,7 +179,11 @@ pub(super) unsafe fn rwm_fetch_data_back(
 }
 
 #[inline]
-pub(super) unsafe fn rwm_split_head(head: *mut RawMessage, raw: *mut RawMessage, bytes: c_int) -> c_int {
+pub(super) unsafe fn rwm_split_head(
+    head: *mut RawMessage,
+    raw: *mut RawMessage,
+    bytes: c_int,
+) -> c_int {
     unsafe { ffi_rwm_split_head(head, raw, bytes) }
 }
 

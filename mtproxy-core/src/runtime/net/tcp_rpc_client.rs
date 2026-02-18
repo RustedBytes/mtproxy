@@ -651,9 +651,11 @@ pub fn process_nonce_packet_for_compat(
             if (f64::from(parsed.crypto_ts) - f64::from(nonce_time)).abs() > 30.0 {
                 return -6;
             }
-            *out_has_dh_params = i32::from(parsed.crypto_schema
-                == super::tcp_rpc_common::CryptoSchema::AesDh
-                && parsed.has_dh_params && parsed.dh_params_select != 0);
+            *out_has_dh_params = i32::from(
+                parsed.crypto_schema == super::tcp_rpc_common::CryptoSchema::AesDh
+                    && parsed.has_dh_params
+                    && parsed.dh_params_select != 0,
+            );
         }
     }
 

@@ -28,10 +28,14 @@ unsafe extern "C" {
     fn timers_prepare_stat(sb: *mut c_void) -> c_int;
     fn rpc_targets_prepare_stat(sb: *mut StatsBuffer) -> c_int;
 
-    fn mtproxy_ffi_net_stats_recent_idle_percent(a_idle_time: c_double, a_idle_quotient: c_double)
-        -> c_double;
-    fn mtproxy_ffi_net_stats_average_idle_percent(tot_idle_time: c_double, uptime: c_int)
-        -> c_double;
+    fn mtproxy_ffi_net_stats_recent_idle_percent(
+        a_idle_time: c_double,
+        a_idle_quotient: c_double,
+    ) -> c_double;
+    fn mtproxy_ffi_net_stats_average_idle_percent(
+        tot_idle_time: c_double,
+        uptime: c_int,
+    ) -> c_double;
     fn mtproxy_ffi_net_msg_buffers_raw_prepare_stat(sb: *mut c_void) -> c_int;
     fn mtproxy_ffi_tl_parse_prepare_stat(sb: *mut c_void) -> c_int;
 
@@ -138,6 +142,12 @@ PID\t[%d.%d.%d.%d:%d:%d:%d]\n"
     unsafe { rpc_targets_prepare_stat(&raw mut sb) };
 
     let elapsed = unsafe { get_utime_monotonic() - started_at };
-    unsafe { crate::sb_printf_fmt!(&raw mut sb, c"stats_generate_time\t%.6f\n".as_ptr(), elapsed) };
+    unsafe {
+        crate::sb_printf_fmt!(
+            &raw mut sb,
+            c"stats_generate_time\t%.6f\n".as_ptr(),
+            elapsed
+        )
+    };
     sb.pos
 }

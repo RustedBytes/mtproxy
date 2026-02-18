@@ -303,7 +303,10 @@ pub unsafe extern "C" fn write_basic_http_header_raw(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_net_http_server_http_flush(c: ConnectionJob, raw: *mut RawMessage) {
+pub unsafe extern "C" fn mtproxy_ffi_net_http_server_http_flush(
+    c: ConnectionJob,
+    raw: *mut RawMessage,
+) {
     unsafe { http_flush_impl(c, raw) }
 }
 

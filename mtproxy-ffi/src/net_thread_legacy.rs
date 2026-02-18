@@ -235,8 +235,8 @@ unsafe extern "C" fn notification_event_run(job: Job, op: c_int, _jt: *mut c_voi
     let extra = unsafe { job_custom_ptr::<NotificationEventJobExtra>(job) };
     assert!(!extra.is_null());
     loop {
-        let ev = unsafe { mpq_pop_nw((*extra).queue, MPQ_POP_NON_BLOCK) }
-            .cast::<NotificationEvent>();
+        let ev =
+            unsafe { mpq_pop_nw((*extra).queue, MPQ_POP_NON_BLOCK) }.cast::<NotificationEvent>();
         if ev.is_null() {
             break;
         }

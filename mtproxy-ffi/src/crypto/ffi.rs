@@ -1748,8 +1748,19 @@ pub unsafe extern "C" fn mtproxy_ffi_sha256_hmac(
 pub unsafe extern "C" fn crypto_aes_prepare_stat(sb: *mut StatsBuffer) -> c_int {
     let mut allocated_aes_crypto = 0;
     let mut allocated_aes_crypto_temp = 0;
-    unsafe { fetch_aes_crypto_stat(&raw mut allocated_aes_crypto, &raw mut allocated_aes_crypto_temp) };
-    unsafe { crate::sb_printf_fmt!(sb, c"allocated_aes_crypto\t%d\n".as_ptr(), allocated_aes_crypto) };
+    unsafe {
+        fetch_aes_crypto_stat(
+            &raw mut allocated_aes_crypto,
+            &raw mut allocated_aes_crypto_temp,
+        )
+    };
+    unsafe {
+        crate::sb_printf_fmt!(
+            sb,
+            c"allocated_aes_crypto\t%d\n".as_ptr(),
+            allocated_aes_crypto
+        )
+    };
     unsafe {
         crate::sb_printf_fmt!(
             sb,
@@ -1799,7 +1810,11 @@ pub unsafe extern "C" fn aes_crypto_init(
             0,
         )
     };
-    if rc == 0 { 0 } else { -1 }
+    if rc == 0 {
+        0
+    } else {
+        -1
+    }
 }
 
 #[no_mangle]
@@ -1823,7 +1838,11 @@ pub unsafe extern "C" fn aes_crypto_ctr128_init(
             1,
         )
     };
-    if rc == 0 { 0 } else { -1 }
+    if rc == 0 {
+        0
+    } else {
+        -1
+    }
 }
 
 #[no_mangle]
@@ -1841,7 +1860,11 @@ pub unsafe extern "C" fn aes_crypto_free(c: ConnectionJob) -> c_int {
         return -1;
     }
     let rc = unsafe { mtproxy_ffi_crypto_aes_conn_free(crypto_slot, crypto_temp_slot) };
-    if rc == 0 { 0 } else { -1 }
+    if rc == 0 {
+        0
+    } else {
+        -1
+    }
 }
 
 #[no_mangle]
@@ -1865,7 +1888,11 @@ pub unsafe extern "C" fn aes_load_pwd_file(filename: *const c_char) -> c_int {
 #[no_mangle]
 pub unsafe extern "C" fn aes_generate_nonce(res: *mut c_char) -> c_int {
     let rc = unsafe { mtproxy_ffi_crypto_aes_generate_nonce(res.cast::<u8>()) };
-    if rc == 0 { 0 } else { -1 }
+    if rc == 0 {
+        0
+    } else {
+        -1
+    }
 }
 
 #[no_mangle]
@@ -1968,10 +1995,12 @@ pub unsafe extern "C" fn dh_first_round(
     if g_a.is_null() || dh_params.is_null() {
         return -1;
     }
-    let r = unsafe {
-        mtproxy_ffi_crypto_dh_first_round_stateful(g_a, dh_params, dh_params_select)
-    };
-    if r == 1 { 1 } else { -1 }
+    let r = unsafe { mtproxy_ffi_crypto_dh_first_round_stateful(g_a, dh_params, dh_params_select) };
+    if r == 1 {
+        1
+    } else {
+        -1
+    }
 }
 
 #[no_mangle]
@@ -2009,7 +2038,8 @@ pub unsafe extern "C" fn dh_third_round(
     if g_ab.is_null() || g_b.is_null() || dh_params.is_null() {
         return -1;
     }
-    let r = unsafe { mtproxy_ffi_crypto_dh_third_round_stateful(g_ab, g_b, dh_params.cast_const()) };
+    let r =
+        unsafe { mtproxy_ffi_crypto_dh_third_round_stateful(g_ab, g_b, dh_params.cast_const()) };
     if r <= 0 {
         return r;
     }

@@ -4,11 +4,11 @@ use super::legacy::{
     aes_create_keys, aes_crypto_init, aes_generate_nonce, cpu_server_close_connection,
     crc32_partial, crc32c_partial, dh_params_select_get, dh_second_round, fail_connection,
     get_my_ipv4, incr_active_dh_connections, init_dh_params, init_server_pid as init_server_PID,
-    job_incref, main_secret_ptr, matches_pid, nat_translate_ip, pid_get, pid_ptr,
+    job_incref, main_secret_ptr, matches_pid, nat_translate_ip,
     notification_event_insert_tcp_conn_alarm, notification_event_insert_tcp_conn_close,
-    notification_event_insert_tcp_conn_ready, notification_event_insert_tcp_conn_wakeup,
-    rwm_custom_crc32, rwm_dump, rwm_fetch_data, rwm_fetch_data_back, rwm_fetch_lookup, rwm_free,
-    rwm_skip_data, rwm_split_head, tcp_add_dh_accept, tcp_get_default_rpc_flags,
+    notification_event_insert_tcp_conn_ready, notification_event_insert_tcp_conn_wakeup, pid_get,
+    pid_ptr, rwm_custom_crc32, rwm_dump, rwm_fetch_data, rwm_fetch_data_back, rwm_fetch_lookup,
+    rwm_free, rwm_skip_data, rwm_split_head, tcp_add_dh_accept, tcp_get_default_rpc_flags,
     tcp_rpc_conn_send_data, tcp_rpc_conn_send_data_im, tcp_rpc_conn_send_data_init, verbosity_get,
 };
 use core::ffi::{c_char, c_double, c_int, c_long, c_uint, c_void};
@@ -904,7 +904,9 @@ pub(super) unsafe fn tcp_rpcs_wakeup_impl(c: ConnectionJob) -> c_int {
     unsafe { notification_event_insert_tcp_conn_wakeup(c) };
 
     if core_should_set_wantwr(unsafe { (*conn).out_p.total_bytes }) {
-        unsafe { (&*((&raw mut (*conn).flags).cast::<AtomicI32>())).fetch_or(C_WANTWR, Ordering::SeqCst) };
+        unsafe {
+            (&*((&raw mut (*conn).flags).cast::<AtomicI32>())).fetch_or(C_WANTWR, Ordering::SeqCst)
+        };
     }
 
     unsafe {
@@ -920,7 +922,9 @@ pub(super) unsafe fn tcp_rpcs_alarm_impl(c: ConnectionJob) -> c_int {
     unsafe { notification_event_insert_tcp_conn_alarm(c) };
 
     if core_should_set_wantwr(unsafe { (*conn).out_p.total_bytes }) {
-        unsafe { (&*((&raw mut (*conn).flags).cast::<AtomicI32>())).fetch_or(C_WANTWR, Ordering::SeqCst) };
+        unsafe {
+            (&*((&raw mut (*conn).flags).cast::<AtomicI32>())).fetch_or(C_WANTWR, Ordering::SeqCst)
+        };
     }
 
     unsafe {

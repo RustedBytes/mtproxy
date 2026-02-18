@@ -2,19 +2,19 @@
 //! `net/net-tcp-rpc-ext-server.c`.
 
 use super::legacy::{
-    add_client_random as legacy_add_client_random, conn_info as legacy_conn_info,
-    ct_proxy_pass_ptr, delete_old_client_randoms as legacy_delete_old_client_randoms,
-    aes_crypto_ctr128_init, aes_crypto_free, aesni_crypt, alloc_new_connection, client_socket,
-    client_socket_ipv6, cpu_server_close_connection, fail_connection, get_utime_monotonic,
-    job_incref, job_signal, job_timer_remove, kdb_gethostbyname, mpq_push_w,
-    mtproxy_ffi_crypto_rand_bytes, mtproxy_ffi_crypto_tls_generate_public_key, rwm_create,
-    rwm_dump, rwm_fetch_lookup, rwm_free, rwm_init, rwm_move, rwm_skip_data, rwm_split_head,
-    rwm_trunc, rwm_union, sha256, sha256_hmac, tcp_rpcs_default_execute, tcp_rpcs_parse_execute,
-    ext_job_decref as legacy_job_decref, ext_unlock_job as legacy_unlock_job,
-    have_client_random as legacy_have_client_random,
-    is_allowed_timestamp_state as legacy_is_allowed_timestamp_state, rpc_data as legacy_rpc_data,
-    rpc_funcs as legacy_rpc_funcs, show_our_ip as legacy_show_our_ip,
-    show_remote_ip as legacy_show_remote_ip, verbosity_get,
+    add_client_random as legacy_add_client_random, aes_crypto_ctr128_init, aes_crypto_free,
+    aesni_crypt, alloc_new_connection, client_socket, client_socket_ipv6,
+    conn_info as legacy_conn_info, cpu_server_close_connection, ct_proxy_pass_ptr,
+    delete_old_client_randoms as legacy_delete_old_client_randoms,
+    ext_job_decref as legacy_job_decref, ext_unlock_job as legacy_unlock_job, fail_connection,
+    get_utime_monotonic, have_client_random as legacy_have_client_random,
+    is_allowed_timestamp_state as legacy_is_allowed_timestamp_state, job_incref, job_signal,
+    job_timer_remove, kdb_gethostbyname, mpq_push_w, mtproxy_ffi_crypto_rand_bytes,
+    mtproxy_ffi_crypto_tls_generate_public_key, rpc_data as legacy_rpc_data,
+    rpc_funcs as legacy_rpc_funcs, rwm_create, rwm_dump, rwm_fetch_lookup, rwm_free, rwm_init,
+    rwm_move, rwm_skip_data, rwm_split_head, rwm_trunc, rwm_union, sha256, sha256_hmac,
+    show_our_ip as legacy_show_our_ip, show_remote_ip as legacy_show_remote_ip,
+    tcp_rpcs_default_execute, tcp_rpcs_parse_execute, verbosity_get,
 };
 use core::ffi::{c_char, c_double, c_int, c_long, c_short, c_void};
 use core::mem::size_of;
@@ -1377,7 +1377,10 @@ unsafe fn update_domain_info_inner(info: *mut DomainInfo) -> c_int {
                                     != TLS_CLIENT_CCS_PREFIX[..9]
                             {
                                 unsafe {
-                                    crate::kprintf_fmt!(PROBE_NO_TLS13_FMT.as_ptr().cast(), domain_ptr);
+                                    crate::kprintf_fmt!(
+                                        PROBE_NO_TLS13_FMT.as_ptr().cast(),
+                                        domain_ptr
+                                    );
                                 }
                                 have_error = true;
                                 break;
@@ -1753,7 +1756,11 @@ unsafe fn parse_execute_inner(c: ConnectionJob) -> c_int {
 
                 if len > min_len {
                     unsafe {
-                        crate::kprintf_fmt!(PARSE_TLS_TOO_MUCH_DATA_FMT.as_ptr().cast(), len, min_len);
+                        crate::kprintf_fmt!(
+                            PARSE_TLS_TOO_MUCH_DATA_FMT.as_ptr().cast(),
+                            len,
+                            min_len
+                        );
                     }
                     return unsafe { proxy_connection_impl(c, info) };
                 }
@@ -1772,9 +1779,7 @@ unsafe fn parse_execute_inner(c: ConnectionJob) -> c_int {
                 client_random.copy_from_slice(&client_hello[11..43]);
                 client_hello[11..43].fill(0);
 
-                if unsafe { legacy_have_client_random(client_random.as_ptr()) }
-                    != 0
-                {
+                if unsafe { legacy_have_client_random(client_random.as_ptr()) } != 0 {
                     unsafe {
                         crate::kprintf_fmt!(PARSE_TLS_DUP_RANDOM_FMT.as_ptr().cast());
                     }
@@ -1822,8 +1827,7 @@ unsafe fn parse_execute_inner(c: ConnectionJob) -> c_int {
                     i32::from_ne_bytes(expected_random[28..32].try_into().unwrap_or([0u8; 4]))
                         ^ i32::from_ne_bytes(client_random[28..32].try_into().unwrap_or([0u8; 4]));
 
-                if unsafe { legacy_is_allowed_timestamp_state(timestamp) } == 0
-                {
+                if unsafe { legacy_is_allowed_timestamp_state(timestamp) } == 0 {
                     return unsafe { proxy_connection_impl(c, info) };
                 }
 

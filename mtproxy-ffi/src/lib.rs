@@ -83,12 +83,12 @@ mod net_msg_buffers;
 mod net_rpc_targets;
 mod net_rpc_targets_legacy;
 mod net_stats_legacy;
-mod net_thread_legacy;
 mod net_tcp_connections;
 mod net_tcp_rpc_client;
 mod net_tcp_rpc_common;
 mod net_tcp_rpc_ext_server;
 mod net_tcp_rpc_server;
+mod net_thread_legacy;
 mod net_timers;
 mod printf_compat;
 mod server_functions;
@@ -185,11 +185,11 @@ struct EventPreciseCronInternal {
 }
 
 /// Global precise_cron_events variable (migrated from engine/engine.c)
-/// 
+///
 /// **IMPORTANT:** This circular list must be initialized by calling
 /// `mtproxy_ffi_init_precise_cron_events()` before first use. The initialization
 /// is automatically done in `mtproxy_ffi_engine_init()`.
-/// 
+///
 /// Initialized to null pointers; runtime initialization sets next/prev to point to itself.
 #[export_name = "precise_cron_events"]
 static mut GLOBAL_PRECISE_CRON_EVENTS: EventPreciseCronInternal = EventPreciseCronInternal {

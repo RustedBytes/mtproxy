@@ -61,7 +61,9 @@ fn cstr_lossy_or_default(ptr: *const c_char, default: &str) -> String {
     if ptr.is_null() {
         return default.to_owned();
     }
-    unsafe { CStr::from_ptr(ptr) }.to_string_lossy().into_owned()
+    unsafe { CStr::from_ptr(ptr) }
+        .to_string_lossy()
+        .into_owned()
 }
 
 fn cstring_sanitized(value: &str) -> CString {
@@ -92,7 +94,11 @@ unsafe fn set_tl_out_error_message(tlio_out: *mut c_void, errnum: c_int, message
     0
 }
 
-unsafe fn set_tl_out_error_cstr(tlio_out: *mut c_void, errnum: c_int, message: *const c_char) -> c_int {
+unsafe fn set_tl_out_error_cstr(
+    tlio_out: *mut c_void,
+    errnum: c_int,
+    message: *const c_char,
+) -> c_int {
     let text = cstr_lossy_or_default(message, "Unknown error");
     unsafe { set_tl_out_error_message(tlio_out, errnum, &text) }
 }
@@ -638,12 +644,12 @@ pub(super) unsafe fn default_parse_function_impl(
 
     use mtproxy_core::runtime::engine::rpc_common::DefaultParseDecision;
     match mtproxy_core::runtime::engine::rpc_common::default_parse_decision(actor_id, op) {
-        DefaultParseDecision::Stat => {
-            unsafe { default_tl_simple_parse_function(tlio_in, Some(default_tl_act_stat)) }
-        }
-        DefaultParseDecision::Nop => {
-            unsafe { default_tl_simple_parse_function(tlio_in, Some(default_tl_act_nop)) }
-        }
+        DefaultParseDecision::Stat => unsafe {
+            default_tl_simple_parse_function(tlio_in, Some(default_tl_act_stat))
+        },
+        DefaultParseDecision::Nop => unsafe {
+            default_tl_simple_parse_function(tlio_in, Some(default_tl_act_nop))
+        },
         DefaultParseDecision::None => ptr::null_mut(),
     }
 }

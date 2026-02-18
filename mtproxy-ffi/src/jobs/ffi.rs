@@ -1,13 +1,13 @@
 //! FFI export surface for jobs runtime.
 
 use super::core::*;
+use crate::crypto::ffi::StatsBuffer;
 use core::ffi::{c_char, c_void};
 use core::mem;
 use core::ptr;
 use libc::pthread_attr_t;
 use std::cell::Cell;
 use std::sync::atomic::{AtomicI32, Ordering};
-use crate::crypto::ffi::StatsBuffer;
 
 const JOB_SUBCLASS_OFFSET: i32 = 3;
 const JOB_THREAD_STACK_SIZE: usize = 4 << 20;
@@ -208,7 +208,9 @@ unsafe fn ensure_jobs_module_callback_registered() {
         .is_ok()
     {
         unsafe {
-            mtproxy_ffi_jobs_register_thread_callback(ptr::addr_of_mut!(JOBS_MODULE_THREAD_CALLBACK))
+            mtproxy_ffi_jobs_register_thread_callback(ptr::addr_of_mut!(
+                JOBS_MODULE_THREAD_CALLBACK
+            ))
         };
     }
 }
@@ -256,7 +258,12 @@ pub unsafe extern "C" fn jobs_prepare_async_create_c_impl(custom_bytes: i32) -> 
 #[no_mangle]
 pub unsafe extern "C" fn jobs_interrupt_thread_c_impl(thread: *mut JobThread) -> i32 {
     abort_if(thread.is_null());
-    unsafe { libc::pthread_kill((*thread).pthread_id as libc::pthread_t, libc::SIGRTMAX() - 7) }
+    unsafe {
+        libc::pthread_kill(
+            (*thread).pthread_id as libc::pthread_t,
+            libc::SIGRTMAX() - 7,
+        )
+    }
 }
 
 #[no_mangle]
@@ -400,7 +407,10 @@ pub unsafe extern "C" fn jobs_read_proc_utime_stime_c_impl(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn jobs_sem_post_subclass_list_c_impl(list: *mut JobSubclassList, count: i32) {
+pub unsafe extern "C" fn jobs_sem_post_subclass_list_c_impl(
+    list: *mut JobSubclassList,
+    count: i32,
+) {
     abort_if(list.is_null());
     if count <= 0 {
         return;
@@ -433,9 +443,7 @@ pub unsafe extern "C" fn check_main_thread() {
     let self_id = unsafe { libc::pthread_self() };
     abort_if(
         unsafe { main_pthread_id_initialized } == 0
-            || unsafe {
-                libc::pthread_equal(main_pthread_id as libc::pthread_t, self_id)
-            } == 0,
+            || unsafe { libc::pthread_equal(main_pthread_id as libc::pthread_t, self_id) } == 0,
     );
 }
 
@@ -524,7 +532,15 @@ pub unsafe extern "C" fn create_job_class_sub(
     excl: i32,
     subclass_cnt: i32,
 ) -> i32 {
-    unsafe { mtproxy_ffi_jobs_create_job_class_sub(job_class, min_threads, max_threads, excl, subclass_cnt) }
+    unsafe {
+        mtproxy_ffi_jobs_create_job_class_sub(
+            job_class,
+            min_threads,
+            max_threads,
+            excl,
+            subclass_cnt,
+        )
+    }
 }
 
 #[no_mangle]
@@ -543,7 +559,12 @@ pub unsafe extern "C" fn process_one_job(job_tag_int: i32, job: JobT, thread_cla
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn complete_subjob(job: JobT, parent_tag_int: i32, parent: JobT, status: i32) {
+pub unsafe extern "C" fn complete_subjob(
+    job: JobT,
+    parent_tag_int: i32,
+    parent: JobT,
+    status: i32,
+) {
     unsafe { mtproxy_ffi_jobs_complete_subjob(job, parent_tag_int, parent, status) };
 }
 
@@ -553,7 +574,10 @@ pub unsafe extern "C" fn complete_job(job: JobT) {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn job_thread_ex(arg: *mut c_void, work_one: JobThreadWorkOneFn) -> *mut c_void {
+pub unsafe extern "C" fn job_thread_ex(
+    arg: *mut c_void,
+    work_one: JobThreadWorkOneFn,
+) -> *mut c_void {
     unsafe { mtproxy_ffi_jobs_job_thread_ex(arg, work_one) }
 }
 
@@ -746,7 +770,6 @@ pub unsafe extern "C" fn notify_job_run(job: JobT, op: i32, thread: *mut JobThre
 pub unsafe extern "C" fn jobs_notify_job_extra_size_c_impl() -> i32 {
     mem::size_of::<NotifyJobExtra>() as i32
 }
-
 
 #[inline]
 unsafe fn timer_check_and_remove(job: JobT) -> bool {
@@ -3631,7 +3654,7 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_tokio_message_queue_pop(
 // ============================================================================
 
 /// Empty assertion function (migrated from net/net-connections.c)
-/// 
+///
 /// **Compatibility Note:** This is a no-op function maintained for ABI compatibility.
 /// It was originally intended for asserting execution on network CPU threads but
 /// was left empty in the C implementation. Kept here to avoid breaking callers.
@@ -3654,7 +3677,7 @@ pub extern "C" fn assert_engine_thread() {
 }
 
 /// Frees a job (migrated from net/net-connections.c)
-/// 
+///
 /// **Note:** JOB_REF_TAG value matches C macro `JOB_REF_PASS(__ptr)` which expands to
 /// `1, PTR_MOVE(__ptr)`. The PTR_MOVE macro is for C ownership semantics; in Rust,
 /// ownership transfer is handled implicitly by the type system. We only need the tag (1).
@@ -3665,7 +3688,7 @@ pub extern "C" fn mtproxy_ffi_net_connections_job_free(job: JobT) -> i32 {
 }
 
 /// Decrements jobs_active counter (migrated from net/net-connections.c)
-/// 
+///
 /// **Thread Safety:** Direct field access without atomics matches original C behavior.
 /// The JobThread structure is accessed only by its owning thread (obtained via
 /// `jobs_get_this_job_thread_c_impl()`), so no concurrent access is possible.

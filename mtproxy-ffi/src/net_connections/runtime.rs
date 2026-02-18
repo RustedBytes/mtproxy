@@ -2,20 +2,22 @@
 
 use super::abi::*;
 use super::legacy::{
-    alloc_mp_queue_w, alloc_msg_buffer, client_socket, client_socket_ipv6,
-    cpu_server_close_connection, cpu_server_free_connection, cpu_server_read_write,
-    cpu_tcp_free_connection_buffers, cpu_tcp_server_reader, cpu_tcp_server_writer,
-    create_async_job, drand48_j, epoll_insert, epoll_remove, epoll_sethandler,
-    free_mp_queue, free_tree_ptr_connection, get_tree_ptr_connection, inet_ntoa,
-    job_decref, job_incref, job_signal, job_timer_check, job_timer_init, job_timer_insert,
-    job_timer_remove, lrand48_j, maximize_rcvbuf, maximize_sndbuf, new_msg_part,
-    do_conn_target_job, do_connection_job, do_listening_connection_job,
-    do_socket_connection_job, mtproxy_ffi_net_connections_accept_rate_get_max,
+    active_special_connections_ptr, alloc_mp_queue_w, alloc_msg_buffer, client_socket,
+    client_socket_ipv6, cpu_server_close_connection, cpu_server_free_connection,
+    cpu_server_read_write, cpu_tcp_free_connection_buffers, cpu_tcp_server_reader,
+    cpu_tcp_server_writer, create_async_job, do_conn_target_job, do_connection_job,
+    do_listening_connection_job, do_socket_connection_job, drand48_j, epoll_fd_get, epoll_insert,
+    epoll_remove, epoll_sethandler, event_ptr, free_mp_queue, free_tree_ptr_connection,
+    get_tree_ptr_connection, htarget_bucket_ptr, inet_ntoa, job_decref, job_incref, job_signal,
+    job_timer_check, job_timer_init, job_timer_insert, job_timer_remove, lrand48_j,
+    max_special_connections_get, maximize_rcvbuf, maximize_sndbuf,
+    mtproxy_ffi_net_connections_accept_rate_get_max,
     mtproxy_ffi_net_connections_accept_rate_get_state,
     mtproxy_ffi_net_connections_accept_rate_set_state,
     mtproxy_ffi_net_connections_close_connection_signal_special_aux,
     mtproxy_ffi_net_connections_free_target, mtproxy_ffi_net_connections_get_max_connection,
-    mtproxy_ffi_net_connections_get_max_connection_fd, mtproxy_ffi_net_connections_mpq_pop_nw,
+    mtproxy_ffi_net_connections_get_max_connection_fd, mtproxy_ffi_net_connections_job_free,
+    mtproxy_ffi_net_connections_job_thread_dec_jobs_active, mtproxy_ffi_net_connections_mpq_pop_nw,
     mtproxy_ffi_net_connections_mpq_push_w, mtproxy_ffi_net_connections_precise_now,
     mtproxy_ffi_net_connections_register_special_listen_socket,
     mtproxy_ffi_net_connections_rwm_union, mtproxy_ffi_net_connections_set_max_connection,
@@ -27,25 +29,21 @@ use super::legacy::{
     mtproxy_ffi_net_connections_stat_inc_accept_init_accepted_failed,
     mtproxy_ffi_net_connections_stat_inc_accept_nonblock_set_failed,
     mtproxy_ffi_net_connections_stat_inc_allocated_connections,
-    mtproxy_ffi_net_connections_stat_inc_listening,
-    mtproxy_ffi_net_connections_stat_target_freed, mtproxy_ffi_net_connections_stats_add,
+    mtproxy_ffi_net_connections_stat_inc_listening, mtproxy_ffi_net_connections_stat_target_freed,
+    mtproxy_ffi_net_connections_stats_add,
     mtproxy_ffi_net_connections_stats_add_alloc_connection_success,
     mtproxy_ffi_net_connections_stats_add_close_basic,
     mtproxy_ffi_net_connections_stats_add_close_failure,
-    mtproxy_ffi_net_connections_job_free,
-    mtproxy_ffi_net_connections_job_thread_dec_jobs_active,
     mtproxy_ffi_net_connections_stats_add_free_connection_counts,
     mtproxy_ffi_net_connections_stats_add_ready, mtproxy_ffi_net_connections_stats_add_targets,
     mtproxy_ffi_net_connections_stats_add_tcp_read,
     mtproxy_ffi_net_connections_stats_add_tcp_write, net_accept_new_connections,
-    net_server_socket_free, net_server_socket_read_write,
-    net_server_socket_read_write_gateway,
-    net_server_socket_reader, net_server_socket_writer, new_conn_generation, remove_event_from_heap,
-    rwm_free, rwm_init, rwm_prepare_iovec, rwm_skip_data, schedule_job, server_check_ready,
-    server_failed, server_flush, server_noop, show_ipv6, tree_act_connection,
-    tree_act_ex3_connection, tree_act_ex_connection, tree_delete_connection, tree_free_connection,
-    tree_insert_connection, unlock_job, active_special_connections_ptr, epoll_fd_get, event_ptr,
-    htarget_bucket_ptr, max_special_connections_get, targets_lock_ptr, tcp_maximize_buffers_get,
+    net_server_socket_free, net_server_socket_read_write, net_server_socket_read_write_gateway,
+    net_server_socket_reader, net_server_socket_writer, new_conn_generation, new_msg_part,
+    remove_event_from_heap, rwm_free, rwm_init, rwm_prepare_iovec, rwm_skip_data, schedule_job,
+    server_check_ready, server_failed, server_flush, server_noop, show_ipv6, targets_lock_ptr,
+    tcp_maximize_buffers_get, tree_act_connection, tree_act_ex3_connection, tree_act_ex_connection,
+    tree_delete_connection, tree_free_connection, tree_insert_connection, unlock_job,
     verbosity_get,
 };
 use ::core::ffi::{c_char, c_double, c_int, c_longlong, c_uint, c_void};
@@ -257,14 +255,15 @@ unsafe fn conn_info(c: ConnectionJob) -> *mut ConnectionInfo {
 }
 
 #[inline]
-pub(super) unsafe fn conn_crypto_slots(
-    c: ConnectionJob,
-) -> (*mut *mut c_void, *mut *mut c_void) {
+pub(super) unsafe fn conn_crypto_slots(c: ConnectionJob) -> (*mut *mut c_void, *mut *mut c_void) {
     let conn = unsafe { conn_info(c) };
     if conn.is_null() {
         return (ptr::null_mut(), ptr::null_mut());
     }
-    (ptr::addr_of_mut!((*conn).crypto), ptr::addr_of_mut!((*conn).crypto_temp))
+    (
+        ptr::addr_of_mut!((*conn).crypto),
+        ptr::addr_of_mut!((*conn).crypto_temp),
+    )
 }
 
 #[inline]
@@ -1154,9 +1153,10 @@ pub(super) unsafe fn alloc_new_connection_impl(
                 }
 
                 if (listener_flags & C_SPECIAL) != 0 {
-                    let special_connections = unsafe { atomic_i32(active_special_connections_ptr()) }
-                        .fetch_add(1, Ordering::SeqCst)
-                        + 1;
+                    let special_connections =
+                        unsafe { atomic_i32(active_special_connections_ptr()) }
+                            .fetch_add(1, Ordering::SeqCst)
+                            + 1;
                     let special_action =
                         mtproxy_core::runtime::net::connections::alloc_connection_special_action(
                             special_connections,
@@ -1541,7 +1541,8 @@ pub(super) unsafe fn do_listening_connection_job_impl(
 #[inline]
 unsafe fn conn_job_ready_pending_activate(c: ConnectionJob) {
     let conn = unsafe { conn_info(c) };
-    unsafe { atomic_i32(ptr::addr_of_mut!((*conn).flags)) }.fetch_and(!C_READY_PENDING, Ordering::SeqCst);
+    unsafe { atomic_i32(ptr::addr_of_mut!((*conn).flags)) }
+        .fetch_and(!C_READY_PENDING, Ordering::SeqCst);
     unsafe { mtproxy_ffi_net_connections_stats_add_close_basic(0, 0, 1, 0, 1) };
     let target_job = unsafe { (*conn).target };
     if !target_job.is_null() {
@@ -1965,8 +1966,8 @@ pub(super) unsafe fn cpu_server_close_connection_impl(c: ConnectionJob, _who: c_
         unsafe {
             (*conn).flags &= !C_SPECIAL;
         }
-        let orig_special_connections = unsafe { atomic_i32(active_special_connections_ptr()) }
-            .fetch_sub(1, Ordering::SeqCst);
+        let orig_special_connections =
+            unsafe { atomic_i32(active_special_connections_ptr()) }.fetch_sub(1, Ordering::SeqCst);
         if mtproxy_core::runtime::net::connections::close_connection_should_signal_special_aux(
             orig_special_connections,
             unsafe { max_special_connections_get() },
