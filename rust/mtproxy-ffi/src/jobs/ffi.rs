@@ -3624,3 +3624,56 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_tokio_message_queue_pop(
     };
     dequeue_user_queue_item(&queue, out_ptr)
 }
+
+// ============================================================================
+// Job and thread helper functions (migrated from net/net-connections.c)
+// ============================================================================
+
+/// Empty assertion function (migrated from net/net-connections.c)
+/// 
+/// **Compatibility Note:** This is a no-op function maintained for ABI compatibility.
+/// It was originally intended for asserting execution on network CPU threads but
+/// was left empty in the C implementation. Kept here to avoid breaking callers.
+#[no_mangle]
+pub extern "C" fn assert_net_cpu_thread() {
+    // Empty by design - no-op assertion for ABI compatibility
+}
+
+/// Asserts current thread is engine or main thread (migrated from net/net-connections.c)
+#[no_mangle]
+pub extern "C" fn assert_engine_thread() {
+    unsafe {
+        let jt = jobs_get_this_job_thread_c_impl();
+        assert!(!jt.is_null(), "JobThread pointer is null");
+        assert!(
+            (*jt).thread_class == JC_ENGINE || (*jt).thread_class == JC_MAIN,
+            "Thread class must be JC_ENGINE or JC_MAIN"
+        );
+    }
+}
+
+/// Frees a job (migrated from net/net-connections.c)
+/// 
+/// **Note:** JOB_REF_TAG value matches C macro `JOB_REF_PASS(__ptr)` which expands to
+/// `1, PTR_MOVE(__ptr)`. The PTR_MOVE macro is for C ownership semantics; in Rust,
+/// ownership transfer is handled implicitly by the type system. We only need the tag (1).
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_connections_job_free(job: JobT) -> i32 {
+    const JOB_REF_TAG: i32 = 1; // From C: #define JOB_REF_PASS(__ptr) 1, PTR_MOVE(__ptr)
+    unsafe { job_free(JOB_REF_TAG, job) }
+}
+
+/// Decrements jobs_active counter (migrated from net/net-connections.c)
+/// 
+/// **Thread Safety:** Direct field access without atomics matches original C behavior.
+/// The JobThread structure is accessed only by its owning thread (obtained via
+/// `jobs_get_this_job_thread_c_impl()`), so no concurrent access is possible.
+/// Each thread has its own JobThread instance.
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_net_connections_job_thread_dec_jobs_active() {
+    unsafe {
+        let jt = jobs_get_this_job_thread_c_impl();
+        assert!(!jt.is_null(), "JobThread pointer is null");
+        (*jt).jobs_active -= 1;
+    }
+}

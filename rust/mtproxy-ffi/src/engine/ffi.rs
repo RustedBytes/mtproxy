@@ -3,6 +3,11 @@
 use super::core::*;
 use core::ffi::{c_char, c_double, c_int, c_void};
 
+unsafe extern "C" {
+    fn check_conn_functions(type_: *mut c_void, listening: c_int) -> c_int;
+    fn usage() -> !;
+}
+
 static mut MAIN_THREAD_PIPE_READ_END: c_int = 0;
 static mut MAIN_THREAD_PIPE_WRITE_END: c_int = 0;
 
@@ -11,7 +16,9 @@ pub unsafe extern "C" fn mtproxy_ffi_engine_init(
     pwd_filename: *const c_char,
     do_not_open_port: c_int,
 ) {
-    unsafe { engine_init_impl(pwd_filename, do_not_open_port) };
+    // Initialize precise_cron_events to point to itself
+    crate::mtproxy_ffi_init_precise_cron_events();
+    engine_init_impl(pwd_filename, do_not_open_port);
 }
 
 #[no_mangle]
@@ -471,4 +478,34 @@ pub unsafe extern "C" fn interrupt_signal_raised() -> c_int {
 #[no_mangle]
 pub unsafe extern "C" fn engine_process_signals() -> c_int {
     unsafe { engine_process_signals_impl() }
+}
+
+// ============================================================================
+// Bridge functions migrated from engine/engine.c
+// ============================================================================
+
+/// Returns thread-local now value (migrated from engine/engine.c)
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_engine_now_value() -> c_int {
+    crate::mtproxy_ffi_precise_time_get_now()
+}
+
+/// Returns thread-local precise_now value (migrated from engine/engine.c)
+#[no_mangle]
+pub extern "C" fn mtproxy_ffi_engine_precise_now_value() -> c_double {
+    crate::mtproxy_ffi_precise_time_get_precise_now()
+}
+
+/// Checks connection functions (migrated from engine/engine.c)
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_engine_check_conn_functions_bridge(
+    conn_type: *mut c_void,
+) -> c_int {
+    unsafe { check_conn_functions(conn_type, 1) }
+}
+
+/// Prints usage information (migrated from engine/engine.c)
+#[no_mangle]
+pub unsafe extern "C" fn mtproxy_ffi_engine_usage_bridge() -> ! {
+    unsafe { usage() }
 }
