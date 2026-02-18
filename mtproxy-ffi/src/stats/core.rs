@@ -36,7 +36,7 @@ const O_RDONLY: c_int = 0;
 const EINTR: c_int = 4;
 const _SC_PAGESIZE: c_int = 30;
 
-/// Memory stat structure matching am_memory_stat_t
+/// Memory stat structure matching the legacy/common stats ABI.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct AmMemoryStat {

@@ -730,19 +730,38 @@ pub(super) fn tcp_rpc_client_process_nonce_packet_impl(
     out_key_select: &mut i32,
     out_has_dh_params: &mut i32,
 ) -> i32 {
-    mtproxy_core::runtime::net::tcp_rpc_client::process_nonce_packet_for_compat(
-        packet,
-        allow_unencrypted != 0,
-        allow_encrypted != 0,
-        require_dh != 0,
-        has_crypto_temp != 0,
+    let mut flags = 0;
+    if allow_unencrypted != 0 {
+        flags |= mtproxy_core::runtime::net::tcp_rpc_client::NONCE_POLICY_ALLOW_UNENCRYPTED;
+    }
+    if allow_encrypted != 0 {
+        flags |= mtproxy_core::runtime::net::tcp_rpc_client::NONCE_POLICY_ALLOW_ENCRYPTED;
+    }
+    if require_dh != 0 {
+        flags |= mtproxy_core::runtime::net::tcp_rpc_client::NONCE_POLICY_REQUIRE_DH;
+    }
+    if has_crypto_temp != 0 {
+        flags |= mtproxy_core::runtime::net::tcp_rpc_client::NONCE_POLICY_HAS_CRYPTO_TEMP;
+    }
+
+    let policy = mtproxy_core::runtime::net::tcp_rpc_client::NonceCompatPolicy {
+        flags,
         nonce_time,
         main_secret_len,
         main_key_signature,
-        out_schema,
-        out_key_select,
-        out_has_dh_params,
-    )
+    };
+    let mut output = mtproxy_core::runtime::net::tcp_rpc_client::NonceCompatOutput::default();
+    let rc = mtproxy_core::runtime::net::tcp_rpc_client::process_nonce_packet_for_compat(
+        packet,
+        policy,
+        &mut output,
+    );
+    if rc >= 0 {
+        *out_schema = output.schema;
+        *out_key_select = output.key_select;
+        *out_has_dh_params = output.has_dh_params;
+    }
+    rc
 }
 
 pub(super) fn tcp_rpc_server_process_nonce_packet_impl(
@@ -756,17 +775,25 @@ pub(super) fn tcp_rpc_server_process_nonce_packet_impl(
     out_key_select: &mut i32,
     out_has_dh_params: &mut i32,
 ) -> i32 {
-    mtproxy_core::runtime::net::tcp_rpc_server::process_nonce_packet_for_compat(
-        packet,
-        allow_unencrypted != 0,
-        allow_encrypted != 0,
+    let policy = mtproxy_core::runtime::net::tcp_rpc_server::NonceCompatPolicy {
+        allow_unencrypted: allow_unencrypted != 0,
+        allow_encrypted: allow_encrypted != 0,
         now_ts,
         main_secret_len,
         main_key_signature,
-        out_schema,
-        out_key_select,
-        out_has_dh_params,
-    )
+    };
+    let mut output = mtproxy_core::runtime::net::tcp_rpc_server::NonceCompatOutput::default();
+    let rc = mtproxy_core::runtime::net::tcp_rpc_server::process_nonce_packet_for_compat(
+        packet,
+        policy,
+        &mut output,
+    );
+    if rc >= 0 {
+        *out_schema = output.schema;
+        *out_key_select = output.key_select;
+        *out_has_dh_params = output.has_dh_params;
+    }
+    rc
 }
 
 pub(super) fn tcp_rpc_parse_handshake_packet_impl(

@@ -7,12 +7,6 @@
 #include <sys/uio.h>
 #include <netinet/in.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-
-typedef void *mqn_value_t;
 
 struct mp_queue_block;
 
@@ -86,25 +80,12 @@ struct job_thread {
   struct job_class *job_class;
 } __attribute__((aligned(128)));
 
-typedef struct {
-  long long vm_size;
-  long long vm_rss;
-  long long vm_data;
-  long long mem_free;
-  long long swap_total;
-  long long swap_free;
-  long long swap_used;
-  long long mem_cached;
-} am_memory_stat_t;
-
 typedef struct stats_buffer {
   char *buff;
   int pos;
   int size;
   int flags;
 } stats_buffer_t;
-
-typedef void (*stat_fun_t)(stats_buffer_t *sb);
 
 #pragma pack(push, 4)
 struct process_id {
@@ -114,16 +95,7 @@ struct process_id {
   int utime;
 };
 
-struct process_id_ext {
-  unsigned ip;
-  short port;
-  unsigned short pid;
-  int utime;
-  int actor_id;
-};
 #pragma pack(pop)
-
-typedef struct process_id npid_t;
 
 struct proc_stats {
   int pid;
@@ -345,13 +317,6 @@ typedef struct mtproxy_ffi_process_id {
   int32_t utime;
 } mtproxy_ffi_process_id_t;
 
-typedef struct mtproxy_ffi_process_id_ext {
-  uint32_t ip;
-  int16_t port;
-  uint16_t pid;
-  int32_t utime;
-  int32_t actor_id;
-} mtproxy_ffi_process_id_ext_t;
 
 typedef struct mtproxy_ffi_rpc_target_tree mtproxy_ffi_rpc_target_tree_t;
 
@@ -874,9 +839,6 @@ typedef void (*mtproxy_ffi_engine_rpc_query_result_fn)(void *tlio_in, void *quer
 typedef void *(*mtproxy_ffi_engine_rpc_parse_fn)(void *tlio_in, int64_t actor_id);
 typedef void (*mtproxy_ffi_engine_rpc_stat_fn)(void *tlio_out);
 typedef int32_t (*mtproxy_ffi_engine_rpc_get_op_fn)(void *tlio_in);
-typedef void (*tl_query_result_fun_t)(struct tl_in_state *tlio_in,
-                                      struct tl_query_header *h);
-
 // Legacy net/*.h compatibility ABI now provided by Rust bindings header.
 enum {
   MAX_EVENT_TIMERS = (1 << 19),
@@ -3139,7 +3101,3 @@ int32_t rust_sf_parse_engine_options_long(int32_t argc, char **argv);
 int32_t rust_sf_add_builtin_parse_options(void);
 void rust_sf_ksignal(int32_t sig, void (*handler)(int32_t));
 void rust_sf_set_debug_handlers(void);
-
-#ifdef __cplusplus
-}
-#endif

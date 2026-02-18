@@ -14,8 +14,10 @@ use mtproxy_core::runtime::net::tcp_rpc_client::{
     process_nonce_packet_for_compat, requires_dh_accept as core_requires_dh_accept,
     validate_handshake as core_validate_handshake,
     validate_handshake_header as core_validate_handshake_header,
-    validate_nonce_header as core_validate_nonce_header, DefaultReadyState, RPCF_ALLOW_ENC,
-    RPCF_ALLOW_UNENC, RPCF_ENC_SENT, RPCF_REQ_DH, RPCF_USE_CRC32C,
+    validate_nonce_header as core_validate_nonce_header, DefaultReadyState, NonceCompatOutput,
+    NonceCompatPolicy, NONCE_POLICY_ALLOW_ENCRYPTED, NONCE_POLICY_ALLOW_UNENCRYPTED,
+    NONCE_POLICY_HAS_CRYPTO_TEMP, NONCE_POLICY_REQUIRE_DH, RPCF_ALLOW_ENC, RPCF_ALLOW_UNENC,
+    RPCF_ENC_SENT, RPCF_REQ_DH, RPCF_USE_CRC32C,
 };
 use mtproxy_core::runtime::net::tcp_rpc_common::{
     parse_handshake_packet, parse_nonce_packet, HandshakeErrorPacket, HandshakePacket,
@@ -469,29 +471,40 @@ unsafe fn tcp_rpcc_process_nonce_packet_impl(c: ConnectionJob, msg: *mut RawMess
         return -3;
     };
 
-    let mut processed_schema = parsed.crypto_schema.to_i32();
-    let mut processed_key_select = parsed.key_select;
-    let mut processed_has_dh_params = 0;
-
     let main_secret_len = unsafe { main_secret.secret_len };
     let main_key_signature = unsafe { main_secret_key_signature() };
 
+    let mut policy_flags = 0;
+    if unsafe { ((*data).crypto_flags & RPCF_ALLOW_UNENC) != 0 } {
+        policy_flags |= NONCE_POLICY_ALLOW_UNENCRYPTED;
+    }
+    if unsafe { ((*data).crypto_flags & RPCF_ALLOW_ENC) != 0 } {
+        policy_flags |= NONCE_POLICY_ALLOW_ENCRYPTED;
+    }
+    if unsafe { ((*data).crypto_flags & RPCF_REQ_DH) != 0 } {
+        policy_flags |= NONCE_POLICY_REQUIRE_DH;
+    }
+    if unsafe { !(*conn).crypto_temp.is_null() } {
+        policy_flags |= NONCE_POLICY_HAS_CRYPTO_TEMP;
+    }
+
+    let mut nonce_output = NonceCompatOutput::default();
     let process_rc = process_nonce_packet_for_compat(
         packet_slice,
-        unsafe { ((*data).crypto_flags & RPCF_ALLOW_UNENC) != 0 },
-        unsafe { ((*data).crypto_flags & RPCF_ALLOW_ENC) != 0 },
-        unsafe { ((*data).crypto_flags & RPCF_REQ_DH) != 0 },
-        unsafe { !(*conn).crypto_temp.is_null() },
-        unsafe { (*data).nonce_time },
-        main_secret_len,
-        main_key_signature,
-        &mut processed_schema,
-        &mut processed_key_select,
-        &mut processed_has_dh_params,
+        NonceCompatPolicy {
+            flags: policy_flags,
+            nonce_time: unsafe { (*data).nonce_time },
+            main_secret_len,
+            main_key_signature,
+        },
+        &mut nonce_output,
     );
     if process_rc < 0 {
         return -3;
     }
+    let processed_schema = nonce_output.schema;
+    let processed_key_select = nonce_output.key_select;
+    let processed_has_dh_params = nonce_output.has_dh_params;
 
     match processed_schema {
         RPC_CRYPTO_NONE => {

@@ -55,27 +55,8 @@ _link-legacy rust_ffi_lib:
 clean:
   rm -rf {{obj_dir}} {{dep_dir}} {{bin_dir}} target || true
 
-test:
-  if [ -x tests/run.sh ]; then \
-    tests/run.sh; \
-  else \
-    cargo test --workspace; \
-  fi
-
-test-rust-differential:
-  if [ -x tests/run.sh ]; then \
-    TEST_INCLUDE_RUST_DIFFERENTIAL=1 tests/run.sh; \
-  else \
-    TEST_INCLUDE_RUST_DIFFERENTIAL=1 cargo test --workspace; \
-  fi
-
-rust-format:
+format:
   cargo fmt --all
-
-format: rust-format
-
-rust-format-check:
-  cargo fmt --all --check
 
 check:
   cargo check --workspace
@@ -83,7 +64,5 @@ check:
 clippy:
   cargo clippy --workspace --all-targets -- -D warnings
 
-rust-test:
+test:
   cargo test --workspace
-
-ci: rust-format-check check clippy rust-test

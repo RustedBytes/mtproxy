@@ -32,7 +32,7 @@ use mtproxy_core::runtime::net::tcp_rpc_server::{
     should_notify_close as core_should_notify_close, should_set_wantwr as core_should_set_wantwr,
     validate_handshake as core_validate_handshake,
     validate_handshake_header as core_validate_handshake_header,
-    validate_nonce_header as core_validate_nonce_header,
+    validate_nonce_header as core_validate_nonce_header, NonceCompatOutput, NonceCompatPolicy,
 };
 
 pub(super) type ConnectionJob = *mut c_void;
@@ -467,24 +467,24 @@ unsafe fn tcp_rpcs_process_nonce_packet_impl(c: ConnectionJob, msg: *mut RawMess
         return -3;
     };
 
-    let mut processed_schema = parsed.crypto_schema.to_i32();
-    let mut processed_key_select = parsed.key_select;
-    let mut processed_has_dh_params = 0;
-
+    let mut nonce_output = NonceCompatOutput::default();
     if process_nonce_packet_for_compat(
         packet_slice,
-        (unsafe { (*data).crypto_flags } & RPCF_ALLOW_UNENC) != 0,
-        (unsafe { (*data).crypto_flags } & RPCF_ALLOW_ENC) != 0,
-        now_or_unix_time(),
-        unsafe { (*main_secret_ptr()).secret_len },
-        main_secret_key_signature(),
-        &mut processed_schema,
-        &mut processed_key_select,
-        &mut processed_has_dh_params,
+        NonceCompatPolicy {
+            allow_unencrypted: (unsafe { (*data).crypto_flags } & RPCF_ALLOW_UNENC) != 0,
+            allow_encrypted: (unsafe { (*data).crypto_flags } & RPCF_ALLOW_ENC) != 0,
+            now_ts: now_or_unix_time(),
+            main_secret_len: unsafe { (*main_secret_ptr()).secret_len },
+            main_key_signature: main_secret_key_signature(),
+        },
+        &mut nonce_output,
     ) < 0
     {
         return -3;
     }
+    let processed_schema = nonce_output.schema;
+    let processed_key_select = nonce_output.key_select;
+    let processed_has_dh_params = nonce_output.has_dh_params;
 
     write_i32_ne(&mut packet, 8, processed_schema);
     write_i32_ne(&mut packet, 4, processed_key_select);
