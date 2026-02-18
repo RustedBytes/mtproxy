@@ -243,9 +243,7 @@ static mut GLOBAL_MAX_SPECIAL_CONNECTIONS: c_int = 65536; // MAX_CONNECTIONS def
 /// This mimics the C initialization: {.next = &precise_cron_events, .prev = &precise_cron_events}
 #[no_mangle]
 pub unsafe extern "C" fn mtproxy_ffi_init_precise_cron_events() {
-    unsafe {
-        let ptr = core::ptr::addr_of_mut!(GLOBAL_PRECISE_CRON_EVENTS);
-        (*ptr).next = ptr;
-        (*ptr).prev = ptr;
-    }
+    let ptr = core::ptr::addr_of_mut!(GLOBAL_PRECISE_CRON_EVENTS);
+    (*ptr).next = ptr;
+    (*ptr).prev = ptr;
 }

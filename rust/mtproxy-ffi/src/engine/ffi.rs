@@ -17,8 +17,8 @@ pub unsafe extern "C" fn mtproxy_ffi_engine_init(
     do_not_open_port: c_int,
 ) {
     // Initialize precise_cron_events to point to itself
-    unsafe { crate::mtproxy_ffi_init_precise_cron_events() };
-    unsafe { engine_init_impl(pwd_filename, do_not_open_port) };
+    crate::mtproxy_ffi_init_precise_cron_events();
+    engine_init_impl(pwd_filename, do_not_open_port);
 }
 
 #[no_mangle]
