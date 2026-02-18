@@ -25,13 +25,6 @@ unsafe fn get_errno() -> c_int {
     unsafe { *__errno_location() }
 }
 
-// Helper to get now and start_time from C
-// Note: This function is unused in Rust code but may be called from C via FFI
-extern "C" {
-    #[allow(dead_code)]
-    fn get_utime_monotonic() -> c_double;
-}
-
 const O_RDONLY: c_int = 0;
 const EINTR: c_int = 4;
 const _SC_PAGESIZE: c_int = 30;

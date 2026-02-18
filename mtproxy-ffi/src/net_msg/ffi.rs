@@ -14,10 +14,6 @@ pub struct RawMsgStatsBuffer {
     pub flags: c_int,
 }
 
-unsafe extern "C" {
-    fn sb_printf(sb: *mut RawMsgStatsBuffer, format: *const c_char, ...);
-}
-
 #[no_mangle]
 pub static mut empty_rwm: RawMessage = RawMessage {
     first: ptr::null_mut(),

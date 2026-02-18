@@ -26,8 +26,6 @@ const fn pwd_config_md5_default() -> [c_char; 33] {
 }
 
 unsafe extern "C" {
-    fn sb_printf(sb: *mut StatsBuffer, format: *const c_char, ...);
-    fn kprintf(format: *const c_char, ...);
     static mut verbosity: c_int;
     fn mtproxy_ffi_net_connections_conn_crypto_slots(
         c: ConnectionJob,

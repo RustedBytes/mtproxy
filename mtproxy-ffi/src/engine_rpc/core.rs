@@ -382,7 +382,6 @@ unsafe extern "C" {
 
     fn tl_query_header_dup(h: *mut TlQueryHeader) -> *mut TlQueryHeader;
     fn prepare_stats(buff: *mut c_char, buff_size: c_int) -> c_int;
-    fn kprintf(format: *const c_char, ...);
     static mut verbosity: c_int;
 
     fn tlf_error_rust(tlio_in: *mut c_void) -> c_int;

@@ -24,17 +24,6 @@ pub struct MtproxyProcessId {
 }
 
 #[repr(C)]
-#[allow(dead_code)]
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub struct MtproxyProcessIdExt {
-    pub ip: u32,
-    pub port: i16,
-    pub pid: u16,
-    pub utime: i32,
-    pub actor_id: i32,
-}
-
-#[repr(C)]
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct MtproxyAesKeyData {
     pub read_key: [u8; 32],
@@ -617,7 +606,6 @@ unsafe extern "C" {
     pub(crate) fn malloc(size: usize) -> *mut c_void;
     pub(crate) fn calloc(nmemb: usize, size: usize) -> *mut c_void;
     pub(crate) fn free(ptr: *mut c_void);
-    pub(crate) fn kprintf(format: *const c_char, ...);
     pub(crate) fn load_config(file: *const c_char, fd: c_int) -> c_int;
     pub(crate) fn reset_config();
     pub(crate) fn md5_hex_config(out: *mut c_char);
@@ -629,8 +617,5 @@ unsafe extern "C" {
         was_created: *mut c_int,
     ) -> MtproxyConnTargetJob;
     pub(crate) fn create_all_outbound_connections() -> c_int;
-    pub(crate) static mut default_cfg_min_connections: c_int;
-    pub(crate) static mut default_cfg_max_connections: c_int;
-    pub(crate) static mut default_cfg_ct: MtproxyConnTargetInfo;
     pub(crate) static mut verbosity: c_int;
 }

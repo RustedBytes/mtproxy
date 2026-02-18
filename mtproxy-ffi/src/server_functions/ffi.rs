@@ -2,10 +2,6 @@
 
 use super::core::*;
 
-unsafe extern "C" {
-    fn kprintf(format: *const c_char, ...);
-}
-
 const LONGOPT_CUSTOM_SET: u32 = 0x1000_0000;
 
 #[no_mangle]

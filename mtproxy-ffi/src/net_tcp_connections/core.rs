@@ -230,7 +230,6 @@ unsafe extern "C" {
         block_size: c_int,
     ) -> c_int;
 
-    fn kprintf(format: *const c_char, ...);
     static mut verbosity: c_int;
 }
 

@@ -112,10 +112,6 @@ struct StatsBuffer {
     flags: c_int,
 }
 
-unsafe extern "C" {
-    fn sb_printf(sb: *mut StatsBuffer, format: *const c_char, ...);
-}
-
 #[inline]
 fn precise_now_value() -> f64 {
     mtproxy_ffi_precise_now_value()

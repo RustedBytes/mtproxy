@@ -150,14 +150,6 @@ pub struct JobThreadStat {
 }
 
 #[repr(C)]
-pub(super) struct StatsBuffer {
-    pub(super) buff: *mut c_char,
-    pub(super) pos: i32,
-    pub(super) size: i32,
-    pub(super) flags: i32,
-}
-
-#[repr(C)]
 pub struct EventTimer {
     pub h_idx: i32,
     pub flags: i32,
@@ -270,9 +262,7 @@ unsafe extern "C" {
     ) -> i32;
     pub(super) fn pthread_attr_destroy(attr: *mut libc::pthread_attr_t) -> i32;
     pub(super) fn strerror(errnum: i32) -> *const c_char;
-    pub(super) fn kprintf(fmt: *const c_char, ...);
     pub(super) fn kwrite(fd: i32, buf: *const c_void, count: i32) -> i32;
-    pub(super) fn sb_printf(sb: *mut StatsBuffer, fmt: *const c_char, ...);
     pub(super) fn get_utime_monotonic() -> f64;
     pub(super) fn sysconf(name: i32) -> libc::c_long;
     pub(super) fn time(tloc: *mut libc::time_t) -> libc::time_t;

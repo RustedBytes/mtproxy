@@ -234,8 +234,6 @@ unsafe extern "C" {
     fn job_incref(job: ConnectionJob) -> ConnectionJob;
     fn job_signal(job_tag_int: c_int, job: ConnectionJob, signo: c_int);
 
-    fn kprintf(format: *const c_char, ...);
-
     static mut http_connections: c_int;
     static mut http_queries: i64;
     static mut http_bad_headers: i64;

@@ -869,7 +869,6 @@ unsafe extern "C" {
     fn sb_alloc(sb: *mut MtprotoStatsBuffer, size: c_int);
     fn sb_memory(sb: *mut MtprotoStatsBuffer, flags: c_int);
     fn sb_release(sb: *mut MtprotoStatsBuffer);
-    fn sb_printf(sb: *mut MtprotoStatsBuffer, format: *const c_char, ...);
     fn engine_set_http_fallback(http_type: *mut c_void, http_functions: *mut c_void);
     fn tcp_rpc_add_proxy_domain(domain: *const c_char);
     fn tcp_rpcs_set_ext_secret(secret: *mut u8);
@@ -882,7 +881,6 @@ unsafe extern "C" {
     fn parse_usage() -> c_int;
     fn reopen_logs_ext(slave_mode: c_int);
     fn signal_check_pending(sig: c_int) -> c_int;
-    fn kprintf(format: *const c_char, ...);
     fn tcp_rpc_init_proxy_domains();
     fn server_socket(port: c_int, in_addr: MtproxyInAddr, backlog: c_int, mode: c_int) -> c_int;
     fn tcp_rpc_flush_packet(c: ConnectionJob) -> c_int;

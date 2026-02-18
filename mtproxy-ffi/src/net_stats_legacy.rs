@@ -17,7 +17,6 @@ unsafe extern "C" {
     fn get_utime(clock_id: c_int) -> c_double;
     fn mtproxy_ffi_precise_time_get_now() -> c_int;
     fn sb_init(sb: *mut StatsBuffer, buff: *mut c_char, size: c_int);
-    fn sb_printf(sb: *mut StatsBuffer, format: *const c_char, ...);
 
     fn connections_prepare_stat(sb: *mut StatsBuffer) -> c_int;
     fn jobs_prepare_stat(sb: *mut StatsBuffer) -> c_int;

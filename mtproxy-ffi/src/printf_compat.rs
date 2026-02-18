@@ -7,7 +7,6 @@ pub(crate) enum CFormatArg {
     Unsigned(u64),
     Float(f64),
     Pointer(*const c_void),
-    CStr(*const c_char),
 }
 
 impl From<i8> for CFormatArg {
@@ -88,7 +87,6 @@ fn arg_to_i64(arg: CFormatArg) -> i64 {
         CFormatArg::Unsigned(v) => v as i64,
         CFormatArg::Float(v) => v as i64,
         CFormatArg::Pointer(v) => v as usize as i64,
-        CFormatArg::CStr(v) => v as usize as i64,
     }
 }
 
@@ -99,7 +97,6 @@ fn arg_to_u64(arg: CFormatArg) -> u64 {
         CFormatArg::Unsigned(v) => v,
         CFormatArg::Float(v) => v as u64,
         CFormatArg::Pointer(v) => v as usize as u64,
-        CFormatArg::CStr(v) => v as usize as u64,
     }
 }
 
@@ -110,7 +107,6 @@ fn arg_to_f64(arg: CFormatArg) -> f64 {
         CFormatArg::Unsigned(v) => v as f64,
         CFormatArg::Float(v) => v,
         CFormatArg::Pointer(v) => v as usize as f64,
-        CFormatArg::CStr(v) => v as usize as f64,
     }
 }
 
@@ -118,7 +114,6 @@ fn arg_to_f64(arg: CFormatArg) -> f64 {
 fn arg_to_ptr(arg: CFormatArg) -> *const c_void {
     match arg {
         CFormatArg::Pointer(v) => v,
-        CFormatArg::CStr(v) => v.cast(),
         CFormatArg::Signed(v) => (v as usize) as *const c_void,
         CFormatArg::Unsigned(v) => (v as usize) as *const c_void,
         CFormatArg::Float(v) => (v as usize) as *const c_void,
@@ -128,7 +123,6 @@ fn arg_to_ptr(arg: CFormatArg) -> *const c_void {
 #[inline]
 fn arg_to_cstr(arg: CFormatArg) -> *const c_char {
     match arg {
-        CFormatArg::CStr(v) => v,
         CFormatArg::Pointer(v) => v.cast(),
         CFormatArg::Signed(v) => (v as usize) as *const c_char,
         CFormatArg::Unsigned(v) => (v as usize) as *const c_char,

@@ -13,7 +13,6 @@ const LEGACY_PRIME_TARGETS: usize = 99_961;
 unsafe extern "C" {
     fn mtproxy_ffi_net_add_nat_info(rule_text: *const c_char) -> c_int;
     fn mtproxy_ffi_net_translate_ip(local_ip: c_uint) -> c_uint;
-    fn sb_printf(sb: *mut StatsBuffer, format: *const c_char, ...);
     fn mpq_push_w(mq: *mut MpQueue, val: *mut c_void, flags: c_int) -> c_long;
     fn mpq_pop_nw(mq: *mut MpQueue, flags: c_int) -> *mut c_void;
     fn rwm_union(raw: *mut RawMessage, tail: *mut RawMessage) -> c_int;
@@ -468,15 +467,6 @@ pub(super) unsafe fn active_special_connections_ptr() -> *mut c_int {
 #[inline]
 pub(super) unsafe fn max_special_connections_get() -> c_int {
     unsafe { ffi_max_special_connections }
-}
-
-#[inline]
-pub(super) unsafe extern "C" fn net_server_socket_read_write_gateway_event_descr(
-    fd: c_int,
-    data: *mut c_void,
-    ev: *mut EventDescr,
-) -> c_int {
-    unsafe { net_server_socket_read_write_gateway(fd, data, ev.cast::<c_void>()) }
 }
 
 #[repr(C)]

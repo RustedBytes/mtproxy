@@ -254,8 +254,6 @@ unsafe extern "C" {
     fn job_incref(job: Job) -> Job;
     fn job_decref(job_tag_int: c_int, job: Job);
     fn matches_pid(x: *mut MtproxyProcessId, y: *mut MtproxyProcessId) -> c_int;
-    fn kprintf(format: *const c_char, ...);
-    fn sb_printf(sb: *mut StatsBuffer, format: *const c_char, ...);
 }
 
 #[inline]

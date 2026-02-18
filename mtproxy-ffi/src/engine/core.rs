@@ -316,7 +316,6 @@ unsafe extern "C" {
 
     static mut precise_cron_events: EventPreciseCron;
 
-    fn kprintf(format: *const c_char, ...);
     fn kwrite(fd: c_int, buf: *const c_void, count: c_int) -> c_int;
     fn inet_pton(af: c_int, src: *const c_char, dst: *mut c_void) -> c_int;
     fn mtproxy_ffi_engine_now_value() -> c_int;
