@@ -2208,10 +2208,7 @@ fn mtproto_forward_mtproto_enc_packet_impl(
     if len < ENCRYPTED_MESSAGE_MIN_LEN {
         if unsafe { verbosity } >= 2 {
             unsafe {
-                crate::kprintf_fmt!(
-                    b"forward_enc: too short len=%d\n\0".as_ptr().cast(),
-                    len,
-                );
+                crate::kprintf_fmt!(b"forward_enc: too short len=%d\n\0".as_ptr().cast(), len,);
             }
         }
         return 0;
@@ -2270,10 +2267,7 @@ fn mtproto_forward_mtproto_packet_with_target_ffi(
     if len < 28 || (len & 3) != 0 {
         if unsafe { verbosity } >= 2 {
             unsafe {
-                crate::kprintf_fmt!(
-                    b"forward_packet: invalid len=%d\n\0".as_ptr().cast(),
-                    len,
-                );
+                crate::kprintf_fmt!(b"forward_packet: invalid len=%d\n\0".as_ptr().cast(), len,);
             }
         }
         return 0;
@@ -2312,9 +2306,7 @@ fn mtproto_forward_mtproto_packet_with_target_ffi(
         if unsafe { verbosity } >= 1 {
             unsafe {
                 crate::kprintf_fmt!(
-                    b"forward_packet: inspect failed rc=%d\n\0"
-                        .as_ptr()
-                        .cast(),
+                    b"forward_packet: inspect failed rc=%d\n\0".as_ptr().cast(),
                     inspect_rc,
                 );
             }
@@ -2362,7 +2354,11 @@ fn mtproto_forward_mtproto_packet_with_target_ffi(
     let s = mtproto_choose_proxy_target_impl(target_dc);
     if s.is_null() && unsafe { verbosity } >= 1 {
         let conn = mtproto_conn_info_ptr(c);
-        let conn_fd = if conn.is_null() { -1 } else { unsafe { (*conn).fd } };
+        let conn_fd = if conn.is_null() {
+            -1
+        } else {
+            unsafe { (*conn).fd }
+        };
         unsafe {
             crate::kprintf_fmt!(
                 b"forward_packet: target lookup failed for unencrypted packet (fd=%d, dc=%d)\n\0"
@@ -3520,12 +3516,7 @@ pub(super) fn mtproto_do_rpcs_execute_ffi(data: *mut c_void, s_len: c_int) -> c_
     let tlio_in = unsafe { c_tl_in_state_alloc() }.cast::<crate::tl_parse::abi::TlInState>();
     assert!(!tlio_in.is_null());
     unsafe {
-        c_tlf_init_raw_message(
-            tlio_in.cast(),
-            core::ptr::addr_of_mut!(msg).cast(),
-            len,
-            0,
-        );
+        c_tlf_init_raw_message(tlio_in.cast(), core::ptr::addr_of_mut!(msg).cast(), len, 0);
     }
     let res = mtproto_forward_mtproto_packet_with_target_ffi(
         tlio_in.cast::<c_void>(),
@@ -3618,7 +3609,11 @@ pub(super) fn mtproto_ext_rpcs_execute_ffi(c: ConnectionJob, op: c_int, msg: *mu
         if unsafe { verbosity } >= 2 && len >= 8 {
             let mut source = [0u8; 8];
             let looked = unsafe {
-                rwm_fetch_lookup(msg, source.as_mut_ptr().cast::<c_void>(), source.len() as c_int)
+                rwm_fetch_lookup(
+                    msg,
+                    source.as_mut_ptr().cast::<c_void>(),
+                    source.len() as c_int,
+                )
             };
             if looked == source.len() as c_int {
                 unsafe {
@@ -5746,9 +5741,7 @@ pub(super) fn mtproto_forward_tcp_query_ffi(
     ) else {
         if unsafe { verbosity } >= 1 {
             unsafe {
-                crate::kprintf_fmt!(
-                    b"forward_tcp_query: build_req failed\n\0".as_ptr().cast(),
-                );
+                crate::kprintf_fmt!(b"forward_tcp_query: build_req failed\n\0".as_ptr().cast(),);
             }
         }
         mtproto_job_decref(d);
@@ -5758,9 +5751,7 @@ pub(super) fn mtproto_forward_tcp_query_ffi(
     if !mtproto_forward_send_req(d, &req) {
         if unsafe { verbosity } >= 1 {
             unsafe {
-                crate::kprintf_fmt!(
-                    b"forward_tcp_query: send_req failed\n\0".as_ptr().cast(),
-                );
+                crate::kprintf_fmt!(b"forward_tcp_query: send_req failed\n\0".as_ptr().cast(),);
             }
         }
         mtproto_job_decref(d);

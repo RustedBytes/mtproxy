@@ -1,7 +1,7 @@
 use core::ffi::{c_char, c_int, c_void};
 use std::collections::HashMap;
-use std::sync::mpsc::{channel, Receiver, Sender, TryRecvError};
 use std::sync::atomic::{AtomicI32, Ordering};
+use std::sync::mpsc::{channel, Receiver, Sender, TryRecvError};
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::vec::Vec;
 

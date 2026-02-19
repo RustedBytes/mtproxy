@@ -1782,7 +1782,8 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_job_thread_ex(
 
     loop {
         let mut job: *mut c_void = ptr::null_mut();
-        let mut rc = unsafe { mtproxy_ffi_jobs_runtime_dequeue_class(thread_class, 0, &raw mut job) };
+        let mut rc =
+            unsafe { mtproxy_ffi_jobs_runtime_dequeue_class(thread_class, 0, &raw mut job) };
         if rc <= 0 || job.is_null() {
             let wait_start = unsafe { get_utime_monotonic() };
             let module_stat_tls = unsafe { jobs_get_module_stat_tls_c_impl() };
@@ -2620,8 +2621,11 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_unlock_job(job_tag_int: i32, job: JobT
                 }
 
                 let subclass_job = job.cast::<c_void>();
-                let rc =
-                    mtproxy_ffi_jobs_runtime_enqueue_subclass(req_class, cur_subclass, subclass_job);
+                let rc = mtproxy_ffi_jobs_runtime_enqueue_subclass(
+                    req_class,
+                    cur_subclass,
+                    subclass_job,
+                );
                 if rc < 0 {
                     unsafe {
                         crate::kprintf_fmt!(
@@ -2874,7 +2878,8 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_process_one_sublist(
 
     loop {
         loop {
-            let pending_rc = mtproxy_ffi_jobs_runtime_subclass_has_pending(thread_class, subclass_id);
+            let pending_rc =
+                mtproxy_ffi_jobs_runtime_subclass_has_pending(thread_class, subclass_id);
             abort_if(pending_rc < 0);
             if pending_rc == 0 {
                 break;
@@ -2882,13 +2887,19 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_process_one_sublist(
 
             let mut job: *mut c_void = ptr::null_mut();
             let rc = unsafe {
-                mtproxy_ffi_jobs_runtime_dequeue_subclass(thread_class, subclass_id, 1, &raw mut job)
+                mtproxy_ffi_jobs_runtime_dequeue_subclass(
+                    thread_class,
+                    subclass_id,
+                    1,
+                    &raw mut job,
+                )
             };
             abort_if(rc < 0 || job.is_null());
             unsafe {
                 process_one_job(1, job.cast::<AsyncJob>(), thread_class);
             }
-            let mark_rc = mtproxy_ffi_jobs_runtime_subclass_mark_processed(thread_class, subclass_id);
+            let mark_rc =
+                mtproxy_ffi_jobs_runtime_subclass_mark_processed(thread_class, subclass_id);
             abort_if(mark_rc != 0);
         }
 
@@ -3525,7 +3536,10 @@ pub extern "C" fn mtproxy_ffi_jobs_runtime_timer_queue_destroy(queue_id: i32) ->
 /// - `-3`: invalid queue id
 /// - `-4`: queue closed
 #[no_mangle]
-pub extern "C" fn mtproxy_ffi_jobs_runtime_timer_queue_push(queue_id: i32, ptr: *mut c_void) -> i32 {
+pub extern "C" fn mtproxy_ffi_jobs_runtime_timer_queue_push(
+    queue_id: i32,
+    ptr: *mut c_void,
+) -> i32 {
     if ptr.is_null() {
         return -1;
     }

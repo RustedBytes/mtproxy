@@ -638,4 +638,3 @@ pub unsafe extern "C" fn mp_queue_prepare_stat(sb: *mut c_void) -> c_int {
         unsafe { (*sb.cast::<MpQueueStatsBufferC>()).pos }
     }
 }
-
