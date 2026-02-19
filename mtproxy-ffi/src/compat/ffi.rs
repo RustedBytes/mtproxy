@@ -8,7 +8,7 @@ use core::ptr::null_mut;
 unsafe extern "C" {
     fn gethostbyname(name: *const c_char) -> *mut libc::hostent;
     fn gethostbyname2(name: *const c_char, af: c_int) -> *mut libc::hostent;
-    fn jobs_enable_tokio_bridge() -> c_int;
+    fn jobs_enable_runtime_bridge() -> c_int;
     fn crc32_partial_generic(data: *const c_void, len: c_long, crc: u32) -> u32;
     fn crc32c_partial_four_tables(data: *const c_void, len: c_long, crc: u32) -> u32;
     fn mtproxy_ffi_crc32_partial(data: *const u8, len: usize, crc: u32) -> u32;
@@ -303,7 +303,7 @@ pub unsafe extern "C" fn mtproxy_ffi_rust_bridge_enable_concurrency_bridges() ->
     if boundary.boundary_version != CONCURRENCY_BOUNDARY_VERSION {
         return -2;
     }
-    if unsafe { jobs_enable_tokio_bridge() } < 0 {
+    if unsafe { jobs_enable_runtime_bridge() } < 0 {
         return -3;
     }
     if unsafe { mtproxy_ffi_mpq_rust_bridge_enable() } < 0 {

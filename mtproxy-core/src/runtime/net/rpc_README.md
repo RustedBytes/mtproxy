@@ -238,7 +238,7 @@ The current implementation provides the core data structures, state machines, an
 4. Rate limiting for DH accepts
 5. HTTP/Memcache fallback protocol support
 6. Complete remaining connection handlers
-7. Async packet I/O with tokio integration
+7. Async packet I/O with bridge queue integration
 
 ## References
 

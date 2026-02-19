@@ -1401,18 +1401,18 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_alloc_timer_manager(thread_class: i32)
     };
     abort_if(extra.is_null());
 
-    let queue_id = mtproxy_ffi_jobs_tokio_timer_queue_create();
+    let queue_id = mtproxy_ffi_jobs_runtime_timer_queue_create();
     if queue_id <= 0 {
         unsafe {
             crate::kprintf_fmt!(
-                c"fatal: rust tokio timer queue create failed (rc=%d)\n".as_ptr(),
+                c"fatal: rust bridge timer queue create failed (rc=%d)\n".as_ptr(),
                 queue_id,
             );
         }
         abort_if(true);
     }
     unsafe {
-        (*extra).tokio_queue_id = queue_id;
+        (*extra).bridge_queue_id = queue_id;
         unlock_job(1, job_incref(timer_manager));
     }
 
@@ -1563,18 +1563,18 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_job_message_queue_set(
 pub unsafe extern "C" fn mtproxy_ffi_jobs_job_message_queue_init(job: JobT) {
     let queue = unsafe { calloc(1, mem::size_of::<JobMessageQueue>()) }.cast::<JobMessageQueue>();
     abort_if(queue.is_null());
-    let qid = mtproxy_ffi_jobs_tokio_message_queue_create();
-    if qid <= 0 {
+    let queue_id = mtproxy_ffi_jobs_runtime_message_queue_create();
+    if queue_id <= 0 {
         unsafe {
             crate::kprintf_fmt!(
-                c"fatal: rust tokio message queue create failed (rc=%d)\n".as_ptr(),
-                qid,
+                c"fatal: rust bridge message queue create failed (rc=%d)\n".as_ptr(),
+                queue_id,
             );
         }
         abort_if(true);
     }
     unsafe {
-        (*queue).tokio_queue_id = qid;
+        (*queue).bridge_queue_id = queue_id;
         mtproxy_ffi_jobs_job_message_queue_set(job, queue);
     }
 }
@@ -1671,16 +1671,16 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_do_timer_manager_job(
     abort_if(job.is_null());
     let extra = unsafe { (*job).j_custom.as_mut_ptr().cast::<JobTimerManagerExtra>() };
     abort_if(extra.is_null());
-    let queue_id = unsafe { (*extra).tokio_queue_id };
+    let queue_id = unsafe { (*extra).bridge_queue_id };
     abort_if(queue_id <= 0);
 
     loop {
         let mut queued_job: *mut c_void = ptr::null_mut();
-        let rc = unsafe { mtproxy_ffi_jobs_tokio_timer_queue_pop(queue_id, &raw mut queued_job) };
+        let rc = unsafe { mtproxy_ffi_jobs_runtime_timer_queue_pop(queue_id, &raw mut queued_job) };
         if rc < 0 {
             unsafe {
                 crate::kprintf_fmt!(
-                    c"fatal: rust tokio timer queue pop failed (qid=%d rc=%d)\n".as_ptr(),
+                    c"fatal: rust bridge timer queue pop failed (qid=%d rc=%d)\n".as_ptr(),
                     queue_id,
                     rc,
                 );
@@ -1782,7 +1782,7 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_job_thread_ex(
 
     loop {
         let mut job: *mut c_void = ptr::null_mut();
-        let mut rc = unsafe { mtproxy_ffi_jobs_tokio_dequeue_class(thread_class, 0, &raw mut job) };
+        let mut rc = unsafe { mtproxy_ffi_jobs_runtime_dequeue_class(thread_class, 0, &raw mut job) };
         if rc <= 0 || job.is_null() {
             let wait_start = unsafe { get_utime_monotonic() };
             let module_stat_tls = unsafe { jobs_get_module_stat_tls_c_impl() };
@@ -1790,7 +1790,7 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_job_thread_ex(
             unsafe {
                 (*module_stat_tls).locked_since = wait_start;
             }
-            rc = unsafe { mtproxy_ffi_jobs_tokio_dequeue_class(thread_class, 1, &raw mut job) };
+            rc = unsafe { mtproxy_ffi_jobs_runtime_dequeue_class(thread_class, 1, &raw mut job) };
             let wait_time = unsafe { get_utime_monotonic() } - wait_start;
             unsafe {
                 (*module_stat_tls).locked_since = 0.0;
@@ -1801,7 +1801,7 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_job_thread_ex(
         if rc < 0 {
             unsafe {
                 crate::kprintf_fmt!(
-                    c"fatal: rust tokio class dequeue failed (class=%d rc=%d)\n".as_ptr(),
+                    c"fatal: rust bridge class dequeue failed (class=%d rc=%d)\n".as_ptr(),
                     thread_class,
                     rc,
                 );
@@ -1847,8 +1847,8 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_job_thread_ex(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn jobs_enable_tokio_bridge() -> i32 {
-    let rc = mtproxy_ffi_jobs_tokio_init();
+pub unsafe extern "C" fn jobs_enable_runtime_bridge() -> i32 {
+    let rc = mtproxy_ffi_jobs_runtime_init();
     if rc < 0 {
         -1
     } else {
@@ -1866,8 +1866,8 @@ pub unsafe extern "C" fn run_pending_main_jobs() -> i32 {
     abort_if(jt.thread_class != JOB_CLASS_MAIN);
 
     jt.status |= JTS_RUNNING;
-    let drained = mtproxy_ffi_jobs_tokio_drain_main(
-        Some(jobs_process_main_job_from_tokio),
+    let drained = mtproxy_ffi_jobs_runtime_drain_main(
+        Some(jobs_process_main_job_from_bridge),
         JOBS_DRAIN_UNLIMITED,
     );
     abort_if(drained < 0);
@@ -2582,19 +2582,19 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_unlock_job(job_tag_int: i32, job: JobT
             if jc.subclasses.is_null() {
                 let jq = jc.job_queue;
                 abort_if(jq.is_null());
-                let tokio_class = if ptr::eq(jq, ptr::addr_of_mut!(MainJobQueue)) {
+                let bridge_class = if ptr::eq(jq, ptr::addr_of_mut!(MainJobQueue)) {
                     JC_MAIN
                 } else {
                     req_class
                 };
                 let queued_job = job.cast::<c_void>();
-                let rc = mtproxy_ffi_jobs_tokio_enqueue_class(tokio_class, queued_job);
+                let rc = mtproxy_ffi_jobs_runtime_enqueue_class(bridge_class, queued_job);
                 if rc < 0 {
                     unsafe {
                         crate::kprintf_fmt!(
-                            c"fatal: rust tokio class enqueue failed (class=%d rc=%d job=%p)\n"
+                            c"fatal: rust bridge class enqueue failed (class=%d rc=%d job=%p)\n"
                                 .as_ptr(),
-                            tokio_class,
+                            bridge_class,
                             rc,
                             queued_job,
                         );
@@ -2621,11 +2621,11 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_unlock_job(job_tag_int: i32, job: JobT
 
                 let subclass_job = job.cast::<c_void>();
                 let rc =
-                    mtproxy_ffi_jobs_tokio_enqueue_subclass(req_class, cur_subclass, subclass_job);
+                    mtproxy_ffi_jobs_runtime_enqueue_subclass(req_class, cur_subclass, subclass_job);
                 if rc < 0 {
                     unsafe {
                         crate::kprintf_fmt!(
-                            c"fatal: rust tokio subclass enqueue failed (class=%d subclass=%d rc=%d job=%p)\n".as_ptr(),
+                            c"fatal: rust bridge subclass enqueue failed (class=%d subclass=%d rc=%d job=%p)\n".as_ptr(),
                             req_class,
                             cur_subclass,
                             rc,
@@ -2637,18 +2637,18 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_unlock_job(job_tag_int: i32, job: JobT
 
                 let jq = jc.job_queue;
                 abort_if(jq.is_null());
-                let tokio_class = if ptr::eq(jq, ptr::addr_of_mut!(MainJobQueue)) {
+                let bridge_class = if ptr::eq(jq, ptr::addr_of_mut!(MainJobQueue)) {
                     JC_MAIN
                 } else {
                     req_class
                 };
                 let subclass_token = (cur_subclass + JOB_SUBCLASS_OFFSET) as isize as *mut c_void;
-                let rc = mtproxy_ffi_jobs_tokio_enqueue_class(tokio_class, subclass_token);
+                let rc = mtproxy_ffi_jobs_runtime_enqueue_class(bridge_class, subclass_token);
                 if rc < 0 {
                     unsafe {
                         crate::kprintf_fmt!(
-                            c"fatal: rust tokio subclass token enqueue failed (class=%d rc=%d token=%p)\n".as_ptr(),
-                            tokio_class,
+                            c"fatal: rust bridge subclass token enqueue failed (class=%d rc=%d token=%p)\n".as_ptr(),
+                            bridge_class,
                             rc,
                             subclass_token,
                         );
@@ -2777,15 +2777,15 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_job_timer_insert(job: JobT, timeout: f
             .as_mut_ptr()
             .cast::<JobTimerManagerExtra>()
     };
-    let rc = mtproxy_ffi_jobs_tokio_timer_queue_push(
-        unsafe { (*extra).tokio_queue_id },
+    let rc = mtproxy_ffi_jobs_runtime_timer_queue_push(
+        unsafe { (*extra).bridge_queue_id },
         unsafe { job_incref(job) }.cast::<c_void>(),
     );
     if rc < 0 {
         unsafe {
             crate::kprintf_fmt!(
-                c"fatal: rust tokio timer queue push failed (qid=%d rc=%d)\n".as_ptr(),
-                (*extra).tokio_queue_id,
+                c"fatal: rust bridge timer queue push failed (qid=%d rc=%d)\n".as_ptr(),
+                (*extra).bridge_queue_id,
                 rc,
             );
         }
@@ -2863,18 +2863,18 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_process_one_sublist(
     abort_if(subclass_id < -2);
     abort_if(subclass_id >= subclass_cnt);
 
-    let enter_rc = mtproxy_ffi_jobs_tokio_subclass_enter(thread_class, subclass_id);
+    let enter_rc = mtproxy_ffi_jobs_runtime_subclass_enter(thread_class, subclass_id);
     abort_if(enter_rc < 0);
     if enter_rc == 0 {
         return;
     }
 
-    let permit_rc = mtproxy_ffi_jobs_tokio_subclass_permit_acquire(thread_class, subclass_id);
+    let permit_rc = mtproxy_ffi_jobs_runtime_subclass_permit_acquire(thread_class, subclass_id);
     abort_if(permit_rc != 0);
 
     loop {
         loop {
-            let pending_rc = mtproxy_ffi_jobs_tokio_subclass_has_pending(thread_class, subclass_id);
+            let pending_rc = mtproxy_ffi_jobs_runtime_subclass_has_pending(thread_class, subclass_id);
             abort_if(pending_rc < 0);
             if pending_rc == 0 {
                 break;
@@ -2882,17 +2882,17 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_process_one_sublist(
 
             let mut job: *mut c_void = ptr::null_mut();
             let rc = unsafe {
-                mtproxy_ffi_jobs_tokio_dequeue_subclass(thread_class, subclass_id, 1, &raw mut job)
+                mtproxy_ffi_jobs_runtime_dequeue_subclass(thread_class, subclass_id, 1, &raw mut job)
             };
             abort_if(rc < 0 || job.is_null());
             unsafe {
                 process_one_job(1, job.cast::<AsyncJob>(), thread_class);
             }
-            let mark_rc = mtproxy_ffi_jobs_tokio_subclass_mark_processed(thread_class, subclass_id);
+            let mark_rc = mtproxy_ffi_jobs_runtime_subclass_mark_processed(thread_class, subclass_id);
             abort_if(mark_rc != 0);
         }
 
-        let cont_rc = mtproxy_ffi_jobs_tokio_subclass_exit_or_continue(thread_class, subclass_id);
+        let cont_rc = mtproxy_ffi_jobs_runtime_subclass_exit_or_continue(thread_class, subclass_id);
         abort_if(cont_rc < 0);
         if cont_rc > 0 {
             continue;
@@ -2900,7 +2900,7 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_process_one_sublist(
         break;
     }
 
-    let release_rc = mtproxy_ffi_jobs_tokio_subclass_permit_release(thread_class, subclass_id);
+    let release_rc = mtproxy_ffi_jobs_runtime_subclass_permit_release(thread_class, subclass_id);
     abort_if(release_rc != 0);
 }
 
@@ -2953,8 +2953,8 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_job_message_send(
 
     let queue = unsafe { job_message_queue_get(job) };
     abort_if(queue.is_null());
-    let rc = mtproxy_ffi_jobs_tokio_message_queue_push(
-        unsafe { (*queue).tokio_queue_id },
+    let rc = mtproxy_ffi_jobs_runtime_message_queue_push(
+        unsafe { (*queue).bridge_queue_id },
         message.cast(),
     );
     abort_if(rc < 0);
@@ -2979,7 +2979,7 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_job_message_queue_work(
     loop {
         let mut msg: *mut c_void = ptr::null_mut();
         let rc = unsafe {
-            mtproxy_ffi_jobs_tokio_message_queue_pop((*queue).tokio_queue_id, &raw mut msg)
+            mtproxy_ffi_jobs_runtime_message_queue_pop((*queue).bridge_queue_id, &raw mut msg)
         };
         abort_if(rc < 0);
         if rc == 0 || msg.is_null() {
@@ -3074,7 +3074,7 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_job_message_queue_free(job: JobT) {
     loop {
         let mut message: *mut c_void = ptr::null_mut();
         let rc = unsafe {
-            mtproxy_ffi_jobs_tokio_message_queue_pop((*queue).tokio_queue_id, &raw mut message)
+            mtproxy_ffi_jobs_runtime_message_queue_pop((*queue).bridge_queue_id, &raw mut message)
         };
         abort_if(rc < 0);
         if rc == 0 || message.is_null() {
@@ -3084,7 +3084,7 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_job_message_queue_free(job: JobT) {
     }
 
     let destroy_rc =
-        mtproxy_ffi_jobs_tokio_message_queue_destroy(unsafe { (*queue).tokio_queue_id });
+        mtproxy_ffi_jobs_runtime_message_queue_destroy(unsafe { (*queue).bridge_queue_id });
     abort_if(destroy_rc < 0);
     unsafe {
         free(queue.cast::<c_void>());
@@ -3147,20 +3147,20 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_job_timer_wakeup_gateway(et: *mut Even
     0
 }
 
-/// Initializes shared Tokio scheduler state for Rust-backed jobs queue routing.
+/// Initializes shared bridge scheduler state for Rust-backed jobs queue routing.
 ///
 /// Return codes:
 /// - `0`: scheduler is ready
 #[no_mangle]
-pub extern "C" fn mtproxy_ffi_jobs_tokio_init() -> i32 {
-    if TOKIO_JOBS_BRIDGE.get().is_some() {
+pub extern "C" fn mtproxy_ffi_jobs_runtime_init() -> i32 {
+    if JOBS_BRIDGE.get().is_some() {
         return 0;
     }
-    let _ = TOKIO_JOBS_BRIDGE.set(build_tokio_jobs_bridge());
+    let _ = JOBS_BRIDGE.set(build_jobs_bridge());
     0
 }
 
-/// Enqueues one opaque `job_t` pointer into Rust/Tokio-backed class queue.
+/// Enqueues one opaque `job_t` pointer into Rust bridge-backed class queue.
 ///
 /// Return codes:
 /// - `0`: enqueued
@@ -3169,17 +3169,17 @@ pub extern "C" fn mtproxy_ffi_jobs_tokio_init() -> i32 {
 /// - `-3`: invalid class id
 /// - `-4`: queue closed
 #[no_mangle]
-pub extern "C" fn mtproxy_ffi_jobs_tokio_enqueue_class(job_class: i32, job: *mut c_void) -> i32 {
+pub extern "C" fn mtproxy_ffi_jobs_runtime_enqueue_class(job_class: i32, job: *mut c_void) -> i32 {
     if job.is_null() {
         return -1;
     }
-    let Some(bridge) = TOKIO_JOBS_BRIDGE.get() else {
+    let Some(bridge) = JOBS_BRIDGE.get() else {
         return -2;
     };
     enqueue_class_impl(bridge, job_class, job as JobPtr)
 }
 
-/// Dequeues one opaque `job_t` pointer from Rust/Tokio-backed class queue.
+/// Dequeues one opaque `job_t` pointer from Rust bridge-backed class queue.
 ///
 /// Return values:
 /// - `1`: one job dequeued into `out_job`
@@ -3188,7 +3188,7 @@ pub extern "C" fn mtproxy_ffi_jobs_tokio_enqueue_class(job_class: i32, job: *mut
 /// - `-2`: scheduler not initialized
 /// - `-3`: invalid class id
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_jobs_tokio_dequeue_class(
+pub unsafe extern "C" fn mtproxy_ffi_jobs_runtime_dequeue_class(
     job_class: i32,
     blocking: i32,
     out_job: *mut *mut c_void,
@@ -3200,13 +3200,13 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_tokio_dequeue_class(
     unsafe {
         *out_job = ptr::null_mut();
     }
-    let Some(bridge) = TOKIO_JOBS_BRIDGE.get() else {
+    let Some(bridge) = JOBS_BRIDGE.get() else {
         return -2;
     };
     dequeue_class_impl(bridge, job_class, blocking != 0, out_job)
 }
 
-/// Enqueues one opaque `job_t` pointer into Rust/Tokio-backed subclass queue.
+/// Enqueues one opaque `job_t` pointer into Rust bridge-backed subclass queue.
 ///
 /// Return codes:
 /// - `0`: enqueued
@@ -3215,7 +3215,7 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_tokio_dequeue_class(
 /// - `-3`: invalid class id
 /// - `-4`: queue closed
 #[no_mangle]
-pub extern "C" fn mtproxy_ffi_jobs_tokio_enqueue_subclass(
+pub extern "C" fn mtproxy_ffi_jobs_runtime_enqueue_subclass(
     job_class: i32,
     subclass_id: i32,
     job: *mut c_void,
@@ -3223,13 +3223,13 @@ pub extern "C" fn mtproxy_ffi_jobs_tokio_enqueue_subclass(
     if job.is_null() {
         return -1;
     }
-    let Some(bridge) = TOKIO_JOBS_BRIDGE.get() else {
+    let Some(bridge) = JOBS_BRIDGE.get() else {
         return -2;
     };
     enqueue_subclass_impl(bridge, job_class, subclass_id, job as JobPtr)
 }
 
-/// Dequeues one opaque `job_t` pointer from Rust/Tokio-backed subclass queue.
+/// Dequeues one opaque `job_t` pointer from Rust bridge-backed subclass queue.
 ///
 /// Return values:
 /// - `1`: one job dequeued into `out_job`
@@ -3238,7 +3238,7 @@ pub extern "C" fn mtproxy_ffi_jobs_tokio_enqueue_subclass(
 /// - `-2`: scheduler not initialized
 /// - `-3`: invalid class id
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_jobs_tokio_dequeue_subclass(
+pub unsafe extern "C" fn mtproxy_ffi_jobs_runtime_dequeue_subclass(
     job_class: i32,
     subclass_id: i32,
     blocking: i32,
@@ -3251,7 +3251,7 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_tokio_dequeue_subclass(
     unsafe {
         *out_job = ptr::null_mut();
     }
-    let Some(bridge) = TOKIO_JOBS_BRIDGE.get() else {
+    let Some(bridge) = JOBS_BRIDGE.get() else {
         return -2;
     };
     dequeue_subclass_impl(bridge, job_class, subclass_id, blocking != 0, out_job)
@@ -3265,8 +3265,8 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_tokio_dequeue_subclass(
 /// - `-1`: scheduler not initialized
 /// - `-2`: invalid class id
 #[no_mangle]
-pub extern "C" fn mtproxy_ffi_jobs_tokio_subclass_enter(job_class: i32, subclass_id: i32) -> i32 {
-    let Some(bridge) = TOKIO_JOBS_BRIDGE.get() else {
+pub extern "C" fn mtproxy_ffi_jobs_runtime_subclass_enter(job_class: i32, subclass_id: i32) -> i32 {
+    let Some(bridge) = JOBS_BRIDGE.get() else {
         return -1;
     };
     let Some(res) = mutate_subclass_state(bridge, job_class, subclass_id, |state| {
@@ -3291,11 +3291,11 @@ pub extern "C" fn mtproxy_ffi_jobs_tokio_subclass_enter(job_class: i32, subclass
 /// - `-1`: scheduler not initialized
 /// - `-2`: invalid class id
 #[no_mangle]
-pub extern "C" fn mtproxy_ffi_jobs_tokio_subclass_has_pending(
+pub extern "C" fn mtproxy_ffi_jobs_runtime_subclass_has_pending(
     job_class: i32,
     subclass_id: i32,
 ) -> i32 {
-    let Some(bridge) = TOKIO_JOBS_BRIDGE.get() else {
+    let Some(bridge) = JOBS_BRIDGE.get() else {
         return -1;
     };
     let Some(state) = state_for_subclass(bridge, job_class, subclass_id) else {
@@ -3315,11 +3315,11 @@ pub extern "C" fn mtproxy_ffi_jobs_tokio_subclass_has_pending(
 /// - `-1`: scheduler not initialized
 /// - `-2`: invalid class id
 #[no_mangle]
-pub extern "C" fn mtproxy_ffi_jobs_tokio_subclass_mark_processed(
+pub extern "C" fn mtproxy_ffi_jobs_runtime_subclass_mark_processed(
     job_class: i32,
     subclass_id: i32,
 ) -> i32 {
-    let Some(bridge) = TOKIO_JOBS_BRIDGE.get() else {
+    let Some(bridge) = JOBS_BRIDGE.get() else {
         return -1;
     };
     let Some(()) = mutate_subclass_state(bridge, job_class, subclass_id, |state| {
@@ -3338,11 +3338,11 @@ pub extern "C" fn mtproxy_ffi_jobs_tokio_subclass_mark_processed(
 /// - `-1`: scheduler not initialized
 /// - `-2`: invalid class id
 #[no_mangle]
-pub extern "C" fn mtproxy_ffi_jobs_tokio_subclass_exit_or_continue(
+pub extern "C" fn mtproxy_ffi_jobs_runtime_subclass_exit_or_continue(
     job_class: i32,
     subclass_id: i32,
 ) -> i32 {
-    let Some(bridge) = TOKIO_JOBS_BRIDGE.get() else {
+    let Some(bridge) = JOBS_BRIDGE.get() else {
         return -1;
     };
     let Some(res) = mutate_subclass_state(bridge, job_class, subclass_id, |state| {
@@ -3370,11 +3370,11 @@ pub extern "C" fn mtproxy_ffi_jobs_tokio_subclass_exit_or_continue(
 /// - `-1`: scheduler not initialized
 /// - `-2`: invalid class id
 #[no_mangle]
-pub extern "C" fn mtproxy_ffi_jobs_tokio_subclass_permit_acquire(
+pub extern "C" fn mtproxy_ffi_jobs_runtime_subclass_permit_acquire(
     job_class: i32,
     subclass_id: i32,
 ) -> i32 {
-    let Some(bridge) = TOKIO_JOBS_BRIDGE.get() else {
+    let Some(bridge) = JOBS_BRIDGE.get() else {
         return -1;
     };
     let Some(pool) = permit_pool_for_class(bridge, job_class) else {
@@ -3410,11 +3410,11 @@ pub extern "C" fn mtproxy_ffi_jobs_tokio_subclass_permit_acquire(
 /// - `-1`: scheduler not initialized
 /// - `-2`: invalid class id
 #[no_mangle]
-pub extern "C" fn mtproxy_ffi_jobs_tokio_subclass_permit_release(
+pub extern "C" fn mtproxy_ffi_jobs_runtime_subclass_permit_release(
     job_class: i32,
     subclass_id: i32,
 ) -> i32 {
-    let Some(bridge) = TOKIO_JOBS_BRIDGE.get() else {
+    let Some(bridge) = JOBS_BRIDGE.get() else {
         return -1;
     };
     let Some(pool) = permit_pool_for_class(bridge, job_class) else {
@@ -3443,8 +3443,8 @@ pub extern "C" fn mtproxy_ffi_jobs_tokio_subclass_permit_release(
 /// - `-3`: invalid class id
 /// - `-4`: queue closed
 #[no_mangle]
-pub extern "C" fn mtproxy_ffi_jobs_tokio_enqueue_main(job: *mut c_void) -> i32 {
-    mtproxy_ffi_jobs_tokio_enqueue_class(JOB_CLASS_MAIN, job)
+pub extern "C" fn mtproxy_ffi_jobs_runtime_enqueue_main(job: *mut c_void) -> i32 {
+    mtproxy_ffi_jobs_runtime_enqueue_class(JOB_CLASS_MAIN, job)
 }
 
 /// Backward-compatible helper for draining main queue via callback.
@@ -3457,14 +3457,14 @@ pub extern "C" fn mtproxy_ffi_jobs_tokio_enqueue_main(job: *mut c_void) -> i32 {
 /// - `-2`: scheduler not initialized
 /// - `-3`: invalid `max_items` (< 0)
 #[no_mangle]
-pub extern "C" fn mtproxy_ffi_jobs_tokio_drain_main(
+pub extern "C" fn mtproxy_ffi_jobs_runtime_drain_main(
     process_one_job: Option<JobsProcessFn>,
     max_items: i32,
 ) -> i32 {
     let Some(process_one_job_fn) = process_one_job else {
         return -1;
     };
-    let Some(bridge) = TOKIO_JOBS_BRIDGE.get() else {
+    let Some(bridge) = JOBS_BRIDGE.get() else {
         return -2;
     };
     if max_items < 0 {
@@ -3488,35 +3488,35 @@ pub extern "C" fn mtproxy_ffi_jobs_tokio_drain_main(
     drained
 }
 
-/// Allocates one Tokio-backed timer-manager queue.
+/// Allocates one bridge-backed timer-manager queue.
 ///
 /// Return values:
 /// - `> 0`: queue id
 /// - `-1`: scheduler not initialized
 /// - `-3`: queue id space exhausted
 #[no_mangle]
-pub extern "C" fn mtproxy_ffi_jobs_tokio_timer_queue_create() -> i32 {
-    let Some(bridge) = TOKIO_JOBS_BRIDGE.get() else {
+pub extern "C" fn mtproxy_ffi_jobs_runtime_timer_queue_create() -> i32 {
+    let Some(bridge) = JOBS_BRIDGE.get() else {
         return -1;
     };
     alloc_user_queue(&bridge.timer_queues, bridge)
 }
 
-/// Destroys one Tokio-backed timer-manager queue by id.
+/// Destroys one bridge-backed timer-manager queue by id.
 ///
 /// Return values:
 /// - `0`: destroyed
 /// - `-1`: scheduler not initialized
 /// - `-2`: invalid/unknown queue id
 #[no_mangle]
-pub extern "C" fn mtproxy_ffi_jobs_tokio_timer_queue_destroy(queue_id: i32) -> i32 {
-    let Some(bridge) = TOKIO_JOBS_BRIDGE.get() else {
+pub extern "C" fn mtproxy_ffi_jobs_runtime_timer_queue_destroy(queue_id: i32) -> i32 {
+    let Some(bridge) = JOBS_BRIDGE.get() else {
         return -1;
     };
     drop_user_queue(&bridge.timer_queues, queue_id)
 }
 
-/// Enqueues one opaque pointer into Tokio-backed timer-manager queue.
+/// Enqueues one opaque pointer into bridge-backed timer-manager queue.
 ///
 /// Return values:
 /// - `0`: enqueued
@@ -3525,11 +3525,11 @@ pub extern "C" fn mtproxy_ffi_jobs_tokio_timer_queue_destroy(queue_id: i32) -> i
 /// - `-3`: invalid queue id
 /// - `-4`: queue closed
 #[no_mangle]
-pub extern "C" fn mtproxy_ffi_jobs_tokio_timer_queue_push(queue_id: i32, ptr: *mut c_void) -> i32 {
+pub extern "C" fn mtproxy_ffi_jobs_runtime_timer_queue_push(queue_id: i32, ptr: *mut c_void) -> i32 {
     if ptr.is_null() {
         return -1;
     }
-    let Some(bridge) = TOKIO_JOBS_BRIDGE.get() else {
+    let Some(bridge) = JOBS_BRIDGE.get() else {
         return -2;
     };
     let Some(queue) = user_queue_by_id(&bridge.timer_queues, queue_id) else {
@@ -3538,7 +3538,7 @@ pub extern "C" fn mtproxy_ffi_jobs_tokio_timer_queue_push(queue_id: i32, ptr: *m
     enqueue_user_queue_item(&queue, ptr as JobPtr)
 }
 
-/// Dequeues one opaque pointer from Tokio-backed timer-manager queue.
+/// Dequeues one opaque pointer from bridge-backed timer-manager queue.
 ///
 /// Return values:
 /// - `1`: one pointer dequeued into `out_ptr`
@@ -3547,7 +3547,7 @@ pub extern "C" fn mtproxy_ffi_jobs_tokio_timer_queue_push(queue_id: i32, ptr: *m
 /// - `-2`: scheduler not initialized
 /// - `-3`: invalid queue id
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_jobs_tokio_timer_queue_pop(
+pub unsafe extern "C" fn mtproxy_ffi_jobs_runtime_timer_queue_pop(
     queue_id: i32,
     out_ptr: *mut *mut c_void,
 ) -> i32 {
@@ -3558,7 +3558,7 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_tokio_timer_queue_pop(
     unsafe {
         *out_ptr = ptr::null_mut();
     }
-    let Some(bridge) = TOKIO_JOBS_BRIDGE.get() else {
+    let Some(bridge) = JOBS_BRIDGE.get() else {
         return -2;
     };
     let Some(queue) = user_queue_by_id(&bridge.timer_queues, queue_id) else {
@@ -3567,35 +3567,35 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_tokio_timer_queue_pop(
     dequeue_user_queue_item(&queue, out_ptr)
 }
 
-/// Allocates one Tokio-backed message queue.
+/// Allocates one bridge-backed message queue.
 ///
 /// Return values:
 /// - `> 0`: queue id
 /// - `-1`: scheduler not initialized
 /// - `-3`: queue id space exhausted
 #[no_mangle]
-pub extern "C" fn mtproxy_ffi_jobs_tokio_message_queue_create() -> i32 {
-    let Some(bridge) = TOKIO_JOBS_BRIDGE.get() else {
+pub extern "C" fn mtproxy_ffi_jobs_runtime_message_queue_create() -> i32 {
+    let Some(bridge) = JOBS_BRIDGE.get() else {
         return -1;
     };
     alloc_user_queue(&bridge.message_queues, bridge)
 }
 
-/// Destroys one Tokio-backed message queue by id.
+/// Destroys one bridge-backed message queue by id.
 ///
 /// Return values:
 /// - `0`: destroyed
 /// - `-1`: scheduler not initialized
 /// - `-2`: invalid/unknown queue id
 #[no_mangle]
-pub extern "C" fn mtproxy_ffi_jobs_tokio_message_queue_destroy(queue_id: i32) -> i32 {
-    let Some(bridge) = TOKIO_JOBS_BRIDGE.get() else {
+pub extern "C" fn mtproxy_ffi_jobs_runtime_message_queue_destroy(queue_id: i32) -> i32 {
+    let Some(bridge) = JOBS_BRIDGE.get() else {
         return -1;
     };
     drop_user_queue(&bridge.message_queues, queue_id)
 }
 
-/// Enqueues one opaque pointer into Tokio-backed message queue.
+/// Enqueues one opaque pointer into bridge-backed message queue.
 ///
 /// Return values:
 /// - `0`: enqueued
@@ -3604,14 +3604,14 @@ pub extern "C" fn mtproxy_ffi_jobs_tokio_message_queue_destroy(queue_id: i32) ->
 /// - `-3`: invalid queue id
 /// - `-4`: queue closed
 #[no_mangle]
-pub extern "C" fn mtproxy_ffi_jobs_tokio_message_queue_push(
+pub extern "C" fn mtproxy_ffi_jobs_runtime_message_queue_push(
     queue_id: i32,
     ptr: *mut c_void,
 ) -> i32 {
     if ptr.is_null() {
         return -1;
     }
-    let Some(bridge) = TOKIO_JOBS_BRIDGE.get() else {
+    let Some(bridge) = JOBS_BRIDGE.get() else {
         return -2;
     };
     let Some(queue) = user_queue_by_id(&bridge.message_queues, queue_id) else {
@@ -3620,7 +3620,7 @@ pub extern "C" fn mtproxy_ffi_jobs_tokio_message_queue_push(
     enqueue_user_queue_item(&queue, ptr as JobPtr)
 }
 
-/// Dequeues one opaque pointer from Tokio-backed message queue.
+/// Dequeues one opaque pointer from bridge-backed message queue.
 ///
 /// Return values:
 /// - `1`: one pointer dequeued into `out_ptr`
@@ -3629,7 +3629,7 @@ pub extern "C" fn mtproxy_ffi_jobs_tokio_message_queue_push(
 /// - `-2`: scheduler not initialized
 /// - `-3`: invalid queue id
 #[no_mangle]
-pub unsafe extern "C" fn mtproxy_ffi_jobs_tokio_message_queue_pop(
+pub unsafe extern "C" fn mtproxy_ffi_jobs_runtime_message_queue_pop(
     queue_id: i32,
     out_ptr: *mut *mut c_void,
 ) -> i32 {
@@ -3640,7 +3640,7 @@ pub unsafe extern "C" fn mtproxy_ffi_jobs_tokio_message_queue_pop(
     unsafe {
         *out_ptr = ptr::null_mut();
     }
-    let Some(bridge) = TOKIO_JOBS_BRIDGE.get() else {
+    let Some(bridge) = JOBS_BRIDGE.get() else {
         return -2;
     };
     let Some(queue) = user_queue_by_id(&bridge.message_queues, queue_id) else {

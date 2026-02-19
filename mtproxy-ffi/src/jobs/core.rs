@@ -1,12 +1,9 @@
 use core::ffi::{c_char, c_int, c_void};
 use std::collections::HashMap;
+use std::sync::mpsc::{channel, Receiver, Sender, TryRecvError};
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::vec::Vec;
-
-use tokio::sync::mpsc::{
-    error::TryRecvError, unbounded_channel, UnboundedReceiver, UnboundedSender,
-};
 
 pub(super) const JOBS_DRAIN_UNLIMITED: i32 = 0;
 pub(super) const JOB_CLASS_MAIN: i32 = 3;
@@ -167,7 +164,7 @@ pub struct JobTimerInfo {
 
 #[repr(C)]
 pub struct JobTimerManagerExtra {
-    pub(super) tokio_queue_id: i32,
+    pub(super) bridge_queue_id: i32,
 }
 
 #[derive(Copy, Clone)]
@@ -202,7 +199,7 @@ pub struct JobMessage {
 
 #[repr(C)]
 pub struct JobMessageQueue {
-    pub(super) tokio_queue_id: i32,
+    pub(super) bridge_queue_id: i32,
     pub(super) first: *mut JobMessage,
     pub(super) last: *mut JobMessage,
     pub(super) payload_magic: u32,
@@ -374,7 +371,7 @@ pub(super) const fn jsc_allow(class: i32, signo: i32) -> u64 {
     jsc_type(class, signo) | jss_allow(signo)
 }
 
-pub(super) extern "C" fn jobs_process_main_job_from_tokio(job_ptr: *mut c_void) -> i32 {
+pub(super) extern "C" fn jobs_process_main_job_from_bridge(job_ptr: *mut c_void) -> i32 {
     if job_ptr.is_null() {
         return -1;
     }
@@ -434,8 +431,8 @@ pub(super) unsafe fn job_send_signals(job_tag_int: i32, job: JobT, sigset: i32) 
 }
 
 pub(super) struct ClassQueue {
-    pub(super) tx: UnboundedSender<JobPtr>,
-    pub(super) rx: Mutex<UnboundedReceiver<JobPtr>>,
+    pub(super) tx: Sender<JobPtr>,
+    pub(super) rx: Mutex<Receiver<JobPtr>>,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -455,7 +452,7 @@ pub(super) struct ClassPermitPool {
     pub(super) condvar: Condvar,
 }
 
-pub(super) struct TokioJobsBridge {
+pub(super) struct JobsBridge {
     pub(super) classes: Vec<ClassQueue>,
     pub(super) subclasses: Mutex<HashMap<(i32, i32), Arc<ClassQueue>>>,
     pub(super) subclass_state: Mutex<HashMap<(i32, i32), SubclassState>>,
@@ -465,7 +462,7 @@ pub(super) struct TokioJobsBridge {
     pub(super) next_queue_id: AtomicI32,
 }
 
-pub(super) static TOKIO_JOBS_BRIDGE: OnceLock<TokioJobsBridge> = OnceLock::new();
+pub(super) static JOBS_BRIDGE: OnceLock<JobsBridge> = OnceLock::new();
 
 pub(super) fn class_index(job_class: i32) -> Option<usize> {
     usize::try_from(job_class)
@@ -473,16 +470,16 @@ pub(super) fn class_index(job_class: i32) -> Option<usize> {
         .filter(|idx| *idx < JOB_CLASS_COUNT)
 }
 
-pub(super) fn build_tokio_jobs_bridge() -> TokioJobsBridge {
+pub(super) fn build_jobs_bridge() -> JobsBridge {
     let mut classes = Vec::with_capacity(JOB_CLASS_COUNT);
     for _ in 0..JOB_CLASS_COUNT {
-        let (tx, rx) = unbounded_channel::<JobPtr>();
+        let (tx, rx) = channel::<JobPtr>();
         classes.push(ClassQueue {
             tx,
             rx: Mutex::new(rx),
         });
     }
-    TokioJobsBridge {
+    JobsBridge {
         classes,
         subclasses: Mutex::new(HashMap::new()),
         subclass_state: Mutex::new(HashMap::new()),
@@ -493,13 +490,13 @@ pub(super) fn build_tokio_jobs_bridge() -> TokioJobsBridge {
     }
 }
 
-pub(super) fn queue_for_class(bridge: &TokioJobsBridge, job_class: i32) -> Option<&ClassQueue> {
+pub(super) fn queue_for_class(bridge: &JobsBridge, job_class: i32) -> Option<&ClassQueue> {
     let idx = class_index(job_class)?;
     bridge.classes.get(idx)
 }
 
 pub(super) fn alloc_queue() -> Arc<ClassQueue> {
-    let (tx, rx) = unbounded_channel::<JobPtr>();
+    let (tx, rx) = channel::<JobPtr>();
     Arc::new(ClassQueue {
         tx,
         rx: Mutex::new(rx),
@@ -516,7 +513,7 @@ pub(super) fn alloc_permit_pool() -> Arc<ClassPermitPool> {
 }
 
 pub(super) fn queue_for_subclass(
-    bridge: &TokioJobsBridge,
+    bridge: &JobsBridge,
     job_class: i32,
     subclass_id: i32,
 ) -> Option<Arc<ClassQueue>> {
@@ -530,7 +527,7 @@ pub(super) fn queue_for_subclass(
 }
 
 pub(super) fn permit_pool_for_class(
-    bridge: &TokioJobsBridge,
+    bridge: &JobsBridge,
     job_class: i32,
 ) -> Option<Arc<ClassPermitPool>> {
     class_index(job_class)?;
@@ -547,7 +544,7 @@ pub(super) fn permit_pool_for_class(
 
 pub(super) fn alloc_user_queue(
     map: &Mutex<HashMap<i32, Arc<ClassQueue>>>,
-    bridge: &TokioJobsBridge,
+    bridge: &JobsBridge,
 ) -> i32 {
     let queue_id = bridge.next_queue_id.fetch_add(1, Ordering::Relaxed);
     if queue_id <= 0 {
@@ -598,7 +595,7 @@ pub(super) fn enqueue_user_queue_item(queue: &ClassQueue, ptr: JobPtr) -> i32 {
 }
 
 pub(super) fn dequeue_user_queue_item(queue: &ClassQueue, out_ptr: *mut *mut c_void) -> i32 {
-    let mut receiver = match queue.rx.lock() {
+    let receiver = match queue.rx.lock() {
         Ok(guard) => guard,
         Err(poisoned) => poisoned.into_inner(),
     };
@@ -617,7 +614,7 @@ pub(super) fn dequeue_user_queue_item(queue: &ClassQueue, out_ptr: *mut *mut c_v
 }
 
 pub(super) fn state_for_subclass(
-    bridge: &TokioJobsBridge,
+    bridge: &JobsBridge,
     job_class: i32,
     subclass_id: i32,
 ) -> Option<SubclassState> {
@@ -633,7 +630,7 @@ pub(super) fn state_for_subclass(
 }
 
 pub(super) fn mutate_subclass_state<R>(
-    bridge: &TokioJobsBridge,
+    bridge: &JobsBridge,
     job_class: i32,
     subclass_id: i32,
     mutate: impl FnOnce(&mut SubclassState) -> R,
@@ -647,7 +644,7 @@ pub(super) fn mutate_subclass_state<R>(
     Some(mutate(state))
 }
 
-pub(super) fn enqueue_class_impl(bridge: &TokioJobsBridge, job_class: i32, job: JobPtr) -> i32 {
+pub(super) fn enqueue_class_impl(bridge: &JobsBridge, job_class: i32, job: JobPtr) -> i32 {
     let Some(queue) = queue_for_class(bridge, job_class) else {
         return -3;
     };
@@ -658,7 +655,7 @@ pub(super) fn enqueue_class_impl(bridge: &TokioJobsBridge, job_class: i32, job: 
 }
 
 pub(super) fn dequeue_class_impl(
-    bridge: &TokioJobsBridge,
+    bridge: &JobsBridge,
     job_class: i32,
     blocking: bool,
     out_job: *mut *mut c_void,
@@ -667,13 +664,13 @@ pub(super) fn dequeue_class_impl(
         return -3;
     };
 
-    let mut receiver = match queue.rx.lock() {
+    let receiver = match queue.rx.lock() {
         Ok(guard) => guard,
         Err(poisoned) => poisoned.into_inner(),
     };
 
     let dequeued = if blocking {
-        receiver.blocking_recv()
+        receiver.recv().ok()
     } else {
         match receiver.try_recv() {
             Ok(job) => Some(job),
@@ -692,7 +689,7 @@ pub(super) fn dequeue_class_impl(
 }
 
 pub(super) fn enqueue_subclass_impl(
-    bridge: &TokioJobsBridge,
+    bridge: &JobsBridge,
     job_class: i32,
     subclass_id: i32,
     job: JobPtr,
@@ -707,7 +704,7 @@ pub(super) fn enqueue_subclass_impl(
 }
 
 pub(super) fn dequeue_subclass_impl(
-    bridge: &TokioJobsBridge,
+    bridge: &JobsBridge,
     job_class: i32,
     subclass_id: i32,
     blocking: bool,
@@ -717,13 +714,13 @@ pub(super) fn dequeue_subclass_impl(
         return -3;
     };
 
-    let mut receiver = match queue.rx.lock() {
+    let receiver = match queue.rx.lock() {
         Ok(guard) => guard,
         Err(poisoned) => poisoned.into_inner(),
     };
 
     let dequeued = if blocking {
-        receiver.blocking_recv()
+        receiver.recv().ok()
     } else {
         match receiver.try_recv() {
             Ok(job) => Some(job),
@@ -740,4 +737,3 @@ pub(super) fn dequeue_subclass_impl(
     }
     1
 }
-
