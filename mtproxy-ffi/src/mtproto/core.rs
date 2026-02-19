@@ -321,10 +321,11 @@ struct MtprotoJobCallbackInfo {
 #[repr(C)]
 #[derive(Clone, Copy, Default)]
 struct MtprotoRpcsExecData {
-    msg: MtprotoRawMessage,
     conn: ConnectionJob,
     op: c_int,
     rpc_flags: c_int,
+    target_dc: c_int,
+    msg_len: c_int,
 }
 
 #[repr(C)]
@@ -812,6 +813,7 @@ unsafe extern "C" {
     fn rwm_push_data(raw: *mut MtprotoRawMessage, data: *const c_void, bytes: c_int) -> c_int;
     fn rwm_move(dest_raw: *mut MtprotoRawMessage, src_raw: *mut MtprotoRawMessage);
     fn rwm_clone(dest_raw: *mut MtprotoRawMessage, src_raw: *mut MtprotoRawMessage);
+    fn rwm_fetch_lookup(raw: *mut MtprotoRawMessage, data: *mut c_void, bytes: c_int) -> c_int;
     fn rwm_fetch_data(raw: *mut MtprotoRawMessage, data: *mut c_void, bytes: c_int) -> c_int;
     fn rwm_dump(raw: *mut MtprotoRawMessage) -> c_int;
     fn mtproxy_ffi_net_connections_mpq_push_w(mq: *mut c_void, x: *mut c_void, flags: c_int);
@@ -1796,6 +1798,16 @@ fn mtproto_choose_proxy_target_impl(target_dc: c_int) -> ConnTargetJob {
 
     let mfc = unsafe { mf_cluster_lookup_ffi(cur_conf, target_dc, 1) };
     if mfc.is_null() {
+        if unsafe { verbosity } >= 1 {
+            unsafe {
+                crate::kprintf_fmt!(
+                    b"choose_proxy_target: no cluster for dc=%d\n\0"
+                        .as_ptr()
+                        .cast(),
+                    target_dc,
+                );
+            }
+        }
         return core::ptr::null_mut();
     }
 
@@ -1809,6 +1821,7 @@ fn mtproto_choose_proxy_target_impl(target_dc: c_int) -> ConnTargetJob {
 
     let rand = unsafe { lrand48() };
     let start_idx = usize::try_from(rand).unwrap_or(0) % targets_len;
+    let mut fallback_target: ConnTargetJob = core::ptr::null_mut();
     for off in 0..targets_len {
         let idx = (start_idx + off) % targets_len;
         let s = unsafe { *targets.add(idx) };
@@ -1823,14 +1836,20 @@ fn mtproto_choose_proxy_target_impl(target_dc: c_int) -> ConnTargetJob {
             )
         };
         let count = picked.max(0).min(PICK_BATCH) as usize;
+        let mut saw_non_null = false;
+        let mut sample_tag = 0;
+        let mut sample_marker = 0;
         let mut i = 0;
         while i < count {
             let c = candidates[i];
             if !c.is_null() {
+                saw_non_null = true;
                 let data = mtproto_rpc_data_ptr(c);
                 let is_match = if !data.is_null() {
                     let tag = mtproto_conn_tag(c);
                     let marker = unsafe { (*data).extra_int };
+                    sample_tag = tag;
+                    sample_marker = marker;
                     marker == tag || marker == -tag
                 } else {
                     false
@@ -1841,6 +1860,48 @@ fn mtproto_choose_proxy_target_impl(target_dc: c_int) -> ConnTargetJob {
                 }
             }
             i = i.saturating_add(1);
+        }
+        if saw_non_null && fallback_target.is_null() {
+            fallback_target = s;
+        }
+        if unsafe { verbosity } >= 2 && saw_non_null {
+            unsafe {
+                crate::kprintf_fmt!(
+                    b"choose_proxy_target: marker mismatch dc=%d target=%p sample(tag=%d marker=%d)\n\0"
+                        .as_ptr()
+                        .cast(),
+                    target_dc,
+                    s,
+                    sample_tag,
+                    sample_marker,
+                );
+            }
+        }
+    }
+
+    if !fallback_target.is_null() {
+        if unsafe { verbosity } >= 1 {
+            unsafe {
+                crate::kprintf_fmt!(
+                    b"choose_proxy_target: using fallback target for dc=%d (marker mismatch)\n\0"
+                        .as_ptr()
+                        .cast(),
+                    target_dc,
+                );
+            }
+        }
+        return fallback_target;
+    }
+
+    if unsafe { verbosity } >= 1 {
+        unsafe {
+            crate::kprintf_fmt!(
+                b"choose_proxy_target: no ready connection for dc=%d (targets=%d)\n\0"
+                    .as_ptr()
+                    .cast(),
+                target_dc,
+                targets_num,
+            );
         }
     }
 
@@ -1855,6 +1916,10 @@ pub(super) fn mtproto_choose_proxy_target_ffi(target_dc: c_int) -> ConnTargetJob
 fn mtproto_forward_pick_connection(target: ConnTargetJob) -> ConnectionJob {
     const PICK_BATCH: c_int = 64;
     let mut attempts = 3;
+    let mut fallback: ConnectionJob = core::ptr::null_mut();
+    let mut saw_candidate = false;
+    let mut sample_tag = 0;
+    let mut sample_marker = 0;
     while !target.is_null() && attempts > 0 {
         attempts -= 1;
         let mut candidates = [core::ptr::null_mut(); PICK_BATCH as usize];
@@ -1871,20 +1936,68 @@ fn mtproto_forward_pick_connection(target: ConnTargetJob) -> ConnectionJob {
         while i < count {
             let d = candidates[i];
             if !d.is_null() {
+                saw_candidate = true;
                 let data = mtproto_rpc_data_ptr(d);
                 let is_match = if !data.is_null() {
                     let tag = mtproto_conn_tag(d);
                     let marker = unsafe { (*data).extra_int };
+                    sample_tag = tag;
+                    sample_marker = marker;
                     marker == tag || marker == -tag
                 } else {
                     false
                 };
                 if is_match {
+                    if !fallback.is_null() {
+                        mtproto_job_decref(fallback);
+                    }
                     return d;
                 }
-                mtproto_job_decref(d);
+                if fallback.is_null() {
+                    fallback = d;
+                } else {
+                    mtproto_job_decref(d);
+                }
             }
             i = i.saturating_add(1);
+        }
+    }
+    if !fallback.is_null() {
+        if unsafe { verbosity } >= 1 {
+            unsafe {
+                crate::kprintf_fmt!(
+                    b"forward_pick_connection: using fallback candidate despite marker mismatch (target=%p, tag=%d marker=%d)\n\0"
+                        .as_ptr()
+                        .cast(),
+                    target,
+                    sample_tag,
+                    sample_marker,
+                );
+            }
+        }
+        return fallback;
+    }
+    if unsafe { verbosity } >= 1 {
+        if saw_candidate {
+            unsafe {
+                crate::kprintf_fmt!(
+                    b"forward_pick_connection: no marker match (target=%p, sample tag=%d marker=%d)\n\0"
+                        .as_ptr()
+                        .cast(),
+                    target,
+                    sample_tag,
+                    sample_marker,
+                );
+            }
+        } else {
+            unsafe {
+                crate::kprintf_fmt!(
+                    b"forward_pick_connection: no candidates (target=%p)\n\0"
+                        .as_ptr()
+                        .cast(),
+                    target,
+                );
+            }
         }
     }
     core::ptr::null_mut()
@@ -2088,10 +2201,19 @@ fn mtproto_forward_mtproto_enc_packet_impl(
     c: ConnectionJob,
     auth_key_id: i64,
     len: c_int,
+    target_dc: c_int,
     remote_ip_port: *const c_int,
     rpc_flags: c_int,
 ) -> c_int {
     if len < ENCRYPTED_MESSAGE_MIN_LEN {
+        if unsafe { verbosity } >= 2 {
+            unsafe {
+                crate::kprintf_fmt!(
+                    b"forward_enc: too short len=%d\n\0".as_ptr().cast(),
+                    len,
+                );
+            }
+        }
         return 0;
     }
 
@@ -2102,12 +2224,19 @@ fn mtproto_forward_mtproto_enc_packet_impl(
     unsafe {
         (*conn).query_start_time = get_utime_monotonic();
     }
-    let data = mtproto_rpc_data_ptr(c);
-    if data.is_null() {
-        return 0;
-    }
-    let target_dc = unsafe { (*data).extra_int4 };
     let s = mtproto_choose_proxy_target_impl(target_dc);
+    if s.is_null() && unsafe { verbosity } >= 1 {
+        let conn_fd = unsafe { (*conn).fd };
+        unsafe {
+            crate::kprintf_fmt!(
+                b"forward_enc: target lookup failed (fd=%d, dc=%d)\n\0"
+                    .as_ptr()
+                    .cast(),
+                conn_fd,
+                target_dc,
+            );
+        }
+    }
 
     let unread = unsafe { crate::tl_parse::abi::mtproxy_ffi_tl_fetch_unread(tlio_in) };
     assert_eq!(unread, len);
@@ -2122,17 +2251,31 @@ fn mtproto_forward_mtproto_enc_packet_impl(
     )
 }
 
-pub(super) fn mtproto_forward_mtproto_packet_ffi(
+fn mtproto_forward_mtproto_packet_with_target_ffi(
     tlio_in: *mut c_void,
     c: ConnectionJob,
     len: c_int,
+    target_dc: c_int,
     remote_ip_port: *const c_int,
     rpc_flags: c_int,
 ) -> c_int {
     if tlio_in.is_null() || c.is_null() {
+        if unsafe { verbosity } >= 2 {
+            unsafe {
+                crate::kprintf_fmt!(b"forward_packet: null input\n\0".as_ptr().cast());
+            }
+        }
         return 0;
     }
     if len < 28 || (len & 3) != 0 {
+        if unsafe { verbosity } >= 2 {
+            unsafe {
+                crate::kprintf_fmt!(
+                    b"forward_packet: invalid len=%d\n\0".as_ptr().cast(),
+                    len,
+                );
+            }
+        }
         return 0;
     }
     let tlio_in = tlio_in.cast::<crate::tl_parse::abi::TlInState>();
@@ -2145,6 +2288,16 @@ pub(super) fn mtproto_forward_mtproto_packet_ffi(
         )
     };
     if looked_up != 28 {
+        if unsafe { verbosity } >= 2 {
+            unsafe {
+                crate::kprintf_fmt!(
+                    b"forward_packet: header lookup failed (%d)\n\0"
+                        .as_ptr()
+                        .cast(),
+                    looked_up,
+                );
+            }
+        }
         return 0;
     }
 
@@ -2156,6 +2309,16 @@ pub(super) fn mtproto_forward_mtproto_packet_ffi(
         core::ptr::addr_of_mut!(inspected),
     );
     if inspect_rc < 0 {
+        if unsafe { verbosity } >= 1 {
+            unsafe {
+                crate::kprintf_fmt!(
+                    b"forward_packet: inspect failed rc=%d\n\0"
+                        .as_ptr()
+                        .cast(),
+                    inspect_rc,
+                );
+            }
+        }
         return 0;
     }
 
@@ -2165,20 +2328,51 @@ pub(super) fn mtproto_forward_mtproto_packet_ffi(
             c,
             inspected.auth_key_id,
             len,
+            target_dc,
             remote_ip_port,
             rpc_flags,
         );
     }
     if inspected.kind != MTPROTO_PACKET_KIND_UNENCRYPTED_DH {
+        if unsafe { verbosity } >= 1 {
+            let auth_key_id = i64::from_le_bytes([
+                header[0], header[1], header[2], header[3], header[4], header[5], header[6],
+                header[7],
+            ]);
+            let inner_len = i32::from_le_bytes([header[16], header[17], header[18], header[19]]);
+            let function = i32::from_le_bytes([header[20], header[21], header[22], header[23]]);
+            unsafe {
+                crate::kprintf_fmt!(
+                    b"forward_packet: unsupported kind=%d len=%d akid=%llx inner_len=%d fn=%08x h0=%08x h1=%08x\n\0"
+                        .as_ptr()
+                        .cast(),
+                    inspected.kind,
+                    len,
+                    auth_key_id,
+                    inner_len,
+                    function,
+                    u32::from_le_bytes([header[0], header[1], header[2], header[3]]),
+                    u32::from_le_bytes([header[4], header[5], header[6], header[7]]),
+                );
+            }
+        }
         return 0;
     }
 
-    let data = mtproto_rpc_data_ptr(c);
-    if data.is_null() {
-        return 0;
-    }
-    let target_dc = unsafe { (*data).extra_int4 };
     let s = mtproto_choose_proxy_target_impl(target_dc);
+    if s.is_null() && unsafe { verbosity } >= 1 {
+        let conn = mtproto_conn_info_ptr(c);
+        let conn_fd = if conn.is_null() { -1 } else { unsafe { (*conn).fd } };
+        unsafe {
+            crate::kprintf_fmt!(
+                b"forward_packet: target lookup failed for unencrypted packet (fd=%d, dc=%d)\n\0"
+                    .as_ptr()
+                    .cast(),
+                conn_fd,
+                target_dc,
+            );
+        }
+    }
     let unread = unsafe { crate::tl_parse::abi::mtproxy_ffi_tl_fetch_unread(tlio_in) };
     assert_eq!(unread, len);
     mtproto_forward_tcp_query_ffi(
@@ -2189,6 +2383,28 @@ pub(super) fn mtproto_forward_mtproto_packet_ffi(
         0,
         remote_ip_port,
         core::ptr::null(),
+    )
+}
+
+pub(super) fn mtproto_forward_mtproto_packet_ffi(
+    tlio_in: *mut c_void,
+    c: ConnectionJob,
+    len: c_int,
+    remote_ip_port: *const c_int,
+    rpc_flags: c_int,
+) -> c_int {
+    let data = mtproto_rpc_data_ptr(c);
+    if data.is_null() {
+        return 0;
+    }
+    let target_dc = unsafe { (*data).extra_int4 };
+    mtproto_forward_mtproto_packet_with_target_ffi(
+        tlio_in,
+        c,
+        len,
+        target_dc,
+        remote_ip_port,
+        rpc_flags,
     )
 }
 
@@ -3252,29 +3468,70 @@ pub(super) fn mtproto_proxy_rpc_close_ffi(c: *mut c_void, who: c_int) -> c_int {
 }
 
 pub(super) fn mtproto_do_rpcs_execute_ffi(data: *mut c_void, s_len: c_int) -> c_int {
-    assert!(s_len == saturating_i32_from_usize(core::mem::size_of::<MtprotoRpcsExecData>()));
+    let header_len = saturating_i32_from_usize(core::mem::size_of::<MtprotoRpcsExecData>());
+    assert!(s_len >= header_len);
     let data = data.cast::<MtprotoRpcsExecData>();
     assert!(!data.is_null());
 
     let conn = unsafe { (*data).conn };
     mtproto_lru_insert_conn_local(conn);
 
-    let len = unsafe { (*data).msg.total_bytes };
+    let len = unsafe { (*data).msg_len };
+    if len <= 0 || header_len.saturating_add(len) != s_len {
+        mtproto_job_decref(conn);
+        return JOB_COMPLETED;
+    }
+
+    let msg_ptr = unsafe { data.cast::<u8>().add(header_len as usize) };
+    if unsafe { verbosity } >= 2 && len >= 8 {
+        let mut h0 = 0u32;
+        let mut h1 = 0u32;
+        unsafe {
+            core::ptr::copy_nonoverlapping(msg_ptr.cast::<u32>(), core::ptr::addr_of_mut!(h0), 1);
+            core::ptr::copy_nonoverlapping(
+                msg_ptr.add(4).cast::<u32>(),
+                core::ptr::addr_of_mut!(h1),
+                1,
+            );
+            crate::kprintf_fmt!(
+                b"ext_rpcs_execute: cb-bytes op=%08x len=%d h0=%08x h1=%08x\n\0"
+                    .as_ptr()
+                    .cast(),
+                (*data).op,
+                len,
+                h0,
+                h1,
+            );
+        }
+    }
+    let mut msg = MtprotoRawMessage::default();
+    unsafe {
+        rwm_init(core::ptr::addr_of_mut!(msg), 0);
+    }
+    let created = unsafe { rwm_create(core::ptr::addr_of_mut!(msg), msg_ptr.cast(), len) };
+    if created != len {
+        unsafe {
+            rwm_free(core::ptr::addr_of_mut!(msg));
+        }
+        mtproto_job_decref(conn);
+        return JOB_COMPLETED;
+    }
+
     let tlio_in = unsafe { c_tl_in_state_alloc() }.cast::<crate::tl_parse::abi::TlInState>();
     assert!(!tlio_in.is_null());
     unsafe {
         c_tlf_init_raw_message(
             tlio_in.cast(),
-            core::ptr::addr_of_mut!((*data).msg).cast(),
+            core::ptr::addr_of_mut!(msg).cast(),
             len,
             0,
         );
     }
-
-    let res = mtproto_forward_mtproto_packet_ffi(
+    let res = mtproto_forward_mtproto_packet_with_target_ffi(
         tlio_in.cast::<c_void>(),
         conn,
         len,
+        unsafe { (*data).target_dc },
         core::ptr::null(),
         unsafe { (*data).rpc_flags },
     );
@@ -3342,18 +3599,71 @@ pub(super) fn mtproto_ext_rpcs_execute_ffi(c: ConnectionJob, op: c_int, msg: *mu
     let c_data = mtproto_rpc_data_ptr(c);
     assert!(!c_data.is_null());
 
-    let mut data = MtprotoRpcsExecData::default();
+    let Ok(msg_len_usize) = usize::try_from(len) else {
+        return SKIP_ALL_BYTES;
+    };
+    let header_size = core::mem::size_of::<MtprotoRpcsExecData>();
+    let total_size = header_size.saturating_add(msg_len_usize);
+    let mut payload = vec![0u8; total_size];
+    let header_ptr = payload.as_mut_ptr().cast::<MtprotoRpcsExecData>();
     unsafe {
-        rwm_move(core::ptr::addr_of_mut!(data.msg), msg);
-        data.conn = job_incref(c);
-        data.op = op;
-        data.rpc_flags = (*c_data).flags
+        (*header_ptr).conn = job_incref(c);
+        (*header_ptr).op = op;
+        (*header_ptr).rpc_flags = (*c_data).flags
             & (RPC_F_QUICKACK | RPC_F_DROPPED | RPC_F_COMPACT_MEDIUM | RPC_F_EXTMODE3);
+        (*header_ptr).target_dc = (*c_data).extra_int4;
+        (*header_ptr).msg_len = len;
+    }
+    if len > 0 {
+        if unsafe { verbosity } >= 2 && len >= 8 {
+            let mut source = [0u8; 8];
+            let looked = unsafe {
+                rwm_fetch_lookup(msg, source.as_mut_ptr().cast::<c_void>(), source.len() as c_int)
+            };
+            if looked == source.len() as c_int {
+                unsafe {
+                    crate::kprintf_fmt!(
+                        b"ext_rpcs_execute: src-bytes op=%08x len=%d h0=%08x h1=%08x\n\0"
+                            .as_ptr()
+                            .cast(),
+                        op,
+                        len,
+                        u32::from_le_bytes([source[0], source[1], source[2], source[3]]),
+                        u32::from_le_bytes([source[4], source[5], source[6], source[7]]),
+                    );
+                }
+            }
+        }
+        let body_ptr = unsafe { payload.as_mut_ptr().add(header_size) };
+        let fetched = unsafe { rwm_fetch_lookup(msg, body_ptr.cast::<c_void>(), len) };
+        if fetched != len {
+            unsafe {
+                mtproto_job_decref((*header_ptr).conn);
+            }
+            return 0;
+        }
+        if unsafe { verbosity } >= 2 && len >= 8 {
+            let first = unsafe { core::slice::from_raw_parts(body_ptr, 8) };
+            unsafe {
+                crate::kprintf_fmt!(
+                    b"ext_rpcs_execute: queued-bytes op=%08x len=%d h0=%08x h1=%08x\n\0"
+                        .as_ptr()
+                        .cast(),
+                    op,
+                    len,
+                    u32::from_le_bytes([first[0], first[1], first[2], first[3]]),
+                    u32::from_le_bytes([first[4], first[5], first[6], first[7]]),
+                );
+            }
+        }
+    }
+    unsafe {
+        rwm_free(msg);
         mtproto_schedule_job_callback_local(
             JC_ENGINE,
             Some(mtproto_do_rpcs_execute_bridge),
-            core::ptr::addr_of_mut!(data).cast::<c_void>(),
-            saturating_i32_from_usize(core::mem::size_of::<MtprotoRpcsExecData>()),
+            payload.as_mut_ptr().cast::<c_void>(),
+            saturating_i32_from_usize(payload.len()),
         );
     }
 
@@ -5301,6 +5611,16 @@ pub(super) fn mtproto_forward_tcp_query_ffi(
             unsafe {
                 dropped_queries = dropped_queries.wrapping_add(1);
             }
+            if unsafe { verbosity } >= 1 {
+                unsafe {
+                    crate::kprintf_fmt!(
+                        b"forward_tcp_query: no outbound connection (target=%p)\n\0"
+                            .as_ptr()
+                            .cast(),
+                        target,
+                    );
+                }
+            }
             if is_ext_server {
                 let c_data = mtproto_rpc_data_ptr(c);
                 if !c_data.is_null() {
@@ -5338,6 +5658,16 @@ pub(super) fn mtproto_forward_tcp_query_ffi(
             &mut ex,
         );
         if create_rc <= 0 {
+            if unsafe { verbosity } >= 1 {
+                unsafe {
+                    crate::kprintf_fmt!(
+                        b"forward_tcp_query: ext_conn_create failed rc=%d\n\0"
+                            .as_ptr()
+                            .cast(),
+                        create_rc,
+                    );
+                }
+            }
             mtproto_job_decref(d);
             unsafe {
                 dropped_queries = dropped_queries.wrapping_add(1);
@@ -5356,6 +5686,16 @@ pub(super) fn mtproto_forward_tcp_query_ffi(
 
     let payload_len = unsafe { crate::tl_parse::abi::mtproxy_ffi_tl_fetch_unread(tlio_in) };
     if payload_len < 0 {
+        if unsafe { verbosity } >= 1 {
+            unsafe {
+                crate::kprintf_fmt!(
+                    b"forward_tcp_query: unread payload len=%d\n\0"
+                        .as_ptr()
+                        .cast(),
+                    payload_len,
+                );
+            }
+        }
         mtproto_job_decref(d);
         return 0;
     }
@@ -5370,6 +5710,17 @@ pub(super) fn mtproto_forward_tcp_query_ffi(
             )
         };
         if fetched != payload_len {
+            if unsafe { verbosity } >= 1 {
+                unsafe {
+                    crate::kprintf_fmt!(
+                        b"forward_tcp_query: payload fetch mismatch (%d != %d)\n\0"
+                            .as_ptr()
+                            .cast(),
+                        fetched,
+                        payload_len,
+                    );
+                }
+            }
             mtproto_job_decref(d);
             return 0;
         }
@@ -5393,11 +5744,25 @@ pub(super) fn mtproto_forward_tcp_query_ffi(
         our_port,
         &payload,
     ) else {
+        if unsafe { verbosity } >= 1 {
+            unsafe {
+                crate::kprintf_fmt!(
+                    b"forward_tcp_query: build_req failed\n\0".as_ptr().cast(),
+                );
+            }
+        }
         mtproto_job_decref(d);
         return 0;
     };
 
     if !mtproto_forward_send_req(d, &req) {
+        if unsafe { verbosity } >= 1 {
+            unsafe {
+                crate::kprintf_fmt!(
+                    b"forward_tcp_query: send_req failed\n\0".as_ptr().cast(),
+                );
+            }
+        }
         mtproto_job_decref(d);
         return 0;
     }

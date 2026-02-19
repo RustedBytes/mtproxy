@@ -434,12 +434,14 @@ unsafe extern "C" fn tl_raw_msg_fetch_raw_data(
     buf: *mut c_void,
     len: c_int,
 ) {
-    debug_assert!(rwm_fetch_data(in_raw(tlio_in), buf, len) == len);
+    let fetched = rwm_fetch_data(in_raw(tlio_in), buf, len);
+    debug_assert!(fetched == len);
 }
 
 unsafe extern "C" fn tl_raw_msg_fetch_move(tlio_in: *mut TlInState, len: c_int) {
     debug_assert!(len >= 0);
-    debug_assert!(rwm_skip_data(in_raw(tlio_in), len) == len);
+    let skipped = rwm_skip_data(in_raw(tlio_in), len);
+    debug_assert!(skipped == len);
 }
 
 unsafe extern "C" fn tl_raw_msg_fetch_lookup(
@@ -447,7 +449,8 @@ unsafe extern "C" fn tl_raw_msg_fetch_lookup(
     buf: *mut c_void,
     len: c_int,
 ) {
-    debug_assert!(rwm_fetch_lookup(in_raw(tlio_in), buf, len) == len);
+    let looked_up = rwm_fetch_lookup(in_raw(tlio_in), buf, len);
+    debug_assert!(looked_up == len);
 }
 
 unsafe extern "C" fn tl_raw_msg_fetch_raw_message(
@@ -523,7 +526,8 @@ unsafe extern "C" fn tl_raw_msg_store_raw_data(
     buf: *const c_void,
     len: c_int,
 ) {
-    debug_assert!(rwm_push_data(out_raw(tlio_out), buf, len) == len);
+    let pushed = rwm_push_data(out_raw(tlio_out), buf, len);
+    debug_assert!(pushed == len);
 }
 
 unsafe extern "C" fn tl_raw_msg_store_raw_msg(tlio_out: *mut TlOutState, raw: *mut RawMessage) {
@@ -531,7 +535,8 @@ unsafe extern "C" fn tl_raw_msg_store_raw_msg(tlio_out: *mut TlOutState, raw: *m
 }
 
 unsafe extern "C" fn tl_raw_msg_store_read_back(tlio_out: *mut TlOutState, len: c_int) {
-    debug_assert!(rwm_fetch_data_back(out_raw(tlio_out), ptr::null_mut(), len) == len);
+    let fetched = rwm_fetch_data_back(out_raw(tlio_out), ptr::null_mut(), len);
+    debug_assert!(fetched == len);
 }
 
 unsafe extern "C" fn tl_raw_msg_store_read_back_nondestruct(
@@ -541,7 +546,8 @@ unsafe extern "C" fn tl_raw_msg_store_read_back_nondestruct(
 ) {
     let mut r = RawMessage::default();
     rwm_clone(&mut r, out_raw(tlio_out));
-    debug_assert!(rwm_fetch_data_back(&mut r, buf, len) == len);
+    let fetched = rwm_fetch_data_back(&mut r, buf, len);
+    debug_assert!(fetched == len);
     let _ = rwm_free(&mut r);
 }
 
@@ -572,9 +578,11 @@ unsafe extern "C" fn tl_raw_msg_str_copy_through(
 ) {
     let out_ptr = (*tlio_out).out_ptr;
     if advance != 0 {
-        debug_assert!(rwm_fetch_data(in_raw(tlio_in), out_ptr, len) == len);
+        let fetched = rwm_fetch_data(in_raw(tlio_in), out_ptr, len);
+        debug_assert!(fetched == len);
     } else {
-        debug_assert!(rwm_fetch_lookup(in_raw(tlio_in), out_ptr, len) == len);
+        let looked_up = rwm_fetch_lookup(in_raw(tlio_in), out_ptr, len);
+        debug_assert!(looked_up == len);
     }
     (*tlio_out).out_ptr = add_bytes((*tlio_out).out_ptr, len);
 }
@@ -725,7 +733,8 @@ unsafe extern "C" fn tl_str_raw_msg_copy_through(
     len: c_int,
     advance: c_int,
 ) {
-    debug_assert!(rwm_push_data(out_raw(tlio_out), (*tlio_in).in_ptr, len) == len);
+    let pushed = rwm_push_data(out_raw(tlio_out), (*tlio_in).in_ptr, len);
+    debug_assert!(pushed == len);
     if advance != 0 {
         (*tlio_in).in_ptr = add_bytes((*tlio_in).in_ptr, advance);
     }
